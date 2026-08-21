@@ -18,6 +18,9 @@ export interface SchoolSetting {
   name: string;
   npsn: string;
   address: string;
+  centralInstitution?: string; // Instansi Pusat (e.g. KEMENTERIAN AGAMA REPUBLIK INDONESIA)
+  regionalInstitution?: string; // Instansi Kabupaten / Provinsi (e.g. KANTOR KEMENTERIAN AGAMA KABUPATEN BOGOR)
+  postalCode?: string; // Kode Pos
   principalName: string;
   principalNip?: string;
   wakaName: string;
@@ -26,7 +29,9 @@ export interface SchoolSetting {
   phone: string;
   email: string;
   website?: string;
-  logoUrl?: string;
+  logoUrl?: string; // legacy fallback
+  logoLeftUrl?: string; // Logo Kiri Kop Surat (Instansi Pembina / Kemenag / Pemda)
+  logoRightUrl?: string; // Logo Kanan Kop Surat (Sekolah / Madrasah / Lembaga)
   currentAcademicYear: string;
   currentSemester: 'Ganjil' | 'Genap';
 }
@@ -203,6 +208,8 @@ export type ActivityType =
   | 'Bakti Sosial'
   | 'Rapat'
   | 'Pelatihan'
+  | 'Event'
+  | 'Intrakurikuler OSIM'
   | 'Lainnya';
 
 export type ActivityStatus = 
@@ -436,4 +443,120 @@ export interface AuditLogItem {
   module: string;
   details: string;
   timestamp: string;
+}
+
+// ==========================================
+// INTRAKURIKULER & OSIM (ORGANISASI SISWA INTRA MADRASAH)
+// ==========================================
+
+export type OsimSekbid =
+  | 'BPH (Badan Pengurus Harian)'
+  | 'Sekbid 1: Keimanan, Ketaqwaan & Moderasi Beragama'
+  | 'Sekbid 2: Wawasan Kebangsaan, Bela Negara & Kedisiplinan'
+  | 'Sekbid 3: Akademik, Sains, Riset & Literasi'
+  | 'Sekbid 4: Demokrasi, HAM, Kepemimpinan & Politik Pelajar'
+  | 'Sekbid 5: Keterampilan, Kewirausahaan & Koperasi Siswa'
+  | 'Sekbid 6: Kesehatan Jasmani, Olahraga & Lingkungan Hidup'
+  | 'Sekbid 7: Sastra, Seni, Budaya & Bahasa'
+  | 'Sekbid 8: Teknologi Informasi, Multimedia & Komunikasi';
+
+export type OsimPosition =
+  | 'Ketua Umum OSIM'
+  | 'Wakil Ketua 1'
+  | 'Wakil Ketua 2'
+  | 'Sekretaris Umum'
+  | 'Wakil Sekretaris'
+  | 'Bendahara Umum'
+  | 'Wakil Bendahara'
+  | 'Ketua Sekbid'
+  | 'Anggota Sekbid'
+  | 'Pembina OSIM';
+
+export interface OsimMember {
+  id: string;
+  studentId?: string;
+  studentNis: string;
+  fullName: string;
+  className: string;
+  position: OsimPosition;
+  sekbid: OsimSekbid;
+  phone: string;
+  email?: string;
+  photoUrl?: string;
+  status: 'Aktif' | 'Demisioner' | 'Nonaktif';
+  vision?: string;
+  flagshipProgram?: string;
+  period: string; // e.g. "2026/2027"
+  createdAt?: string;
+}
+
+export type OsimProgramStatus = 'Draft' | 'Diajukan' | 'Disetujui' | 'Berlangsung' | 'Selesai' | 'Dibatalkan';
+
+export interface OsimWorkProgram {
+  id: string;
+  title: string;
+  sekbid: OsimSekbid;
+  personInCharge: string; // e.g. "Ahmad Zaki (Ketua Sekbid 1)"
+  startDate: string;
+  endDate?: string;
+  location: string;
+  budgetEstimated: number;
+  budgetRealized?: number;
+  targetParticipants: string;
+  participantCount?: number;
+  successIndicator: string;
+  progressPercentage: number; // 0 - 100
+  status: OsimProgramStatus;
+  description: string;
+  documentationUrls?: string[];
+  academicYear: string;
+  createdAt?: string;
+}
+
+export type OsimAspirationCategory =
+  | 'Fasilitas & Sarpras'
+  | 'Kegiatan & Acara'
+  | 'Akademik & Pembelajaran'
+  | 'Kedisiplinan & Tata Tertib'
+  | 'Ekstrakurikuler'
+  | 'Kesejahteraan Santri/Siswa'
+  | 'Lainnya';
+
+export type OsimAspirationStatus = 'Ditampung' | 'Sedang Dibahas' | 'Direalisasikan' | 'Ditolak';
+
+export interface OsimAspiration {
+  id: string;
+  studentName: string; // or "Anonim / Siswa X RPL 1"
+  studentClass: string;
+  date: string;
+  title: string;
+  content: string;
+  category: OsimAspirationCategory;
+  upvotes: number;
+  status: OsimAspirationStatus;
+  responseNote?: string;
+  respondedBy?: string;
+  respondedAt?: string;
+  academicYear: string;
+  createdAt?: string;
+}
+
+export type OsimMeetingType = 'Rapat Pleno Pengurus' | 'Rapat BPH' | 'Rapat Koordinasi Pembina' | 'Sidang Musyawarah Kerja (MUKER)' | 'Rapat Evaluasi Bulanan';
+
+export interface OsimMeeting {
+  id: string;
+  title: string;
+  type: OsimMeetingType;
+  date: string;
+  startTime: string;
+  endTime: string;
+  location: string;
+  leader: string;
+  secretary: string;
+  attendeesCount: number;
+  agenda: string;
+  decisionNotes: string;
+  wakaNotes?: string;
+  academicYear: string;
+  createdAt?: string;
 }

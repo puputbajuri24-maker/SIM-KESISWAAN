@@ -79,6 +79,22 @@
     "audit_logs": {
       "title": "Audit Logs",
       "description": "System audit trails for security and traceability"
+    },
+    "osim_members": {
+      "title": "OSIM Cabinet Members",
+      "description": "Student organization executive board and division members"
+    },
+    "osim_programs": {
+      "title": "OSIM Work Programs",
+      "description": "Intracurricular work programs, budget, and progress"
+    },
+    "osim_aspirations": {
+      "title": "OSIM Aspirations",
+      "description": "Student voice and feedback channels with upvotes and responses"
+    },
+    "osim_meetings": {
+      "title": "OSIM Meetings & Minutes",
+      "description": "Plenary sessions, deliberations, and formal meeting records"
     }
   }
 }

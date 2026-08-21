@@ -25,7 +25,11 @@ import {
   NeedsRequest,
   Announcement,
   NotificationItem,
-  AuditLogItem
+  AuditLogItem,
+  OsimMember,
+  OsimWorkProgram,
+  OsimAspiration,
+  OsimMeeting
 } from '../types';
 import {
   INITIAL_SCHOOL_SETTING,
@@ -47,6 +51,10 @@ import {
   INITIAL_ANNOUNCEMENTS,
   INITIAL_NOTIFICATIONS,
   INITIAL_AUDIT_LOGS,
+  INITIAL_OSIM_MEMBERS,
+  INITIAL_OSIM_PROGRAMS,
+  INITIAL_OSIM_ASPIRATIONS,
+  INITIAL_OSIM_MEETINGS,
   seedAllFirebaseData
 } from '../services/seedData';
 import { db } from '../services/firebase';
@@ -152,6 +160,24 @@ interface SchoolContextType {
   addNeedsRequest: (data: Omit<NeedsRequest, 'id' | 'createdAt'>) => Promise<void>;
   reviewNeedsRequest: (id: string, status: 'Disetujui' | 'Ditolak' | 'Revisi', adminNotes?: string, approvedBudget?: number) => Promise<void>;
 
+  // OSIM & Intrakurikuler Operations
+  osimMembers: OsimMember[];
+  osimPrograms: OsimWorkProgram[];
+  osimAspirations: OsimAspiration[];
+  osimMeetings: OsimMeeting[];
+  addOsimMember: (data: Omit<OsimMember, 'id' | 'createdAt'>) => Promise<void>;
+  updateOsimMember: (id: string, data: Partial<OsimMember>) => Promise<void>;
+  deleteOsimMember: (id: string) => Promise<void>;
+  addOsimProgram: (data: Omit<OsimWorkProgram, 'id' | 'createdAt'>) => Promise<void>;
+  updateOsimProgram: (id: string, data: Partial<OsimWorkProgram>) => Promise<void>;
+  deleteOsimProgram: (id: string) => Promise<void>;
+  addOsimAspiration: (data: Omit<OsimAspiration, 'id' | 'createdAt'>) => Promise<void>;
+  updateOsimAspiration: (id: string, data: Partial<OsimAspiration>) => Promise<void>;
+  deleteOsimAspiration: (id: string) => Promise<void>;
+  addOsimMeeting: (data: Omit<OsimMeeting, 'id' | 'createdAt'>) => Promise<void>;
+  updateOsimMeeting: (id: string, data: Partial<OsimMeeting>) => Promise<void>;
+  deleteOsimMeeting: (id: string) => Promise<void>;
+
   // Announcements & Notifications
   addAnnouncement: (data: Omit<Announcement, 'id' | 'createdAt'>) => Promise<void>;
   markNotificationAsRead: (id: string) => void;
@@ -243,6 +269,26 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return saved ? JSON.parse(saved) : INITIAL_NEEDS_REQUESTS;
   });
 
+  const [osimMembers, setOsimMembers] = useState<OsimMember[]>(() => {
+    const saved = localStorage.getItem('sim_osim_members');
+    return saved ? JSON.parse(saved) : INITIAL_OSIM_MEMBERS;
+  });
+
+  const [osimPrograms, setOsimPrograms] = useState<OsimWorkProgram[]>(() => {
+    const saved = localStorage.getItem('sim_osim_programs');
+    return saved ? JSON.parse(saved) : INITIAL_OSIM_PROGRAMS;
+  });
+
+  const [osimAspirations, setOsimAspirations] = useState<OsimAspiration[]>(() => {
+    const saved = localStorage.getItem('sim_osim_aspirations');
+    return saved ? JSON.parse(saved) : INITIAL_OSIM_ASPIRATIONS;
+  });
+
+  const [osimMeetings, setOsimMeetings] = useState<OsimMeeting[]>(() => {
+    const saved = localStorage.getItem('sim_osim_meetings');
+    return saved ? JSON.parse(saved) : INITIAL_OSIM_MEETINGS;
+  });
+
   const [announcements, setAnnouncements] = useState<Announcement[]>(INITIAL_ANNOUNCEMENTS);
   const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>(INITIAL_AUDIT_LOGS);
@@ -262,6 +308,10 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     localStorage.setItem('sim_achievements', JSON.stringify(achievements));
     localStorage.setItem('sim_permissions', JSON.stringify(permissions));
     localStorage.setItem('sim_needs', JSON.stringify(needsRequests));
+    localStorage.setItem('sim_osim_members', JSON.stringify(osimMembers));
+    localStorage.setItem('sim_osim_programs', JSON.stringify(osimPrograms));
+    localStorage.setItem('sim_osim_aspirations', JSON.stringify(osimAspirations));
+    localStorage.setItem('sim_osim_meetings', JSON.stringify(osimMeetings));
   }, [
     schoolSetting,
     students,
@@ -275,13 +325,32 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     counseling,
     achievements,
     permissions,
-    needsRequests
+    needsRequests,
+    osimMembers,
+    osimPrograms,
+    osimAspirations,
+    osimMeetings
   ]);
 
   // Sync with Firestore if collections exist
   const syncWithFirebase = async () => {
     setIsSyncing(true);
     try {
+      // School Settings Sync
+      const schoolSnap = await getDocs(collection(db, 'schools'));
+      if (!schoolSnap.empty) {
+        const loadedSchool = schoolSnap.docs[0].data() as SchoolSetting;
+        if (loadedSchool && loadedSchool.name) {
+          setSchoolSetting(prev => ({ ...prev, ...loadedSchool }));
+          if (loadedSchool.currentAcademicYear) {
+            setActiveAcademicYearState(loadedSchool.currentAcademicYear);
+          }
+          if (loadedSchool.currentSemester) {
+            setActiveSemesterState(loadedSchool.currentSemester);
+          }
+        }
+      }
+
       const studentSnap = await getDocs(collection(db, 'students'));
       if (!studentSnap.empty) {
         const loadedStudents: Student[] = [];
@@ -344,6 +413,35 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         achSnap.forEach(doc => loadedAch.push({ id: doc.id, ...doc.data() } as StudentAchievement));
         setAchievements(loadedAch);
       }
+
+      // OSIM Collections Sync
+      const osimMemSnap = await getDocs(collection(db, 'osim_members'));
+      if (!osimMemSnap.empty) {
+        const loadedOsimMem: OsimMember[] = [];
+        osimMemSnap.forEach(doc => loadedOsimMem.push({ id: doc.id, ...doc.data() } as OsimMember));
+        setOsimMembers(loadedOsimMem);
+      }
+
+      const osimProgSnap = await getDocs(collection(db, 'osim_programs'));
+      if (!osimProgSnap.empty) {
+        const loadedOsimProg: OsimWorkProgram[] = [];
+        osimProgSnap.forEach(doc => loadedOsimProg.push({ id: doc.id, ...doc.data() } as OsimWorkProgram));
+        setOsimPrograms(loadedOsimProg);
+      }
+
+      const osimAspSnap = await getDocs(collection(db, 'osim_aspirations'));
+      if (!osimAspSnap.empty) {
+        const loadedOsimAsp: OsimAspiration[] = [];
+        osimAspSnap.forEach(doc => loadedOsimAsp.push({ id: doc.id, ...doc.data() } as OsimAspiration));
+        setOsimAspirations(loadedOsimAsp);
+      }
+
+      const osimMeetSnap = await getDocs(collection(db, 'osim_meetings'));
+      if (!osimMeetSnap.empty) {
+        const loadedOsimMeet: OsimMeeting[] = [];
+        osimMeetSnap.forEach(doc => loadedOsimMeet.push({ id: doc.id, ...doc.data() } as OsimMeeting));
+        setOsimMeetings(loadedOsimMeet);
+      }
     } catch (e) {
       console.warn('Firestore sync note (using local cache):', e);
     } finally {
@@ -394,12 +492,22 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateSchoolSetting = async (data: Partial<SchoolSetting>) => {
-    const updated = { ...schoolSetting, ...data };
+    const targetId = data.id || schoolSetting.id || 'main_school';
+    const updated: SchoolSetting = {
+      ...schoolSetting,
+      ...data,
+      id: targetId,
+      wakaName: data.wakaName || data.wakaKesiswaanName || schoolSetting.wakaName || schoolSetting.wakaKesiswaanName || '',
+      wakaKesiswaanName: data.wakaKesiswaanName || data.wakaName || schoolSetting.wakaKesiswaanName || schoolSetting.wakaName || ''
+    };
     setSchoolSetting(updated);
     try {
-      await setDoc(doc(db, 'schools', updated.id), updated);
-    } catch (e) {}
-    logAction('UPDATE_SCHOOL_INFO', 'Pengaturan Sekolah', 'Memperbarui profil dan identitas sekolah');
+      localStorage.setItem('sim_school_setting', JSON.stringify(updated));
+      await setDoc(doc(db, 'schools', targetId), updated, { merge: true });
+    } catch (e) {
+      console.warn('Firestore update school notice (saved locally):', e);
+    }
+    await logAction('UPDATE_SCHOOL_INFO', 'Pengaturan Sekolah', `Memperbarui profil dan identitas sekolah: ${updated.name}`);
   };
 
   // Student Operations
@@ -874,6 +982,130 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
   };
 
+  // ==========================================
+  // OSIM & INTRAKURIKULER HANDLERS
+  // ==========================================
+
+  // OSIM Members
+  const addOsimMember = async (data: Omit<OsimMember, 'id' | 'createdAt'>) => {
+    const newMember: OsimMember = {
+      id: `osim_m_${Date.now()}`,
+      ...data,
+      createdAt: new Date().toISOString().split('T')[0]
+    };
+    setOsimMembers(prev => [newMember, ...prev]);
+    try {
+      await setDoc(doc(db, 'osim_members', newMember.id), newMember);
+    } catch (e) {}
+    logAction('ADD_OSIM_MEMBER', 'Intrakurikuler & OSIM', `Menambahkan pengurus OSIM: ${newMember.fullName} (${newMember.position})`);
+  };
+
+  const updateOsimMember = async (id: string, data: Partial<OsimMember>) => {
+    setOsimMembers(prev => prev.map(m => m.id === id ? { ...m, ...data } : m));
+    try {
+      await updateDoc(doc(db, 'osim_members', id), data);
+    } catch (e) {}
+    logAction('UPDATE_OSIM_MEMBER', 'Intrakurikuler & OSIM', `Memperbarui data pengurus OSIM ID ${id}`);
+  };
+
+  const deleteOsimMember = async (id: string) => {
+    setOsimMembers(prev => prev.filter(m => m.id !== id));
+    try {
+      await deleteDoc(doc(db, 'osim_members', id));
+    } catch (e) {}
+    logAction('DELETE_OSIM_MEMBER', 'Intrakurikuler & OSIM', `Menghapus data pengurus OSIM ID ${id}`);
+  };
+
+  // OSIM Work Programs
+  const addOsimProgram = async (data: Omit<OsimWorkProgram, 'id' | 'createdAt'>) => {
+    const newProg: OsimWorkProgram = {
+      id: `proker_${Date.now()}`,
+      ...data,
+      createdAt: new Date().toISOString().split('T')[0]
+    };
+    setOsimPrograms(prev => [newProg, ...prev]);
+    try {
+      await setDoc(doc(db, 'osim_programs', newProg.id), newProg);
+    } catch (e) {}
+    logAction('ADD_OSIM_PROGRAM', 'Intrakurikuler & OSIM', `Membuat program kerja OSIM: ${newProg.title}`);
+  };
+
+  const updateOsimProgram = async (id: string, data: Partial<OsimWorkProgram>) => {
+    setOsimPrograms(prev => prev.map(p => p.id === id ? { ...p, ...data } : p));
+    try {
+      await updateDoc(doc(db, 'osim_programs', id), data);
+    } catch (e) {}
+    logAction('UPDATE_OSIM_PROGRAM', 'Intrakurikuler & OSIM', `Memperbarui program kerja OSIM: ${data.title || id}`);
+  };
+
+  const deleteOsimProgram = async (id: string) => {
+    setOsimPrograms(prev => prev.filter(p => p.id !== id));
+    try {
+      await deleteDoc(doc(db, 'osim_programs', id));
+    } catch (e) {}
+    logAction('DELETE_OSIM_PROGRAM', 'Intrakurikuler & OSIM', `Menghapus program kerja OSIM ID ${id}`);
+  };
+
+  // OSIM Aspirations
+  const addOsimAspiration = async (data: Omit<OsimAspiration, 'id' | 'createdAt'>) => {
+    const newAsp: OsimAspiration = {
+      id: `asp_${Date.now()}`,
+      ...data,
+      createdAt: new Date().toISOString().split('T')[0]
+    };
+    setOsimAspirations(prev => [newAsp, ...prev]);
+    try {
+      await setDoc(doc(db, 'osim_aspirations', newAsp.id), newAsp);
+    } catch (e) {}
+    logAction('ADD_OSIM_ASPIRATION', 'Intrakurikuler & OSIM', `Mengirim aspirasi siswa: ${newAsp.title}`);
+  };
+
+  const updateOsimAspiration = async (id: string, data: Partial<OsimAspiration>) => {
+    setOsimAspirations(prev => prev.map(a => a.id === id ? { ...a, ...data } : a));
+    try {
+      await updateDoc(doc(db, 'osim_aspirations', id), data);
+    } catch (e) {}
+    logAction('UPDATE_OSIM_ASPIRATION', 'Intrakurikuler & OSIM', `Memperbarui respon aspirasi ID ${id}`);
+  };
+
+  const deleteOsimAspiration = async (id: string) => {
+    setOsimAspirations(prev => prev.filter(a => a.id !== id));
+    try {
+      await deleteDoc(doc(db, 'osim_aspirations', id));
+    } catch (e) {}
+    logAction('DELETE_OSIM_ASPIRATION', 'Intrakurikuler & OSIM', `Menghapus aspirasi siswa ID ${id}`);
+  };
+
+  // OSIM Meetings
+  const addOsimMeeting = async (data: Omit<OsimMeeting, 'id' | 'createdAt'>) => {
+    const newMeet: OsimMeeting = {
+      id: `meet_${Date.now()}`,
+      ...data,
+      createdAt: new Date().toISOString().split('T')[0]
+    };
+    setOsimMeetings(prev => [newMeet, ...prev]);
+    try {
+      await setDoc(doc(db, 'osim_meetings', newMeet.id), newMeet);
+    } catch (e) {}
+    logAction('ADD_OSIM_MEETING', 'Intrakurikuler & OSIM', `Mencatat notulensi rapat OSIM: ${newMeet.title}`);
+  };
+
+  const updateOsimMeeting = async (id: string, data: Partial<OsimMeeting>) => {
+    setOsimMeetings(prev => prev.map(m => m.id === id ? { ...m, ...data } : m));
+    try {
+      await updateDoc(doc(db, 'osim_meetings', id), data);
+    } catch (e) {}
+    logAction('UPDATE_OSIM_MEETING', 'Intrakurikuler & OSIM', `Memperbarui notulensi rapat OSIM: ${data.title || id}`);
+  };
+
+  const deleteOsimMeeting = async (id: string) => {
+    setOsimMeetings(prev => prev.filter(m => m.id !== id));
+    try {
+      await deleteDoc(doc(db, 'osim_meetings', id));
+    } catch (e) {}
+    logAction('DELETE_OSIM_MEETING', 'Intrakurikuler & OSIM', `Menghapus notulensi rapat OSIM ID ${id}`);
+  };
+
   return (
     <SchoolContext.Provider
       value={{
@@ -902,6 +1134,10 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         announcements,
         notifications,
         auditLogs,
+        osimMembers,
+        osimPrograms,
+        osimAspirations,
+        osimMeetings,
         addStudent,
         updateStudent,
         deleteStudent,
@@ -949,6 +1185,18 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         updatePermissionStatus,
         addNeedsRequest,
         reviewNeedsRequest,
+        addOsimMember,
+        updateOsimMember,
+        deleteOsimMember,
+        addOsimProgram,
+        updateOsimProgram,
+        deleteOsimProgram,
+        addOsimAspiration,
+        updateOsimAspiration,
+        deleteOsimAspiration,
+        addOsimMeeting,
+        updateOsimMeeting,
+        deleteOsimMeeting,
         addAnnouncement,
         markNotificationAsRead,
         markAllNotificationsAsRead,

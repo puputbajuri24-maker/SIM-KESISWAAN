@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Settings,
   Building,
@@ -12,11 +12,58 @@ import {
   Sparkles,
   Save,
   UserCheck,
-  School
+  School,
+  Image as ImageIcon,
+  Globe,
+  Phone,
+  Mail,
+  Printer,
+  FileText
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
-import { UserRole } from '../types';
+import { UserRole, SchoolSetting } from '../types';
+import { LogoUploader } from '../components/common/LogoUploader';
+import { SchoolLetterhead } from '../components/common/SchoolLetterhead';
+
+// Preset logos for quick Indonesian official letterhead setup
+const LEFT_LOGO_PRESETS = [
+  {
+    name: 'Kemenag RI (Ikhlas Beramal)',
+    url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/90/Logo_Kementerian_Agama.png/480px-Logo_Kementerian_Agama.png'
+  },
+  {
+    name: 'Kemendikbud (Tut Wuri Handayani)',
+    url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/9c/Logo_of_Ministry_of_Education_and_Culture_of_Republic_of_Indonesia.svg/200px-Logo_of_Ministry_of_Education_and_Culture_of_Republic_of_Indonesia.svg.png'
+  },
+  {
+    name: 'Garuda Pancasila',
+    url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/87/Coat_of_arms_of_Indonesia.svg/200px-Coat_of_arms_of_Indonesia.svg.png'
+  },
+  {
+    name: 'Pemerintah Daerah (Pemprov DKI)',
+    url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b2/Coat_of_arms_of_Jakarta.svg/200px-Coat_of_arms_of_Jakarta.svg.png'
+  }
+];
+
+const RIGHT_LOGO_PRESETS = [
+  {
+    name: 'Logo Sekolah Biru',
+    url: 'https://images.unsplash.com/photo-1594608661623-aa0bd3a69d98?w=150&auto=format&fit=crop&q=80'
+  },
+  {
+    name: 'Logo Madrasah Hijau',
+    url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/90/Logo_Kementerian_Agama.png/240px-Logo_Kementerian_Agama.png'
+  },
+  {
+    name: 'Logo OSIS / OSIM Nasional',
+    url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/7/75/Logo_OSIS.svg/200px-Logo_OSIS.svg.png'
+  },
+  {
+    name: 'Gerakan Pramuka Indonesia',
+    url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/07/Gerakan_Pramuka_Indonesia_Logo.png/200px-Gerakan_Pramuka_Indonesia_Logo.png'
+  }
+];
 
 export const SettingsPage: React.FC = () => {
   const { currentUser, switchRole, userRole } = useAuth();
@@ -24,6 +71,7 @@ export const SettingsPage: React.FC = () => {
     schoolInfo,
     updateSchoolInfo,
     activeAcademicYear,
+    activeSemester,
     setActiveAcademicYear,
     seedFirebaseDatabase,
     students,
@@ -35,21 +83,112 @@ export const SettingsPage: React.FC = () => {
     activityReports
   } = useSchool();
 
-  const [formData, setFormData] = useState(schoolInfo);
-  const [academicYear, setAcademicYear] = useState(activeAcademicYear);
+  const [formData, setFormData] = useState<SchoolSetting>({
+    id: schoolInfo?.id || 'main_school',
+    name: schoolInfo?.name || '',
+    centralInstitution: schoolInfo?.centralInstitution || '',
+    regionalInstitution: schoolInfo?.regionalInstitution || '',
+    npsn: schoolInfo?.npsn || '',
+    address: schoolInfo?.address || '',
+    postalCode: schoolInfo?.postalCode || '',
+    principalName: schoolInfo?.principalName || '',
+    principalNip: schoolInfo?.principalNip || '',
+    wakaName: schoolInfo?.wakaName || schoolInfo?.wakaKesiswaanName || '',
+    wakaNip: schoolInfo?.wakaNip || '',
+    wakaKesiswaanName: schoolInfo?.wakaKesiswaanName || schoolInfo?.wakaName || '',
+    phone: schoolInfo?.phone || '',
+    email: schoolInfo?.email || '',
+    website: schoolInfo?.website || '',
+    logoUrl: schoolInfo?.logoUrl || '',
+    logoLeftUrl: schoolInfo?.logoLeftUrl || '',
+    logoRightUrl: schoolInfo?.logoRightUrl || '',
+    currentAcademicYear: schoolInfo?.currentAcademicYear || activeAcademicYear || '2026/2027',
+    currentSemester: schoolInfo?.currentSemester || activeSemester || 'Ganjil'
+  });
+
+  const [selectedYear, setSelectedYear] = useState<string>(activeAcademicYear || '2026/2027');
+  const [selectedSemester, setSelectedSemester] = useState<'Ganjil' | 'Genap'>(activeSemester || 'Ganjil');
   const [isSaving, setIsSaving] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
   const [seedSuccess, setSeedSuccess] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Sync form data when schoolInfo changes from Firestore or state
+  useEffect(() => {
+    if (schoolInfo) {
+      setFormData({
+        id: schoolInfo.id || 'main_school',
+        name: schoolInfo.name || '',
+        centralInstitution: schoolInfo.centralInstitution || '',
+        regionalInstitution: schoolInfo.regionalInstitution || '',
+        npsn: schoolInfo.npsn || '',
+        address: schoolInfo.address || '',
+        postalCode: schoolInfo.postalCode || '',
+        principalName: schoolInfo.principalName || '',
+        principalNip: schoolInfo.principalNip || '',
+        wakaName: schoolInfo.wakaName || schoolInfo.wakaKesiswaanName || '',
+        wakaNip: schoolInfo.wakaNip || '',
+        wakaKesiswaanName: schoolInfo.wakaKesiswaanName || schoolInfo.wakaName || '',
+        phone: schoolInfo.phone || '',
+        email: schoolInfo.email || '',
+        website: schoolInfo.website || '',
+        logoUrl: schoolInfo.logoUrl || '',
+        logoLeftUrl: schoolInfo.logoLeftUrl || '',
+        logoRightUrl: schoolInfo.logoRightUrl || '',
+        currentAcademicYear: schoolInfo.currentAcademicYear || activeAcademicYear || '2026/2027',
+        currentSemester: schoolInfo.currentSemester || activeSemester || 'Ganjil'
+      });
+      if (schoolInfo.currentAcademicYear) {
+        setSelectedYear(schoolInfo.currentAcademicYear);
+      }
+      if (schoolInfo.currentSemester) {
+        setSelectedSemester(schoolInfo.currentSemester);
+      }
+    }
+  }, [schoolInfo, activeAcademicYear, activeSemester]);
 
   const handleSaveSchoolInfo = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSaving(true);
-    await updateSchoolInfo(formData);
-    setActiveAcademicYear(academicYear);
-    setIsSaving(false);
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
+    setErrorMessage(null);
+    setSaveSuccess(false);
+
+    try {
+      const payload: SchoolSetting = {
+        ...formData,
+        id: formData.id || schoolInfo.id || 'main_school',
+        name: formData.name.trim(),
+        centralInstitution: formData.centralInstitution?.trim() || '',
+        regionalInstitution: formData.regionalInstitution?.trim() || '',
+        npsn: formData.npsn.trim(),
+        address: formData.address.trim(),
+        postalCode: formData.postalCode?.trim() || '',
+        principalName: formData.principalName.trim(),
+        principalNip: formData.principalNip?.trim() || '',
+        wakaName: (formData.wakaKesiswaanName || formData.wakaName || '').trim(),
+        wakaKesiswaanName: (formData.wakaKesiswaanName || formData.wakaName || '').trim(),
+        wakaNip: formData.wakaNip?.trim() || '',
+        phone: formData.phone.trim(),
+        email: formData.email.trim(),
+        website: formData.website?.trim() || '',
+        logoUrl: formData.logoRightUrl || formData.logoUrl || '',
+        logoLeftUrl: formData.logoLeftUrl?.trim() || '',
+        logoRightUrl: formData.logoRightUrl?.trim() || '',
+        currentAcademicYear: selectedYear,
+        currentSemester: selectedSemester
+      };
+
+      await updateSchoolInfo(payload);
+      setActiveAcademicYear(selectedYear, selectedSemester);
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3500);
+    } catch (err: any) {
+      console.error('Gagal menyimpan profil sekolah:', err);
+      setErrorMessage(err?.message || 'Terjadi kesalahan sistem saat menyimpan profil sekolah.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleSeedDatabase = async () => {
@@ -99,15 +238,89 @@ export const SettingsPage: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
+  const handlePrintTestKop = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Pratinjau Kop Surat Resmi - ${formData.name || 'Sekolah'}</title>
+          <style>
+            body { font-family: 'Times New Roman', Times, serif; padding: 30px; margin: 0; color: #111; }
+            .header { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 8px; }
+            .logo { width: 80px; height: 80px; object-fit: contain; }
+            .center-text { flex: 1; text-align: center; }
+            .center-text h4 { font-size: 14px; margin: 0; text-transform: uppercase; font-weight: bold; }
+            .center-text h5 { font-size: 13px; margin: 3px 0 0 0; text-transform: uppercase; font-weight: bold; }
+            .center-text h2 { font-size: 18px; margin: 5px 0; text-transform: uppercase; font-weight: 900; }
+            .center-text p { font-family: Arial, sans-serif; font-size: 11px; margin: 2px 0; color: #333; }
+            .double-line { border-bottom: 3px solid #000; margin-bottom: 2px; }
+            .single-line { border-bottom: 1px solid #000; margin-bottom: 25px; }
+            .body-content { font-family: Arial, sans-serif; font-size: 12px; line-height: 1.6; margin-top: 30px; }
+            @media print { body { padding: 10px; } }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            ${formData.logoLeftUrl ? `<img class="logo" src="${formData.logoLeftUrl}" alt="Logo Kiri" />` : '<div style="width:80px"></div>'}
+            <div class="center-text">
+              ${formData.centralInstitution ? `<h4>${formData.centralInstitution}</h4>` : ''}
+              ${formData.regionalInstitution ? `<h5>${formData.regionalInstitution}</h5>` : ''}
+              <h2>${formData.name || 'NAMA SEKOLAH / MADRASAH'}</h2>
+              ${formData.address ? `<p>${formData.address}</p>` : ''}
+            </div>
+            ${formData.logoRightUrl ? `<img class="logo" src="${formData.logoRightUrl}" alt="Logo Kanan" />` : '<div style="width:80px"></div>'}
+          </div>
+          <div class="double-line"></div>
+          <div class="single-line"></div>
+
+          <div class="body-content">
+            <h3 style="text-align: center; text-decoration: underline; text-transform: uppercase; margin-bottom: 5px;">
+              SURAT PENGANTAR / KETERANGAN RESMI
+            </h3>
+            <p style="text-align: center; margin-top: 0; font-size: 11px; color: #555;">
+              Nomor: 421.3 / 001 / SIM-KESISWAAN / ${new Date().getFullYear()}
+            </p>
+            <p style="margin-top: 25px;">
+              Dokumen ini merupakan hasil cetak uji coba format Kop Surat Resmi Indonesia dengan Logo Kiri (Instansi Pusat / Pembina) dan Logo Kanan (Sekolah / Madrasah).
+            </p>
+            <div style="margin-top: 60px; display: flex; justify-content: space-between;">
+              <div>
+                <p>Mengetahui,</p>
+                <p><strong>Kepala Sekolah</strong></p>
+                <div style="height: 50px;"></div>
+                <p><strong><u>${formData.principalName || 'Nama Kepala Sekolah'}</u></strong></p>
+                <p style="font-size: 10px;">NIP. ${formData.principalNip || '-'}</p>
+              </div>
+              <div style="text-align: right;">
+                <p>Diterbitkan pada: ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                <p><strong>Waka Bidang Kesiswaan</strong></p>
+                <div style="height: 50px;"></div>
+                <p><strong><u>${formData.wakaKesiswaanName || formData.wakaName || 'Nama Waka Kesiswaan'}</u></strong></p>
+                <p style="font-size: 10px;">NIP. ${formData.wakaNip || '-'}</p>
+              </div>
+            </div>
+          </div>
+          <script>
+            window.onload = function() { window.print(); }
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
   return (
     <div className="space-y-8 max-w-5xl">
       {/* Header */}
       <div>
         <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
-          Pengaturan Sistem & Profil Sekolah
+          Pengaturan Sistem & Profil Lembaga Sekolah
         </h2>
         <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-          Kelola profil identitas sekolah, tahun ajaran aktif, simulasi hak akses peran (RBAC), serta manajemen sinkronisasi database.
+          Kelola profil identitas instansi pusat, instansi kabupaten, logo kiri & kanan kop surat, tahun ajaran aktif, serta sinkronisasi database cloud.
         </p>
       </div>
 
@@ -185,7 +398,7 @@ export const SettingsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Form Identitas Sekolah & Tahun Ajaran */}
+      {/* 2. Form Identitas Sekolah & Logo Kop Surat */}
       <form onSubmit={handleSaveSchoolInfo} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-6 shadow-sm space-y-6">
         <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
           <div className="flex items-center gap-2">
@@ -194,33 +407,133 @@ export const SettingsPage: React.FC = () => {
             </div>
             <div>
               <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100">
-                Profil Identitas Sekolah
+                Profil Identitas Instansi & Sekolah / Madrasah
               </h3>
               <p className="text-xs text-slate-500">
-                Informasi ini digunakan otomatis pada Kop Surat Dispensasi Resmi dan Laporan PDF.
+                Data ini dicetak otomatis pada seluruh Kop Surat Resmi, Surat Dispensasi, Lembar Presensi, Berita Acara, dan LPJ.
               </p>
             </div>
           </div>
 
           {saveSuccess && (
-            <span className="px-3 py-1 rounded-lg bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center gap-1.5 animate-in fade-in">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              Tersimpan!
+            <span className="px-3 py-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center gap-1.5 animate-in fade-in shadow-sm">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              Profil Berhasil Disimpan!
             </span>
           )}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-          <div>
+        {errorMessage && (
+          <div className="p-3.5 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800/60 text-red-700 dark:text-red-300 text-xs flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
+            <span>{errorMessage}</span>
+          </div>
+        )}
+
+        {/* Pedoman Resmi Standar Kop Surat (4 Baris) */}
+        <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-2">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+            <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wide">
+              Pedoman Susunan Kop Surat (Baris 1 Sampai 4 Saja)
+            </h4>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 pt-1 text-[11px]">
+            <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80">
+              <span className="font-bold text-indigo-600 block text-[10px] uppercase">Baris 1</span>
+              <p className="font-semibold text-slate-800 dark:text-slate-200">Instansi Pusat</p>
+              <p className="text-slate-400 text-[10px] mt-0.5">Kementerian / Lembaga Pembina</p>
+            </div>
+            <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80">
+              <span className="font-bold text-indigo-600 block text-[10px] uppercase">Baris 2</span>
+              <p className="font-semibold text-slate-800 dark:text-slate-200">Instansi Wilayah</p>
+              <p className="text-slate-400 text-[10px] mt-0.5">Kantor Wilayah / Kabupaten / Dinas</p>
+            </div>
+            <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80">
+              <span className="font-bold text-indigo-600 block text-[10px] uppercase">Baris 3</span>
+              <p className="font-semibold text-slate-800 dark:text-slate-200">Nama Sekolah / Madrasah</p>
+              <p className="text-slate-400 text-[10px] mt-0.5">Teks utama paling tebal & ukuran terbesar</p>
+            </div>
+            <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/80">
+              <span className="font-bold text-indigo-600 block text-[10px] uppercase">Baris 4 (Tanpa Baris 5)</span>
+              <p className="font-semibold text-slate-800 dark:text-slate-200">Kalimat Alamat / Kontak</p>
+              <p className="text-slate-400 text-[10px] mt-0.5">Persis seperti kalimat yang ditulis user</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Section A: Instansi Pembina (Pusat & Kabupaten) */}
+        <div className="p-4 rounded-xl bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-indigo-900 dark:text-indigo-200 uppercase tracking-wider flex items-center gap-1.5">
+              <Building className="w-3.5 h-3.5 text-indigo-600" />
+              1. Instansi Pembina (Pedoman Kop Baris 1 & 2)
+            </span>
+            <span className="text-[10px] text-indigo-600 font-medium">Header Baris 1 & 2 Kop Surat</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+            <div>
+              <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Instansi Pusat (Kementerian / Lembaga) *
+              </label>
+              <input
+                type="text"
+                value={formData.centralInstitution || ''}
+                onChange={e => setFormData({ ...formData, centralInstitution: e.target.value })}
+                placeholder="Contoh: KEMENTERIAN AGAMA REPUBLIK INDONESIA"
+                className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold uppercase"
+              />
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                <span className="text-[10px] text-slate-400 self-center">Pilihan Cepat:</span>
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, centralInstitution: 'KEMENTERIAN AGAMA REPUBLIK INDONESIA' })}
+                  className="px-2 py-0.5 rounded text-[10px] bg-slate-100 hover:bg-indigo-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium"
+                >
+                  Kemenag RI
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, centralInstitution: 'KEMENTERIAN PENDIDIKAN, KEBUDAYAAN, RISET, DAN TEKNOLOGI' })}
+                  className="px-2 py-0.5 rounded text-[10px] bg-slate-100 hover:bg-indigo-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium"
+                >
+                  Kemendikbudristek RI
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                Instansi Wilayah / Kabupaten / Daerah *
+              </label>
+              <input
+                type="text"
+                value={formData.regionalInstitution || ''}
+                onChange={e => setFormData({ ...formData, regionalInstitution: e.target.value })}
+                placeholder="Contoh: KANTOR KEMENTERIAN AGAMA KABUPATEN BOGOR / DINAS PENDIDIKAN PROVINSI"
+                className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold uppercase"
+              />
+              <p className="text-[10px] text-slate-400 mt-1">
+                Dicetak pada baris kedua kop surat di bawah instansi pusat.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Section B: Identitas Sekolah / Madrasah */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs">
+          <div className="sm:col-span-2">
             <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Nama Resmi Sekolah *
+              Nama Resmi Sekolah / Madrasah *
             </label>
             <input
               type="text"
               required
-              value={formData.name}
+              value={formData.name || ''}
               onChange={e => setFormData({ ...formData, name: e.target.value })}
-              className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold"
+              placeholder="Contoh: MAN 1 TELADAN NUSANTARA / SMA NEGERI 1 TELADAN"
+              className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-extrabold uppercase text-indigo-900 dark:text-indigo-200"
             />
           </div>
 
@@ -231,22 +544,40 @@ export const SettingsPage: React.FC = () => {
             <input
               type="text"
               required
-              value={formData.npsn}
+              value={formData.npsn || ''}
               onChange={e => setFormData({ ...formData, npsn: e.target.value })}
-              className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+              placeholder="Contoh: 20108922"
+              className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono font-semibold"
             />
           </div>
 
           <div className="sm:col-span-2">
             <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Alamat Lengkap Sekolah *
+              Baris 4 Kop Surat: Alamat / Kontak / Website Lengkap *
             </label>
             <input
               type="text"
               required
-              value={formData.address}
+              value={formData.address || ''}
               onChange={e => setFormData({ ...formData, address: e.target.value })}
+              placeholder="Contoh: Jl. Pemuda Pendidikan No. 45 Telp. (021) 7892345 Email: info@sman1teladan.sch.id"
               className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+            />
+            <p className="text-[10px] text-slate-400 mt-1">
+              Teks ini dicetak persis sebagai Baris 4 pada seluruh Kop Surat resmi.
+            </p>
+          </div>
+
+          <div>
+            <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              Kode Pos
+            </label>
+            <input
+              type="text"
+              value={formData.postalCode || ''}
+              onChange={e => setFormData({ ...formData, postalCode: e.target.value })}
+              placeholder="Contoh: 12120"
+              className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono"
             />
           </div>
 
@@ -257,9 +588,23 @@ export const SettingsPage: React.FC = () => {
             <input
               type="text"
               required
-              value={formData.principalName}
+              value={formData.principalName || ''}
               onChange={e => setFormData({ ...formData, principalName: e.target.value })}
+              placeholder="Prof. Dr. H. Slamet Riyadi, M.Pd."
               className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-semibold"
+            />
+          </div>
+
+          <div>
+            <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              NIP Kepala Sekolah
+            </label>
+            <input
+              type="text"
+              value={formData.principalNip || ''}
+              onChange={e => setFormData({ ...formData, principalNip: e.target.value })}
+              placeholder="19680315 199203 1 004"
+              className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-slate-600 dark:text-slate-400"
             />
           </div>
 
@@ -270,21 +615,36 @@ export const SettingsPage: React.FC = () => {
             <input
               type="text"
               required
-              value={formData.wakaKesiswaanName}
-              onChange={e => setFormData({ ...formData, wakaKesiswaanName: e.target.value })}
+              value={formData.wakaKesiswaanName || formData.wakaName || ''}
+              onChange={e => setFormData({ ...formData, wakaKesiswaanName: e.target.value, wakaName: e.target.value })}
+              placeholder="Drs. H. Bambang Suryono, M.Pd."
               className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-semibold"
             />
           </div>
 
           <div>
             <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Nomor Telepon / Fax
+              NIP Waka Kesiswaan
             </label>
             <input
               type="text"
-              value={formData.phone}
+              value={formData.wakaNip || ''}
+              onChange={e => setFormData({ ...formData, wakaNip: e.target.value })}
+              placeholder="19740510 199903 1 002"
+              className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-slate-600 dark:text-slate-400"
+            />
+          </div>
+
+          <div>
+            <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              Nomor Telepon / Fax Resmi
+            </label>
+            <input
+              type="text"
+              value={formData.phone || ''}
               onChange={e => setFormData({ ...formData, phone: e.target.value })}
-              className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+              placeholder="(021) 7892345"
+              className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono"
             />
           </div>
 
@@ -294,49 +654,145 @@ export const SettingsPage: React.FC = () => {
             </label>
             <input
               type="email"
-              value={formData.email}
+              value={formData.email || ''}
               onChange={e => setFormData({ ...formData, email: e.target.value })}
+              placeholder="info@sman1teladan.sch.id"
               className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
             />
           </div>
 
           <div>
             <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Tahun Ajaran & Semester Aktif
+              Website Resmi Sekolah
+            </label>
+            <input
+              type="text"
+              value={formData.website || ''}
+              onChange={e => setFormData({ ...formData, website: e.target.value })}
+              placeholder="https://sman1teladan.sch.id"
+              className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+            />
+          </div>
+
+          <div>
+            <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              Tahun Ajaran Aktif *
             </label>
             <select
-              value={academicYear}
-              onChange={e => setAcademicYear(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-indigo-600"
+              value={selectedYear}
+              onChange={e => setSelectedYear(e.target.value)}
+              className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-indigo-600 dark:text-indigo-400"
             >
-              <option value="2025/2026 Ganjil">2025/2026 Ganjil</option>
-              <option value="2025/2026 Genap">2025/2026 Genap</option>
-              <option value="2026/2027 Ganjil">2026/2027 Ganjil</option>
-              <option value="2026/2027 Genap">2026/2027 Genap</option>
+              <option value="2024/2025">2024/2025</option>
+              <option value="2025/2026">2025/2026</option>
+              <option value="2026/2027">2026/2027</option>
+              <option value="2027/2028">2027/2028</option>
             </select>
           </div>
 
           <div>
             <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Website Resmi
+              Semester Aktif *
             </label>
-            <input
-              type="text"
-              value={formData.website}
-              onChange={e => setFormData({ ...formData, website: e.target.value })}
-              className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+            <select
+              value={selectedSemester}
+              onChange={e => setSelectedSemester(e.target.value as 'Ganjil' | 'Genap')}
+              className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-indigo-600 dark:text-indigo-400"
+            >
+              <option value="Ganjil">Semester Ganjil</option>
+              <option value="Genap">Semester Genap</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Section C: Fitur Upload Logo Kiri dan Logo Kanan */}
+        <div className="pt-2 space-y-4">
+          <div className="flex items-center gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
+            <ImageIcon className="w-4 h-4 text-indigo-600" />
+            <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wide">
+              2. Unggah Logo Kop Surat & Dokumen Cetak (Kiri & Kanan)
+            </h4>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Logo Kiri */}
+            <LogoUploader
+              label="Logo Kiri (Instansi / Kemenag / Pemda)"
+              sublabel="Diposisikan di sebelah kiri Kop Surat (Instansi Pembina)"
+              value={formData.logoLeftUrl || ''}
+              onChange={(url) => setFormData({ ...formData, logoLeftUrl: url })}
+              presets={LEFT_LOGO_PRESETS}
+              position="left"
+            />
+
+            {/* Logo Kanan */}
+            <LogoUploader
+              label="Logo Kanan (Sekolah / Madrasah / OSIM)"
+              sublabel="Diposisikan di sebelah kanan Kop Surat (Identitas Lembaga)"
+              value={formData.logoRightUrl || ''}
+              onChange={(url) => setFormData({ ...formData, logoRightUrl: url, logoUrl: url })}
+              presets={RIGHT_LOGO_PRESETS}
+              position="right"
             />
           </div>
         </div>
 
-        <div className="flex justify-end pt-3">
+        {/* Section D: Live Preview Kop Surat Resmi */}
+        <div className="pt-2 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5 uppercase tracking-wide">
+              <FileText className="w-4 h-4 text-indigo-600" />
+              Pratinjau Kop Surat Resmi (Letterhead Preview)
+            </span>
+
+            <button
+              type="button"
+              onClick={handlePrintTestKop}
+              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-transform hover:scale-105"
+            >
+              <Printer className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Cetak Uji Coba Kop Surat (Print A4)</span>
+            </button>
+          </div>
+
+          {/* Letterhead Paper Mockup */}
+          <div className="p-6 rounded-2xl bg-white text-slate-900 border border-slate-300 shadow-md">
+            <SchoolLetterhead
+              schoolInfo={{
+                ...formData,
+                name: formData.name || 'NAMA SEKOLAH / MADRASAH',
+                centralInstitution: formData.centralInstitution || 'KEMENTERIAN AGAMA REPUBLIK INDONESIA',
+                regionalInstitution: formData.regionalInstitution || 'KANTOR KEMENTERIAN AGAMA KABUPATEN',
+                address: formData.address || 'Jl. Pendidikan No. 123',
+                postalCode: formData.postalCode,
+                phone: formData.phone,
+                email: formData.email,
+                website: formData.website,
+                npsn: formData.npsn || '12345678',
+                logoLeftUrl: formData.logoLeftUrl,
+                logoRightUrl: formData.logoRightUrl
+              }}
+              documentTitle="SURAT KETERANGAN RESMI KESISWAAN"
+              documentNumber={`421.3 / 001 / SIM-KES / ${new Date().getFullYear()}`}
+            />
+            <div className="text-center py-4 text-slate-400 text-xs italic font-sans border-t border-dashed border-slate-200 mt-4">
+              [ Konten isi surat dispensasi, berita acara OSIM, atau lembar laporan kegiatan akan dicetak di bagian ini ]
+            </div>
+          </div>
+        </div>
+
+        {/* Submit Actions */}
+        <div className="flex items-center justify-between pt-4 border-t border-slate-100 dark:border-slate-800">
+          <p className="text-[11px] text-slate-400">
+            Tersinkronisasi otomatis ke basis data cloud Firestore dan penyimpanan lokal perangkat.
+          </p>
           <button
             type="submit"
             disabled={isSaving}
-            className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-600/20 flex items-center gap-2 transition-all hover:scale-105"
+            className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-600/20 flex items-center gap-2 transition-all hover:scale-105 disabled:opacity-50"
           >
             <Save className="w-4 h-4" />
-            <span>{isSaving ? 'Menyimpan...' : 'Simpan Profil Sekolah'}</span>
+            <span>{isSaving ? 'Menyimpan Pengaturan...' : 'Simpan Profil & Logo Kop Surat'}</span>
           </button>
         </div>
       </form>

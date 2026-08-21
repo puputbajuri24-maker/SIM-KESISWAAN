@@ -22,7 +22,11 @@ if (!getApps().length) {
   app = getApp();
 }
 
+const databaseId = firebaseConfigJson.firestoreDatabaseId && firebaseConfigJson.firestoreDatabaseId !== '(default)'
+  ? firebaseConfigJson.firestoreDatabaseId
+  : undefined;
+
 export const auth: Auth = getAuth(app);
-export const db: Firestore = getFirestore(app);
+export const db: Firestore = databaseId ? getFirestore(app, databaseId) : getFirestore(app);
 export const storage: FirebaseStorage = getStorage(app);
 export { app };

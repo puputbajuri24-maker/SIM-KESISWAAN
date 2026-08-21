@@ -23,6 +23,7 @@ import { StatusBadge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { ExportActions } from '../components/common/ExportActions';
+import { SchoolLetterhead } from '../components/common/SchoolLetterhead';
 
 export const PermissionsPage: React.FC = () => {
   const { isWakaOrAdmin, currentUser } = useAuth();
@@ -153,7 +154,108 @@ export const PermissionsPage: React.FC = () => {
   };
 
   const printLetter = () => {
-    window.print();
+    if (!selectedPerm) return;
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      window.print();
+      return;
+    }
+
+    const leftLogo = schoolInfo.logoLeftUrl || schoolInfo.logoUrl;
+    const rightLogo = schoolInfo.logoRightUrl;
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Surat Dispensasi - ${selectedPerm.studentName}</title>
+          <style>
+            body { font-family: 'Times New Roman', Times, serif; padding: 30px; margin: 0; color: #111; }
+            .header { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 8px; }
+            .logo { width: 80px; height: 80px; object-fit: contain; }
+            .center-text { flex: 1; text-align: center; }
+            .center-text h4 { font-size: 13px; margin: 0; text-transform: uppercase; font-weight: bold; }
+            .center-text h5 { font-size: 12px; margin: 3px 0 0 0; text-transform: uppercase; font-weight: bold; }
+            .center-text h2 { font-size: 17px; margin: 5px 0; text-transform: uppercase; font-weight: 900; }
+            .center-text p { font-family: Arial, sans-serif; font-size: 11px; margin: 2px 0; color: #333; }
+            .double-line { border-bottom: 3px solid #000; margin-bottom: 2px; }
+            .single-line { border-bottom: 1px solid #000; margin-bottom: 25px; }
+            .body-content { font-family: Arial, sans-serif; font-size: 12px; line-height: 1.7; margin-top: 20px; }
+            .student-info { margin: 15px 0 15px 25px; line-height: 1.8; }
+            .agenda-box { padding: 10px 15px; background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; font-weight: bold; margin: 12px 0; }
+            .signatures { margin-top: 50px; display: flex; justify-content: space-between; }
+            @media print { body { padding: 15px; } }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            ${leftLogo ? `<img class="logo" src="${leftLogo}" alt="Logo Kiri" />` : '<div style="width:80px"></div>'}
+            <div class="center-text">
+              ${schoolInfo.centralInstitution ? `<h4>${schoolInfo.centralInstitution}</h4>` : ''}
+              ${schoolInfo.regionalInstitution ? `<h5>${schoolInfo.regionalInstitution}</h5>` : ''}
+              <h2>${schoolInfo.name}</h2>
+              ${schoolInfo.address ? `<p>${schoolInfo.address}</p>` : ''}
+            </div>
+            ${rightLogo ? `<img class="logo" src="${rightLogo}" alt="Logo Kanan" />` : '<div style="width:80px"></div>'}
+          </div>
+          <div class="double-line"></div>
+          <div class="single-line"></div>
+
+          <div class="body-content">
+            <h3 style="text-align: center; text-decoration: underline; text-transform: uppercase; margin-bottom: 3px; font-size: 13px;">
+              SURAT KETERANGAN DISPENSASI KESISWAAN
+            </h3>
+            <p style="text-align: center; margin-top: 0; font-size: 11px; color: #555;">
+              Nomor: 421.3 / ${selectedPerm.id.slice(0, 5).toUpperCase()} / DISP / ${new Date().getFullYear()}
+            </p>
+
+            <p style="margin-top: 25px;">
+              Yang bertanda tangan di bawah ini, Kepala Sekolah / Waka Kesiswaan <strong>${schoolInfo.name}</strong> menerangkan bahwa:
+            </p>
+
+            <div class="student-info">
+              <div><strong>Nama Lengkap:</strong> ${selectedPerm.studentName}</div>
+              <div><strong>Nomor Induk Siswa (NIS):</strong> ${selectedPerm.studentNis}</div>
+              <div><strong>Kelas:</strong> ${selectedPerm.studentClass}</div>
+              <div><strong>Sekolah / Madrasah:</strong> ${schoolInfo.name}</div>
+            </div>
+
+            <p>
+              Diberikan izin dispensasi tidak mengikuti Kegiatan Belajar Mengajar (KBM) pada tanggal <strong>${selectedPerm.startDate} ${selectedPerm.endDate && selectedPerm.endDate !== selectedPerm.startDate ? `s/d ${selectedPerm.endDate}` : ''}</strong> sehubungan dengan keikutsertaan dalam agenda kesiswaan:
+            </p>
+
+            <div class="agenda-box">
+              📌 ${selectedPerm.activityName || selectedPerm.type}: ${selectedPerm.reason}
+            </div>
+
+            <p>
+              Demikian surat dispensasi ini diterbitkan untuk dipergunakan sebagaimana mestinya dan kepada bapak/ibu guru pengajar mata pelajaran yang bersangkutan dimohon maklum adanya.
+            </p>
+
+            <div class="signatures">
+              <div>
+                <p>Mengetahui,</p>
+                <p><strong>Kepala Sekolah</strong></p>
+                <div style="height: 55px;"></div>
+                <p><strong><u>${schoolInfo.principalName}</u></strong></p>
+                <p style="font-size: 10px;">NIP. ${schoolInfo.principalNip || '19750812 200003 1 002'}</p>
+              </div>
+              <div style="text-align: right;">
+                <p>Dikeluarkan pada: ${selectedPerm.startDate}</p>
+                <p><strong>Waka Bidang Kesiswaan</strong></p>
+                <div style="height: 55px;"></div>
+                <p><strong><u>${selectedPerm.approvedBy || schoolInfo.wakaKesiswaanName || schoolInfo.wakaName}</u></strong></p>
+                <p style="font-size: 10px;">NIP. ${schoolInfo.wakaNip || '19820415 200604 1 008'}</p>
+              </div>
+            </div>
+          </div>
+          <script>
+            window.onload = function() { window.print(); }
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
   };
 
   const columns: Column<StudentPermission>[] = [
@@ -526,33 +628,16 @@ export const PermissionsPage: React.FC = () => {
           }
         >
           {/* Printable Letterhead Paper Style */}
-          <div className="bg-white text-slate-900 p-8 rounded-xl border border-slate-200 shadow-inner font-serif leading-relaxed text-xs">
-            {/* Kop Surat */}
-            <div className="text-center border-b-2 border-double border-slate-900 pb-3 mb-5">
-              <h3 className="font-bold text-sm uppercase tracking-wider text-slate-800">
-                PEMERINTAH PROVINSI / DAERAH
-              </h3>
-              <h2 className="font-extrabold text-base uppercase text-slate-900">
-                {schoolInfo.name}
-              </h2>
-              <p className="text-[10px] font-sans text-slate-600">
-                {schoolInfo.address} • Telp: {schoolInfo.phone} • Email: {schoolInfo.email}
-              </p>
-              <p className="text-[9px] font-sans text-slate-500">NPSN: {schoolInfo.npsn}</p>
-            </div>
-
-            {/* Letter Title & Number */}
-            <div className="text-center mb-6">
-              <h4 className="font-bold text-xs uppercase underline tracking-wider">
-                SURAT KETERANGAN DISPENSASI KESISWAAN
-              </h4>
-              <p className="text-[10px] font-sans text-slate-600">
-                Nomor: 421.3 / {selectedPerm.id.slice(0, 5).toUpperCase()} / DISP / {new Date().getFullYear()}
-              </p>
-            </div>
+          <div className="bg-white text-slate-900 p-6 sm:p-8 rounded-xl border border-slate-200 shadow-inner font-serif leading-relaxed text-xs">
+            {/* Kop Surat Resmi */}
+            <SchoolLetterhead
+              schoolInfo={schoolInfo}
+              documentTitle="SURAT KETERANGAN DISPENSASI KESISWAAN"
+              documentNumber={`421.3 / ${selectedPerm.id.slice(0, 5).toUpperCase()} / DISP / ${new Date().getFullYear()}`}
+            />
 
             {/* Letter Body */}
-            <div className="space-y-3 font-sans text-xs">
+            <div className="space-y-3 font-sans text-xs mt-4">
               <p>Yang bertanda tangan di bawah ini, Kepala Sekolah / Waka Kesiswaan {schoolInfo.name} menerangkan bahwa:</p>
 
               <div className="pl-6 space-y-1 my-2">

@@ -31,7 +31,8 @@ import {
   Terminal,
   Cpu,
   Radio,
-  HardDrive
+  HardDrive,
+  Crown
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSchool } from '../../contexts/SchoolContext';
@@ -41,6 +42,7 @@ import { UserRole } from '../../types';
 
 export type NavTab =
   | 'dashboard'
+  | 'osim'
   | 'students'
   | 'extracurriculars'
   | 'members'
@@ -92,6 +94,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
           title: 'CORE_OPS',
           items: [
             { id: 'dashboard', label: 'Command Center', icon: LayoutDashboard, tag: 'LIVE' },
+            { id: 'osim', label: 'Intrakurikuler & OSIM', icon: Crown, tag: 'NEW' },
             { id: 'students', label: 'Master Data Siswa', icon: Users, count: '1.2k' },
             { id: 'teachers', label: 'Dewan Guru & Pembina', icon: UserCog }
           ]
@@ -128,6 +131,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
           title: 'PEMBINA_WORKSPACE',
           items: [
             { id: 'dashboard', label: 'Dashboard Pembina', icon: LayoutDashboard, tag: 'LIVE' },
+            { id: 'osim', label: 'Intrakurikuler & OSIM', icon: Crown, tag: 'NEW' },
             { id: 'extracurriculars', label: 'Profil Ekskul Saya', icon: Compass },
             { id: 'members', label: 'Daftar Anggota', icon: Users },
             { id: 'schedules', label: 'Jadwal Latihan', icon: Calendar },

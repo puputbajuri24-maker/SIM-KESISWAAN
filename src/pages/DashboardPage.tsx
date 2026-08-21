@@ -20,7 +20,8 @@ import {
   TrendingUp,
   Cpu,
   Layers,
-  Terminal
+  Terminal,
+  Crown
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSchool } from '../contexts/SchoolContext';
@@ -29,9 +30,10 @@ import { StatusBadge } from '../components/common/Badge';
 
 interface DashboardPageProps {
   onNavigate: (tabId: string) => void;
+  onOpenAttendance?: (schedule: any) => void;
 }
 
-export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
+export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpenAttendance }) => {
   const { currentUser, isWakaOrAdmin, isPembina } = useAuth();
   const {
     students,
@@ -45,6 +47,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
     activityReports,
     needsRequests,
     announcements,
+    osimPrograms,
+    osimMembers,
     activeAcademicYear,
     activeSemester,
     seedFirebaseDatabase,
@@ -112,6 +116,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
         <div className="flex flex-wrap items-center gap-1.5 font-mono">
           {isWakaOrAdmin ? (
             <>
+              <button
+                onClick={() => onNavigate('osim')}
+                className="px-2.5 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white font-medium text-[11px] flex items-center space-x-1.5 transition-colors shadow-[0_0_10px_rgba(245,158,11,0.3)]"
+              >
+                <Crown className="w-3.5 h-3.5" />
+                <span>+ OSIM_PROKER</span>
+              </button>
               <button
                 onClick={() => onNavigate('activities')}
                 className="px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white font-medium text-[11px] flex items-center space-x-1.5 transition-colors shadow-[0_0_10px_rgba(59,130,246,0.3)]"

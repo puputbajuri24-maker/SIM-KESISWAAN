@@ -3,6 +3,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { SchoolProvider } from './contexts/SchoolContext';
 import { AppLayout, NavTab } from './components/layout/AppLayout';
 import { DashboardPage } from './pages/DashboardPage';
+import { OsimPage } from './pages/OsimPage';
 import { StudentsPage } from './pages/StudentsPage';
 import { ExtracurricularPage } from './pages/ExtracurricularPage';
 import { ExtracurricularMembersPage } from './pages/ExtracurricularMembersPage';
@@ -35,6 +36,8 @@ const MainContent: React.FC = () => {
     switch (activeTab) {
       case 'dashboard':
         return <DashboardPage onNavigate={setActiveTab} onOpenAttendance={handleOpenAttendanceForSchedule} />;
+      case 'osim':
+        return <OsimPage />;
       case 'students':
         return <StudentsPage />;
       case 'extracurriculars':

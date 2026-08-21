@@ -18,7 +18,11 @@ import {
   NeedsRequest,
   Announcement,
   NotificationItem,
-  AuditLogItem
+  AuditLogItem,
+  OsimMember,
+  OsimWorkProgram,
+  OsimAspiration,
+  OsimMeeting
 } from '../types';
 import { db } from './firebase';
 import { doc, setDoc, writeBatch, collection, getDocs } from 'firebase/firestore';
@@ -26,17 +30,24 @@ import { doc, setDoc, writeBatch, collection, getDocs } from 'firebase/firestore
 export const INITIAL_SCHOOL_SETTING: SchoolSetting = {
   id: 'main_school',
   name: 'SMA NEGERI 1 TELADAN NUSANTARA',
+  centralInstitution: 'KEMENTERIAN PENDIDIKAN, KEBUDAYAAN, RISET, DAN TEKNOLOGI',
+  regionalInstitution: 'DINAS PENDIDIKAN PROVINSI DKI JAKARTA',
   npsn: '20108922',
   address: 'Jl. Pemuda Pendidikan No. 45, Kebayoran Baru, Jakarta Selatan',
+  postalCode: '12120',
   principalName: 'Prof. Dr. H. Slamet Riyadi, M.Pd.',
   principalNip: '19680315 199203 1 004',
   wakaName: 'Drs. H. Bambang Suryono, M.Pd.',
   wakaNip: '19740510 199903 1 002',
+  wakaKesiswaanName: 'Drs. H. Bambang Suryono, M.Pd.',
   phone: '(021) 7892345',
   email: 'info@sman1teladan.sch.id',
+  website: 'https://sman1teladan.sch.id',
   currentAcademicYear: '2026/2027',
   currentSemester: 'Ganjil',
-  logoUrl: 'https://images.unsplash.com/photo-1594608661623-aa0bd3a69d98?w=150&auto=format&fit=crop&q=80'
+  logoUrl: 'https://images.unsplash.com/photo-1594608661623-aa0bd3a69d98?w=150&auto=format&fit=crop&q=80',
+  logoLeftUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/9c/Logo_of_Ministry_of_Education_and_Culture_of_Republic_of_Indonesia.svg/200px-Logo_of_Ministry_of_Education_and_Culture_of_Republic_of_Indonesia.svg.png',
+  logoRightUrl: 'https://images.unsplash.com/photo-1594608661623-aa0bd3a69d98?w=150&auto=format&fit=crop&q=80'
 };
 
 export const INITIAL_ACADEMIC_YEARS: AcademicYear[] = [
@@ -513,6 +524,522 @@ export const INITIAL_ACTIVITIES: SchoolActivity[] = [
     status: 'Diajukan',
     budgetEstimated: 12000000,
     createdAt: '2026-08-14'
+  },
+  {
+    id: 'act_osim_1',
+    title: 'Latihan Dasar Kepemimpinan Santri & Siswa (LDKS/LDKM) OSIM 2026',
+    type: 'Pelatihan',
+    extracurricularId: 'org_osim',
+    extracurricularName: 'OSIM (Organisasi Siswa Intra Madrasah)',
+    coachId: 'user_waka',
+    personInCharge: 'Muhammad Al-Fatih (Ketua Umum OSIM) & Drs. H. Bambang Suryono, M.Pd.',
+    date: '2026-09-05',
+    endDate: '2026-09-07',
+    startTime: '08:00',
+    endTime: '17:00',
+    location: 'Pusat Diklat Kepemimpinan & Wisma Hijau',
+    targetParticipants: '65 Pengurus OSIM, MPK, & Ketua Ekstrakurikuler',
+    actualParticipants: 65,
+    objective: 'Membentuk karakter pemimpin muda madrasah yang visioner, berintegritas, moderat, dan siap menjadi penggerak perubahan positif.',
+    description: 'Pelatihan intensif manajemen organisasi, kepemimpinan transformasional, public speaking, resolusi konflik, dan penyusunan Program Kerja Kesiswaan.',
+    status: 'Disetujui',
+    budgetEstimated: 14500000,
+    createdAt: '2026-08-10'
+  },
+  {
+    id: 'act_osim_2',
+    title: 'Pemilihan Raya Ketua & Wakil Ketua OSIM (PILKETOS DIGITAL) Periode 2026/2027',
+    type: 'Lainnya',
+    extracurricularId: 'org_osim',
+    extracurricularName: 'OSIM (Organisasi Siswa Intra Madrasah)',
+    coachId: 'user_waka',
+    personInCharge: 'Komisi Pemilihan OSIM & Sekbid 4',
+    date: '2026-09-28',
+    startTime: '07:30',
+    endTime: '15:00',
+    location: 'Auditorium Utama & E-Voting Booth Madrasah',
+    targetParticipants: '1.200 Santri/Siswa & Seluruh Dewan Guru/Staf',
+    actualParticipants: 1180,
+    objective: 'Menyelenggarakan pesta demokrasi pelajar yang jujur, adil, transparan, serta mengedukasi budaya politik beradab.',
+    description: 'Debat kandidat terbuka pasangan calon Ketua & Wakil Ketua OSIM, penyampaian orasi visi misi, dan pemungutan suara digital (e-voting).',
+    status: 'Disetujui',
+    budgetEstimated: 6500000,
+    createdAt: '2026-08-15'
+  },
+  {
+    id: 'act_osim_3',
+    title: 'Peringatan Hari Besar Islam (PHBI): Maulid Nabi Muhammad SAW & Gema Sholawat',
+    type: 'Event',
+    extracurricularId: 'org_osim',
+    extracurricularName: 'OSIM (Organisasi Siswa Intra Madrasah)',
+    coachId: 'user_waka',
+    personInCharge: 'Sekbid 1 (Keagamaan & Moderasi Beragama)',
+    date: '2026-10-02',
+    startTime: '07:30',
+    endTime: '12:00',
+    location: 'Masjid Jami\' Baitul Ilmi Madrasah',
+    targetParticipants: 'Seluruh Sivitas Akademika & Santri Madrasah',
+    actualParticipants: 1200,
+    objective: 'Meneladani akhlakul karimah Rasulullah SAW dan mempererat ukhuwah islamiyah santri madrasah.',
+    description: 'Tausiyah kebangsaan, penampilan Hadroh / Gambus santri, santunan anak yatim dhuafa, dan lomba kaligrafi antar kelas.',
+    status: 'Disetujui',
+    budgetEstimated: 7800000,
+    createdAt: '2026-08-18'
+  },
+  {
+    id: 'act_osim_4',
+    title: 'PORSENI & Class Meeting: Madrasah Champions League & Kreasi Santri',
+    type: 'Pentas/Pameran',
+    extracurricularId: 'org_osim',
+    extracurricularName: 'OSIM (Organisasi Siswa Intra Madrasah)',
+    coachId: 'user_waka',
+    personInCharge: 'Sekbid 6 (Olahraga) & Sekbid 7 (Seni Budaya)',
+    date: '2026-12-14',
+    endDate: '2026-12-18',
+    startTime: '08:00',
+    endTime: '15:30',
+    location: 'Gelanggang Olahraga & Panggung Apresiasi Seni',
+    targetParticipants: 'Seluruh Siswa Kelas X, XI, XII (Perwakilan Rombel)',
+    actualParticipants: 850,
+    objective: 'Menjaring bibit atlet dan seniman berbakat madrasah serta menyegarkan pikiran pasca Ujian Akhir Semester (SAS).',
+    description: 'Kompetisi futsal, basket 3x3, e-sport Mobile Legends edukatif, cerdas cermat sains, paduan suara, akustik musik religi, dan bazar kuliner wirausaha santri.',
+    status: 'Diajukan',
+    budgetEstimated: 9500000,
+    createdAt: '2026-08-20'
+  }
+];
+
+// ==========================================
+// DATA MASTER OSIM (ORGANISASI SISWA INTRA MADRASAH)
+// ==========================================
+
+export const INITIAL_OSIM_MEMBERS: OsimMember[] = [
+  {
+    id: 'osim_m1',
+    studentId: 's12',
+    studentNis: '23241012',
+    fullName: 'Fadhil Ihsan Nurrohim',
+    className: 'XI RPL 1',
+    position: 'Ketua Umum OSIM',
+    sekbid: 'BPH (Badan Pengurus Harian)',
+    phone: '081288990011',
+    email: 'fadhil.osim@sekolah.sch.id',
+    status: 'Aktif',
+    vision: 'Mewujudkan OSIM yang progresif, inklusif, berprestasi, dan berakhlak mulia berbasis digital.',
+    flagshipProgram: 'OSIM Digital Hub & Pekan Inovasi Santri',
+    period: '2026/2027',
+    photoUrl: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150&auto=format&fit=crop&q=80',
+    createdAt: '2026-07-20'
+  },
+  {
+    id: 'osim_m2',
+    studentId: 's11',
+    studentNis: '23241011',
+    fullName: 'Dinda Kirana Maharani',
+    className: 'XI RPL 1',
+    position: 'Wakil Ketua 1',
+    sekbid: 'BPH (Badan Pengurus Harian)',
+    phone: '081399887766',
+    email: 'dinda.osim@sekolah.sch.id',
+    status: 'Aktif',
+    vision: 'Memperkuat sinergi seluruh ekstrakurikuler dan mewadahi aspirasi santri tanpa diskriminasi.',
+    flagshipProgram: 'Kotak Suara Aspirasi Real-Time & Forum Dialog Santri',
+    period: '2026/2027',
+    photoUrl: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&auto=format&fit=crop&q=80',
+    createdAt: '2026-07-20'
+  },
+  {
+    id: 'osim_m3',
+    studentId: 's02',
+    studentNis: '24251002',
+    fullName: 'Aisyah Putri Azzahra',
+    className: 'X RPL 1',
+    position: 'Sekretaris Umum',
+    sekbid: 'BPH (Badan Pengurus Harian)',
+    phone: '081577665544',
+    status: 'Aktif',
+    vision: 'Administrasi persuratan dan kearsipan OSIM yang tertib, cepat, dan terdigitalisasi.',
+    flagshipProgram: 'Sistem Surat & Notulensi Digital OSIM Cloud',
+    period: '2026/2027',
+    photoUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
+    createdAt: '2026-07-20'
+  },
+  {
+    id: 'osim_m4',
+    studentId: 's08',
+    studentNis: '24251008',
+    fullName: 'Cantika Ayu Lestari',
+    className: 'X RPL 2',
+    position: 'Bendahara Umum',
+    sekbid: 'BPH (Badan Pengurus Harian)',
+    phone: '081622334455',
+    status: 'Aktif',
+    vision: 'Transparansi dan akuntabilitas pengelolaan anggaran kas OSIM dan sponsorship kegiatan.',
+    flagshipProgram: 'Buku Kas Terbuka & Fundraising Kreatif Santri',
+    period: '2026/2027',
+    photoUrl: 'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=150&auto=format&fit=crop&q=80',
+    createdAt: '2026-07-20'
+  },
+  {
+    id: 'osim_m5',
+    studentId: 's01',
+    studentNis: '24251001',
+    fullName: 'Aditya Pratama Nugraha',
+    className: 'X RPL 1',
+    position: 'Ketua Sekbid',
+    sekbid: 'Sekbid 1: Keimanan, Ketaqwaan & Moderasi Beragama',
+    phone: '081234567801',
+    status: 'Aktif',
+    vision: 'Mengokohkan spiritualitas, akhlak karimah, dan nilai moderasi beragama di kalangan pelajar.',
+    flagshipProgram: 'Kajian Rutin Dhuha, Shalat Berjamaah Terpantau & PHBI Akbar',
+    period: '2026/2027',
+    createdAt: '2026-07-20'
+  },
+  {
+    id: 'osim_m6',
+    studentId: 's07',
+    studentNis: '24251007',
+    fullName: 'Bima Sakti Yudhistira',
+    className: 'X RPL 2',
+    position: 'Ketua Sekbid',
+    sekbid: 'Sekbid 2: Wawasan Kebangsaan, Bela Negara & Kedisiplinan',
+    phone: '081234567807',
+    status: 'Aktif',
+    vision: 'Menumbuhkan patriotisme, kedisiplinan baris-berbaris, dan kesadaran hukum santri.',
+    flagshipProgram: 'Gerakan Disiplin 5S & Pelatihan Tata Upacara Bendera',
+    period: '2026/2027',
+    createdAt: '2026-07-20'
+  },
+  {
+    id: 'osim_m7',
+    studentId: 's14',
+    studentNis: '23241014',
+    fullName: 'Gita Permata Sari',
+    className: 'XI RPL 2',
+    position: 'Ketua Sekbid',
+    sekbid: 'Sekbid 3: Akademik, Sains, Riset & Literasi',
+    phone: '081234567814',
+    status: 'Aktif',
+    vision: 'Mengembangkan budaya riset, pojok baca literasi, dan prestasi olimpiade sains madrasah.',
+    flagshipProgram: 'Madrasah Science & Literacy Camp, Pojok Baca Digital',
+    period: '2026/2027',
+    createdAt: '2026-07-20'
+  },
+  {
+    id: 'osim_m8',
+    studentId: 's13',
+    studentNis: '23241013',
+    fullName: 'Farras Farhan Maulana',
+    className: 'XI RPL 1',
+    position: 'Ketua Sekbid',
+    sekbid: 'Sekbid 4: Demokrasi, HAM, Kepemimpinan & Politik Pelajar',
+    phone: '081234567813',
+    status: 'Aktif',
+    vision: 'Mendidik santri berani bersuara kritis, berdemokrasi santun, dan cakap berorganisasi.',
+    flagshipProgram: 'PILKETOS Digital E-Voting & Sekolah Kepemimpinan Santri',
+    period: '2026/2027',
+    createdAt: '2026-07-20'
+  },
+  {
+    id: 'osim_m9',
+    studentId: 's15',
+    studentNis: '23241015',
+    fullName: 'Hafiz Ramadhan',
+    className: 'XI RPL 2',
+    position: 'Ketua Sekbid',
+    sekbid: 'Sekbid 5: Keterampilan, Kewirausahaan & Koperasi Siswa',
+    phone: '081234567815',
+    status: 'Aktif',
+    vision: 'Mencetak wirausahawan santri berdikari dengan produk kreatif bernilai jual.',
+    flagshipProgram: 'Bazar Santripreneur & Gerakan Tabungan Koperasi Pelajar',
+    period: '2026/2027',
+    createdAt: '2026-07-20'
+  },
+  {
+    id: 'osim_m10',
+    studentId: 's05',
+    studentNis: '24251005',
+    fullName: 'Bagas Satria Wibowo',
+    className: 'X RPL 1',
+    position: 'Ketua Sekbid',
+    sekbid: 'Sekbid 6: Kesehatan Jasmani, Olahraga & Lingkungan Hidup',
+    phone: '081234567805',
+    status: 'Aktif',
+    vision: 'Mewujudkan santri bugar, lingkungan madrasah hijau asri bebas sampah plastik.',
+    flagshipProgram: 'Madrasah Clean & Green Challenge, Class Meeting Porseni',
+    period: '2026/2027',
+    createdAt: '2026-07-20'
+  },
+  {
+    id: 'osim_m11',
+    studentId: 's04',
+    studentNis: '24251004',
+    fullName: 'Annisa Nurul Hidayah',
+    className: 'X RPL 1',
+    position: 'Ketua Sekbid',
+    sekbid: 'Sekbid 7: Sastra, Seni, Budaya & Bahasa',
+    phone: '081234567804',
+    status: 'Aktif',
+    vision: 'Melestarikan seni tradisi nusantara dan memfasilitasi ekspresi bakat seni modern santri.',
+    flagshipProgram: 'Panggung Kreasi Seni & Bahasa Santri, Festival Mading 3D',
+    period: '2026/2027',
+    createdAt: '2026-07-20'
+  },
+  {
+    id: 'osim_m12',
+    studentId: 's09',
+    studentNis: '24251009',
+    fullName: 'Daffa Raihan Anugrah',
+    className: 'X TKJ 1',
+    position: 'Ketua Sekbid',
+    sekbid: 'Sekbid 8: Teknologi Informasi, Multimedia & Komunikasi',
+    phone: '081234567809',
+    status: 'Aktif',
+    vision: 'Digital branding OSIM melalui konten media kreatif, live streaming, dan podcast edukatif.',
+    flagshipProgram: 'OSIM Podcast Santri Talk, Liputan Live Event & Website OSIM',
+    period: '2026/2027',
+    createdAt: '2026-07-20'
+  }
+];
+
+export const INITIAL_OSIM_PROGRAMS: OsimWorkProgram[] = [
+  {
+    id: 'proker_1',
+    title: 'Latihan Dasar Kepemimpinan Santri (LDKS/LDKM) OSIM 2026',
+    sekbid: 'Sekbid 4: Demokrasi, HAM, Kepemimpinan & Politik Pelajar',
+    personInCharge: 'Farras Farhan Maulana (Ketua Sekbid 4)',
+    startDate: '2026-09-05',
+    endDate: '2026-09-07',
+    location: 'Wisma Diklat Kepemimpinan Cibubur',
+    budgetEstimated: 14500000,
+    budgetRealized: 14200000,
+    targetParticipants: '65 Calon Pengurus OSIM & Ketua Ekskul',
+    participantCount: 65,
+    successIndicator: '100% peserta lulus uji kelayakan kepemimpinan & menyusun draf proker tahunan.',
+    progressPercentage: 85,
+    status: 'Berlangsung',
+    description: 'Pelatihan kepemimpinan dasar, pembentukan karakter disiplin, manajemen organisasi, sidang pleno draf program kerja, dan outbond korsa kepemimpinan.',
+    academicYear: '2026/2027',
+    createdAt: '2026-08-01'
+  },
+  {
+    id: 'proker_2',
+    title: 'PILKETOS Digital: Pemilihan Raya Ketua & Wakil Ketua OSIM',
+    sekbid: 'Sekbid 4: Demokrasi, HAM, Kepemimpinan & Politik Pelajar',
+    personInCharge: 'Muhammad Fadhil & Panitia Pemilihan OSIM',
+    startDate: '2026-09-20',
+    endDate: '2026-09-28',
+    location: 'Auditorium Utama & TPS Digital Madrasah',
+    budgetEstimated: 6500000,
+    budgetRealized: 0,
+    targetParticipants: '1.200 Siswa & Dewan Guru',
+    participantCount: 1200,
+    successIndicator: 'Tingkat partisipasi pemilih di atas 95% tanpa kecurangan atau kendala sistem e-voting.',
+    progressPercentage: 50,
+    status: 'Diajukan',
+    description: 'Penyelenggaraan pemilu OSIM demokratis meliputi verifikasi berkas paslon, masa kampanye santun, debat terbuka paslon, dan pemungutan suara e-voting real-time.',
+    academicYear: '2026/2027',
+    createdAt: '2026-08-05'
+  },
+  {
+    id: 'proker_3',
+    title: 'Peringatan Hari Besar Islam (PHBI): Maulid Nabi & Tabligh Akbar',
+    sekbid: 'Sekbid 1: Keimanan, Ketaqwaan & Moderasi Beragama',
+    personInCharge: 'Aditya Pratama (Ketua Sekbid 1)',
+    startDate: '2026-10-02',
+    location: 'Masjid Jami\' Baitul Ilmi Madrasah',
+    budgetEstimated: 7800000,
+    budgetRealized: 0,
+    targetParticipants: 'Seluruh Siswa, Guru, & Karyawan (1.250 Orang)',
+    participantCount: 1250,
+    successIndicator: 'Acara berlangsung khidmat, santunan disalurkan ke 50 anak yatim dhuafa.',
+    progressPercentage: 35,
+    status: 'Diajukan',
+    description: 'Gema sholawat nabi bersama grup hadroh santri, ceramah agama tema teladan Rasulullah di era AI, santunan sosial yatim piatu, dan lomba kaligrafi islam.',
+    academicYear: '2026/2027',
+    createdAt: '2026-08-10'
+  },
+  {
+    id: 'proker_4',
+    title: 'PORSENI & Class Meeting Semester Ganjil 2026',
+    sekbid: 'Sekbid 6: Kesehatan Jasmani, Olahraga & Lingkungan Hidup',
+    personInCharge: 'Bagas Satria Wibowo & Tim Sekbid 6 & 7',
+    startDate: '2026-12-14',
+    endDate: '2026-12-18',
+    location: 'Lapangan Utama, GOR & Hall Seni',
+    budgetEstimated: 9500000,
+    budgetRealized: 0,
+    targetParticipants: 'Seluruh Rombel Kelas X, XI, XII (850 Peserta)',
+    participantCount: 850,
+    successIndicator: 'Seluruh rombel mengirim perwakilan atlet & seniman, zero accident sportivitas tinggi.',
+    progressPercentage: 20,
+    status: 'Draft',
+    description: 'Pekan olahraga dan seni pasca ujian semester: turnamen futsal antar kelas, basket 3x3, tarik tambang, akustik band, cipta puisi, dan stand bazar kuliner santri.',
+    academicYear: '2026/2027',
+    createdAt: '2026-08-12'
+  },
+  {
+    id: 'proker_5',
+    title: 'MATSAMA (Masa Ta\'aruf Siswa Madrasah) & Welcoming Party 2026',
+    sekbid: 'BPH (Badan Pengurus Harian)',
+    personInCharge: 'Fadhil Ihsan Nurrohim & Dinda Kirana',
+    startDate: '2026-07-15',
+    endDate: '2026-07-18',
+    location: 'Kompleks Kampus Madrasah',
+    budgetEstimated: 11000000,
+    budgetRealized: 10850000,
+    targetParticipants: '360 Siswa Baru Kelas X & 50 Panitia OSIM',
+    participantCount: 360,
+    successIndicator: '100% siswa baru mengenal kurikulum, sarpras, dewan guru, dan memilih ekstrakurikuler.',
+    progressPercentage: 100,
+    status: 'Selesai',
+    description: 'Orientasi pengenalan lingkungan madrasah, demo seluruh unit ekstrakurikuler, penanaman adab santri, deklarasi anti perundungan (bullying), dan bakti lingkungan.',
+    academicYear: '2026/2027',
+    createdAt: '2026-07-01'
+  },
+  {
+    id: 'proker_6',
+    title: 'Madrasah Clean, Green & Eco-Enzyme Movement',
+    sekbid: 'Sekbid 6: Kesehatan Jasmani, Olahraga & Lingkungan Hidup',
+    personInCharge: 'Bagas Satria & Kader Lingkungan OSIM',
+    startDate: '2026-08-01',
+    endDate: '2026-11-30',
+    location: 'Taman Madrasah, Bank Sampah & Green House',
+    budgetEstimated: 3500000,
+    budgetRealized: 2100000,
+    targetParticipants: 'Seluruh Siswa (Setiap Kelas memiliki Kader Hijau)',
+    participantCount: 500,
+    successIndicator: 'Tereduksinya sampah plastik hingga 60% dan panen 100 liter eco-enzyme.',
+    progressPercentage: 65,
+    status: 'Berlangsung',
+    description: 'Gerakan membawa tumbler dan wadah makan sendiri, pemilahan sampah organik/anorganik, pembuatan pupuk kompos, dan pembuatan cairan fermentasi eco-enzyme.',
+    academicYear: '2026/2027',
+    createdAt: '2026-07-25'
+  },
+  {
+    id: 'proker_7',
+    title: 'Festival Santripreneur & Bazar Koperasi Pelajar',
+    sekbid: 'Sekbid 5: Keterampilan, Kewirausahaan & Koperasi Siswa',
+    personInCharge: 'Hafiz Ramadhan (Ketua Sekbid 5)',
+    startDate: '2026-10-28',
+    location: 'Plaza Kreativitas Madrasah',
+    budgetEstimated: 4500000,
+    budgetRealized: 0,
+    targetParticipants: '24 Kelompok Usaha Siswa & Seluruh Pengunjung',
+    participantCount: 600,
+    successIndicator: 'Omzet total bazar mencapai minimal Rp 15.000.000 dengan profit margin 20%.',
+    progressPercentage: 40,
+    status: 'Diajukan',
+    description: 'Pameran produk kerajinan tangan, kuliner nusantara halal, workshop digital marketing dan payment gateway QRIS untuk pelajar.',
+    academicYear: '2026/2027',
+    createdAt: '2026-08-14'
+  },
+  {
+    id: 'proker_8',
+    title: 'OSIM Podcast & Madrasah Cyber News Network',
+    sekbid: 'Sekbid 8: Teknologi Informasi, Multimedia & Komunikasi',
+    personInCharge: 'Daffa Raihan Anugrah & Tim Media',
+    startDate: '2026-08-01',
+    endDate: '2026-12-20',
+    location: 'Studio Multimedia & Podcast Room',
+    budgetEstimated: 4000000,
+    budgetRealized: 2500000,
+    targetParticipants: 'Publik, Alumni, Wali Murid & Santri',
+    participantCount: 2500,
+    successIndicator: 'Memproduksi 8 episode podcast santri inspiratif dan liputan mingguan kesiswaan.',
+    progressPercentage: 60,
+    status: 'Berlangsung',
+    description: 'Program podcast resmi OSIM membahas prestasi siswa, tips belajar efektif, wawancara guru inspiratif, dan publikasi agenda kegiatan kesiswaan di media sosial.',
+    academicYear: '2026/2027',
+    createdAt: '2026-07-28'
+  }
+];
+
+export const INITIAL_OSIM_ASPIRATIONS: OsimAspiration[] = [
+  {
+    id: 'asp_1',
+    studentName: 'Muhammad Rizki (X RPL 1)',
+    studentClass: 'X RPL 1',
+    date: '2026-08-17',
+    title: 'Penambahan Bandwidth Wi-Fi dan Akses Socket Listrik di Gazebo Belajar',
+    content: 'Mohon kepada OSIM dan pihak sarpras untuk menambah titik stop kontak di area gazebo taman agar siswa bisa mengerjakan tugas projek kelompok dan koding tanpa kehabisan baterai laptop.',
+    category: 'Fasilitas & Sarpras',
+    upvotes: 42,
+    status: 'Direalisasikan',
+    responseNote: 'Aspirasi telah diteruskan ke Bagian Sarpras & IT. Sudah dipasang 4 unit terminal stop kontak dan access point Wi-Fi baru di Gazebo Barat.',
+    respondedBy: 'Drs. H. Bambang Suryono, M.Pd. (Waka Kesiswaan)',
+    respondedAt: '2026-08-19',
+    academicYear: '2026/2027',
+    createdAt: '2026-08-17'
+  },
+  {
+    id: 'asp_2',
+    studentName: 'Siti Nurhaliza (XI RPL 2)',
+    studentClass: 'XI RPL 2',
+    date: '2026-08-18',
+    title: 'Pengadaan Lomba E-Sport Edukatif & Catur Cepat pada Class Meeting',
+    content: 'Usul untuk cabang lomba Class Meeting semester ini agar ditambahkan kompetisi E-Sport Mobile Legends/Valorant dan turnamen catur cepat agar siswa yang kurang berminat di olahraga fisik tetap bisa berkontribusi poin untuk kelasnya.',
+    category: 'Kegiatan & Acara',
+    upvotes: 38,
+    status: 'Sedang Dibahas',
+    responseNote: 'Usulan sangat menarik dan sedang dirapatkan oleh Sekbid 6 & 8 OSIM terkait petunjuk teknis dan batas waktu pertandingan agar tidak mengganggu ketertiban.',
+    respondedBy: 'Fadhil Ihsan Nurrohim (Ketua OSIM)',
+    respondedAt: '2026-08-20',
+    academicYear: '2026/2027',
+    createdAt: '2026-08-18'
+  },
+  {
+    id: 'asp_3',
+    studentName: 'Ahmad Faisal (XII TKJ 1)',
+    studentClass: 'XII TKJ 1',
+    date: '2026-08-19',
+    title: 'Pemberian Dispensasi Lebih Fleksibel bagi Peserta Try Out & Bimbingan PTN',
+    content: 'Bagi siswa kelas XII yang mengikuti bimbingan intensif persiapan UTBK SNBT / Ujian Masuk PTN mohon agar sistem perizinan kesiswaan memberikan kemudahan dispensasi jika berbenturan dengan gladi bersih kegiatan.',
+    category: 'Akademik & Pembelajaran',
+    upvotes: 29,
+    status: 'Ditampung',
+    responseNote: 'Aspirasi sudah diagendakan untuk dibahas dalam rapat koordinasi Waka Kesiswaan dan Waka Kurikulum.',
+    respondedBy: 'Dinda Kirana (Wakil Ketua OSIM)',
+    respondedAt: '2026-08-20',
+    academicYear: '2026/2027',
+    createdAt: '2026-08-19'
+  }
+];
+
+export const INITIAL_OSIM_MEETINGS: OsimMeeting[] = [
+  {
+    id: 'meet_1',
+    title: 'Sidang Musyawarah Kerja (MUKER) & Penetapan RAPB OSIM 2026/2027',
+    type: 'Sidang Musyawarah Kerja (MUKER)',
+    date: '2026-08-08',
+    startTime: '08:30',
+    endTime: '16:00',
+    location: 'Aula Multimedia & Rapat Pleno OSIM',
+    leader: 'Fadhil Ihsan Nurrohim (Ketua OSIM)',
+    secretary: 'Aisyah Putri Azzahra',
+    attendeesCount: 45,
+    agenda: '1. Pemaparan Visi Misi BPH. 2. Pembahasan Matriks Program Kerja 8 Sekbid. 3. Pengesahan Rancangan Anggaran Pendapatan & Belanja (RAPB) OSIM. 4. Arahan Waka Kesiswaan.',
+    decisionNotes: 'Seluruh 8 Sekbid menyepakati 24 program kerja prioritas. Total alokasi anggaran disahkan sebesar Rp 65.800.000 untuk semester ganjil dan genap dengan pengawasan ketat bendahara.',
+    wakaNotes: 'Program kerja sangat berbobot dan mengedepankan nilai moderasi beragama dan kemajuan iptek. Lanjutkan dengan disiplin administrasi LPJ.',
+    academicYear: '2026/2027',
+    createdAt: '2026-08-08'
+  },
+  {
+    id: 'meet_2',
+    title: 'Rapat Koordinasi Persiapan PILKETOS Digital 2026 Bersama Pembina',
+    type: 'Rapat Koordinasi Pembina',
+    date: '2026-08-16',
+    startTime: '15:30',
+    endTime: '17:15',
+    location: 'Ruang Kesiswaan & IT Support',
+    leader: 'Drs. H. Bambang Suryono, M.Pd.',
+    secretary: 'Aisyah Putri Azzahra',
+    attendeesCount: 16,
+    agenda: '1. Pembentukan Panitia Pemilihan OSIM (PPO). 2. Verifikasi kesiapan server e-voting. 3. Jadwal pendaftaran bakal calon paslon.',
+    decisionNotes: 'Pendaftaran paslon dibuka tanggal 25 Agustus - 5 September. Tim IT akan melakukan stress test server voting pada tanggal 10 September.',
+    wakaNotes: 'Pastikan netralitas seluruh panitia dan pengurus OSIM terjaga.',
+    academicYear: '2026/2027',
+    createdAt: '2026-08-16'
   }
 ];
 
@@ -893,13 +1420,27 @@ export async function seedAllFirebaseData(): Promise<{ success: boolean; message
       batch.set(doc(db, 'notifications', notif.id), notif);
     }
 
+    // OSIM Data (Intrakurikuler)
+    for (const om of INITIAL_OSIM_MEMBERS) {
+      batch.set(doc(db, 'osim_members', om.id), om);
+    }
+    for (const op of INITIAL_OSIM_PROGRAMS) {
+      batch.set(doc(db, 'osim_programs', op.id), op);
+    }
+    for (const oa of INITIAL_OSIM_ASPIRATIONS) {
+      batch.set(doc(db, 'osim_aspirations', oa.id), oa);
+    }
+    for (const ome of INITIAL_OSIM_MEETINGS) {
+      batch.set(doc(db, 'osim_meetings', ome.id), ome);
+    }
+
     // Audit logs
     for (const log of INITIAL_AUDIT_LOGS) {
       batch.set(doc(db, 'audit_logs', log.id), log);
     }
 
     await batch.commit();
-    return { success: true, message: 'Seluruh data master, kesiswaan, dan ekstrakurikuler berhasil di-seed ke Firebase Firestore!' };
+    return { success: true, message: 'Seluruh data master, kesiswaan, ekstrakurikuler, dan kegiatan OSIM intrakurikuler berhasil di-seed ke Firebase Firestore!' };
   } catch (error: any) {
     console.error('Error seeding data to Firebase:', error);
     return { success: false, message: error.message || 'Gagal melakukan seed data ke Firebase.' };
