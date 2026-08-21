@@ -1,0 +1,84 @@
+{
+  "entities": {
+    "users": {
+      "title": "User Profiles & RBAC",
+      "description": "User profiles with roles: super_admin, admin_kesiswaan, waka_kesiswaan, pembina"
+    },
+    "schools": {
+      "title": "School Settings",
+      "description": "School metadata and identity"
+    },
+    "academic_years": {
+      "title": "Academic Years",
+      "description": "Academic years and active semesters"
+    },
+    "classes": {
+      "title": "Classes",
+      "description": "Grade levels and class lists"
+    },
+    "students": {
+      "title": "Students",
+      "description": "Comprehensive student database"
+    },
+    "teachers": {
+      "title": "Teachers & Staff",
+      "description": "Teachers and extracurricular coaches"
+    },
+    "extracurriculars": {
+      "title": "Extracurriculars",
+      "description": "Extracurricular clubs, coaches and schedules"
+    },
+    "extracurricular_members": {
+      "title": "Extracurricular Members",
+      "description": "Roster of student club members"
+    },
+    "schedules": {
+      "title": "Schedules & Calendar",
+      "description": "Activities schedules and conflict prevention"
+    },
+    "attendance": {
+      "title": "Attendance Records",
+      "description": "Attendance sessions and student statuses"
+    },
+    "activities": {
+      "title": "Activities",
+      "description": "School and club activities"
+    },
+    "activity_reports": {
+      "title": "Activity Reports",
+      "description": "Formal activity reporting and administration"
+    },
+    "violations": {
+      "title": "Student Violations",
+      "description": "Disciplinary incidents and points"
+    },
+    "counseling": {
+      "title": "Student Counseling",
+      "description": "Guidance and counseling interventions"
+    },
+    "achievements": {
+      "title": "Student Achievements",
+      "description": "Academic, sports, arts and competitions achievements"
+    },
+    "permissions": {
+      "title": "Student Permissions",
+      "description": "Leave requests and dispensations"
+    },
+    "needs_requests": {
+      "title": "Needs & Budget Requests",
+      "description": "Budget and equipment proposals from club coaches"
+    },
+    "announcements": {
+      "title": "Announcements",
+      "description": "Broadcast announcements for student affairs and coaches"
+    },
+    "notifications": {
+      "title": "Notifications",
+      "description": "System alerts and notifications"
+    },
+    "audit_logs": {
+      "title": "Audit Logs",
+      "description": "System audit trails for security and traceability"
+    }
+  }
+}
