@@ -6,12 +6,17 @@ import {
   Calendar,
   Clock,
   MapPin,
+  Eye,
   Edit2,
   Trash2,
   Target,
   Sparkles,
   ArrowRight,
-  Filter
+  Filter,
+  Zap,
+  CheckCircle2,
+  FileSpreadsheet,
+  Award
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -20,6 +25,11 @@ import { StatusBadge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { ExportActions } from '../components/common/ExportActions';
+import {
+  EXTRACURRICULAR_PRESETS,
+  ExtracurricularPreset,
+  findMatchingTeacherForEkskul
+} from '../utils/extracurricularPresets';
 
 interface ExtracurricularPageProps {
   onNavigateToMembers?: (ekskulId: string) => void;
@@ -34,6 +44,7 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [selectedEkskul, setSelectedEkskul] = useState<Extracurricular | null>(null);
+  const [activeTemplateFeedback, setActiveTemplateFeedback] = useState<string | null>(null);
 
   const [formData, setFormData] = useState<Partial<Extracurricular>>({
     name: '',
@@ -65,29 +76,107 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
     'Teknologi'
   ];
 
+  // Extract all extracurricular names found in uploaded / registered teachers data
+  const teacherAssignedEkskulNames = Array.from(
+    new Set(
+      teachers.flatMap(t => [
+        ...(t.assignedExtracurriculars || []),
+        ...(t.extracurricularName ? [t.extracurricularName] : [])
+      ]).filter(Boolean)
+    )
+  );
+
+  const isPembinaOnly = isPembina && !isWakaOrAdmin;
+  const myAssignedIds = currentUser?.extracurricularIds || [];
+
   const filteredEkskul = extracurriculars.filter(e => {
+    if (isPembinaOnly) {
+      const isAssigned = myAssignedIds.includes(e.id) || 
+        e.coachId === currentUser?.uid || 
+        (currentUser?.displayName && e.coachName?.toLowerCase().includes(currentUser.displayName.toLowerCase().split(' ')[0]));
+      if (!isAssigned) return false;
+    }
     if (selectedCategory !== 'all' && e.category !== selectedCategory) return false;
     return true;
   });
 
+  // Handle auto-populating form when a preset / template is selected
+  const handleSelectPreset = (presetName: string) => {
+    setActiveTemplateFeedback(null);
+    if (!presetName) return;
+
+    // 1. Check in standard presets library
+    const matchedPreset = EXTRACURRICULAR_PRESETS.find(
+      p => p.name.toLowerCase() === presetName.toLowerCase() ||
+           p.id.toLowerCase() === presetName.toLowerCase() ||
+           p.name.toLowerCase().includes(presetName.toLowerCase())
+    );
+
+    // 2. Find matching teacher from database / uploaded teachers
+    const matchedTeacher = findMatchingTeacherForEkskul(presetName, teachers);
+
+    if (matchedPreset) {
+      setFormData(prev => ({
+        ...prev,
+        name: matchedPreset.name,
+        category: matchedPreset.category,
+        description: matchedPreset.description,
+        day: matchedPreset.defaultDay,
+        startTime: matchedPreset.defaultStartTime,
+        endTime: matchedPreset.defaultEndTime,
+        location: matchedPreset.defaultLocation,
+        quota: matchedPreset.defaultQuota,
+        vision: matchedPreset.vision,
+        mission: matchedPreset.mission,
+        target: matchedPreset.target,
+        coachId: matchedTeacher?.id || prev.coachId || (teachers[0]?.id || ''),
+        coachName: matchedTeacher?.fullName || prev.coachName || (teachers[0]?.fullName || '')
+      }));
+
+      setActiveTemplateFeedback(
+        `Template "${matchedPreset.name}" diterapkan!` +
+        (matchedTeacher ? ` Guru Pembina otomatis dipilih: ${matchedTeacher.fullName}` : '')
+      );
+    } else {
+      // If from custom uploaded teacher assigned string
+      setFormData(prev => ({
+        ...prev,
+        name: presetName,
+        coachId: matchedTeacher?.id || prev.coachId || (teachers[0]?.id || ''),
+        coachName: matchedTeacher?.fullName || prev.coachName || (teachers[0]?.fullName || '')
+      }));
+
+      setActiveTemplateFeedback(
+        `Ekstrakurikuler "${presetName}" dipilih.` +
+        (matchedTeacher ? ` Guru Pembina otomatis dipilih: ${matchedTeacher.fullName}` : '')
+      );
+    }
+  };
+
   const handleOpenAdd = () => {
     setSelectedEkskul(null);
+    setActiveTemplateFeedback(null);
+
+    // Pre-populate with first preset by default for instant ease
+    const defaultPreset = EXTRACURRICULAR_PRESETS[0];
+    const defaultTeacher = findMatchingTeacherForEkskul(defaultPreset.name, teachers) || teachers[0];
+
     setFormData({
-      name: '',
-      category: 'Olahraga',
-      description: '',
-      coachId: teachers[0]?.id || '',
-      coachName: teachers[0]?.fullName || '',
+      name: defaultPreset?.name || 'Pramuka (Gugus Depan)',
+      category: defaultPreset?.category || 'Kepemimpinan',
+      description: defaultPreset?.description || '',
+      coachId: defaultTeacher?.id || '',
+      coachName: defaultTeacher?.fullName || '',
       assistantCoachName: '',
-      day: 'Jumat',
-      startTime: '15:30',
-      endTime: '17:30',
-      location: 'Lapangan Utama',
-      quota: 40,
+      day: defaultPreset?.defaultDay || 'Jumat',
+      startTime: defaultPreset?.defaultStartTime || '15:30',
+      endTime: defaultPreset?.defaultEndTime || '17:30',
+      location: defaultPreset?.defaultLocation || 'Lapangan Utama',
+      quota: defaultPreset?.defaultQuota || 50,
       status: 'Aktif',
-      vision: 'Membentuk karakter disiplin dan berprestasi.',
-      mission: '1. Latihan rutin berkala. 2. Partisipasi kompetisi resmi.',
-      target: 'Meraih juara di tingkat Kota dan Provinsi.',
+      vision: defaultPreset?.vision || 'Membentuk karakter disiplin dan berprestasi.',
+      mission: defaultPreset?.mission || '1. Latihan rutin berkala. 2. Partisipasi kompetisi resmi.',
+      target: defaultPreset?.target || 'Meraih juara di tingkat Kota dan Provinsi.',
       academicYear: '2026/2027'
     });
     setIsFormOpen(true);
@@ -96,6 +185,7 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
   const handleOpenEdit = (ekskul: Extracurricular, e?: React.MouseEvent) => {
     e?.stopPropagation();
     setSelectedEkskul(ekskul);
+    setActiveTemplateFeedback(null);
     setFormData(ekskul);
     setIsFormOpen(true);
   };
@@ -118,37 +208,48 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
       return;
     }
 
-    if (selectedEkskul) {
-      await updateExtracurricular(selectedEkskul.id, formData);
-    } else {
-      await addExtracurricular({
-        name: formData.name!,
-        category: formData.category as ExtracurricularCategory,
-        description: formData.description || '',
-        coachId: formData.coachId || 'user_coach',
-        coachName: formData.coachName || 'Pembina Terpilih',
-        assistantCoachName: formData.assistantCoachName || '',
-        day: (formData.day as any) || 'Jumat',
-        startTime: formData.startTime || '15:30',
-        endTime: formData.endTime || '17:00',
-        location: formData.location || 'Sekolah',
-        quota: Number(formData.quota) || 40,
-        memberCount: 0,
-        status: (formData.status as any) || 'Aktif',
-        vision: formData.vision || '',
-        mission: formData.mission || '',
-        target: formData.target || '',
-        academicYear: formData.academicYear || '2026/2027'
-      });
+    try {
+      if (selectedEkskul) {
+        await updateExtracurricular(selectedEkskul.id, formData);
+      } else {
+        await addExtracurricular({
+          name: formData.name!,
+          category: formData.category as ExtracurricularCategory,
+          description: formData.description || '',
+          coachId: formData.coachId || 'user_coach',
+          coachName: formData.coachName || 'Pembina Terpilih',
+          assistantCoachName: formData.assistantCoachName || '',
+          day: (formData.day as any) || 'Jumat',
+          startTime: formData.startTime || '15:30',
+          endTime: formData.endTime || '17:00',
+          location: formData.location || 'Sekolah',
+          quota: Number(formData.quota) || 40,
+          memberCount: 0,
+          status: (formData.status as any) || 'Aktif',
+          vision: formData.vision || '',
+          mission: formData.mission || '',
+          target: formData.target || '',
+          academicYear: formData.academicYear || '2026/2027'
+        });
+      }
+    } catch (err) {
+      console.error('Error saving extracurricular:', err);
+    } finally {
+      setIsFormOpen(false);
+      setSelectedEkskul(null);
     }
-    setIsFormOpen(false);
   };
 
   const handleDeleteConfirm = async () => {
     if (selectedEkskul) {
-      await deleteExtracurricular(selectedEkskul.id);
-      setIsDeleteOpen(false);
-      setSelectedEkskul(null);
+      try {
+        await deleteExtracurricular(selectedEkskul.id);
+      } catch (err) {
+        console.error('Error deleting extracurricular:', err);
+      } finally {
+        setIsDeleteOpen(false);
+        setSelectedEkskul(null);
+      }
     }
   };
 
@@ -183,15 +284,13 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
             ]}
           />
 
-          {isWakaOrAdmin && (
-            <button
-              onClick={handleOpenAdd}
-              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/20 flex items-center gap-2 transition-all hover:scale-105"
-            >
-              <Plus className="w-4 h-4" />
-              <span>+ Tambah Ekskul</span>
-            </button>
-          )}
+          <button
+            onClick={handleOpenAdd}
+            className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/20 flex items-center gap-2 transition-all hover:scale-105"
+          >
+            <Plus className="w-4 h-4" />
+            <span>+ Tambah Ekskul</span>
+          </button>
         </div>
       </div>
 
@@ -300,24 +399,29 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
                   <span>Kelola Anggota ({currentMembersCount})</span>
                 </button>
 
-                {isWakaOrAdmin && (
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={e => handleOpenEdit(ekskul, e)}
-                      className="p-1.5 rounded-lg text-slate-500 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-slate-800 transition-colors"
-                      title="Edit Ekskul"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={e => handleOpenDelete(ekskul, e)}
-                      className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-slate-800 transition-colors"
-                      title="Hapus Ekskul"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                )}
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => handleOpenDetail(ekskul)}
+                    className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-950/60 dark:hover:bg-indigo-900 dark:text-indigo-400 transition-colors"
+                    title="Lihat Detail Profil & Anggota"
+                  >
+                    <Eye className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={e => handleOpenEdit(ekskul, e)}
+                    className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:hover:bg-amber-900 dark:text-amber-400 transition-colors"
+                    title="Edit Ekskul"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={e => handleOpenDelete(ekskul, e)}
+                    className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-400 transition-colors"
+                    title="Hapus Ekskul"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             </div>
           );
@@ -329,7 +433,7 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
         isOpen={isFormOpen}
         onClose={() => setIsFormOpen(false)}
         title={selectedEkskul ? 'Edit Profil Ekstrakurikuler' : 'Tambah Ekstrakurikuler Baru'}
-        subtitle="Kelola parameter pembinaan, visi misi, target capaian, dan jadwal"
+        subtitle="Pilih dari template resmi atau sesuaikan parameter pembinaan, visi misi, dan jadwal"
         maxWidth="2xl"
         footer={
           <>
@@ -351,6 +455,141 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
         }
       >
         <form onSubmit={handleSave} className="space-y-4">
+          {/* Preset & Template Selector Section */}
+          <div className="p-3.5 rounded-xl bg-gradient-to-br from-indigo-50/80 via-purple-50/40 to-slate-50 dark:from-indigo-950/40 dark:via-purple-950/20 dark:to-slate-900/40 border border-indigo-200/80 dark:border-indigo-800/60 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-sm">
+                  <Zap className="w-3.5 h-3.5" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100">
+                    Pilih Jenis Ekstrakurikuler dari Template
+                  </h4>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                    Langsung pilih jenis ekstrakurikuler & guru pembina tanpa perlu mengetik manual
+                  </p>
+                </div>
+              </div>
+              <span className="hidden sm:inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">
+                Auto-Fill Aktif
+              </span>
+            </div>
+
+            {/* Template Dropdown with Optgroups */}
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Katalog Template Resmi & Binaan Upload:
+              </label>
+              <select
+                onChange={e => handleSelectPreset(e.target.value)}
+                value={EXTRACURRICULAR_PRESETS.some(p => p.name === formData.name) ? formData.name : ''}
+                className="w-full px-3 py-2 text-xs rounded-xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800/80 text-slate-800 dark:text-slate-200 font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/30"
+              >
+                <option value="">-- Pilih Template Ekstrakurikuler Sesuai Standar --</option>
+
+                {/* 1. Ekstrakurikuler from Uploaded Teachers */}
+                {teacherAssignedEkskulNames.length > 0 && (
+                  <optgroup label="📥 Ekstrakurikuler Binaan Guru (Dari File Excel / Upload Guru)">
+                    {teacherAssignedEkskulNames.map(name => (
+                      <option key={`teacher_${name}`} value={name}>
+                        ⭐ {name} (Tercatat di Data Guru)
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+
+                {/* 2. Bela Negara & Kepemimpinan */}
+                <optgroup label="🛡️ Bela Negara & Kepemimpinan">
+                  {EXTRACURRICULAR_PRESETS.filter(p => p.category === 'Kepemimpinan' || p.category === 'Bela Negara' || p.category === 'Sosial').map(p => (
+                    <option key={p.id} value={p.name}>
+                      {p.name} ({p.category})
+                    </option>
+                  ))}
+                </optgroup>
+
+                {/* 3. Olahraga */}
+                <optgroup label="⚽ Olahraga & Bela Diri">
+                  {EXTRACURRICULAR_PRESETS.filter(p => p.category === 'Olahraga').map(p => (
+                    <option key={p.id} value={p.name}>
+                      {p.name}
+                    </option>
+                  ))}
+                </optgroup>
+
+                {/* 4. Keagamaan */}
+                <optgroup label="🕌 Keagamaan & Karakter">
+                  {EXTRACURRICULAR_PRESETS.filter(p => p.category === 'Keagamaan').map(p => (
+                    <option key={p.id} value={p.name}>
+                      {p.name}
+                    </option>
+                  ))}
+                </optgroup>
+
+                {/* 5. Akademik */}
+                <optgroup label="🔬 Akademik & Bahasa">
+                  {EXTRACURRICULAR_PRESETS.filter(p => p.category === 'Akademik').map(p => (
+                    <option key={p.id} value={p.name}>
+                      {p.name}
+                    </option>
+                  ))}
+                </optgroup>
+
+                {/* 6. Teknologi */}
+                <optgroup label="💻 Teknologi & Media">
+                  {EXTRACURRICULAR_PRESETS.filter(p => p.category === 'Teknologi').map(p => (
+                    <option key={p.id} value={p.name}>
+                      {p.name}
+                    </option>
+                  ))}
+                </optgroup>
+
+                {/* 7. Seni & Budaya */}
+                <optgroup label="🎨 Seni & Budaya">
+                  {EXTRACURRICULAR_PRESETS.filter(p => p.category === 'Seni').map(p => (
+                    <option key={p.id} value={p.name}>
+                      {p.name}
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+            </div>
+
+            {/* Quick Preset Badges */}
+            <div className="space-y-1">
+              <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                Pilihan Cepat (1-Klik):
+              </span>
+              <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pt-0.5">
+                {EXTRACURRICULAR_PRESETS.slice(0, 10).map(p => {
+                  const isCurrent = formData.name?.toLowerCase().includes(p.name.toLowerCase().split(' ')[0]);
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => handleSelectPreset(p.name)}
+                      className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition-all flex items-center gap-1 border ${
+                        isCurrent
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                          : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-indigo-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/30'
+                      }`}
+                    >
+                      <span>{p.name.split('(')[0].trim()}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Feedback Alert if template applied */}
+            {activeTemplateFeedback && (
+              <div className="flex items-center gap-1.5 p-2 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-300 text-[11px] font-medium animate-fadeIn">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                <span>{activeTemplateFeedback}</span>
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
@@ -372,7 +611,7 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
               <select
                 value={formData.category}
                 onChange={e => setFormData({ ...formData, category: e.target.value as ExtracurricularCategory })}
-                className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-medium"
               >
                 {categories.map(c => (
                   <option key={c} value={c}>
@@ -398,9 +637,14 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Guru Pembina Utama *
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                  Guru Pembina Utama *
+                </label>
+                <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold">
+                  (Pilih Langsung)
+                </span>
+              </div>
               <select
                 value={formData.coachName}
                 onChange={e => {
@@ -408,16 +652,22 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
                   setFormData({
                     ...formData,
                     coachName: e.target.value,
-                    coachId: targetTeacher?.id || 'coach_id'
+                    coachId: targetTeacher?.id || ''
                   });
                 }}
-                className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-medium"
               >
-                {teachers.map(t => (
-                  <option key={t.id} value={t.fullName}>
-                    {t.fullName} ({t.subject})
-                  </option>
-                ))}
+                <option value="">-- Pilih Guru Pembina dari Dewan Guru --</option>
+                {teachers.map(t => {
+                  const isAssigned = (t.assignedExtracurriculars || []).some(
+                    item => item.toLowerCase() === formData.name?.toLowerCase()
+                  );
+                  return (
+                    <option key={t.id} value={t.fullName}>
+                      {t.fullName} {t.role ? `• ${t.role}` : ''} {t.subject ? `(${t.subject})` : ''} {isAssigned ? '⭐ [Ditugaskan]' : ''}
+                    </option>
+                  );
+                })}
               </select>
             </div>
             <div>

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import {
   FileCheck2,
   Plus,
@@ -24,12 +24,15 @@ import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { ExportActions } from '../components/common/ExportActions';
 import { SchoolLetterhead } from '../components/common/SchoolLetterhead';
+import { ClassGridFilter } from '../components/common/ClassGridFilter';
+import { calculateRecordCountsByClass, isStudentInClass } from '../utils/classResolver';
 
 export const PermissionsPage: React.FC = () => {
   const { isWakaOrAdmin, currentUser } = useAuth();
   const {
     permissions,
     students,
+    classes,
     addPermission,
     updatePermission,
     deletePermission,
@@ -37,8 +40,14 @@ export const PermissionsPage: React.FC = () => {
     activeAcademicYear
   } = useSchool();
 
+  const [selectedClass, setSelectedClass] = useState<string>('all');
   const [selectedType, setSelectedType] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
+
+  // Count permissions per class
+  const permissionCountsByClassId = useMemo(() => {
+    return calculateRecordCountsByClass(permissions, classes, students);
+  }, [permissions, classes, students]);
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isLetterOpen, setIsLetterOpen] = useState(false);
@@ -59,11 +68,18 @@ export const PermissionsPage: React.FC = () => {
     approvedBy: currentUser?.displayName || 'Waka Kesiswaan'
   });
 
-  const filteredPermissions = permissions.filter(p => {
-    if (selectedType !== 'all' && p.type !== selectedType) return false;
-    if (selectedStatus !== 'all' && p.status !== selectedStatus) return false;
-    return true;
-  });
+  const filteredPermissions = useMemo(() => {
+    return permissions.filter(p => {
+      if (selectedClass !== 'all') {
+        const student = students.find(s => s.id === p.studentId);
+        const match = isStudentInClass(p, selectedClass, classes) || (student && isStudentInClass(student, selectedClass, classes));
+        if (!match) return false;
+      }
+      if (selectedType !== 'all' && p.type !== selectedType) return false;
+      if (selectedStatus !== 'all' && p.status !== selectedStatus) return false;
+      return true;
+    });
+  }, [permissions, selectedClass, selectedType, selectedStatus, classes, students]);
 
   const handleOpenAdd = () => {
     setSelectedPerm(null);
@@ -109,32 +125,38 @@ export const PermissionsPage: React.FC = () => {
       return;
     }
 
-    const student = students.find(s => s.id === formData.studentId);
+    try {
+      const student = students.find(s => s.id === formData.studentId);
 
-    if (selectedPerm) {
-      await updatePermission(selectedPerm.id, {
-        ...formData,
-        studentName: student?.fullName || formData.studentName,
-        studentNis: student?.nis || formData.studentNis,
-        studentClass: student?.className || formData.studentClass
-      });
-    } else {
-      await addPermission({
-        studentId: formData.studentId!,
-        studentName: student?.fullName || 'Siswa',
-        studentNis: student?.nis || '',
-        studentClass: student?.className || '',
-        type: formData.type as PermissionType,
-        startDate: formData.startDate!,
-        endDate: formData.endDate || formData.startDate!,
-        reason: formData.reason!,
-        activityName: formData.activityName || '',
-        status: (formData.status as PermissionStatus) || 'Disetujui',
-        approvedBy: currentUser?.displayName || 'Waka Kesiswaan',
-        academicYear: activeAcademicYear
-      });
+      if (selectedPerm) {
+        await updatePermission(selectedPerm.id, {
+          ...formData,
+          studentName: student?.fullName || formData.studentName,
+          studentNis: student?.nis || formData.studentNis,
+          studentClass: student?.className || formData.studentClass
+        });
+      } else {
+        await addPermission({
+          studentId: formData.studentId!,
+          studentName: student?.fullName || 'Siswa',
+          studentNis: student?.nis || '',
+          studentClass: student?.className || '',
+          type: formData.type as PermissionType,
+          startDate: formData.startDate!,
+          endDate: formData.endDate || formData.startDate!,
+          reason: formData.reason!,
+          activityName: formData.activityName || '',
+          status: (formData.status as PermissionStatus) || 'Disetujui',
+          approvedBy: currentUser?.displayName || 'Waka Kesiswaan',
+          academicYear: activeAcademicYear
+        });
+      }
+    } catch (err) {
+      console.error('Error saving permission:', err);
+    } finally {
+      setIsFormOpen(false);
+      setSelectedPerm(null);
     }
-    setIsFormOpen(false);
   };
 
   const handleQuickApprove = async (perm: StudentPermission, status: PermissionStatus, e: React.MouseEvent) => {
@@ -147,9 +169,14 @@ export const PermissionsPage: React.FC = () => {
 
   const handleDeleteConfirm = async () => {
     if (selectedPerm) {
-      await deletePermission(selectedPerm.id);
-      setIsDeleteOpen(false);
-      setSelectedPerm(null);
+      try {
+        await deletePermission(selectedPerm.id);
+      } catch (err) {
+        console.error('Error deleting permission:', err);
+      } finally {
+        setIsDeleteOpen(false);
+        setSelectedPerm(null);
+      }
     }
   };
 
@@ -310,18 +337,18 @@ export const PermissionsPage: React.FC = () => {
       className: 'text-right',
       cell: p => (
         <div className="flex items-center justify-end gap-1.5" onClick={e => e.stopPropagation()}>
-          {p.status === 'Diajukan' && isWakaOrAdmin && (
+          {p.status === 'Diajukan' && (
             <>
               <button
                 onClick={e => handleQuickApprove(p, 'Disetujui', e)}
-                className="p-1.5 rounded-lg text-emerald-600 hover:bg-emerald-50 dark:hover:bg-slate-800"
+                className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:hover:bg-emerald-900 dark:text-emerald-400 transition-colors"
                 title="Setujui Izin / Dispensasi"
               >
                 <CheckCircle className="w-4 h-4" />
               </button>
               <button
                 onClick={e => handleQuickApprove(p, 'Ditolak', e)}
-                className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 dark:hover:bg-slate-800"
+                className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-400 transition-colors"
                 title="Tolak Izin"
               >
                 <XCircle className="w-4 h-4" />
@@ -331,28 +358,26 @@ export const PermissionsPage: React.FC = () => {
 
           <button
             onClick={() => handleOpenLetter(p)}
-            className="p-1.5 rounded-lg text-indigo-600 hover:bg-indigo-50 dark:hover:bg-slate-800"
+            className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:hover:bg-emerald-900 dark:text-emerald-400 transition-colors"
             title="Cetak Surat Dispensasi Resmi"
           >
             <Printer className="w-4 h-4" />
           </button>
 
-          {isWakaOrAdmin && (
-            <>
-              <button
-                onClick={e => handleOpenEdit(p, e)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-slate-100 dark:hover:bg-slate-800"
-              >
-                <Edit2 className="w-4 h-4" />
-              </button>
-              <button
-                onClick={e => handleOpenDelete(p, e)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </>
-          )}
+          <button
+            onClick={e => handleOpenEdit(p, e)}
+            className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:hover:bg-amber-900 dark:text-amber-400 transition-colors"
+            title="Edit Perizinan"
+          >
+            <Edit2 className="w-4 h-4" />
+          </button>
+          <button
+            onClick={e => handleOpenDelete(p, e)}
+            className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-400 transition-colors"
+            title="Hapus Izin / Dispensasi"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
         </div>
       )
     }
@@ -400,11 +425,23 @@ export const PermissionsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Filter Bar */}
-      <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center gap-3 text-xs">
+      {/* Class Grid Filter */}
+      <ClassGridFilter
+        classes={classes}
+        selectedClassId={selectedClass}
+        onSelectClass={setSelectedClass}
+        countsByClassId={permissionCountsByClassId}
+        totalCount={permissions.length}
+        label="Filter Perizinan Berdasarkan Rombel Kelas"
+        itemUnit="Surat"
+        colorScheme="indigo"
+      />
+
+      {/* Secondary Filter Bar */}
+      <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center gap-3 text-xs">
         <div className="flex items-center gap-2 text-slate-500 font-semibold">
           <Filter className="w-4 h-4" />
-          <span>Filter Perizinan:</span>
+          <span>Filter Lanjutan:</span>
         </div>
 
         <select
@@ -429,6 +466,19 @@ export const PermissionsPage: React.FC = () => {
           <option value="Disetujui">Disetujui (ACC)</option>
           <option value="Ditolak">Ditolak</option>
         </select>
+
+        {(selectedClass !== 'all' || selectedType !== 'all' || selectedStatus !== 'all') && (
+          <button
+            onClick={() => {
+              setSelectedClass('all');
+              setSelectedType('all');
+              setSelectedStatus('all');
+            }}
+            className="text-xs text-rose-600 hover:underline font-semibold ml-auto"
+          >
+            Reset Semua Filter
+          </button>
+        )}
       </div>
 
       {/* Table */}

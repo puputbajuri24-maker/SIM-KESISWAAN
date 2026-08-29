@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Upload, X, Image as ImageIcon, Link as LinkIcon, Sparkles, Check } from 'lucide-react';
+import { Upload, X, Image as ImageIcon, Link as LinkIcon, Sparkles, Check, AlertCircle, FileCheck } from 'lucide-react';
 
 interface LogoPreset {
   name: string;
@@ -16,6 +16,8 @@ interface LogoUploaderProps {
   position: 'left' | 'right';
 }
 
+const MAX_FILE_SIZE_BYTES = 500 * 1024; // 500 KB strict limit
+
 export const LogoUploader: React.FC<LogoUploaderProps> = ({
   label,
   sublabel,
@@ -29,15 +31,35 @@ export const LogoUploader: React.FC<LogoUploaderProps> = ({
   const [inputUrl, setInputUrl] = useState(value?.startsWith('data:') ? '' : value || '');
   const [showUrlInput, setShowUrlInput] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [fileSizeInfo, setFileSizeInfo] = useState<string | null>(null);
 
-  // Resize and convert file to lightweight Base64
+  // Resize and convert file to lightweight Base64, checking size & format constraints
   const processFile = (file: File) => {
-    if (!file.type.startsWith('image/')) {
-      alert('Mohon pilih file gambar (.png, .jpg, .jpeg, .svg, .webp)');
+    setErrorMessage(null);
+
+    // 1. Validate file extension and MIME type: JPG, JPEG, PNG
+    const validExtensions = ['jpg', 'jpeg', 'png'];
+    const fileExtension = file.name.split('.').pop()?.toLowerCase() || '';
+    const isValidMime = ['image/jpeg', 'image/jpg', 'image/png'].includes(file.type);
+    const isValidExt = validExtensions.includes(fileExtension);
+
+    if (!isValidMime && !isValidExt) {
+      setErrorMessage('Format berkas tidak didukung. Mohon gunakan format JPG, JPEG, atau PNG.');
+      return;
+    }
+
+    // 2. Validate max size 500 KB
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      const sizeInKb = (file.size / 1024).toFixed(1);
+      setErrorMessage(`Ukuran file (${sizeInKb} KB) melebihi batas maksimal 500 KB. Silakan kompres atau pilih file lain.`);
       return;
     }
 
     setIsProcessing(true);
+    const currentSizeKb = (file.size / 1024).toFixed(1);
+    setFileSizeInfo(`${currentSizeKb} KB`);
+
     const reader = new FileReader();
     reader.onload = (e) => {
       const result = e.target?.result as string;
@@ -46,18 +68,11 @@ export const LogoUploader: React.FC<LogoUploaderProps> = ({
         return;
       }
 
-      // If SVG or small image, keep as is
-      if (file.type.includes('svg') || file.size < 50 * 1024) {
-        onChange(result);
-        setIsProcessing(false);
-        return;
-      }
-
-      // Optimize raster image with canvas
+      // If already within small size limit, optimize image slightly on canvas for sharpness
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const maxDim = 320;
+        const maxDim = 400; // Crisp resolution for letterhead & navbar
         let width = img.width;
         let height = img.height;
 
@@ -78,7 +93,8 @@ export const LogoUploader: React.FC<LogoUploaderProps> = ({
         const ctx = canvas.getContext('2d');
         if (ctx) {
           ctx.drawImage(img, 0, 0, width, height);
-          const compressed = canvas.toDataURL('image/png', 0.9);
+          const outputType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+          const compressed = canvas.toDataURL(outputType, 0.92);
           onChange(compressed);
         } else {
           onChange(result);
@@ -91,7 +107,10 @@ export const LogoUploader: React.FC<LogoUploaderProps> = ({
       };
       img.src = result;
     };
-    reader.onerror = () => setIsProcessing(false);
+    reader.onerror = () => {
+      setErrorMessage('Gagal membaca berkas gambar.');
+      setIsProcessing(false);
+    };
     reader.readAsDataURL(file);
   };
 
@@ -108,6 +127,7 @@ export const LogoUploader: React.FC<LogoUploaderProps> = ({
   };
 
   const handleApplyUrl = () => {
+    setErrorMessage(null);
     if (inputUrl.trim()) {
       onChange(inputUrl.trim());
       setShowUrlInput(false);
@@ -117,16 +137,18 @@ export const LogoUploader: React.FC<LogoUploaderProps> = ({
   const handleClear = () => {
     onChange('');
     setInputUrl('');
+    setErrorMessage(null);
+    setFileSizeInfo(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   return (
-    <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 p-4 space-y-3">
+    <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-800/40 p-4 space-y-3 shadow-xs">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-indigo-600"></span>
+            <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
             {label}
           </h4>
           {sublabel && (
@@ -138,13 +160,24 @@ export const LogoUploader: React.FC<LogoUploaderProps> = ({
           <button
             type="button"
             onClick={handleClear}
-            className="text-[11px] font-semibold text-rose-600 hover:text-rose-700 dark:text-rose-400 flex items-center gap-1 px-2 py-0.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40"
+            className="text-[11px] font-semibold text-rose-600 hover:text-rose-700 dark:text-rose-400 flex items-center gap-1 px-2 py-0.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
           >
             <X className="w-3.5 h-3.5" />
-            Hapus Logo
+            Hapus
           </button>
         )}
       </div>
+
+      {/* Error Alert */}
+      {errorMessage && (
+        <div className="p-2.5 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-xs flex items-center gap-2 animate-fadeIn">
+          <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+          <span className="flex-1">{errorMessage}</span>
+          <button type="button" onClick={() => setErrorMessage(null)} className="text-red-400 hover:text-red-600">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Main Upload Box / Dropzone */}
       <div className="flex flex-col sm:flex-row gap-3 items-stretch">
@@ -172,9 +205,9 @@ export const LogoUploader: React.FC<LogoUploaderProps> = ({
             </>
           ) : (
             <div className="text-center text-slate-400">
-              <ImageIcon className="w-7 h-7 mx-auto mb-1 opacity-50" />
+              <ImageIcon className="w-7 h-7 mx-auto mb-1 opacity-50 text-emerald-600" />
               <span className="text-[9px] font-semibold block leading-tight">
-                {position === 'left' ? 'Logo Kiri Kosong' : 'Logo Kanan Kosong'}
+                {position === 'left' ? 'Logo Kiri (Kemenag)' : 'Logo Kanan (Sekolah)'}
               </span>
             </div>
           )}
@@ -189,37 +222,40 @@ export const LogoUploader: React.FC<LogoUploaderProps> = ({
             onClick={() => fileInputRef.current?.click()}
             className={`border-2 border-dashed rounded-xl p-3 text-center cursor-pointer transition-all flex flex-col items-center justify-center flex-1 ${
               isDragging
-                ? 'border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/40'
-                : 'border-slate-200 dark:border-slate-700 hover:border-indigo-400 bg-white/70 dark:bg-slate-900/60'
+                ? 'border-emerald-500 bg-emerald-50/70 dark:bg-emerald-950/40'
+                : 'border-slate-200 dark:border-slate-700 hover:border-emerald-500 bg-white/80 dark:bg-slate-900/60'
             }`}
           >
             <input
               type="file"
               ref={fileInputRef}
               onChange={handleFileChange}
-              accept="image/png, image/jpeg, image/jpg, image/svg+xml, image/webp"
+              accept=".jpg, .jpeg, .png, image/jpeg, image/png"
               className="hidden"
             />
-            <Upload className={`w-4 h-4 mb-1 ${isDragging ? 'text-indigo-600' : 'text-slate-400'}`} />
+            <Upload className={`w-4 h-4 mb-1 ${isDragging ? 'text-emerald-600' : 'text-slate-400'}`} />
             <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
-              {isProcessing ? 'Memproses gambar...' : 'Klik atau Tarik Berkas Logo ke Sini'}
+              {isProcessing ? 'Memproses berkas...' : 'Klik atau Tarik Berkas Logo ke Sini'}
             </p>
-            <p className="text-[10px] text-slate-400 mt-0.5">PNG transparan, JPG, atau SVG (Maks. 3MB)</p>
+            <p className="text-[10px] text-slate-500 mt-0.5">
+              Format: <span className="font-bold text-emerald-700 dark:text-emerald-400">JPG, JPEG, PNG</span> (Ukuran Maksimal <span className="font-bold text-emerald-700 dark:text-emerald-400">500 KB</span>)
+            </p>
           </div>
 
-          {/* Alternative URL input toggle */}
+          {/* Status & Size Info */}
           <div className="flex items-center justify-between text-[11px] pt-1">
             <button
               type="button"
               onClick={() => setShowUrlInput(!showUrlInput)}
-              className="text-indigo-600 dark:text-indigo-400 font-semibold hover:underline flex items-center gap-1"
+              className="text-emerald-700 dark:text-emerald-400 font-semibold hover:underline flex items-center gap-1"
             >
               <LinkIcon className="w-3 h-3" />
-              {showUrlInput ? 'Tutup Input Link' : 'Gunakan Link URL Gambar'}
+              {showUrlInput ? 'Tutup Input Link' : 'Atau input via Link URL'}
             </button>
             {value && (
-              <span className="text-[10px] text-emerald-600 font-semibold flex items-center gap-1">
-                <Check className="w-3 h-3" /> Logo Aktif
+              <span className="text-[10px] text-emerald-700 dark:text-emerald-300 font-bold flex items-center gap-1 bg-emerald-100 dark:bg-emerald-950 px-2 py-0.5 rounded-md border border-emerald-300 dark:border-emerald-800">
+                <Check className="w-3 h-3 text-emerald-600" />
+                Logo Terpasang {fileSizeInfo && `(${fileSizeInfo})`}
               </span>
             )}
           </div>
@@ -231,14 +267,14 @@ export const LogoUploader: React.FC<LogoUploaderProps> = ({
                 value={inputUrl}
                 onChange={(e) => setInputUrl(e.target.value)}
                 placeholder="https://domain.com/logo.png"
-                className="flex-1 px-3 py-1.5 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
+                className="flex-1 px-3 py-1.5 text-xs rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:outline-none focus:border-emerald-600"
               />
               <button
                 type="button"
                 onClick={handleApplyUrl}
-                className="px-3 py-1.5 text-xs font-bold rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 shrink-0"
+                className="px-3 py-1.5 text-xs font-bold rounded-xl bg-emerald-700 text-white hover:bg-emerald-800 shrink-0 transition"
               >
-                Pasang
+                Terapkan
               </button>
             </div>
           )}
@@ -250,7 +286,7 @@ export const LogoUploader: React.FC<LogoUploaderProps> = ({
         <div className="pt-2 border-t border-slate-200/60 dark:border-slate-800">
           <p className="text-[10px] font-bold text-slate-400 mb-1.5 flex items-center gap-1">
             <Sparkles className="w-3 h-3 text-amber-500" />
-            Pilihan Logo Standar / Cepat:
+            Pilihan Logo Standar / Default:
           </p>
           <div className="flex flex-wrap gap-1.5">
             {presets.map((preset) => {
@@ -262,7 +298,7 @@ export const LogoUploader: React.FC<LogoUploaderProps> = ({
                   onClick={() => onChange(preset.url)}
                   className={`px-2.5 py-1 rounded-lg text-[11px] font-medium border flex items-center gap-1.5 transition-colors ${
                     isCurrent
-                      ? 'bg-indigo-600 text-white border-indigo-600 font-bold'
+                      ? 'bg-emerald-700 text-white border-emerald-700 font-bold'
                       : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300'
                   }`}
                 >

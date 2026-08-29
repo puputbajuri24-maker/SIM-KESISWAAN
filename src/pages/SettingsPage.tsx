@@ -18,13 +18,15 @@ import {
   Phone,
   Mail,
   Printer,
-  FileText
+  FileText,
+  Lock
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
 import { UserRole, SchoolSetting } from '../types';
 import { LogoUploader } from '../components/common/LogoUploader';
 import { SchoolLetterhead } from '../components/common/SchoolLetterhead';
+import { ClassManagementModal } from '../components/common/ClassManagementModal';
 
 // Preset logos for quick Indonesian official letterhead setup
 const LEFT_LOGO_PRESETS = [
@@ -33,26 +35,22 @@ const LEFT_LOGO_PRESETS = [
     url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/90/Logo_Kementerian_Agama.png/480px-Logo_Kementerian_Agama.png'
   },
   {
-    name: 'Kemendikbud (Tut Wuri Handayani)',
-    url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/9c/Logo_of_Ministry_of_Education_and_Culture_of_Republic_of_Indonesia.svg/200px-Logo_of_Ministry_of_Education_and_Culture_of_Republic_of_Indonesia.svg.png'
-  },
-  {
     name: 'Garuda Pancasila',
     url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/8/87/Coat_of_arms_of_Indonesia.svg/200px-Coat_of_arms_of_Indonesia.svg.png'
   },
   {
-    name: 'Pemerintah Daerah (Pemprov DKI)',
-    url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b2/Coat_of_arms_of_Jakarta.svg/200px-Coat_of_arms_of_Jakarta.svg.png'
+    name: 'Pemerintah Provinsi Maluku',
+    url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Coat_of_arms_of_Maluku.png/200px-Coat_of_arms_of_Maluku.png'
+  },
+  {
+    name: 'Kemendikbudristek',
+    url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/9c/Logo_of_Ministry_of_Education_and_Culture_of_Republic_of_Indonesia.svg/200px-Logo_of_Ministry_of_Education_and_Culture_of_Republic_of_Indonesia.svg.png'
   }
 ];
 
 const RIGHT_LOGO_PRESETS = [
   {
-    name: 'Logo Sekolah Biru',
-    url: 'https://images.unsplash.com/photo-1594608661623-aa0bd3a69d98?w=150&auto=format&fit=crop&q=80'
-  },
-  {
-    name: 'Logo Madrasah Hijau',
+    name: 'Logo Madrasah MAN 2 SBT',
     url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/90/Logo_Kementerian_Agama.png/240px-Logo_Kementerian_Agama.png'
   },
   {
@@ -62,11 +60,15 @@ const RIGHT_LOGO_PRESETS = [
   {
     name: 'Gerakan Pramuka Indonesia',
     url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/07/Gerakan_Pramuka_Indonesia_Logo.png/200px-Gerakan_Pramuka_Indonesia_Logo.png'
+  },
+  {
+    name: 'PMR / Palang Merah Remaja',
+    url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/4/4c/Palang_Merah_Indonesia_logo.svg/200px-Palang_Merah_Indonesia_logo.svg.png'
   }
 ];
 
 export const SettingsPage: React.FC = () => {
-  const { currentUser, switchRole, userRole } = useAuth();
+  const { currentUser, switchRole, userRole, isSuperAdmin, isWaka, isPembinaOsim, isPembinaEkskul } = useAuth();
   const {
     schoolInfo,
     updateSchoolInfo,
@@ -75,12 +77,20 @@ export const SettingsPage: React.FC = () => {
     setActiveAcademicYear,
     seedFirebaseDatabase,
     students,
+    classes,
+    teachers,
     extracurriculars,
     schedules,
     violations,
     achievements,
     attendance,
-    activityReports
+    activityReports,
+    counseling,
+    permissions,
+    osimMembers,
+    osimPrograms,
+    osimAspirations,
+    osimMeetings
   } = useSchool();
 
   const [formData, setFormData] = useState<SchoolSetting>({
@@ -110,6 +120,7 @@ export const SettingsPage: React.FC = () => {
   const [selectedSemester, setSelectedSemester] = useState<'Ganjil' | 'Genap'>(activeSemester || 'Ganjil');
   const [isSaving, setIsSaving] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
+  const [isClassModalOpen, setIsClassModalOpen] = useState(false);
   const [seedSuccess, setSeedSuccess] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -192,6 +203,11 @@ export const SettingsPage: React.FC = () => {
   };
 
   const handleSeedDatabase = async () => {
+    if (!isSuperAdmin) {
+      alert('Akses Dibatasi: Hanya akun dengan peran Super Administrator (Root) yang berwenang melakukan Reset / Seeding Database Firestore.');
+      return;
+    }
+
     const confirmSeed = window.confirm(
       'Apakah Anda ingin mengisi database Firebase dengan data sampel lengkap (Siswa, Ekstrakurikuler, Jadwal, Prestasi, Pelanggaran, Presensi, dan Laporan)?'
     );
@@ -216,14 +232,22 @@ export const SettingsPage: React.FC = () => {
       exportedAt: new Date().toISOString(),
       schoolInfo,
       activeAcademicYear,
+      activeSemester,
       data: {
         students,
+        teachers,
         extracurriculars,
         schedules,
-        violations,
-        achievements,
         attendance,
-        activityReports
+        violations,
+        counseling,
+        achievements,
+        permissions,
+        activityReports,
+        osimMembers,
+        osimPrograms,
+        osimAspirations,
+        osimMeetings
       }
     };
 
@@ -312,6 +336,25 @@ export const SettingsPage: React.FC = () => {
     printWindow.document.close();
   };
 
+  if (!isSuperAdmin) {
+    return (
+      <div className="min-h-[400px] flex flex-col items-center justify-center p-6 text-center font-mono select-none">
+        <div className="w-14 h-14 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 mb-4">
+          <Lock className="w-7 h-7" />
+        </div>
+        <span className="text-[10px] font-bold text-red-500 tracking-widest uppercase bg-red-500/10 px-2 py-0.5 rounded border border-red-500/20 mb-2">
+          403_ACCESS_RESTRICTED / OTORISASI_ROOT_KHUSUS
+        </span>
+        <h2 className="text-base font-bold text-zinc-200 mt-1">
+          Pengaturan Profil & Sistem Hanya Untuk Super Admin
+        </h2>
+        <p className="text-zinc-400 text-xs max-w-md mt-2 font-sans">
+          Modul konfigurasi identitas instansi, logo kop surat dinas, tahun ajaran aktif, dan manajemen database cloud hanya dapat diakses oleh akun dengan peran <strong>Super Administrator</strong>.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8 max-w-5xl">
       {/* Header */}
@@ -336,7 +379,7 @@ export const SettingsPage: React.FC = () => {
                 Simulasi Peran Pengguna (Role-Based Access Control)
               </h3>
               <p className="text-xs text-slate-500">
-                Uji coba aplikasi dari sudut pandang hak akses Waka, Admin Kesiswaan, Pembina Ekskul, atau Guru BK.
+                Uji coba aplikasi dari sudut pandang hak akses Waka Kesiswaan, Pembina Ekskul, atau Super Administrator.
               </p>
             </div>
           </div>
@@ -348,27 +391,31 @@ export const SettingsPage: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
           {[
             {
-              role: 'waka_kesiswaan' as UserRole,
-              title: 'Waka Kesiswaan',
-              desc: 'Akses penuh: verifikasi LPJ, dispensasi, tata tertib, hapus data.'
-            },
-            {
-              role: 'admin_kesiswaan' as UserRole,
-              title: 'Admin Kesiswaan',
-              desc: 'Manajemen siswa, entri agenda kegiatan, input jadwal & data master.'
-            },
-            {
-              role: 'pembina' as UserRole,
-              title: 'Pembina Ekskul',
-              desc: 'Terbatas: input presensi sesi, jadwal latihan, dan pengajuan LPJ.'
-            },
-            {
               role: 'super_admin' as UserRole,
-              title: 'Super Admin',
-              desc: 'Kontrol sistem, konfigurasi tahun ajaran, reset & seeding data.'
+              badge: 'ROOT ACCESS',
+              title: 'Super Administrator',
+              desc: 'Akses penuh seluruh sistem: konfigurasi tahun ajaran, kop surat lembaga, backup/restore, dan seeding database pabrik.'
+            },
+            {
+              role: 'waka_kesiswaan' as UserRole,
+              badge: 'KOMANDO KESISWAAN',
+              title: 'Waka Kesiswaan',
+              desc: 'Operasional kesiswaan tingkat pimpinan: verifikasi seluruh LPJ, izin dispensasi, tata tertib & konseling, kelola guru & siswa.'
+            },
+            {
+              role: 'pembina_osim' as UserRole,
+              badge: 'INTRAKURIKULER',
+              title: 'Pembina OSIM',
+              desc: 'Ruang lingkup khusus OSIM: kelola pengurus OSIM, bimbing program kerja, kotak aspirasi siswa, sidang/rapat, dan LPJ OSIM.'
+            },
+            {
+              role: 'pembina_ekskul' as UserRole,
+              badge: 'EKSTRAKURIKULER',
+              title: 'Pembina Ekskul',
+              desc: 'Ruang lingkup khusus unit binaan: daftar anggota ekskul, input presensi digital sesi latihan, dan pengajuan LPJ ekskul.'
             }
           ].map(item => {
-            const isSelected = userRole === item.role;
+            const isSelected = userRole === item.role || (item.role === 'pembina_ekskul' && userRole === 'pembina');
             return (
               <button
                 key={item.role}
@@ -376,21 +423,24 @@ export const SettingsPage: React.FC = () => {
                 onClick={() => switchRole(item.role)}
                 className={`p-4 rounded-xl border text-left transition-all flex flex-col justify-between ${
                   isSelected
-                    ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/40 ring-2 ring-indigo-500/20'
+                    ? 'border-indigo-600 bg-indigo-50/70 dark:bg-indigo-950/40 ring-2 ring-indigo-500/20 shadow-sm'
                     : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 bg-slate-50/50 dark:bg-slate-800/40'
                 }`}
               >
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <p className={`font-bold text-xs ${isSelected ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-800 dark:text-slate-200'}`}>
-                      {item.title}
-                    </p>
+                    <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300">
+                      {item.badge}
+                    </span>
                     {isSelected && <CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0" />}
                   </div>
-                  <p className="text-[11px] text-slate-500 leading-snug">{item.desc}</p>
+                  <p className={`font-bold text-xs mt-1 ${isSelected ? 'text-indigo-700 dark:text-indigo-300' : 'text-slate-800 dark:text-slate-200'}`}>
+                    {item.title}
+                  </p>
+                  <p className="text-[11px] text-slate-500 leading-snug mt-1">{item.desc}</p>
                 </div>
                 <span className={`text-[10px] font-bold mt-3 self-start ${isSelected ? 'text-indigo-600' : 'text-slate-400'}`}>
-                  {isSelected ? '● Sedang Digunakan' : 'Klik untuk Beralih'}
+                  {isSelected ? '● Sedang Digunakan' : 'Klik untuk Beralih →'}
                 </span>
               </button>
             );
@@ -707,28 +757,33 @@ export const SettingsPage: React.FC = () => {
 
         {/* Section C: Fitur Upload Logo Kiri dan Logo Kanan */}
         <div className="pt-2 space-y-4">
-          <div className="flex items-center gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
-            <ImageIcon className="w-4 h-4 text-indigo-600" />
-            <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wide">
-              2. Unggah Logo Kop Surat & Dokumen Cetak (Kiri & Kanan)
-            </h4>
+          <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+            <div className="flex items-center gap-2">
+              <ImageIcon className="w-4 h-4 text-emerald-600" />
+              <h4 className="text-xs font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wide">
+                2. Unggah Logo Kop Surat & Logo Utama Aplikasi (Kiri & Kanan)
+              </h4>
+            </div>
+            <span className="text-[10px] bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-bold px-2 py-0.5 rounded border border-emerald-300 dark:border-emerald-800">
+              JPG, JPEG, PNG • Maks. 500 KB
+            </span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Logo Kiri */}
+            {/* Logo Kiri (Kemenag) */}
             <LogoUploader
-              label="Logo Kiri (Instansi / Kemenag / Pemda)"
-              sublabel="Diposisikan di sebelah kiri Kop Surat (Instansi Pembina)"
+              label="Logo Kiri (Kemenag RI / Instansi Pembina)"
+              sublabel="Diposisikan di sebelah kiri Kop Surat (Kemenag / Instansi Pembina)"
               value={formData.logoLeftUrl || ''}
               onChange={(url) => setFormData({ ...formData, logoLeftUrl: url })}
               presets={LEFT_LOGO_PRESETS}
               position="left"
             />
 
-            {/* Logo Kanan */}
+            {/* Logo Kanan (Sekolah) */}
             <LogoUploader
-              label="Logo Kanan (Sekolah / Madrasah / OSIM)"
-              sublabel="Diposisikan di sebelah kanan Kop Surat (Identitas Lembaga)"
+              label="Logo Kanan (Logo Sekolah / Madrasah)"
+              sublabel="Diposisikan di sebelah kanan Kop Surat & logo utama aplikasi"
               value={formData.logoRightUrl || ''}
               onChange={(url) => setFormData({ ...formData, logoRightUrl: url, logoUrl: url })}
               presets={RIGHT_LOGO_PRESETS}
@@ -819,29 +874,45 @@ export const SettingsPage: React.FC = () => {
             <p className="text-base font-extrabold text-slate-800 dark:text-slate-100">{students.length} Siswa</p>
           </div>
           <div>
+            <p className="text-slate-400 text-[11px]">Rombel Kelas Terdaftar</p>
+            <p className="text-base font-extrabold text-purple-600">{classes.length} Rombel</p>
+          </div>
+          <div>
+            <p className="text-slate-400 text-[11px]">Dewan Guru & Pembina</p>
+            <p className="text-base font-extrabold text-indigo-600">{teachers.length} Guru</p>
+          </div>
+          <div>
             <p className="text-slate-400 text-[11px]">Unit Ekstrakurikuler</p>
-            <p className="text-base font-extrabold text-indigo-600">{extracurriculars.length} Ekskul</p>
-          </div>
-          <div>
-            <p className="text-slate-400 text-[11px]">Rekam Presensi Sesi</p>
-            <p className="text-base font-extrabold text-emerald-600">{attendance.length} Sesi</p>
-          </div>
-          <div>
-            <p className="text-slate-400 text-[11px]">Laporan LPJ Pembina</p>
-            <p className="text-base font-extrabold text-amber-600">{activityReports.length} Laporan</p>
+            <p className="text-base font-extrabold text-emerald-600">{extracurriculars.length} Ekskul</p>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3 pt-2">
           <button
             type="button"
-            onClick={handleSeedDatabase}
-            disabled={isSeeding}
-            className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/20 flex items-center gap-2 transition-all hover:scale-105 disabled:opacity-50"
+            onClick={() => setIsClassModalOpen(true)}
+            className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-md shadow-purple-600/20 flex items-center gap-2 transition-all hover:scale-105"
           >
-            <RefreshCw className={`w-4 h-4 ${isSeeding ? 'animate-spin' : ''}`} />
-            <span>{isSeeding ? 'Mengisi Data Sample...' : 'Isi / Reset Data Sampel (Seeding)'}</span>
+            <Building className="w-4 h-4" />
+            <span>Kelola Rombel Kelas ({classes.length})</span>
           </button>
+
+          {isSuperAdmin ? (
+            <button
+              type="button"
+              onClick={handleSeedDatabase}
+              disabled={isSeeding}
+              className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/20 flex items-center gap-2 transition-all hover:scale-105 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${isSeeding ? 'animate-spin' : ''}`} />
+              <span>{isSeeding ? 'Mengisi Data Sample...' : 'Isi / Reset Data Sampel (Seeding)'}</span>
+            </button>
+          ) : (
+            <div className="px-4 py-2 rounded-xl bg-zinc-800/80 border border-zinc-700 text-zinc-400 text-xs flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-amber-500" />
+              <span>Reset & Seeding Database Khusus Super Admin</span>
+            </div>
+          )}
 
           <button
             type="button"
@@ -860,6 +931,12 @@ export const SettingsPage: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Class Management Modal */}
+      <ClassManagementModal
+        isOpen={isClassModalOpen}
+        onClose={() => setIsClassModalOpen(false)}
+      />
     </div>
   );
 };

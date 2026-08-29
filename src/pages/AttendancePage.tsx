@@ -34,6 +34,7 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ initialSchedule 
     attendance,
     members,
     extracurriculars,
+    teachers,
     addAttendanceRecord,
     deleteAttendanceRecord,
     activeAcademicYear
@@ -42,10 +43,82 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ initialSchedule 
   // Mode: 'input' (Active Session Presensi) or 'history' (Riwayat)
   const [activeTab, setActiveTab] = useState<'input' | 'history'>('input');
 
+  // Find teacher's assigned extracurriculars based on currentUser profile or name in teachers list
+  const userTeacher = useMemo(() => {
+    if (!currentUser) return null;
+    return teachers.find(
+      t =>
+        (currentUser.nip && t.nip && t.nip !== '-' && t.nip === currentUser.nip) ||
+        t.fullName.toLowerCase() === currentUser.displayName.toLowerCase() ||
+        (currentUser.email && t.email && t.email === currentUser.email)
+    );
+  }, [currentUser, teachers]);
+
+  // Determine assigned extracurriculars for the user/teacher
+  const assignedExtracurriculars = useMemo(() => {
+    // 1. Check currentUser.extracurricularIds
+    if (currentUser?.extracurricularIds && currentUser.extracurricularIds.length > 0) {
+      const matched = extracurriculars.filter(e => currentUser.extracurricularIds!.includes(e.id));
+      if (matched.length > 0) return matched;
+    }
+
+    // 2. Check userTeacher assignedExtracurriculars or extracurricularName
+    if (userTeacher) {
+      const assignedNames = [
+        ...(userTeacher.assignedExtracurriculars || []),
+        ...(userTeacher.extracurricularName ? [userTeacher.extracurricularName] : [])
+      ].map(n => n.toLowerCase().trim());
+
+      const matched = extracurriculars.filter(
+        e =>
+          e.coachId === userTeacher.id ||
+          e.coachName.toLowerCase().includes(userTeacher.fullName.toLowerCase()) ||
+          userTeacher.fullName.toLowerCase().includes(e.coachName.toLowerCase()) ||
+          assignedNames.some(name => e.name.toLowerCase().includes(name) || name.includes(e.name.toLowerCase()))
+      );
+      if (matched.length > 0) return matched;
+    }
+
+    // 3. Match by currentUser displayName in coachName of extracurricular
+    if (currentUser?.displayName) {
+      const matched = extracurriculars.filter(
+        e =>
+          e.coachName.toLowerCase().includes(currentUser.displayName.toLowerCase()) ||
+          currentUser.displayName.toLowerCase().includes(e.coachName.toLowerCase())
+      );
+      if (matched.length > 0) return matched;
+    }
+
+    // Fallback: If waka/admin, default to full list; otherwise empty or first
+    return extracurriculars;
+  }, [currentUser, userTeacher, extracurriculars]);
+
+  // Primary active extracurricular automatically selected based on assignment
+  const activeEkskul = useMemo(() => {
+    if (initialSchedule?.extracurricularId) {
+      const found = extracurriculars.find(e => e.id === initialSchedule.extracurricularId);
+      if (found) return found;
+    }
+    // Pick the first assigned extracurricular
+    return assignedExtracurriculars[0] || extracurriculars[0] || null;
+  }, [initialSchedule, assignedExtracurriculars, extracurriculars]);
+
   // Input Form State
   const [selectedEkskulId, setSelectedEkskulId] = useState<string>(
-    initialSchedule?.extracurricularId || extracurriculars[0]?.id || ''
+    activeEkskul?.id || ''
   );
+
+  // Sync selectedEkskulId whenever activeEkskul updates (e.g. data loaded)
+  React.useEffect(() => {
+    if (activeEkskul && (!selectedEkskulId || !extracurriculars.some(e => e.id === selectedEkskulId))) {
+      setSelectedEkskulId(activeEkskul.id);
+    }
+  }, [activeEkskul, extracurriculars, selectedEkskulId]);
+
+  const currentEkskul = useMemo(() => {
+    return extracurriculars.find(e => e.id === selectedEkskulId) || activeEkskul;
+  }, [extracurriculars, selectedEkskulId, activeEkskul]);
+
   const [sessionDate, setSessionDate] = useState<string>(
     initialSchedule?.date || new Date().toISOString().split('T')[0]
   );
@@ -53,12 +126,21 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ initialSchedule 
     initialSchedule?.title || 'Latihan Rutin & Evaluasi Teknik'
   );
   const [coachName, setCoachName] = useState<string>(
-    initialSchedule?.coachName || currentUser?.displayName || 'Guru Pembina'
+    initialSchedule?.coachName || currentEkskul?.coachName || currentUser?.displayName || 'Guru Pembina'
   );
 
-  // Active members for chosen ekskul
+  // Sync coachName when currentEkskul changes
+  React.useEffect(() => {
+    if (currentEkskul?.coachName) {
+      setCoachName(currentEkskul.coachName);
+    }
+  }, [currentEkskul]);
+
+  // Active members for chosen ekskul (Sorted Alphabetically by Student Name)
   const activeEkskulMembers = useMemo(() => {
-    return members.filter(m => m.extracurricularId === selectedEkskulId && m.status === 'Aktif');
+    return members
+      .filter(m => m.extracurricularId === selectedEkskulId && m.status === 'Aktif')
+      .sort((a, b) => (a.studentName || '').localeCompare(b.studentName || '', 'id', { sensitivity: 'base' }));
   }, [members, selectedEkskulId]);
 
   // Attendance Map: studentId -> { status: 'Hadir' | 'Izin' | 'Sakit' | 'Alpa', notes: string }
@@ -222,23 +304,32 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ initialSchedule 
               setSelectedRecord(r);
               setIsDetailOpen(true);
             }}
-            className="p-1.5 rounded-lg text-indigo-600 hover:bg-indigo-50 dark:hover:bg-slate-800"
+            className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-950/60 dark:hover:bg-indigo-900 dark:text-indigo-400 transition-colors"
             title="Lihat Lembar Presensi"
           >
             <Eye className="w-4 h-4" />
           </button>
-          {isWakaOrAdmin && (
-            <button
-              onClick={() => {
-                setSelectedRecord(r);
-                setIsDeleteOpen(true);
-              }}
-              className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 dark:hover:bg-slate-800"
-              title="Hapus Rekap"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          )}
+          <button
+            onClick={() => {
+              setSelectedRecord(r);
+              setIsDetailOpen(true);
+              setTimeout(() => window.print(), 300);
+            }}
+            className="p-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:hover:bg-emerald-900 dark:text-emerald-400 transition-colors"
+            title="Cetak Lembar Presensi"
+          >
+            <Printer className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => {
+              setSelectedRecord(r);
+              setIsDeleteOpen(true);
+            }}
+            className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-400 transition-colors"
+            title="Hapus Rekap Presensi"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
         </div>
       )
     }
@@ -295,24 +386,30 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ initialSchedule 
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
               <div>
-                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Ekstrakurikuler *
-                </label>
-                <select
-                  value={selectedEkskulId}
-                  onChange={e => {
-                    const selected = extracurriculars.find(ek => ek.id === e.target.value);
-                    setSelectedEkskulId(e.target.value);
-                    if (selected) setCoachName(selected.coachName);
-                  }}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-slate-800 dark:text-slate-100"
-                >
-                  {extracurriculars.map(e => (
-                    <option key={e.id} value={e.id}>
-                      {e.name}
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300">
+                    Ekstrakurikuler
+                  </label>
+                  <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
+                    Otomatis Sesuai Binaan
+                  </span>
+                </div>
+                
+                {/* Auto-filled Extracurricular Display - No dropdown */}
+                <div className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-indigo-200 dark:border-indigo-800/80 flex items-center justify-between shadow-xs">
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0 animate-pulse" />
+                    <div className="truncate">
+                      <span className="font-extrabold text-slate-900 dark:text-slate-100 text-xs truncate block">
+                        {currentEkskul?.name || 'Ekstrakurikuler Binaan'}
+                      </span>
+                      <span className="text-[10px] text-slate-400 dark:text-slate-400 block font-medium">
+                        Kategori: {currentEkskul?.category || 'Umum'} • Hari {currentEkskul?.day || 'Rutin'}
+                      </span>
+                    </div>
+                  </div>
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0 ml-2" />
+                </div>
               </div>
 
               <div>
@@ -323,20 +420,23 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ initialSchedule 
                   type="date"
                   value={sessionDate}
                   onChange={e => setSessionDate(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                  className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium"
                 />
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Guru Pembina / Pelatih
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300">
+                    Guru Pembina / Pelatih
+                  </label>
+                  <span className="text-[10px] text-slate-400 font-medium">Auto-Fill</span>
+                </div>
                 <input
                   type="text"
                   value={coachName}
                   onChange={e => setCoachName(e.target.value)}
                   placeholder="Nama Pembina..."
-                  className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                  className="w-full px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium"
                 />
               </div>
 
@@ -509,12 +609,23 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ initialSchedule 
           subtitle={`${selectedRecord.extracurricularName} • Tanggal: ${selectedRecord.date} • Pembina: ${selectedRecord.coachName}`}
           maxWidth="2xl"
           footer={
-            <button
-              onClick={() => setIsDetailOpen(false)}
-              className="px-4 py-2 text-xs font-bold rounded-xl bg-slate-800 text-white"
-            >
-              Tutup
-            </button>
+            <div className="flex items-center justify-between w-full">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="px-4 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 transition-colors"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Cetak Lembar Presensi</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsDetailOpen(false)}
+                className="px-4 py-2 text-xs font-bold rounded-xl bg-slate-800 text-white hover:bg-slate-700 transition-colors"
+              >
+                Tutup
+              </button>
+            </div>
           }
         >
           <div className="space-y-4 text-xs">

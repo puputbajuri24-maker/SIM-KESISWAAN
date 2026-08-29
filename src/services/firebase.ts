@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth } from 'firebase/auth';
-import { getFirestore, Firestore } from 'firebase/firestore';
+import { initializeFirestore, getFirestore, Firestore, setLogLevel } from 'firebase/firestore';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
 import firebaseConfigJson from '../../firebase-applet-config.json';
 
@@ -26,7 +26,23 @@ const databaseId = firebaseConfigJson.firestoreDatabaseId && firebaseConfigJson.
   ? firebaseConfigJson.firestoreDatabaseId
   : undefined;
 
+// Suppress noisy network retry logs in offline / initial sync states
+try {
+  setLogLevel('silent');
+} catch (e) {
+  // Ignore
+}
+
+let firestoreInstance: Firestore;
+try {
+  firestoreInstance = databaseId
+    ? initializeFirestore(app, { ignoreUndefinedProperties: true, experimentalAutoDetectLongPolling: true }, databaseId)
+    : initializeFirestore(app, { ignoreUndefinedProperties: true, experimentalAutoDetectLongPolling: true });
+} catch (e) {
+  firestoreInstance = databaseId ? getFirestore(app, databaseId) : getFirestore(app);
+}
+
 export const auth: Auth = getAuth(app);
-export const db: Firestore = databaseId ? getFirestore(app, databaseId) : getFirestore(app);
+export const db: Firestore = firestoreInstance;
 export const storage: FirebaseStorage = getStorage(app);
 export { app };

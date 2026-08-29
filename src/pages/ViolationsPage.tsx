@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   ShieldAlert,
   Plus,
@@ -20,6 +20,8 @@ import { StatusBadge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { ExportActions } from '../components/common/ExportActions';
+import { ClassGridFilter } from '../components/common/ClassGridFilter';
+import { calculateRecordCountsByClass, isStudentInClass } from '../utils/classResolver';
 
 interface ViolationsPageProps {
   onReferToCounseling?: (violation: Violation) => void;
@@ -30,6 +32,7 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
   const {
     violations,
     students,
+    classes,
     teachers,
     addViolation,
     updateViolation,
@@ -37,8 +40,14 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
     activeAcademicYear
   } = useSchool();
 
+  const [selectedClass, setSelectedClass] = useState<string>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
+
+  // Count violations per class
+  const violationCountsByClassId = useMemo(() => {
+    return calculateRecordCountsByClass(violations, classes, students);
+  }, [violations, classes, students]);
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -60,11 +69,18 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
     status: 'Diproses'
   });
 
-  const filteredViolations = violations.filter(v => {
-    if (selectedCategory !== 'all' && v.category !== selectedCategory) return false;
-    if (selectedStatus !== 'all' && v.status !== selectedStatus) return false;
-    return true;
-  });
+  const filteredViolations = useMemo(() => {
+    return violations.filter(v => {
+      if (selectedClass !== 'all') {
+        const student = students.find(s => s.id === v.studentId);
+        const match = isStudentInClass(v, selectedClass, classes) || (student && isStudentInClass(student, selectedClass, classes));
+        if (!match) return false;
+      }
+      if (selectedCategory !== 'all' && v.category !== selectedCategory) return false;
+      if (selectedStatus !== 'all' && v.status !== selectedStatus) return false;
+      return true;
+    });
+  }, [violations, selectedClass, selectedCategory, selectedStatus, classes, students]);
 
   const handleOpenAdd = () => {
     setSelectedViolation(null);
@@ -111,40 +127,51 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
       return;
     }
 
-    const student = students.find(s => s.id === formData.studentId);
+    try {
+      const student = students.find(s => s.id === formData.studentId);
 
-    if (selectedViolation) {
-      await updateViolation(selectedViolation.id, {
-        ...formData,
-        studentName: student?.fullName || formData.studentName,
-        studentNis: student?.nis || formData.studentNis,
-        studentClass: student?.className || formData.studentClass
-      });
-    } else {
-      await addViolation({
-        studentId: formData.studentId!,
-        studentName: student?.fullName || 'Siswa',
-        studentNis: student?.nis || '',
-        studentClass: student?.className || '',
-        violationType: formData.violationType!,
-        category: formData.category as ViolationCategory,
-        points: Number(formData.points) || 5,
-        date: formData.date!,
-        description: formData.description || '',
-        actionTaken: formData.actionTaken || 'Teguran',
-        officerName: formData.officerName || currentUser?.displayName || 'Guru Piket',
-        status: (formData.status as ViolationStatus) || 'Diproses',
-        academicYear: activeAcademicYear
-      });
+      if (selectedViolation) {
+        await updateViolation(selectedViolation.id, {
+          ...formData,
+          studentName: student?.fullName || formData.studentName,
+          studentNis: student?.nis || formData.studentNis,
+          studentClass: student?.className || formData.studentClass
+        });
+      } else {
+        await addViolation({
+          studentId: formData.studentId!,
+          studentName: student?.fullName || 'Siswa',
+          studentNis: student?.nis || '',
+          studentClass: student?.className || '',
+          violationType: formData.violationType!,
+          category: formData.category as ViolationCategory,
+          points: Number(formData.points) || 5,
+          date: formData.date!,
+          description: formData.description || '',
+          actionTaken: formData.actionTaken || 'Teguran',
+          officerName: formData.officerName || currentUser?.displayName || 'Guru Piket',
+          status: (formData.status as ViolationStatus) || 'Diproses',
+          academicYear: activeAcademicYear
+        });
+      }
+    } catch (err) {
+      console.error('Error saving violation:', err);
+    } finally {
+      setIsFormOpen(false);
+      setSelectedViolation(null);
     }
-    setIsFormOpen(false);
   };
 
   const handleDeleteConfirm = async () => {
     if (selectedViolation) {
-      await deleteViolation(selectedViolation.id);
-      setIsDeleteOpen(false);
-      setSelectedViolation(null);
+      try {
+        await deleteViolation(selectedViolation.id);
+      } catch (err) {
+        console.error('Error deleting violation:', err);
+      } finally {
+        setIsDeleteOpen(false);
+        setSelectedViolation(null);
+      }
     }
   };
 
@@ -208,7 +235,7 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
           {onReferToCounseling && v.status !== 'Selesai' && (
             <button
               onClick={() => onReferToCounseling(v)}
-              className="px-2.5 py-1 text-xs font-bold rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 flex items-center gap-1"
+              className="px-2.5 py-1 text-xs font-bold rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 hover:bg-indigo-500/20 flex items-center gap-1 transition-colors"
               title="Rujuk ke Bimbingan Konseling"
             >
               <HeartHandshake className="w-3.5 h-3.5" />
@@ -217,26 +244,25 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
           )}
           <button
             onClick={() => handleOpenDetail(v)}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-slate-800"
+            className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-950/60 dark:hover:bg-indigo-900 dark:text-indigo-400 transition-colors"
+            title="Lihat Detail Pelanggaran"
           >
             <Eye className="w-4 h-4" />
           </button>
-          {isWakaOrAdmin && (
-            <>
-              <button
-                onClick={e => handleOpenEdit(v, e)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-slate-100 dark:hover:bg-slate-800"
-              >
-                <Edit2 className="w-4 h-4" />
-              </button>
-              <button
-                onClick={e => handleOpenDelete(v, e)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </>
-          )}
+          <button
+            onClick={e => handleOpenEdit(v, e)}
+            className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:hover:bg-amber-900 dark:text-amber-400 transition-colors"
+            title="Edit Pelanggaran Siswa"
+          >
+            <Edit2 className="w-4 h-4" />
+          </button>
+          <button
+            onClick={e => handleOpenDelete(v, e)}
+            className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-400 transition-colors"
+            title="Hapus Catatan Pelanggaran"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
         </div>
       )
     }
@@ -274,23 +300,33 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
             ]}
           />
 
-          {isWakaOrAdmin && (
-            <button
-              onClick={handleOpenAdd}
-              className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md shadow-rose-600/20 flex items-center gap-2 transition-all hover:scale-105"
-            >
-              <Plus className="w-4 h-4" />
-              <span>+ Catat Pelanggaran</span>
-            </button>
-          )}
+          <button
+            onClick={handleOpenAdd}
+            className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md shadow-rose-600/20 flex items-center gap-2 transition-all hover:scale-105"
+          >
+            <Plus className="w-4 h-4" />
+            <span>+ Catat Pelanggaran</span>
+          </button>
         </div>
       </div>
 
-      {/* Filter Bar */}
-      <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center gap-3 text-xs">
+      {/* Class Grid Filter */}
+      <ClassGridFilter
+        classes={classes}
+        selectedClassId={selectedClass}
+        onSelectClass={setSelectedClass}
+        countsByClassId={violationCountsByClassId}
+        totalCount={violations.length}
+        label="Filter Pelanggaran Berdasarkan Rombel Kelas"
+        itemUnit="Kasus"
+        colorScheme="rose"
+      />
+
+      {/* Secondary Filter Bar */}
+      <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center gap-3 text-xs">
         <div className="flex items-center gap-2 text-slate-500 font-semibold">
           <Filter className="w-4 h-4" />
-          <span>Filter Pelanggaran:</span>
+          <span>Filter Lanjutan:</span>
         </div>
 
         <select
@@ -315,6 +351,19 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
           <option value="Dalam Pembinaan">Dalam Pembinaan BK</option>
           <option value="Selesai">Selesai</option>
         </select>
+
+        {(selectedClass !== 'all' || selectedCategory !== 'all' || selectedStatus !== 'all') && (
+          <button
+            onClick={() => {
+              setSelectedClass('all');
+              setSelectedCategory('all');
+              setSelectedStatus('all');
+            }}
+            className="text-xs text-rose-600 hover:underline font-semibold ml-auto"
+          >
+            Reset Semua Filter
+          </button>
+        )}
       </div>
 
       {/* Table */}

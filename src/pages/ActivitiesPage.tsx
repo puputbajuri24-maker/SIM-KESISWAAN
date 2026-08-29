@@ -7,6 +7,7 @@ import {
   DollarSign,
   Users,
   FileText,
+  Eye,
   Edit2,
   Trash2,
   Compass,
@@ -89,36 +90,47 @@ export const ActivitiesPage: React.FC = () => {
       return;
     }
 
-    const ekskul = extracurriculars.find(e => e.id === formData.extracurricularId);
+    try {
+      const ekskul = extracurriculars.find(e => e.id === formData.extracurricularId);
 
-    if (selectedActivity) {
-      await updateActivity(selectedActivity.id, {
-        ...formData,
-        extracurricularName: ekskul?.name || formData.extracurricularName
-      });
-    } else {
-      await addActivity({
-        title: formData.title!,
-        extracurricularId: formData.extracurricularId || '',
-        extracurricularName: ekskul?.name || 'Kesiswaan Umum',
-        date: formData.date!,
-        endDate: formData.endDate || '',
-        location: formData.location!,
-        organizer: formData.organizer || 'Kesiswaan',
-        description: formData.description || '',
-        budget: Number(formData.budget) || 0,
-        participantCount: Number(formData.participantCount) || 0,
-        status: (formData.status as any) || 'Rencana'
-      });
+      if (selectedActivity) {
+        await updateActivity(selectedActivity.id, {
+          ...formData,
+          extracurricularName: ekskul?.name || formData.extracurricularName
+        });
+      } else {
+        await addActivity({
+          title: formData.title!,
+          extracurricularId: formData.extracurricularId || '',
+          extracurricularName: ekskul?.name || 'Kesiswaan Umum',
+          date: formData.date!,
+          endDate: formData.endDate || '',
+          location: formData.location!,
+          organizer: formData.organizer || 'Kesiswaan',
+          description: formData.description || '',
+          budget: Number(formData.budget) || 0,
+          participantCount: Number(formData.participantCount) || 0,
+          status: (formData.status as any) || 'Rencana'
+        });
+      }
+    } catch (err) {
+      console.error('Error saving activity:', err);
+    } finally {
+      setIsFormOpen(false);
+      setSelectedActivity(null);
     }
-    setIsFormOpen(false);
   };
 
   const handleDeleteConfirm = async () => {
     if (selectedActivity) {
-      await deleteActivity(selectedActivity.id);
-      setIsDeleteOpen(false);
-      setSelectedActivity(null);
+      try {
+        await deleteActivity(selectedActivity.id);
+      } catch (err) {
+        console.error('Error deleting activity:', err);
+      } finally {
+        setIsDeleteOpen(false);
+        setSelectedActivity(null);
+      }
     }
   };
 
@@ -173,19 +185,22 @@ export const ActivitiesPage: React.FC = () => {
         <div className="flex items-center justify-end gap-1.5" onClick={e => e.stopPropagation()}>
           <button
             onClick={() => handleOpenDetail(a)}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-slate-800"
+            className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-950/60 dark:hover:bg-indigo-900 dark:text-indigo-400 transition-colors"
+            title="Lihat Detail & Lembar LPJ Kegiatan"
           >
-            <FileText className="w-4 h-4" />
+            <Eye className="w-4 h-4" />
           </button>
           <button
             onClick={e => handleOpenEdit(a, e)}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-slate-800"
+            className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:hover:bg-amber-900 dark:text-amber-400 transition-colors"
+            title="Edit Agenda Kegiatan"
           >
             <Edit2 className="w-4 h-4" />
           </button>
           <button
             onClick={e => handleOpenDelete(a, e)}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-slate-800"
+            className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-400 transition-colors"
+            title="Hapus Kegiatan"
           >
             <Trash2 className="w-4 h-4" />
           </button>

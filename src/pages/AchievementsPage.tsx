@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Award,
   Plus,
@@ -20,12 +20,15 @@ import { StatusBadge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { ExportActions } from '../components/common/ExportActions';
+import { ClassGridFilter } from '../components/common/ClassGridFilter';
+import { calculateRecordCountsByClass, isStudentInClass } from '../utils/classResolver';
 
 export const AchievementsPage: React.FC = () => {
   const { isWakaOrAdmin, currentUser } = useAuth();
   const {
     achievements,
     students,
+    classes,
     extracurriculars,
     addAchievement,
     updateAchievement,
@@ -33,8 +36,14 @@ export const AchievementsPage: React.FC = () => {
     activeAcademicYear
   } = useSchool();
 
+  const [selectedClass, setSelectedClass] = useState<string>('all');
   const [selectedLevel, setSelectedLevel] = useState<string>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+
+  // Count achievements per class
+  const achievementCountsByClassId = useMemo(() => {
+    return calculateRecordCountsByClass(achievements, classes, students);
+  }, [achievements, classes, students]);
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -67,11 +76,18 @@ export const AchievementsPage: React.FC = () => {
     'Internasional'
   ];
 
-  const filteredAchievements = achievements.filter(a => {
-    if (selectedLevel !== 'all' && a.level !== selectedLevel) return false;
-    if (selectedCategory !== 'all' && a.category !== selectedCategory) return false;
-    return true;
-  });
+  const filteredAchievements = useMemo(() => {
+    return achievements.filter(a => {
+      if (selectedClass !== 'all') {
+        const student = students.find(s => s.id === a.studentId);
+        const match = isStudentInClass(a, selectedClass, classes) || (student && isStudentInClass(student, selectedClass, classes));
+        if (!match) return false;
+      }
+      if (selectedLevel !== 'all' && a.level !== selectedLevel) return false;
+      if (selectedCategory !== 'all' && a.category !== selectedCategory) return false;
+      return true;
+    });
+  }, [achievements, selectedClass, selectedLevel, selectedCategory, classes, students]);
 
   const handleOpenAdd = () => {
     setSelectedAchievement(null);
@@ -120,45 +136,56 @@ export const AchievementsPage: React.FC = () => {
       return;
     }
 
-    const student = students.find(s => s.id === formData.studentId);
-    const ekskul = extracurriculars.find(e => e.id === formData.extracurricularId);
+    try {
+      const student = students.find(s => s.id === formData.studentId);
+      const ekskul = extracurriculars.find(e => e.id === formData.extracurricularId);
 
-    if (selectedAchievement) {
-      await updateAchievement(selectedAchievement.id, {
-        ...formData,
-        studentName: student?.fullName || formData.studentName,
-        studentNis: student?.nis || formData.studentNis,
-        studentClass: student?.className || formData.studentClass,
-        extracurricularName: ekskul?.name || formData.extracurricularName
-      });
-    } else {
-      await addAchievement({
-        title: formData.title!,
-        studentId: formData.studentId!,
-        studentName: student?.fullName || 'Siswa',
-        studentNis: student?.nis || '',
-        studentClass: student?.className || '',
-        extracurricularId: formData.extracurricularId || '',
-        extracurricularName: ekskul?.name || 'Independen / Sekolah',
-        category: formData.category as AchievementCategory,
-        level: formData.level as AchievementLevel,
-        rank: formData.rank!,
-        organizer: formData.organizer!,
-        date: formData.date!,
-        description: formData.description || '',
-        certificateUrl: formData.certificateUrl || '',
-        pointsAwarded: Number(formData.pointsAwarded) || 20,
-        academicYear: activeAcademicYear
-      });
+      if (selectedAchievement) {
+        await updateAchievement(selectedAchievement.id, {
+          ...formData,
+          studentName: student?.fullName || formData.studentName,
+          studentNis: student?.nis || formData.studentNis,
+          studentClass: student?.className || formData.studentClass,
+          extracurricularName: ekskul?.name || formData.extracurricularName
+        });
+      } else {
+        await addAchievement({
+          title: formData.title!,
+          studentId: formData.studentId!,
+          studentName: student?.fullName || 'Siswa',
+          studentNis: student?.nis || '',
+          studentClass: student?.className || '',
+          extracurricularId: formData.extracurricularId || '',
+          extracurricularName: ekskul?.name || 'Independen / Sekolah',
+          category: formData.category as AchievementCategory,
+          level: formData.level as AchievementLevel,
+          rank: formData.rank!,
+          organizer: formData.organizer!,
+          date: formData.date!,
+          description: formData.description || '',
+          certificateUrl: formData.certificateUrl || '',
+          pointsAwarded: Number(formData.pointsAwarded) || 20,
+          academicYear: activeAcademicYear
+        });
+      }
+    } catch (err) {
+      console.error('Error saving achievement:', err);
+    } finally {
+      setIsFormOpen(false);
+      setSelectedAchievement(null);
     }
-    setIsFormOpen(false);
   };
 
   const handleDeleteConfirm = async () => {
     if (selectedAchievement) {
-      await deleteAchievement(selectedAchievement.id, selectedAchievement.studentId, selectedAchievement.pointsAwarded);
-      setIsDeleteOpen(false);
-      setSelectedAchievement(null);
+      try {
+        await deleteAchievement(selectedAchievement.id, selectedAchievement.studentId, selectedAchievement.pointsAwarded);
+      } catch (err) {
+        console.error('Error deleting achievement:', err);
+      } finally {
+        setIsDeleteOpen(false);
+        setSelectedAchievement(null);
+      }
     }
   };
 
@@ -218,26 +245,25 @@ export const AchievementsPage: React.FC = () => {
         <div className="flex items-center justify-end gap-1.5" onClick={e => e.stopPropagation()}>
           <button
             onClick={() => handleOpenDetail(a)}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-slate-800"
+            className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-950/60 dark:hover:bg-indigo-900 dark:text-indigo-400 transition-colors"
+            title="Lihat Piagam & Detail Prestasi"
           >
             <Eye className="w-4 h-4" />
           </button>
-          {isWakaOrAdmin && (
-            <>
-              <button
-                onClick={e => handleOpenEdit(a, e)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-slate-800"
-              >
-                <Edit2 className="w-4 h-4" />
-              </button>
-              <button
-                onClick={e => handleOpenDelete(a, e)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-slate-800"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </>
-          )}
+          <button
+            onClick={e => handleOpenEdit(a, e)}
+            className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:hover:bg-amber-900 dark:text-amber-400 transition-colors"
+            title="Edit Prestasi Siswa"
+          >
+            <Edit2 className="w-4 h-4" />
+          </button>
+          <button
+            onClick={e => handleOpenDelete(a, e)}
+            className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-400 transition-colors"
+            title="Hapus Prestasi"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
         </div>
       )
     }
@@ -285,11 +311,23 @@ export const AchievementsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Filter Bar */}
-      <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center gap-3 text-xs">
+      {/* Class Grid Filter */}
+      <ClassGridFilter
+        classes={classes}
+        selectedClassId={selectedClass}
+        onSelectClass={setSelectedClass}
+        countsByClassId={achievementCountsByClassId}
+        totalCount={achievements.length}
+        label="Filter Prestasi Berdasarkan Rombel Kelas"
+        itemUnit="Prestasi"
+        colorScheme="amber"
+      />
+
+      {/* Secondary Filter Bar */}
+      <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center gap-3 text-xs">
         <div className="flex items-center gap-2 text-slate-500 font-semibold">
           <Filter className="w-4 h-4" />
-          <span>Filter Prestasi:</span>
+          <span>Filter Lanjutan:</span>
         </div>
 
         <select
@@ -318,6 +356,19 @@ export const AchievementsPage: React.FC = () => {
           <option value="Teknologi">Teknologi & Robotik</option>
           <option value="Kepemimpinan">Kepemimpinan</option>
         </select>
+
+        {(selectedClass !== 'all' || selectedLevel !== 'all' || selectedCategory !== 'all') && (
+          <button
+            onClick={() => {
+              setSelectedClass('all');
+              setSelectedLevel('all');
+              setSelectedCategory('all');
+            }}
+            className="text-xs text-rose-600 hover:underline font-semibold ml-auto"
+          >
+            Reset Semua Filter
+          </button>
+        )}
       </div>
 
       {/* Table */}

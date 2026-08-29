@@ -1,14 +1,19 @@
-export type UserRole = 'super_admin' | 'waka_kesiswaan' | 'admin_kesiswaan' | 'pembina';
+export type UserRole = 'super_admin' | 'waka_kesiswaan' | 'guru_bk' | 'pembina_osim' | 'pembina_ekskul' | 'pembina';
 
 export interface UserProfile {
   uid: string;
   email: string;
+  username?: string;
+  password?: string;
   displayName: string;
   role: UserRole;
   extracurricularIds?: string[]; // If pembina, club IDs they manage
   phone?: string;
   photoURL?: string;
   nip?: string;
+  counselorSpecialization?: string; // e.g. "Bimbingan Karir & Psikologi Remaja"
+  status?: 'Aktif' | 'Nonaktif';
+  lastLogin?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -26,6 +31,8 @@ export interface SchoolSetting {
   wakaName: string;
   wakaNip?: string;
   wakaKesiswaanName?: string;
+  pembinaOsim?: string;
+  pembinaOsimNip?: string;
   phone: string;
   email: string;
   website?: string;
@@ -90,6 +97,8 @@ export interface Teacher {
   email: string;
   role: string;
   isPembina?: boolean;
+  photoUrl?: string;
+  photoURL?: string;
   extracurricularName?: string;
   assignedExtracurriculars?: string[];
   isActive?: boolean;
@@ -315,6 +324,10 @@ export interface StudentViolation {
 
 export type Violation = StudentViolation;
 
+export type CounselingServiceField = 'Pribadi' | 'Sosial' | 'Belajar' | 'Karir';
+export type CounselingType = 'Individu' | 'Kelompok' | 'Klasikal' | 'Konferensi Kasus' | 'Home Visit' | 'Alih Tangan Kasus';
+export type CounselingUrgency = 'Rendah' | 'Sedang' | 'Tinggi' | 'Darurat / Butuh Panggilan Wali';
+
 export interface StudentCounseling {
   id: string;
   studentId: string;
@@ -324,21 +337,106 @@ export interface StudentCounseling {
   violationId?: string;
   date: string;
   counselorName: string;
+  counselorId?: string;
+  serviceField?: CounselingServiceField; // Pribadi, Sosial, Belajar, Karir
+  counselingType?: CounselingType; // Individu, Kelompok, dll.
+  urgencyLevel?: CounselingUrgency;
+  counselingApproach?: string; // e.g. "Konseling Realitas", "Cognitive Behavioral Therapy (CBT)", "Solution-Focused"
   topic?: string;
   notes?: string;
   reason?: string;
   issuesIdentified?: string;
   solution?: string;
   counselingResult?: string;
+  agreements?: string;
   followUpPlan: string;
   parentInvolved?: boolean;
   status: 'Terbuka' | 'Dijadwalkan' | 'Berlangsung' | 'Dalam Pembinaan' | 'Selesai' | 'Perlu Tindak Lanjut';
   nextSessionDate?: string;
   academicYear?: string;
+  attachmentUrl?: string;
   createdAt?: string;
 }
 
 export type CounselingSession = StudentCounseling;
+
+// ==========================================
+// BK SUB-MODUL: KUNJUNGAN RUMAH (HOME VISIT)
+// ==========================================
+export interface HomeVisitRecord {
+  id: string;
+  studentId: string;
+  studentNis: string;
+  studentName: string;
+  studentClass: string;
+  date: string;
+  address: string;
+  counselorName: string;
+  companionName?: string; // Wali Kelas / Guru Pendamping
+  visitedPerson: string; // Orang Tua / Wali (e.g. "Bpk. Suherman & Ibu Siti")
+  relationship: 'Ayah' | 'Ibu' | 'Wali' | 'Keluarga Lainnya';
+  phone?: string;
+  purpose: string; // Alasan Kunjungan Rumah
+  familyConditions: string; // Kondisi Lingkungan Keluarga & Ekonomi
+  studentStudyEnvironment: string; // Kondisi Fasilitas & Suasana Belajar di Rumah
+  findings: string; // Temuan & Dinamika Masalah
+  agreements: string; // Kesepakatan Solusi Bersama Orang Tua
+  followUpPlan: string;
+  status: 'Terjadwal' | 'Terlaksana' | 'Perlu Kunjungan Lanjut' | 'Dibatalkan';
+  academicYear: string;
+  createdAt?: string;
+}
+
+// ==========================================
+// BK SUB-MODUL: SURAT PANGGILAN ORANG TUA / WALI
+// ==========================================
+export type CallLetterStatus = 'Draft' | 'Diterbitkan' | 'Terkirim' | 'Hadir' | 'Tidak Hadir' | 'Selesai';
+
+export interface ParentCallLetter {
+  id: string;
+  letterNumber: string; // e.g. "421.3 / BK-084 / 2026"
+  studentId: string;
+  studentNis: string;
+  studentName: string;
+  studentClass: string;
+  parentName: string;
+  callNumber: 1 | 2 | 3; // Panggilan Ke-1, Ke-2, Ke-3
+  callDate: string; // Hari / Tanggal Menghadap
+  callTime: string; // Pukul 08:30 WIB
+  location: string; // Ruang Bimbingan Konseling (BK)
+  reason: string; // Keperluan Panggilan
+  counselorName: string;
+  counselorNip?: string;
+  wakaName?: string;
+  status: CallLetterStatus;
+  notes?: string;
+  attendanceNotes?: string;
+  academicYear: string;
+  createdAt?: string;
+}
+
+// ==========================================
+// BK SUB-MODUL: BIMBINGAN KARIR & STUDI LANJUT
+// ==========================================
+export interface CareerGuidanceRecord {
+  id: string;
+  studentId: string;
+  studentNis: string;
+  studentName: string;
+  studentClass: string;
+  careerInterest: string; // Minat Karir / Cita-cita
+  targetPath: 'PTN (SNBP/SNBT)' | 'PTS' | 'Kedinasan / Militer' | 'Politeknik / Vokasi' | 'Kerja / Industri' | 'Wirausaha';
+  targetInstitution?: string; // e.g. "Institut Teknologi Bandung / UI"
+  targetMajor?: string; // e.g. "Teknik Informatika / Kedokteran"
+  psychologicalTestScore?: string; // Hasil Asesmen / Tes Bakat Minat / IQ
+  strengths: string; // Keunggulan & Potensi
+  obstacles: string; // Kendala & Kebutuhan Pendampingan
+  counselorRecommendation: string;
+  counselorName: string;
+  status: 'Dalam Eksplorasi' | 'Sudah Terarah' | 'Siap Pendaftaran' | 'Lolos Seleksi';
+  academicYear: string;
+  createdAt?: string;
+}
 
 export type AchievementCategory = 'Akademik' | 'Olahraga' | 'Seni' | 'Keagamaan' | 'Kepemimpinan' | 'Teknologi' | 'Sosial' | 'Lainnya';
 export type AchievementLevel = 'Sekolah' | 'Kecamatan' | 'Kabupaten/Kota' | 'Kota/Kabupaten' | 'Provinsi' | 'Nasional' | 'Internasional';
@@ -408,17 +506,53 @@ export interface NeedsRequest {
   createdAt?: string;
 }
 
+export type AnnouncementTargetType =
+  | 'all'
+  | 'all_bk'
+  | 'specific_bk'
+  | 'all_pembina'
+  | 'specific_ekskul'
+  | 'all_osim'
+  | 'waka_admin'
+  | 'specific_users';
+
+export type AnnouncementTargetRole =
+  | 'Semua'
+  | 'Guru Pembina'
+  | 'Guru BK'
+  | 'Waka & Admin'
+  | 'Pembina'
+  | 'Admin'
+  | 'Waka'
+  | 'Guru BK Tertentu'
+  | 'Pembina Ekstra Tertentu'
+  | 'Pengguna Spesifik';
+
+export type AnnouncementPriority = 'Biasa' | 'Penting' | 'Mendesak';
+
 export interface Announcement {
   id: string;
   title: string;
   content: string;
-  targetRole: 'Semua' | 'Pembina' | 'Admin' | 'Waka';
+  targetType?: AnnouncementTargetType;
+  targetRole: AnnouncementTargetRole | string;
+  targetUserIds?: string[]; // Specific user UIDs (e.g. specific guru BK or specific pembina)
+  targetUserNames?: string[]; // Display names of targeted users
+  targetExtracurricularIds?: string[]; // Specific extracurricular IDs (e.g. Pramuka, PMR)
+  targetExtracurricularNames?: string[]; // Display names of targeted extracurriculars
   targetExtracurricularId?: string;
   publishDate: string;
-  expiryDate: string;
-  priority: 'Biasa' | 'Penting' | 'Mendesak';
+  expiryDate?: string;
+  priority: AnnouncementPriority;
   authorName: string;
+  authorRole?: string;
+  isActive?: boolean;
+  isPinned?: boolean;
+  attachmentUrl?: string;
+  attachmentName?: string;
+  readByUsers?: Record<string, string>; // uid -> ISO timestamp when read
   createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface NotificationItem {

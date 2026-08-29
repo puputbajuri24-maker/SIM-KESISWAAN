@@ -8,7 +8,7 @@ interface ModalProps {
   subtitle?: string;
   children: React.ReactNode;
   footer?: React.ReactNode;
-  maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl' | '5xl';
+  maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl' | '5xl' | string;
 }
 
 export const Modal: React.FC<ModalProps> = ({
@@ -26,13 +26,19 @@ export const Modal: React.FC<ModalProps> = ({
         onClose();
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      document.body.style.overflow = 'unset';
+      window.removeEventListener('keydown', handleKeyDown);
+    };
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
-  const maxWidthClass = {
+  const maxWidthMap: Record<string, string> = {
     sm: 'max-w-sm',
     md: 'max-w-md',
     lg: 'max-w-lg',
@@ -41,44 +47,49 @@ export const Modal: React.FC<ModalProps> = ({
     '3xl': 'max-w-3xl',
     '4xl': 'max-w-4xl',
     '5xl': 'max-w-5xl'
-  }[maxWidth];
+  };
+
+  const maxWidthClass = maxWidthMap[maxWidth] || (maxWidth.startsWith('max-w-') ? maxWidth : 'max-w-lg');
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto font-sans">
+    <div className="fixed inset-0 z-[100] overflow-y-auto font-sans">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/80 backdrop-blur-xs transition-opacity"
+        className="fixed inset-0 bg-black/80 backdrop-blur-xs transition-opacity cursor-pointer pointer-events-auto"
         onClick={onClose}
+        aria-hidden="true"
       />
 
-      {/* Modal Content */}
-      <div className="min-h-full flex items-center justify-center p-3 sm:p-4 text-center">
+      {/* Modal Alignment Container */}
+      <div className="relative z-10 min-h-screen flex items-center justify-center p-3 sm:p-4 text-center pointer-events-none">
         <div
-          className={`w-full ${maxWidthClass} bg-[#0d0d0f] rounded border border-[#27272a] shadow-2xl text-left transform transition-all flex flex-col max-h-[92vh]`}
+          className={`relative w-full ${maxWidthClass} bg-[#111318] text-slate-100 rounded-2xl border border-slate-700/70 shadow-2xl text-left transform transition-all flex flex-col max-h-[90vh] pointer-events-auto my-6`}
           onClick={e => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-center justify-between p-3 border-b border-[#27272a] bg-[#121215] shrink-0">
-            <div>
-              <h3 className="text-xs sm:text-sm font-bold text-zinc-100 uppercase tracking-tight">{title}</h3>
-              {subtitle && <p className="text-[10px] text-zinc-500 font-mono mt-0.5">{subtitle}</p>}
+          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-[#161922] rounded-t-2xl shrink-0">
+            <div className="min-w-0 pr-2">
+              <h3 className="text-xs sm:text-sm font-bold text-slate-100 uppercase tracking-wide truncate">{title}</h3>
+              {subtitle && <p className="text-[11px] text-slate-400 font-sans mt-0.5 line-clamp-1">{subtitle}</p>}
             </div>
             <button
+              type="button"
               onClick={onClose}
-              className="p-1 rounded bg-[#161618] border border-[#27272a] text-zinc-400 hover:text-zinc-200 hover:border-zinc-600 transition-colors"
+              className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 border border-slate-700/60 text-slate-400 hover:text-white transition-colors shrink-0"
+              title="Tutup (Esc)"
             >
-              <X className="w-3.5 h-3.5" />
+              <X className="w-4 h-4" />
             </button>
           </div>
 
           {/* Body */}
-          <div className="p-3 sm:p-4 overflow-y-auto space-y-3 text-zinc-300 text-xs">
+          <div className="p-4 sm:p-5 overflow-y-auto space-y-3.5 text-slate-200 text-xs flex-1">
             {children}
           </div>
 
           {/* Footer */}
           {footer && (
-            <div className="p-2.5 sm:p-3 border-t border-[#27272a] bg-[#121215] flex items-center justify-end gap-2 shrink-0">
+            <div className="px-4 py-3 border-t border-slate-800 bg-[#161922] rounded-b-2xl flex items-center justify-end gap-2 shrink-0">
               {footer}
             </div>
           )}

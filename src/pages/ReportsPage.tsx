@@ -199,39 +199,37 @@ export const ReportsPage: React.FC = () => {
       className: 'text-right',
       cell: r => (
         <div className="flex items-center justify-end gap-1.5" onClick={e => e.stopPropagation()}>
-          <button
-            onClick={() => handleOpenDetail(r)}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-slate-800"
-            title="Lihat Detail LPJ"
-          >
-            <Eye className="w-4 h-4" />
-          </button>
           {isWakaOrAdmin && (
             <button
               onClick={e => handleOpenReview(r, e)}
-              className="px-2.5 py-1 text-xs font-bold rounded-lg bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 hover:bg-amber-100 flex items-center gap-1"
+              className="px-2.5 py-1 text-xs font-bold rounded-lg bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 hover:bg-indigo-500/20 flex items-center gap-1 transition-colors"
               title="Review & Verifikasi Laporan"
             >
               <Send className="w-3.5 h-3.5" />
               <span>Verifikasi</span>
             </button>
           )}
-          {(isWakaOrAdmin || r.status === 'Diajukan') && (
-            <>
-              <button
-                onClick={e => handleOpenEdit(r, e)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-slate-800"
-              >
-                <Edit2 className="w-4 h-4" />
-              </button>
-              <button
-                onClick={e => handleOpenDelete(r, e)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-slate-800"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </>
-          )}
+          <button
+            onClick={() => handleOpenDetail(r)}
+            className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-950/60 dark:hover:bg-indigo-900 dark:text-indigo-400 transition-colors"
+            title="Lihat Detail LPJ"
+          >
+            <Eye className="w-4 h-4" />
+          </button>
+          <button
+            onClick={e => handleOpenEdit(r, e)}
+            className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:hover:bg-amber-900 dark:text-amber-400 transition-colors"
+            title="Edit Laporan"
+          >
+            <Edit2 className="w-4 h-4" />
+          </button>
+          <button
+            onClick={e => handleOpenDelete(r, e)}
+            className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-400 transition-colors"
+            title="Hapus Laporan"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
         </div>
       )
     }

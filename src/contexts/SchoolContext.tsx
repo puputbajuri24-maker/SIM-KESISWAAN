@@ -19,6 +19,9 @@ import {
   Violation,
   StudentCounseling,
   CounselingSession,
+  HomeVisitRecord,
+  ParentCallLetter,
+  CareerGuidanceRecord,
   StudentAchievement,
   Achievement,
   StudentPermission,
@@ -29,7 +32,9 @@ import {
   OsimMember,
   OsimWorkProgram,
   OsimAspiration,
-  OsimMeeting
+  OsimMeeting,
+  UserProfile,
+  UserRole
 } from '../types';
 import {
   INITIAL_SCHOOL_SETTING,
@@ -45,6 +50,9 @@ import {
   INITIAL_REPORTS,
   INITIAL_VIOLATIONS,
   INITIAL_COUNSELING,
+  INITIAL_HOME_VISITS,
+  INITIAL_PARENT_CALL_LETTERS,
+  INITIAL_CAREER_GUIDANCES,
   INITIAL_ACHIEVEMENTS,
   INITIAL_PERMISSIONS,
   INITIAL_NEEDS_REQUESTS,
@@ -55,11 +63,13 @@ import {
   INITIAL_OSIM_PROGRAMS,
   INITIAL_OSIM_ASPIRATIONS,
   INITIAL_OSIM_MEETINGS,
-  seedAllFirebaseData
+  seedAllFirebaseData,
+  clearAllFirebaseOperationalData
 } from '../services/seedData';
 import { db } from '../services/firebase';
 import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc, addDoc } from 'firebase/firestore';
 import { useAuth } from './AuthContext';
+import { findMatchingClass, resolveStudentClass, isStudentInClass } from '../utils/classResolver';
 
 interface SchoolContextType {
   schoolSetting: SchoolSetting;
@@ -87,17 +97,33 @@ interface SchoolContextType {
   announcements: Announcement[];
   notifications: NotificationItem[];
   auditLogs: AuditLogItem[];
+  clearAuditLogs: () => Promise<void>;
+  refreshAuditLogs: () => Promise<void>;
   
   // Student operations
   addStudent: (student: Omit<Student, 'id' | 'createdAt'>) => Promise<void>;
   updateStudent: (id: string, data: Partial<Student>) => Promise<void>;
   deleteStudent: (id: string) => Promise<void>;
-  importStudentsBulk: (students: Omit<Student, 'id' | 'createdAt'>[]) => Promise<number>;
+  deleteStudentsBulk: (ids: string[]) => Promise<number>;
+  importStudentsBulk: (students: Omit<Student, 'id' | 'createdAt'>[], mode?: 'append' | 'replace') => Promise<number>;
+  clearAllStudents: () => Promise<void>;
+
+  // Class / Rombel operations
+  addClass: (data: Omit<SchoolClass, 'id'>) => Promise<void>;
+  updateClass: (id: string, data: Partial<SchoolClass>) => Promise<void>;
+  deleteClass: (id: string) => Promise<void>;
+  deleteClassesBulk: (ids: string[]) => Promise<number>;
+  clearAllClasses: () => Promise<void>;
+  importClassesBulk: (classList: SchoolClass[], mode?: 'append' | 'replace') => Promise<number>;
+  assignHomeroomTeacher: (classId: string, teacherName: string, teacherId?: string) => Promise<void>;
 
   // Teacher operations
   addTeacher: (data: Omit<Teacher, 'id'>) => Promise<void>;
   updateTeacher: (id: string, data: Partial<Teacher>) => Promise<void>;
   deleteTeacher: (id: string) => Promise<void>;
+  deleteTeachersBulk: (ids: string[]) => Promise<number>;
+  clearAllTeachers: () => Promise<void>;
+  importTeachersBulk: (teachers: Omit<Teacher, 'id'>[], mode?: 'append' | 'replace') => Promise<number>;
 
   // Extracurricular operations
   addExtracurricular: (data: Omit<Extracurricular, 'id'>) => Promise<void>;
@@ -108,8 +134,10 @@ interface SchoolContextType {
   addMember: (data: Omit<ExtracurricularMember, 'id'>) => Promise<void>;
   removeMember: (id: string) => Promise<void>;
   deleteMember: (id: string) => Promise<void>;
+  deleteMembersBulk: (ids: string[]) => Promise<number>;
   updateMember: (id: string, data: Partial<ExtracurricularMember>) => Promise<void>;
-  updateMemberStatus: (id: string, status: 'Aktif' | 'Nonaktif') => Promise<void>;
+  updateMemberStatus: (id: string, status: 'Aktif' | 'Nonaktif' | 'Cuti' | 'Keluar') => Promise<void>;
+  updateMembersStatusBulk: (ids: string[], status: 'Aktif' | 'Cuti' | 'Keluar') => Promise<number>;
 
   // Schedule operations
   addSchedule: (data: Omit<ScheduleEvent, 'id'>) => Promise<{ success: boolean; conflict?: string }>;
@@ -139,11 +167,27 @@ interface SchoolContextType {
   updateViolation: (id: string, data: Partial<StudentViolation>) => Promise<void>;
   deleteViolation: (id: string) => Promise<void>;
 
+  homeVisits: HomeVisitRecord[];
+  parentCallLetters: ParentCallLetter[];
+  careerGuidances: CareerGuidanceRecord[];
+
   addCounseling: (data: Omit<StudentCounseling, 'id' | 'createdAt'>) => Promise<void>;
   updateCounseling: (id: string, data: Partial<StudentCounseling>) => Promise<void>;
   addCounselingSession: (data: Omit<StudentCounseling, 'id' | 'createdAt'>) => Promise<void>;
   updateCounselingSession: (id: string, data: Partial<StudentCounseling>) => Promise<void>;
   deleteCounselingSession: (id: string) => Promise<void>;
+
+  addHomeVisit: (data: Omit<HomeVisitRecord, 'id' | 'createdAt'>) => Promise<void>;
+  updateHomeVisit: (id: string, data: Partial<HomeVisitRecord>) => Promise<void>;
+  deleteHomeVisit: (id: string) => Promise<void>;
+
+  addParentCallLetter: (data: Omit<ParentCallLetter, 'id' | 'createdAt'>) => Promise<void>;
+  updateParentCallLetter: (id: string, data: Partial<ParentCallLetter>) => Promise<void>;
+  deleteParentCallLetter: (id: string) => Promise<void>;
+
+  addCareerGuidance: (data: Omit<CareerGuidanceRecord, 'id' | 'createdAt'>) => Promise<void>;
+  updateCareerGuidance: (id: string, data: Partial<CareerGuidanceRecord>) => Promise<void>;
+  deleteCareerGuidance: (id: string) => Promise<void>;
 
   // Achievements
   addAchievement: (data: Omit<StudentAchievement, 'id' | 'createdAt'>) => Promise<void>;
@@ -159,6 +203,7 @@ interface SchoolContextType {
   // Needs Requests
   addNeedsRequest: (data: Omit<NeedsRequest, 'id' | 'createdAt'>) => Promise<void>;
   reviewNeedsRequest: (id: string, status: 'Disetujui' | 'Ditolak' | 'Revisi', adminNotes?: string, approvedBudget?: number) => Promise<void>;
+  deleteNeedsRequest: (id: string) => Promise<void>;
 
   // OSIM & Intrakurikuler Operations
   osimMembers: OsimMember[];
@@ -180,23 +225,46 @@ interface SchoolContextType {
 
   // Announcements & Notifications
   addAnnouncement: (data: Omit<Announcement, 'id' | 'createdAt'>) => Promise<void>;
+  updateAnnouncement: (id: string, data: Partial<Announcement>) => Promise<void>;
+  deleteAnnouncement: (id: string) => Promise<void>;
+  toggleAnnouncementPin: (id: string) => Promise<void>;
+  toggleAnnouncementStatus: (id: string) => Promise<void>;
+  markAnnouncementAsRead: (id: string, uid?: string) => Promise<void>;
+  markAllAnnouncementsAsReadForUser: (ids: string[], uid?: string) => Promise<void>;
   markNotificationAsRead: (id: string) => void;
   markAllNotificationsAsRead: () => void;
 
-  // Logging & Database Reset / Seed
+  // cPanel Cross-Module Synchronization
+  syncUserFromCPanel: (user: UserProfile, oldUser?: UserProfile) => Promise<void>;
+  syncDeleteUserFromCPanel: (uid: string, user?: UserProfile) => Promise<void>;
+  syncAllCPanelUsers: (users: UserProfile[]) => Promise<void>;
+
+  // Logging, Full Data Management & Database Reset / Seed
   logAction: (action: string, module: string, details: string) => Promise<void>;
   syncWithFirebase: () => Promise<void>;
   seedFirebaseDatabase: () => Promise<{ success: boolean; message: string }>;
+  clearAllOperationalData: () => Promise<{ success: boolean; message: string }>;
+  exportFullDatabaseJSON: () => void;
+  importFullDatabaseJSON: (bundle: any) => Promise<{ success: boolean; message: string }>;
   isSyncing: boolean;
 }
 
 const SchoolContext = createContext<SchoolContextType | undefined>(undefined);
 
+// Helper to ensure students are always sorted alphabetically by name
+export const sortStudentsAlphabetically = <T extends { fullName?: string; studentName?: string; name?: string }>(list: T[]): T[] => {
+  return [...list].sort((a, b) => {
+    const nameA = a.fullName || a.studentName || a.name || '';
+    const nameB = b.fullName || b.studentName || b.name || '';
+    return nameA.localeCompare(nameB, 'id', { sensitivity: 'base' });
+  });
+};
+
 export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { currentUser } = useAuth();
+  const { currentUser, syncUsersFromTeachers } = useAuth();
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
-  // States initialized with rich defaults and synced with localStorage / Firestore
+  // States initialized with clean defaults and synced with localStorage / Firestore
   const [schoolSetting, setSchoolSetting] = useState<SchoolSetting>(() => {
     const saved = localStorage.getItem('sim_school_setting');
     return saved ? JSON.parse(saved) : INITIAL_SCHOOL_SETTING;
@@ -206,12 +274,38 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [activeAcademicYear, setActiveAcademicYearState] = useState<string>('2026/2027');
   const [activeSemester, setActiveSemesterState] = useState<'Ganjil' | 'Genap'>('Ganjil');
 
-  const [classes, setClasses] = useState<SchoolClass[]>(INITIAL_CLASSES);
-  const [teachers, setTeachers] = useState<Teacher[]>(INITIAL_TEACHERS);
+  const [classes, setClasses] = useState<SchoolClass[]>(() => {
+    const saved = localStorage.getItem('sim_classes');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.some(c => c.id === 'c_x_rpl1')) {
+          return INITIAL_CLASSES;
+        }
+        return parsed;
+      } catch (e) {}
+    }
+    return INITIAL_CLASSES;
+  });
+
+  const [teachers, setTeachers] = useState<Teacher[]>(() => {
+    const saved = localStorage.getItem('sim_teachers');
+    return saved ? JSON.parse(saved) : INITIAL_TEACHERS;
+  });
   
   const [students, setStudents] = useState<Student[]>(() => {
     const saved = localStorage.getItem('sim_students');
-    return saved ? JSON.parse(saved) : INITIAL_STUDENTS;
+    if (saved) {
+      try {
+        const parsed: Student[] = JSON.parse(saved);
+        // Wipe legacy mock students (s01, X RPL 1)
+        if (Array.isArray(parsed) && parsed.some(s => s.id === 's01' || s.className === 'X RPL 1')) {
+          return [];
+        }
+        return sortStudentsAlphabetically(parsed);
+      } catch (e) {}
+    }
+    return INITIAL_STUDENTS;
   });
 
   const [extracurriculars, setExtracurriculars] = useState<Extracurricular[]>(() => {
@@ -221,81 +315,269 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const [members, setMembers] = useState<ExtracurricularMember[]>(() => {
     const saved = localStorage.getItem('sim_members');
-    return saved ? JSON.parse(saved) : INITIAL_MEMBERS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.some((m: any) => m.id === 'm1' && m.studentNis === '24251001')) {
+          return [];
+        }
+        return parsed;
+      } catch (e) {}
+    }
+    return INITIAL_MEMBERS;
   });
 
   const [schedules, setSchedules] = useState<ScheduleEvent[]>(() => {
     const saved = localStorage.getItem('sim_schedules');
-    return saved ? JSON.parse(saved) : INITIAL_SCHEDULES;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.some((s: any) => s.id === 'sch_1')) {
+          return [];
+        }
+        return parsed;
+      } catch (e) {}
+    }
+    return INITIAL_SCHEDULES;
   });
 
   const [attendance, setAttendance] = useState<AttendanceSession[]>(() => {
     const saved = localStorage.getItem('sim_attendance');
-    return saved ? JSON.parse(saved) : INITIAL_ATTENDANCE;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.some((a: any) => a.id === 'att_1')) {
+          return [];
+        }
+        return parsed;
+      } catch (e) {}
+    }
+    return INITIAL_ATTENDANCE;
   });
 
   const [activities, setActivities] = useState<SchoolActivity[]>(() => {
     const saved = localStorage.getItem('sim_activities');
-    return saved ? JSON.parse(saved) : INITIAL_ACTIVITIES;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.some((a: any) => a.id === 'act_1')) {
+          return [];
+        }
+        return parsed;
+      } catch (e) {}
+    }
+    return INITIAL_ACTIVITIES;
   });
 
   const [activityReports, setActivityReports] = useState<ActivityReport[]>(() => {
     const saved = localStorage.getItem('sim_reports');
-    return saved ? JSON.parse(saved) : INITIAL_REPORTS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.some((r: any) => r.id === 'rep_1')) {
+          return [];
+        }
+        return parsed;
+      } catch (e) {}
+    }
+    return INITIAL_REPORTS;
   });
 
   const [violations, setViolations] = useState<StudentViolation[]>(() => {
     const saved = localStorage.getItem('sim_violations');
-    return saved ? JSON.parse(saved) : INITIAL_VIOLATIONS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.some((v: any) => v.id === 'v1' || v.studentId === 's09')) {
+          return [];
+        }
+        return parsed;
+      } catch (e) {}
+    }
+    return INITIAL_VIOLATIONS;
   });
 
   const [counseling, setCounseling] = useState<StudentCounseling[]>(() => {
     const saved = localStorage.getItem('sim_counseling');
-    return saved ? JSON.parse(saved) : INITIAL_COUNSELING;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.some((c: any) => c.id === 'c1' || c.studentId === 's03')) {
+          return [];
+        }
+        return parsed;
+      } catch (e) {}
+    }
+    return INITIAL_COUNSELING;
+  });
+
+  const [homeVisits, setHomeVisits] = useState<HomeVisitRecord[]>(() => {
+    const saved = localStorage.getItem('sim_home_visits');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.some((h: any) => h.id === 'hv1')) {
+          return [];
+        }
+        return parsed;
+      } catch (e) {}
+    }
+    return INITIAL_HOME_VISITS;
+  });
+
+  const [parentCallLetters, setParentCallLetters] = useState<ParentCallLetter[]>(() => {
+    const saved = localStorage.getItem('sim_parent_call_letters');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.some((p: any) => p.id === 'sp1')) {
+          return [];
+        }
+        return parsed;
+      } catch (e) {}
+    }
+    return INITIAL_PARENT_CALL_LETTERS;
+  });
+
+  const [careerGuidances, setCareerGuidances] = useState<CareerGuidanceRecord[]>(() => {
+    const saved = localStorage.getItem('sim_career_guidances');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.some((cg: any) => cg.id === 'cg1')) {
+          return [];
+        }
+        return parsed;
+      } catch (e) {}
+    }
+    return INITIAL_CAREER_GUIDANCES;
   });
 
   const [achievements, setAchievements] = useState<StudentAchievement[]>(() => {
     const saved = localStorage.getItem('sim_achievements');
-    return saved ? JSON.parse(saved) : INITIAL_ACHIEVEMENTS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.some((ach: any) => ach.id === 'ach_1')) {
+          return [];
+        }
+        return parsed;
+      } catch (e) {}
+    }
+    return INITIAL_ACHIEVEMENTS;
   });
 
   const [permissions, setPermissions] = useState<StudentPermission[]>(() => {
     const saved = localStorage.getItem('sim_permissions');
-    return saved ? JSON.parse(saved) : INITIAL_PERMISSIONS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.some((p: any) => p.id === 'perm_1')) {
+          return [];
+        }
+        return parsed;
+      } catch (e) {}
+    }
+    return INITIAL_PERMISSIONS;
   });
 
   const [needsRequests, setNeedsRequests] = useState<NeedsRequest[]>(() => {
     const saved = localStorage.getItem('sim_needs');
-    return saved ? JSON.parse(saved) : INITIAL_NEEDS_REQUESTS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.some((n: any) => n.id === 'need_1')) {
+          return [];
+        }
+        return parsed;
+      } catch (e) {}
+    }
+    return INITIAL_NEEDS_REQUESTS;
   });
 
   const [osimMembers, setOsimMembers] = useState<OsimMember[]>(() => {
     const saved = localStorage.getItem('sim_osim_members');
-    return saved ? JSON.parse(saved) : INITIAL_OSIM_MEMBERS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.some((o: any) => o.id === 'om1')) {
+          return [];
+        }
+        return parsed;
+      } catch (e) {}
+    }
+    return INITIAL_OSIM_MEMBERS;
   });
 
   const [osimPrograms, setOsimPrograms] = useState<OsimWorkProgram[]>(() => {
     const saved = localStorage.getItem('sim_osim_programs');
-    return saved ? JSON.parse(saved) : INITIAL_OSIM_PROGRAMS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.some((op: any) => op.id === 'op1')) {
+          return [];
+        }
+        return parsed;
+      } catch (e) {}
+    }
+    return INITIAL_OSIM_PROGRAMS;
   });
 
   const [osimAspirations, setOsimAspirations] = useState<OsimAspiration[]>(() => {
     const saved = localStorage.getItem('sim_osim_aspirations');
-    return saved ? JSON.parse(saved) : INITIAL_OSIM_ASPIRATIONS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.some((oa: any) => oa.id === 'oa1')) {
+          return [];
+        }
+        return parsed;
+      } catch (e) {}
+    }
+    return INITIAL_OSIM_ASPIRATIONS;
   });
 
   const [osimMeetings, setOsimMeetings] = useState<OsimMeeting[]>(() => {
     const saved = localStorage.getItem('sim_osim_meetings');
-    return saved ? JSON.parse(saved) : INITIAL_OSIM_MEETINGS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.some((om: any) => om.id === 'ome1')) {
+          return [];
+        }
+        return parsed;
+      } catch (e) {}
+    }
+    return INITIAL_OSIM_MEETINGS;
   });
 
-  const [announcements, setAnnouncements] = useState<Announcement[]>(INITIAL_ANNOUNCEMENTS);
+  const [announcements, setAnnouncements] = useState<Announcement[]>(() => {
+    const local = localStorage.getItem('sim_announcements');
+    if (local) {
+      try {
+        const parsed = JSON.parse(local);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {}
+    }
+    return INITIAL_ANNOUNCEMENTS;
+  });
   const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
-  const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>(INITIAL_AUDIT_LOGS);
+  const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>(() => {
+    const local = localStorage.getItem('sim_audit_logs');
+    if (local) {
+      try {
+        const parsed = JSON.parse(local);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (e) {}
+    }
+    return INITIAL_AUDIT_LOGS;
+  });
 
   // Persistence to local state
   useEffect(() => {
     localStorage.setItem('sim_school_setting', JSON.stringify(schoolSetting));
+    localStorage.setItem('sim_classes', JSON.stringify(classes));
+    localStorage.setItem('sim_teachers', JSON.stringify(teachers));
     localStorage.setItem('sim_students', JSON.stringify(students));
     localStorage.setItem('sim_extracurriculars', JSON.stringify(extracurriculars));
     localStorage.setItem('sim_members', JSON.stringify(members));
@@ -305,6 +587,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     localStorage.setItem('sim_reports', JSON.stringify(activityReports));
     localStorage.setItem('sim_violations', JSON.stringify(violations));
     localStorage.setItem('sim_counseling', JSON.stringify(counseling));
+    localStorage.setItem('sim_home_visits', JSON.stringify(homeVisits));
+    localStorage.setItem('sim_parent_call_letters', JSON.stringify(parentCallLetters));
+    localStorage.setItem('sim_career_guidances', JSON.stringify(careerGuidances));
     localStorage.setItem('sim_achievements', JSON.stringify(achievements));
     localStorage.setItem('sim_permissions', JSON.stringify(permissions));
     localStorage.setItem('sim_needs', JSON.stringify(needsRequests));
@@ -312,8 +597,12 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     localStorage.setItem('sim_osim_programs', JSON.stringify(osimPrograms));
     localStorage.setItem('sim_osim_aspirations', JSON.stringify(osimAspirations));
     localStorage.setItem('sim_osim_meetings', JSON.stringify(osimMeetings));
+    localStorage.setItem('sim_announcements', JSON.stringify(announcements));
+    localStorage.setItem('sim_audit_logs', JSON.stringify(auditLogs));
   }, [
     schoolSetting,
+    classes,
+    teachers,
     students,
     extracurriculars,
     members,
@@ -323,127 +612,216 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     activityReports,
     violations,
     counseling,
+    homeVisits,
+    parentCallLetters,
+    careerGuidances,
     achievements,
     permissions,
     needsRequests,
     osimMembers,
     osimPrograms,
     osimAspirations,
-    osimMeetings
+    osimMeetings,
+    announcements,
+    auditLogs
   ]);
 
-  // Sync with Firestore if collections exist
+  // Resilient automatic reconciliation between students and classes
+  useEffect(() => {
+    if (!classes || classes.length === 0 || !students || students.length === 0) return;
+
+    let hasChanges = false;
+    const reconciled = students.map(s => {
+      const matched = resolveStudentClass(s, classes);
+      if (matched) {
+        if (s.classId !== matched.id || s.className !== matched.name) {
+          hasChanges = true;
+          return {
+            ...s,
+            classId: matched.id,
+            className: matched.name,
+            major: s.major || matched.major
+          };
+        }
+      }
+      return s;
+    });
+
+    if (hasChanges) {
+      setStudents(reconciled);
+      try {
+        localStorage.setItem('sim_students', JSON.stringify(reconciled));
+      } catch (e) {}
+    }
+  }, [classes, students.length]);
+
+  // Sync with Firestore if collections exist with timeout resilience
   const syncWithFirebase = async () => {
     setIsSyncing(true);
     try {
-      // School Settings Sync
-      const schoolSnap = await getDocs(collection(db, 'schools'));
-      if (!schoolSnap.empty) {
-        const loadedSchool = schoolSnap.docs[0].data() as SchoolSetting;
-        if (loadedSchool && loadedSchool.name) {
-          setSchoolSetting(prev => ({ ...prev, ...loadedSchool }));
-          if (loadedSchool.currentAcademicYear) {
-            setActiveAcademicYearState(loadedSchool.currentAcademicYear);
+      // Execute sync with a graceful 3.5-second timeout so offline mode works instantly
+      const syncPromise = (async () => {
+        // School Settings Sync
+        const schoolSnap = await getDocs(collection(db, 'schools'));
+        const isDbInitialized = !schoolSnap.empty;
+
+        if (isDbInitialized) {
+          const loadedSchool = schoolSnap.docs[0].data() as SchoolSetting;
+          if (loadedSchool && loadedSchool.name) {
+            setSchoolSetting(prev => ({ ...prev, ...loadedSchool }));
+            if (loadedSchool.currentAcademicYear) {
+              setActiveAcademicYearState(loadedSchool.currentAcademicYear);
+            }
+            if (loadedSchool.currentSemester) {
+              setActiveSemesterState(loadedSchool.currentSemester);
+            }
           }
-          if (loadedSchool.currentSemester) {
-            setActiveSemesterState(loadedSchool.currentSemester);
+
+          // Classes Sync
+          const classSnap = await getDocs(collection(db, 'classes'));
+          const loadedClasses: SchoolClass[] = [];
+          classSnap.forEach(doc => loadedClasses.push({ id: doc.id, ...doc.data() } as SchoolClass));
+          setClasses(loadedClasses);
+
+          // Students Sync
+          const studentSnap = await getDocs(collection(db, 'students'));
+          const loadedStudents: Student[] = [];
+          studentSnap.forEach(doc => loadedStudents.push({ id: doc.id, ...doc.data() } as Student));
+          setStudents(sortStudentsAlphabetically(loadedStudents));
+
+          // Teachers Sync
+          const teacherSnap = await getDocs(collection(db, 'teachers'));
+          const loadedTeachers: Teacher[] = [];
+          teacherSnap.forEach(doc => loadedTeachers.push({ id: doc.id, ...doc.data() } as Teacher));
+          setTeachers(loadedTeachers);
+
+          // Extracurriculars Sync
+          const ekskulSnap = await getDocs(collection(db, 'extracurriculars'));
+          const loadedEkskul: Extracurricular[] = [];
+          ekskulSnap.forEach(doc => loadedEkskul.push({ id: doc.id, ...doc.data() } as Extracurricular));
+          setExtracurriculars(loadedEkskul);
+
+          // Members Sync
+          const memberSnap = await getDocs(collection(db, 'extracurricular_members'));
+          const loadedMembers: ExtracurricularMember[] = [];
+          memberSnap.forEach(doc => loadedMembers.push({ id: doc.id, ...doc.data() } as ExtracurricularMember));
+          setMembers(loadedMembers);
+
+          // Schedules Sync
+          const schedSnap = await getDocs(collection(db, 'schedules'));
+          const loadedSched: ScheduleEvent[] = [];
+          schedSnap.forEach(doc => loadedSched.push({ id: doc.id, ...doc.data() } as ScheduleEvent));
+          setSchedules(loadedSched);
+
+          // Attendance Sync
+          const attSnap = await getDocs(collection(db, 'attendance'));
+          const loadedAtt: AttendanceSession[] = [];
+          attSnap.forEach(doc => loadedAtt.push({ id: doc.id, ...doc.data() } as AttendanceSession));
+          setAttendance(loadedAtt);
+
+          // Activities Sync
+          const actSnap = await getDocs(collection(db, 'activities'));
+          const loadedAct: SchoolActivity[] = [];
+          actSnap.forEach(doc => loadedAct.push({ id: doc.id, ...doc.data() } as SchoolActivity));
+          setActivities(loadedAct);
+
+          // Activity Reports Sync
+          const repSnap = await getDocs(collection(db, 'activity_reports'));
+          const loadedRep: ActivityReport[] = [];
+          repSnap.forEach(doc => loadedRep.push({ id: doc.id, ...doc.data() } as ActivityReport));
+          setActivityReports(loadedRep);
+
+          // Violations Sync
+          const violSnap = await getDocs(collection(db, 'violations'));
+          const loadedViol: StudentViolation[] = [];
+          violSnap.forEach(doc => loadedViol.push({ id: doc.id, ...doc.data() } as StudentViolation));
+          setViolations(loadedViol);
+
+          // Achievements Sync
+          const achSnap = await getDocs(collection(db, 'achievements'));
+          const loadedAch: StudentAchievement[] = [];
+          achSnap.forEach(doc => loadedAch.push({ id: doc.id, ...doc.data() } as StudentAchievement));
+          setAchievements(loadedAch);
+
+          // BK Collections Sync
+          const csSnap = await getDocs(collection(db, 'counseling'));
+          const loadedCs: StudentCounseling[] = [];
+          csSnap.forEach(doc => loadedCs.push({ id: doc.id, ...doc.data() } as StudentCounseling));
+          setCounseling(loadedCs);
+
+          const hvSnap = await getDocs(collection(db, 'home_visits'));
+          const loadedHv: HomeVisitRecord[] = [];
+          hvSnap.forEach(doc => loadedHv.push({ id: doc.id, ...doc.data() } as HomeVisitRecord));
+          setHomeVisits(loadedHv);
+
+          const pclSnap = await getDocs(collection(db, 'parent_call_letters'));
+          const loadedPcl: ParentCallLetter[] = [];
+          pclSnap.forEach(doc => loadedPcl.push({ id: doc.id, ...doc.data() } as ParentCallLetter));
+          setParentCallLetters(loadedPcl);
+
+          const cgSnap = await getDocs(collection(db, 'career_guidances'));
+          const loadedCg: CareerGuidanceRecord[] = [];
+          cgSnap.forEach(doc => loadedCg.push({ id: doc.id, ...doc.data() } as CareerGuidanceRecord));
+          setCareerGuidances(loadedCg);
+
+          // Permissions Sync
+          const permSnap = await getDocs(collection(db, 'permissions'));
+          const loadedPerm: StudentPermission[] = [];
+          permSnap.forEach(doc => loadedPerm.push({ id: doc.id, ...doc.data() } as StudentPermission));
+          setPermissions(loadedPerm);
+
+          // Needs Requests Sync
+          const needSnap = await getDocs(collection(db, 'needs_requests'));
+          const loadedNeed: NeedsRequest[] = [];
+          needSnap.forEach(doc => loadedNeed.push({ id: doc.id, ...doc.data() } as NeedsRequest));
+          setNeedsRequests(loadedNeed);
+
+          // OSIM Collections Sync
+          const osimMemSnap = await getDocs(collection(db, 'osim_members'));
+          const loadedOsimMem: OsimMember[] = [];
+          osimMemSnap.forEach(doc => loadedOsimMem.push({ id: doc.id, ...doc.data() } as OsimMember));
+          setOsimMembers(loadedOsimMem);
+
+          const osimProgSnap = await getDocs(collection(db, 'osim_programs'));
+          const loadedOsimProg: OsimWorkProgram[] = [];
+          osimProgSnap.forEach(doc => loadedOsimProg.push({ id: doc.id, ...doc.data() } as OsimWorkProgram));
+          setOsimPrograms(loadedOsimProg);
+
+          const osimAspSnap = await getDocs(collection(db, 'osim_aspirations'));
+          const loadedOsimAsp: OsimAspiration[] = [];
+          osimAspSnap.forEach(doc => loadedOsimAsp.push({ id: doc.id, ...doc.data() } as OsimAspiration));
+          setOsimAspirations(loadedOsimAsp);
+
+          const osimMeetSnap = await getDocs(collection(db, 'osim_meetings'));
+          const loadedOsimMeet: OsimMeeting[] = [];
+          osimMeetSnap.forEach(doc => loadedOsimMeet.push({ id: doc.id, ...doc.data() } as OsimMeeting));
+          setOsimMeetings(loadedOsimMeet);
+
+          // Announcements Sync
+          const annSnap = await getDocs(collection(db, 'announcements'));
+          if (!annSnap.empty) {
+            const loadedAnn: Announcement[] = [];
+            annSnap.forEach(doc => loadedAnn.push({ id: doc.id, ...doc.data() } as Announcement));
+            setAnnouncements(loadedAnn);
+          }
+
+          // Audit Logs Sync from Firestore
+          const auditSnap = await getDocs(collection(db, 'audit_logs'));
+          if (!auditSnap.empty) {
+            const loadedLogs: AuditLogItem[] = [];
+            auditSnap.forEach(doc => loadedLogs.push({ id: doc.id, ...doc.data() } as AuditLogItem));
+            // Sort newest first
+            loadedLogs.sort((a, b) => (b.id > a.id ? 1 : -1));
+            setAuditLogs(loadedLogs);
+            localStorage.setItem('sim_audit_logs', JSON.stringify(loadedLogs));
           }
         }
-      }
+      })();
 
-      const studentSnap = await getDocs(collection(db, 'students'));
-      if (!studentSnap.empty) {
-        const loadedStudents: Student[] = [];
-        studentSnap.forEach(doc => loadedStudents.push({ id: doc.id, ...doc.data() } as Student));
-        setStudents(loadedStudents);
-      }
-
-      const ekskulSnap = await getDocs(collection(db, 'extracurriculars'));
-      if (!ekskulSnap.empty) {
-        const loadedEkskul: Extracurricular[] = [];
-        ekskulSnap.forEach(doc => loadedEkskul.push({ id: doc.id, ...doc.data() } as Extracurricular));
-        setExtracurriculars(loadedEkskul);
-      }
-
-      const memberSnap = await getDocs(collection(db, 'extracurricular_members'));
-      if (!memberSnap.empty) {
-        const loadedMembers: ExtracurricularMember[] = [];
-        memberSnap.forEach(doc => loadedMembers.push({ id: doc.id, ...doc.data() } as ExtracurricularMember));
-        setMembers(loadedMembers);
-      }
-
-      const schedSnap = await getDocs(collection(db, 'schedules'));
-      if (!schedSnap.empty) {
-        const loadedSched: ScheduleEvent[] = [];
-        schedSnap.forEach(doc => loadedSched.push({ id: doc.id, ...doc.data() } as ScheduleEvent));
-        setSchedules(loadedSched);
-      }
-
-      const attSnap = await getDocs(collection(db, 'attendance'));
-      if (!attSnap.empty) {
-        const loadedAtt: AttendanceSession[] = [];
-        attSnap.forEach(doc => loadedAtt.push({ id: doc.id, ...doc.data() } as AttendanceSession));
-        setAttendance(loadedAtt);
-      }
-
-      const actSnap = await getDocs(collection(db, 'activities'));
-      if (!actSnap.empty) {
-        const loadedAct: SchoolActivity[] = [];
-        actSnap.forEach(doc => loadedAct.push({ id: doc.id, ...doc.data() } as SchoolActivity));
-        setActivities(loadedAct);
-      }
-
-      const repSnap = await getDocs(collection(db, 'activity_reports'));
-      if (!repSnap.empty) {
-        const loadedRep: ActivityReport[] = [];
-        repSnap.forEach(doc => loadedRep.push({ id: doc.id, ...doc.data() } as ActivityReport));
-        setActivityReports(loadedRep);
-      }
-
-      const violSnap = await getDocs(collection(db, 'violations'));
-      if (!violSnap.empty) {
-        const loadedViol: StudentViolation[] = [];
-        violSnap.forEach(doc => loadedViol.push({ id: doc.id, ...doc.data() } as StudentViolation));
-        setViolations(loadedViol);
-      }
-
-      const achSnap = await getDocs(collection(db, 'achievements'));
-      if (!achSnap.empty) {
-        const loadedAch: StudentAchievement[] = [];
-        achSnap.forEach(doc => loadedAch.push({ id: doc.id, ...doc.data() } as StudentAchievement));
-        setAchievements(loadedAch);
-      }
-
-      // OSIM Collections Sync
-      const osimMemSnap = await getDocs(collection(db, 'osim_members'));
-      if (!osimMemSnap.empty) {
-        const loadedOsimMem: OsimMember[] = [];
-        osimMemSnap.forEach(doc => loadedOsimMem.push({ id: doc.id, ...doc.data() } as OsimMember));
-        setOsimMembers(loadedOsimMem);
-      }
-
-      const osimProgSnap = await getDocs(collection(db, 'osim_programs'));
-      if (!osimProgSnap.empty) {
-        const loadedOsimProg: OsimWorkProgram[] = [];
-        osimProgSnap.forEach(doc => loadedOsimProg.push({ id: doc.id, ...doc.data() } as OsimWorkProgram));
-        setOsimPrograms(loadedOsimProg);
-      }
-
-      const osimAspSnap = await getDocs(collection(db, 'osim_aspirations'));
-      if (!osimAspSnap.empty) {
-        const loadedOsimAsp: OsimAspiration[] = [];
-        osimAspSnap.forEach(doc => loadedOsimAsp.push({ id: doc.id, ...doc.data() } as OsimAspiration));
-        setOsimAspirations(loadedOsimAsp);
-      }
-
-      const osimMeetSnap = await getDocs(collection(db, 'osim_meetings'));
-      if (!osimMeetSnap.empty) {
-        const loadedOsimMeet: OsimMeeting[] = [];
-        osimMeetSnap.forEach(doc => loadedOsimMeet.push({ id: doc.id, ...doc.data() } as OsimMeeting));
-        setOsimMeetings(loadedOsimMeet);
-      }
+      const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 3000));
+      await Promise.race([syncPromise, timeoutPromise]);
     } catch (e) {
-      console.warn('Firestore sync note (using local cache):', e);
+      console.warn('Firestore sync note (active offline local cache):', e);
     } finally {
       setIsSyncing(false);
     }
@@ -464,23 +842,209 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return res;
   };
 
+  const clearAllOperationalData = async () => {
+    setIsSyncing(true);
+    try {
+      setStudents([]);
+      setMembers([]);
+      setSchedules([]);
+      setAttendance([]);
+      setActivities([]);
+      setActivityReports([]);
+      setViolations([]);
+      setCounseling([]);
+      setHomeVisits([]);
+      setParentCallLetters([]);
+      setCareerGuidances([]);
+      setAchievements([]);
+      setPermissions([]);
+      setNeedsRequests([]);
+      setOsimMembers([]);
+      setOsimPrograms([]);
+      setOsimAspirations([]);
+      setOsimMeetings([]);
+
+      const keysToClear = [
+        'sim_students',
+        'sim_members',
+        'sim_schedules',
+        'sim_attendance',
+        'sim_activities',
+        'sim_reports',
+        'sim_violations',
+        'sim_counseling',
+        'sim_home_visits',
+        'sim_parent_call_letters',
+        'sim_career_guidances',
+        'sim_achievements',
+        'sim_permissions',
+        'sim_needs',
+        'sim_osim_members',
+        'sim_osim_programs',
+        'sim_osim_aspirations',
+        'sim_osim_meetings'
+      ];
+      keysToClear.forEach(k => {
+        try {
+          localStorage.setItem(k, JSON.stringify([]));
+        } catch (e) {}
+      });
+
+      await clearAllFirebaseOperationalData();
+      await logAction('CLEAR_ALL_DATA', 'Manajemen Database', 'Mengosongkan seluruh data operasional bawaan');
+      return { success: true, message: 'Seluruh data bawaan berhasil dibersihkan. Database siap menerima unggahan data resmi sekolah.' };
+    } catch (err: any) {
+      console.error('Error in clearAllOperationalData:', err);
+      return { success: false, message: err?.message || 'Gagal membersihkan data bawaan.' };
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const exportFullDatabaseJSON = () => {
+    const exportBundle = {
+      appVersion: '2.0-SIM-KESISWAAN',
+      exportedAt: new Date().toISOString(),
+      schoolSetting,
+      academicYears,
+      classes,
+      teachers,
+      students,
+      extracurriculars,
+      members,
+      schedules,
+      attendance,
+      activities,
+      activityReports,
+      violations,
+      counseling,
+      homeVisits,
+      parentCallLetters,
+      careerGuidances,
+      achievements,
+      permissions,
+      needsRequests,
+      osimMembers,
+      osimPrograms,
+      osimAspirations,
+      osimMeetings
+    };
+
+    const blob = new Blob([JSON.stringify(exportBundle, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `SIM_KESISWAAN_DATABASE_${(schoolSetting.name || 'SEKOLAH').replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const importFullDatabaseJSON = async (bundle: any) => {
+    if (!bundle || typeof bundle !== 'object') {
+      return { success: false, message: 'Format berkas JSON cadangan tidak valid.' };
+    }
+
+    setIsSyncing(true);
+    try {
+      if (bundle.schoolSetting) setSchoolSetting(bundle.schoolSetting);
+      if (Array.isArray(bundle.classes)) setClasses(bundle.classes);
+      if (Array.isArray(bundle.teachers)) setTeachers(bundle.teachers);
+      if (Array.isArray(bundle.students)) setStudents(sortStudentsAlphabetically(bundle.students));
+      if (Array.isArray(bundle.extracurriculars)) setExtracurriculars(bundle.extracurriculars);
+      if (Array.isArray(bundle.members)) setMembers(bundle.members);
+      if (Array.isArray(bundle.schedules)) setSchedules(bundle.schedules);
+      if (Array.isArray(bundle.attendance)) setAttendance(bundle.attendance);
+      if (Array.isArray(bundle.activities)) setActivities(bundle.activities);
+      if (Array.isArray(bundle.activityReports)) setActivityReports(bundle.activityReports);
+      if (Array.isArray(bundle.violations)) setViolations(bundle.violations);
+      if (Array.isArray(bundle.counseling)) setCounseling(bundle.counseling);
+      if (Array.isArray(bundle.homeVisits)) setHomeVisits(bundle.homeVisits);
+      if (Array.isArray(bundle.parentCallLetters)) setParentCallLetters(bundle.parentCallLetters);
+      if (Array.isArray(bundle.careerGuidances)) setCareerGuidances(bundle.careerGuidances);
+      if (Array.isArray(bundle.achievements)) setAchievements(bundle.achievements);
+      if (Array.isArray(bundle.permissions)) setPermissions(bundle.permissions);
+      if (Array.isArray(bundle.needsRequests)) setNeedsRequests(bundle.needsRequests);
+      if (Array.isArray(bundle.osimMembers)) setOsimMembers(bundle.osimMembers);
+      if (Array.isArray(bundle.osimPrograms)) setOsimPrograms(bundle.osimPrograms);
+      if (Array.isArray(bundle.osimAspirations)) setOsimAspirations(bundle.osimAspirations);
+      if (Array.isArray(bundle.osimMeetings)) setOsimMeetings(bundle.osimMeetings);
+
+      await logAction('IMPORT_FULL_DATABASE', 'Manajemen Database', 'Memulihkan database lengkap dari berkas JSON');
+      return { success: true, message: 'Database lengkap berhasil diimpor dan dipulihkan!' };
+    } catch (err: any) {
+      return { success: false, message: err?.message || 'Gagal memulihkan database dari JSON.' };
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const logAction = async (action: string, module: string, details: string) => {
     const newLog: AuditLogItem = {
-      id: `log_${Date.now()}`,
+      id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       userId: currentUser?.uid || 'system',
       userEmail: currentUser?.email || 'system@sekolah.sch.id',
       userName: currentUser?.displayName || 'Sistem SIM-KESISWAAN',
-      userRole: currentUser?.role || 'admin',
+      userRole: currentUser?.role || 'super_admin',
       action,
       module,
       details,
-      timestamp: new Date().toLocaleString('id-ID')
+      timestamp: new Date().toLocaleString('id-ID', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      })
     };
-    setAuditLogs(prev => [newLog, ...prev]);
+    setAuditLogs(prev => {
+      const next = [newLog, ...prev].slice(0, 1000);
+      try {
+        localStorage.setItem('sim_audit_logs', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
     try {
       await setDoc(doc(db, 'audit_logs', newLog.id), newLog);
     } catch (e) {
       // Local fallback
+    }
+  };
+
+  const clearAuditLogs = async () => {
+    setAuditLogs([]);
+    localStorage.removeItem('sim_audit_logs');
+    try {
+      const snap = await getDocs(collection(db, 'audit_logs'));
+      for (const d of snap.docs) {
+        await deleteDoc(d.ref);
+      }
+    } catch (e) {}
+    await logAction('CLEAR_LOGS', 'Audit Log & Keamanan', 'Administrator mengosongkan seluruh riwayat log aktivitas aplikasi');
+  };
+
+  const refreshAuditLogs = async () => {
+    try {
+      const snap = await getDocs(collection(db, 'audit_logs'));
+      if (!snap.empty) {
+        const loaded: AuditLogItem[] = [];
+        snap.forEach(d => loaded.push({ id: d.id, ...d.data() } as AuditLogItem));
+        loaded.sort((a, b) => (b.id > a.id ? 1 : -1));
+        setAuditLogs(loaded);
+        localStorage.setItem('sim_audit_logs', JSON.stringify(loaded));
+      } else {
+        const raw = localStorage.getItem('sim_audit_logs');
+        if (raw) {
+          setAuditLogs(JSON.parse(raw));
+        }
+      }
+    } catch (e) {
+      const raw = localStorage.getItem('sim_audit_logs');
+      if (raw) {
+        setAuditLogs(JSON.parse(raw));
+      }
     }
   };
 
@@ -512,14 +1076,18 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Student Operations
   const addStudent = async (data: Omit<Student, 'id' | 'createdAt'>) => {
+    const matchedClass = findMatchingClass(data.classId || data.className, classes);
     const newStudent: Student = {
       id: `s_${Date.now()}`,
       ...data,
+      classId: matchedClass?.id || data.classId || (classes[0]?.id || 'c_default'),
+      className: matchedClass?.name || data.className || (classes[0]?.name || 'X'),
+      major: matchedClass?.major || data.major || 'Umum',
       violationPoints: 0,
       achievementPoints: 0,
       createdAt: new Date().toISOString().split('T')[0]
     };
-    setStudents(prev => [newStudent, ...prev]);
+    setStudents(prev => sortStudentsAlphabetically([newStudent, ...prev]));
     try {
       await setDoc(doc(db, 'students', newStudent.id), newStudent);
     } catch (e) {}
@@ -527,9 +1095,18 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateStudent = async (id: string, data: Partial<Student>) => {
-    setStudents(prev => prev.map(s => s.id === id ? { ...s, ...data, updatedAt: new Date().toISOString() } : s));
+    const matchedClass = (data.classId || data.className) ? findMatchingClass(data.classId || data.className, classes) : undefined;
+    const finalData = {
+      ...data,
+      ...(matchedClass ? {
+        classId: matchedClass.id,
+        className: matchedClass.name,
+        major: data.major || matchedClass.major
+      } : {})
+    };
+    setStudents(prev => sortStudentsAlphabetically(prev.map(s => s.id === id ? { ...s, ...finalData, updatedAt: new Date().toISOString() } : s)));
     try {
-      await updateDoc(doc(db, 'students', id), data);
+      await updateDoc(doc(db, 'students', id), finalData);
     } catch (e) {}
     logAction('UPDATE_STUDENT', 'Data Siswa', `Memperbarui data siswa ID: ${id}`);
   };
@@ -543,35 +1120,944 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     logAction('DELETE_STUDENT', 'Data Siswa', `Menghapus data siswa: ${target?.fullName || id}`);
   };
 
-  const importStudentsBulk = async (importedList: Omit<Student, 'id' | 'createdAt'>[]) => {
-    const newStudents: Student[] = importedList.map((s, idx) => ({
-      id: `s_imp_${Date.now()}_${idx}`,
-      ...s,
-      violationPoints: s.violationPoints || 0,
-      achievementPoints: s.achievementPoints || 0,
-      createdAt: new Date().toISOString().split('T')[0]
-    }));
-    setStudents(prev => [...newStudents, ...prev]);
-    logAction('IMPORT_STUDENTS', 'Data Siswa', `Mengimpor ${newStudents.length} data siswa dari file Excel/CSV`);
+  const deleteStudentsBulk = async (ids: string[]) => {
+    if (!ids || ids.length === 0) return 0;
+    const idSet = new Set(ids);
+    setStudents(prev => {
+      const remaining = prev.filter(s => !idSet.has(s.id));
+      try {
+        localStorage.setItem('sim_students', JSON.stringify(remaining));
+      } catch (e) {}
+      return remaining;
+    });
+
+    // Cascade clean related student records
+    setMembers(prev => {
+      const remaining = prev.filter(m => !idSet.has(m.studentId));
+      try { localStorage.setItem('sim_members', JSON.stringify(remaining)); } catch (e) {}
+      return remaining;
+    });
+    setViolations(prev => {
+      const remaining = prev.filter(v => !idSet.has(v.studentId));
+      try { localStorage.setItem('sim_violations', JSON.stringify(remaining)); } catch (e) {}
+      return remaining;
+    });
+    setCounseling(prev => {
+      const remaining = prev.filter(c => !idSet.has(c.studentId));
+      try { localStorage.setItem('sim_counseling', JSON.stringify(remaining)); } catch (e) {}
+      return remaining;
+    });
+    setAchievements(prev => {
+      const remaining = prev.filter(a => !idSet.has(a.studentId));
+      try { localStorage.setItem('sim_achievements', JSON.stringify(remaining)); } catch (e) {}
+      return remaining;
+    });
+    setPermissions(prev => {
+      const remaining = prev.filter(p => !idSet.has(p.studentId));
+      try { localStorage.setItem('sim_permissions', JSON.stringify(remaining)); } catch (e) {}
+      return remaining;
+    });
+    setHomeVisits(prev => {
+      const remaining = prev.filter(h => !idSet.has(h.studentId));
+      try { localStorage.setItem('sim_home_visits', JSON.stringify(remaining)); } catch (e) {}
+      return remaining;
+    });
+    setParentCallLetters(prev => {
+      const remaining = prev.filter(l => !idSet.has(l.studentId));
+      try { localStorage.setItem('sim_parent_call_letters', JSON.stringify(remaining)); } catch (e) {}
+      return remaining;
+    });
+    setOsimMembers(prev => {
+      const remaining = prev.filter(o => !idSet.has(o.studentId));
+      try { localStorage.setItem('sim_osim_members', JSON.stringify(remaining)); } catch (e) {}
+      return remaining;
+    });
+
+    // Delete documents in Firestore
+    try {
+      const deletePromises = ids.map(id => deleteDoc(doc(db, 'students', id)));
+      await Promise.allSettled(deletePromises);
+    } catch (e) {
+      console.warn('Firestore bulk delete students error:', e);
+    }
+
+    logAction('DELETE_STUDENTS_BULK', 'Data Siswa', `Menghapus massal ${ids.length} data siswa beserta rekam jejak terkait`);
+    return ids.length;
+  };
+
+  const clearAllStudents = async () => {
+    setStudents([]);
+    try {
+      localStorage.setItem('sim_students', JSON.stringify([]));
+      const snap = await getDocs(collection(db, 'students'));
+      const promises = snap.docs.map(d => deleteDoc(doc(db, 'students', d.id)));
+      await Promise.allSettled(promises);
+    } catch (e) {
+      console.warn('Firestore clear students note:', e);
+    }
+    await logAction('CLEAR_STUDENTS', 'Data Siswa', 'Mengosongkan seluruh data siswa master');
+  };
+
+  const importStudentsBulk = async (
+    importedList: Omit<Student, 'id' | 'createdAt'>[],
+    mode: 'append' | 'replace' = 'append'
+  ) => {
+    // Auto-detect and register new classes from imported student class names if needed
+    const existingClassNames = new Set(classes.map(c => c.name.trim().toLowerCase()));
+    const newClassesToCreate: SchoolClass[] = [];
+
+    importedList.forEach(s => {
+      const cName = (s.className || '').trim();
+      const existingMatch = findMatchingClass(cName, classes);
+      if (cName && !existingMatch && !existingClassNames.has(cName.toLowerCase())) {
+        existingClassNames.add(cName.toLowerCase());
+        
+        // Infer grade
+        let grade: 'X' | 'XI' | 'XII' = 'X';
+        const nameUpper = cName.toUpperCase();
+        if (nameUpper.includes('XII') || nameUpper.startsWith('12')) {
+          grade = 'XII';
+        } else if (nameUpper.includes('XI') || nameUpper.startsWith('11')) {
+          grade = 'XI';
+        }
+
+        // Infer major
+        let major = s.major || 'Umum';
+        if (!s.major) {
+          if (nameUpper.includes('MIA') || nameUpper.includes('IPA')) major = 'MIPA (Matematika & IPA)';
+          else if (nameUpper.includes('IIS') || nameUpper.includes('IPS')) major = 'IPS (Ilmu Sosial)';
+          else if (nameUpper.includes('AGAMA') || nameUpper.includes('IIK')) major = 'Ilmu Keagamaan Islam';
+          else if (nameUpper.includes('RPL') || nameUpper.includes('TKJ')) major = 'Teknik Komputer & Informatika';
+        }
+
+        newClassesToCreate.push({
+          id: `c_auto_${Date.now()}_${newClassesToCreate.length}`,
+          name: cName,
+          grade,
+          major,
+          homeroomTeacher: 'Belum Ditentukan',
+          studentCount: 0
+        });
+      }
+    });
+
+    const combinedClasses = [...newClassesToCreate, ...classes];
+
+    const newStudents: Student[] = importedList.map((s, idx) => {
+      const matched = findMatchingClass(s.classId || s.className, combinedClasses);
+      return {
+        id: `s_imp_${Date.now()}_${idx}`,
+        ...s,
+        classId: matched?.id || s.classId || (combinedClasses[0]?.id || 'c_default'),
+        className: matched?.name || s.className || (combinedClasses[0]?.name || 'X'),
+        major: matched?.major || s.major || 'Umum',
+        violationPoints: s.violationPoints || 0,
+        achievementPoints: s.achievementPoints || 0,
+        createdAt: new Date().toISOString().split('T')[0]
+      };
+    });
+
+    if (newClassesToCreate.length > 0) {
+      setClasses(prev => {
+        const merged = [...prev, ...newClassesToCreate];
+        try {
+          localStorage.setItem('sim_classes', JSON.stringify(merged));
+        } catch (e) {}
+        return merged;
+      });
+
+      // Save new classes to Firestore
+      try {
+        const classPromises = newClassesToCreate.map(c => setDoc(doc(db, 'classes', c.id), c));
+        await Promise.allSettled(classPromises);
+      } catch (e) {}
+    }
+
+    if (mode === 'replace') {
+      setStudents(sortStudentsAlphabetically(newStudents));
+      try {
+        localStorage.setItem('sim_students', JSON.stringify(newStudents));
+        const oldSnap = await getDocs(collection(db, 'students'));
+        const deletePromises = oldSnap.docs.map(d => deleteDoc(doc(db, 'students', d.id)));
+        await Promise.allSettled(deletePromises);
+        const insertPromises = newStudents.map(s => setDoc(doc(db, 'students', s.id), s));
+        await Promise.allSettled(insertPromises);
+      } catch (e) {
+        console.warn('Firestore replace students note:', e);
+      }
+    } else {
+      setStudents(prev => {
+        const merged = sortStudentsAlphabetically([...newStudents, ...prev]);
+        try {
+          localStorage.setItem('sim_students', JSON.stringify(merged));
+        } catch (e) {}
+        return merged;
+      });
+
+      try {
+        const promises = newStudents.map(student => setDoc(doc(db, 'students', student.id), student));
+        await Promise.allSettled(promises);
+      } catch (e) {
+        console.warn('Firestore bulk import note:', e);
+      }
+    }
+
+    logAction(
+      'IMPORT_STUDENTS',
+      'Data Siswa',
+      `Mengimpor ${newStudents.length} data siswa (Mode: ${mode === 'replace' ? 'Gantikan Total' : 'Tambahkan'})`
+    );
     return newStudents.length;
   };
 
-  // Teachers
+  // Class / Rombel Operations
+  const addClass = async (data: Omit<SchoolClass, 'id'>) => {
+    const newClass: SchoolClass = {
+      id: `c_${Date.now()}`,
+      ...data
+    };
+    setClasses(prev => {
+      const merged = [newClass, ...prev];
+      try {
+        localStorage.setItem('sim_classes', JSON.stringify(merged));
+      } catch (e) {}
+      return merged;
+    });
+    try {
+      await setDoc(doc(db, 'classes', newClass.id), newClass);
+    } catch (e) {}
+
+    // Resiliently link existing students matching this class name
+    setStudents(prev => {
+      let hasChanges = false;
+      const updated = prev.map(s => {
+        if (isStudentInClass(s, newClass.name, [newClass]) && s.classId !== newClass.id) {
+          hasChanges = true;
+          return {
+            ...s,
+            classId: newClass.id,
+            className: newClass.name,
+            major: s.major || newClass.major
+          };
+        }
+        return s;
+      });
+      if (hasChanges) {
+        try { localStorage.setItem('sim_students', JSON.stringify(updated)); } catch (e) {}
+        return updated;
+      }
+      return prev;
+    });
+
+    logAction('ADD_CLASS', 'Data Rombel', `Menambahkan rombel kelas baru: ${newClass.name} (${newClass.grade})`);
+  };
+
+  const updateClass = async (id: string, data: Partial<SchoolClass>) => {
+    const oldClass = classes.find(c => c.id === id);
+    setClasses(prev => {
+      const merged = prev.map(c => c.id === id ? { ...c, ...data } : c);
+      try {
+        localStorage.setItem('sim_classes', JSON.stringify(merged));
+      } catch (e) {}
+      return merged;
+    });
+    try {
+      await updateDoc(doc(db, 'classes', id), data);
+    } catch (e) {}
+
+    // If class name changed, update students belonging to this class
+    if (data.name && oldClass && data.name !== oldClass.name) {
+      setStudents(prev => {
+        const updated = prev.map(s => {
+          if (s.classId === id || s.className === oldClass.name) {
+            return {
+              ...s,
+              className: data.name!,
+              classId: id,
+              major: data.major || s.major
+            };
+          }
+          return s;
+        });
+        try {
+          localStorage.setItem('sim_students', JSON.stringify(updated));
+        } catch (e) {}
+        return updated;
+      });
+    }
+
+    logAction('UPDATE_CLASS', 'Data Rombel', `Memperbarui rombel kelas ID: ${id}`);
+  };
+
+  const deleteClass = async (id: string) => {
+    const target = classes.find(c => c.id === id);
+    setClasses(prev => {
+      const merged = prev.filter(c => c.id !== id);
+      try {
+        localStorage.setItem('sim_classes', JSON.stringify(merged));
+      } catch (e) {}
+      return merged;
+    });
+    try {
+      await deleteDoc(doc(db, 'classes', id));
+    } catch (e) {}
+    logAction('DELETE_CLASS', 'Data Rombel', `Menghapus rombel kelas: ${target?.name || id}`);
+  };
+
+  const deleteClassesBulk = async (ids: string[]) => {
+    if (!ids || ids.length === 0) return 0;
+    const idSet = new Set(ids);
+    setClasses(prev => {
+      const remaining = prev.filter(c => !idSet.has(c.id));
+      try {
+        localStorage.setItem('sim_classes', JSON.stringify(remaining));
+      } catch (e) {}
+      return remaining;
+    });
+
+    try {
+      const promises = ids.map(id => deleteDoc(doc(db, 'classes', id)));
+      await Promise.allSettled(promises);
+    } catch (e) {
+      console.warn('Firestore bulk delete classes error:', e);
+    }
+
+    logAction('DELETE_CLASSES_BULK', 'Data Rombel', `Menghapus massal ${ids.length} rombel kelas`);
+    return ids.length;
+  };
+
+  const assignHomeroomTeacher = async (classId: string, teacherName: string, teacherId?: string) => {
+    const targetClass = classes.find(c => c.id === classId);
+    if (!targetClass) return;
+
+    setClasses(prev => {
+      const updated = prev.map(c => c.id === classId ? { ...c, homeroomTeacher: teacherName } : c);
+      try {
+        localStorage.setItem('sim_classes', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+
+    try {
+      await updateDoc(doc(db, 'classes', classId), { homeroomTeacher: teacherName });
+    } catch (e) {}
+
+    // If teacher exists, ensure teacher role or notes updated
+    const matchedTeacher = teacherId 
+      ? teachers.find(t => t.id === teacherId) 
+      : teachers.find(t => t.fullName.toLowerCase() === teacherName.toLowerCase());
+    
+    if (matchedTeacher && matchedTeacher.role !== 'Wali Kelas' && matchedTeacher.role !== 'Waka Kesiswaan' && matchedTeacher.role !== 'Kepala Madrasah') {
+      try {
+        await updateTeacher(matchedTeacher.id, { role: 'Wali Kelas' });
+      } catch (e) {}
+    }
+
+    logAction('ASSIGN_HOMEROOM_TEACHER', 'Data Rombel', `Menetapkan ${teacherName} sebagai Wali Kelas ${targetClass.name}`);
+  };
+
+  const clearAllClasses = async () => {
+    setClasses([]);
+    try {
+      localStorage.setItem('sim_classes', JSON.stringify([]));
+      const snap = await getDocs(collection(db, 'classes'));
+      const promises = snap.docs.map(d => deleteDoc(doc(db, 'classes', d.id)));
+      await Promise.allSettled(promises);
+    } catch (e) {
+      console.warn('Firestore clear classes note:', e);
+    }
+    await logAction('CLEAR_CLASSES', 'Data Rombel', 'Mengosongkan seluruh data rombel kelas');
+  };
+
+  const importClassesBulk = async (
+    classList: SchoolClass[],
+    mode: 'append' | 'replace' = 'append'
+  ) => {
+    if (mode === 'replace') {
+      setClasses(classList);
+      try {
+        localStorage.setItem('sim_classes', JSON.stringify(classList));
+        const oldSnap = await getDocs(collection(db, 'classes'));
+        const deletePromises = oldSnap.docs.map(d => deleteDoc(doc(db, 'classes', d.id)));
+        await Promise.allSettled(deletePromises);
+        const insertPromises = classList.map(c => setDoc(doc(db, 'classes', c.id), c));
+        await Promise.allSettled(insertPromises);
+      } catch (e) {
+        console.warn('Firestore import classes replace notice:', e);
+      }
+    } else {
+      setClasses(prev => {
+        const existingNames = new Set(prev.map(c => c.name.toLowerCase()));
+        const uniqueNew = classList.filter(c => !existingNames.has(c.name.toLowerCase()));
+        const merged = [...uniqueNew, ...prev];
+        try {
+          localStorage.setItem('sim_classes', JSON.stringify(merged));
+        } catch (e) {}
+        return merged;
+      });
+
+      try {
+        const promises = classList.map(c => setDoc(doc(db, 'classes', c.id), c, { merge: true }));
+        await Promise.allSettled(promises);
+      } catch (e) {
+        console.warn('Firestore import classes append notice:', e);
+      }
+    }
+
+    logAction('IMPORT_CLASSES', 'Data Rombel', `Mengimpor ${classList.length} rombel kelas (${mode === 'replace' ? 'Gantikan Total' : 'Tambahkan'})`);
+    return classList.length;
+  };
+
+  // Teachers Operations
   const addTeacher = async (data: Omit<Teacher, 'id'>) => {
     const newT: Teacher = {
       id: `t_${Date.now()}`,
       ...data
     };
-    setTeachers(prev => [newT, ...prev]);
-    logAction('ADD_TEACHER', 'Dewan Guru', `Menambahkan data guru: ${newT.fullName}`);
+    setTeachers(prev => {
+      const merged = [newT, ...prev];
+      try {
+        localStorage.setItem('sim_teachers', JSON.stringify(merged));
+      } catch (e) {}
+      return merged;
+    });
+    try {
+      await setDoc(doc(db, 'teachers', newT.id), newT);
+    } catch (e) {}
+
+    // Auto-sync to Ekstrakurikuler & Intrakurikuler (OSIM, Wali Kelas, Activities, Settings)
+    try {
+      await syncTeacherToExtracurricularAndIntracurricular(newT);
+    } catch (e) {
+      console.warn('Sync teacher to ekskul/intra note:', e);
+    }
+
+    // Auto-sync to cPanel user accounts
+    try {
+      if (syncUsersFromTeachers) {
+        await syncUsersFromTeachers([newT], extracurriculars);
+      }
+    } catch (e) {
+      console.warn('Sync teacher to user account note:', e);
+    }
+
+    logAction('ADD_TEACHER', 'Dewan Guru & Manajemen', `Menambahkan data guru ${newT.fullName} dan menyinkronkan ke Ekstrakurikuler & Intrakurikuler`);
   };
 
   const updateTeacher = async (id: string, data: Partial<Teacher>) => {
-    setTeachers(prev => prev.map(t => t.id === id ? { ...t, ...data } : t));
+    const oldTeacher = teachers.find(t => t.id === id);
+    let updatedTeacher: Teacher | undefined;
+    setTeachers(prev => {
+      const merged = prev.map(t => {
+        if (t.id === id) {
+          updatedTeacher = { ...t, ...data };
+          return updatedTeacher;
+        }
+        return t;
+      });
+      try {
+        localStorage.setItem('sim_teachers', JSON.stringify(merged));
+      } catch (e) {}
+      return merged;
+    });
+    try {
+      await updateDoc(doc(db, 'teachers', id), data);
+    } catch (e) {}
+
+    if (updatedTeacher) {
+      // Auto-sync to Ekstrakurikuler & Intrakurikuler
+      try {
+        await syncTeacherToExtracurricularAndIntracurricular(updatedTeacher, oldTeacher);
+      } catch (e) {
+        console.warn('Sync updated teacher to ekskul/intra note:', e);
+      }
+
+      // Auto-sync to cPanel user account
+      if (syncUsersFromTeachers) {
+        try {
+          await syncUsersFromTeachers([updatedTeacher], extracurriculars);
+        } catch (e) {}
+      }
+    }
+
+    logAction('UPDATE_TEACHER', 'Dewan Guru & Manajemen', `Memperbarui data guru ID: ${id} dan menyinkronkan perubahan ke modul terkait`);
   };
 
   const deleteTeacher = async (id: string) => {
-    setTeachers(prev => prev.filter(t => t.id !== id));
+    const target = teachers.find(t => t.id === id);
+    setTeachers(prev => {
+      const merged = prev.filter(t => t.id !== id);
+      try {
+        localStorage.setItem('sim_teachers', JSON.stringify(merged));
+      } catch (e) {}
+      return merged;
+    });
+    try {
+      await deleteDoc(doc(db, 'teachers', id));
+    } catch (e) {}
+
+    // Auto-update any extracurricular that had this teacher as coach
+    if (target) {
+      setExtracurriculars(prev => {
+        let changed = false;
+        const updated = prev.map(ekskul => {
+          if (ekskul.coachId === id || ekskul.coachName === target.fullName) {
+            changed = true;
+            return {
+              ...ekskul,
+              coachName: 'Belum Ditentukan',
+              coachId: ''
+            };
+          }
+          return ekskul;
+        });
+        if (changed) {
+          try {
+            localStorage.setItem('sim_extracurriculars', JSON.stringify(updated));
+          } catch (e) {}
+        }
+        return updated;
+      });
+    }
+
+    logAction('DELETE_TEACHER', 'Dewan Guru', `Menghapus data guru: ${target?.fullName || id}`);
+  };
+
+  const deleteTeachersBulk = async (ids: string[]) => {
+    if (!ids || ids.length === 0) return 0;
+    const idSet = new Set(ids);
+    const targetTeachers = teachers.filter(t => idSet.has(t.id));
+    const targetNames = new Set(targetTeachers.map(t => (t.fullName || '').trim().toLowerCase()));
+
+    setTeachers(prev => {
+      const remaining = prev.filter(t => !idSet.has(t.id));
+      try {
+        localStorage.setItem('sim_teachers', JSON.stringify(remaining));
+      } catch (e) {}
+      return remaining;
+    });
+
+    // Reset coach in extracurriculars
+    setExtracurriculars(prev => {
+      let changed = false;
+      const updated = prev.map(ekskul => {
+        if (idSet.has(ekskul.coachId) || targetNames.has((ekskul.coachName || '').trim().toLowerCase())) {
+          changed = true;
+          return { ...ekskul, coachName: 'Belum Ditentukan', coachId: '' };
+        }
+        return ekskul;
+      });
+      if (changed) {
+        try { localStorage.setItem('sim_extracurriculars', JSON.stringify(updated)); } catch (e) {}
+      }
+      return updated;
+    });
+
+    // Reset homeroom teacher in classes
+    setClasses(prev => {
+      let changed = false;
+      const updated = prev.map(cls => {
+        if (targetNames.has((cls.homeroomTeacher || '').trim().toLowerCase())) {
+          changed = true;
+          return { ...cls, homeroomTeacher: 'Belum Ditentukan' };
+        }
+        return cls;
+      });
+      if (changed) {
+        try { localStorage.setItem('sim_classes', JSON.stringify(updated)); } catch (e) {}
+      }
+      return updated;
+    });
+
+    try {
+      const promises = ids.map(id => deleteDoc(doc(db, 'teachers', id)));
+      await Promise.allSettled(promises);
+    } catch (e) {
+      console.warn('Firestore bulk delete teachers error:', e);
+    }
+
+    logAction('DELETE_TEACHERS_BULK', 'Dewan Guru', `Menghapus massal ${ids.length} data guru`);
+    return ids.length;
+  };
+
+  const clearAllTeachers = async () => {
+    setTeachers([]);
+    try {
+      localStorage.setItem('sim_teachers', JSON.stringify([]));
+      const snap = await getDocs(collection(db, 'teachers'));
+      const promises = snap.docs.map(d => deleteDoc(doc(db, 'teachers', d.id)));
+      await Promise.allSettled(promises);
+    } catch (e) {
+      console.warn('Firestore clear teachers note:', e);
+    }
+    await logAction('CLEAR_TEACHERS', 'Dewan Guru', 'Mengosongkan seluruh data guru master');
+  };
+
+  const importTeachersBulk = async (
+    importedList: Omit<Teacher, 'id'>[],
+    mode: 'append' | 'replace' = 'append'
+  ) => {
+    const newTeachers: Teacher[] = importedList.map((t, idx) => ({
+      id: `t_imp_${Date.now()}_${idx}`,
+      ...t,
+      isActive: t.isActive !== false
+    }));
+
+    if (mode === 'replace') {
+      setTeachers(newTeachers);
+      try {
+        localStorage.setItem('sim_teachers', JSON.stringify(newTeachers));
+        const oldSnap = await getDocs(collection(db, 'teachers'));
+        const deletePromises = oldSnap.docs.map(d => deleteDoc(doc(db, 'teachers', d.id)));
+        await Promise.allSettled(deletePromises);
+        const insertPromises = newTeachers.map(t => setDoc(doc(db, 'teachers', t.id), t));
+        await Promise.allSettled(insertPromises);
+      } catch (e) {
+        console.warn('Firestore replace teachers note:', e);
+      }
+    } else {
+      setTeachers(prev => {
+        const merged = [...newTeachers, ...prev];
+        try {
+          localStorage.setItem('sim_teachers', JSON.stringify(merged));
+        } catch (e) {}
+        return merged;
+      });
+
+      try {
+        const promises = newTeachers.map(teacher => setDoc(doc(db, 'teachers', teacher.id), teacher));
+        await Promise.allSettled(promises);
+      } catch (e) {
+        console.warn('Firestore bulk import teacher note:', e);
+      }
+    }
+
+    // Auto-sync all imported teachers to Ekstrakurikuler & Intrakurikuler
+    try {
+      for (const t of newTeachers) {
+        await syncTeacherToExtracurricularAndIntracurricular(t);
+      }
+    } catch (err) {
+      console.warn('Error syncing imported teachers to ekskul/intra:', err);
+    }
+
+    // Auto-sync imported teachers into cPanel user accounts
+    try {
+      if (syncUsersFromTeachers) {
+        await syncUsersFromTeachers(newTeachers, extracurriculars);
+      }
+    } catch (err) {
+      console.warn('Error auto-syncing imported teachers to cPanel accounts:', err);
+    }
+
+    logAction(
+      'IMPORT_TEACHERS',
+      'Dewan Guru & Manajemen',
+      `Mengimpor ${newTeachers.length} data guru/pembina (Mode: ${mode === 'replace' ? 'Gantikan Total' : 'Tambahkan'})`
+    );
+    return newTeachers.length;
+  };
+
+  // Synchronization Engine: Auto-sync Teacher & Pembina to Ekstrakurikuler & Intrakurikuler
+  const syncTeacherToExtracurricularAndIntracurricular = async (
+    teacher: Teacher,
+    oldTeacher?: Teacher
+  ) => {
+    // 1. Ekstrakurikuler Synchronization
+    const assigned = teacher.assignedExtracurriculars || [];
+    const legacyName = teacher.extracurricularName ? [teacher.extracurricularName] : [];
+    const allAssignedTargets = [...assigned, ...legacyName].map(s => s.trim().toLowerCase()).filter(Boolean);
+
+    setExtracurriculars(prev => {
+      let changed = false;
+      const updated = prev.map(ekskul => {
+        const isAssigned = allAssignedTargets.includes(ekskul.id.toLowerCase()) || 
+                           allAssignedTargets.includes(ekskul.name.toLowerCase());
+
+        // Case 1: Teacher is assigned to this ekskul
+        if (isAssigned) {
+          if (ekskul.coachId !== teacher.id || ekskul.coachName !== teacher.fullName) {
+            changed = true;
+            return {
+              ...ekskul,
+              coachId: teacher.id,
+              coachName: teacher.fullName
+            };
+          }
+        }
+        // Case 2: Ekskul previously belonged to this teacher, and teacher's name/title changed
+        else if (
+          (ekskul.coachId === teacher.id || (oldTeacher && ekskul.coachName?.toLowerCase() === oldTeacher.fullName.toLowerCase())) &&
+          ekskul.coachName !== teacher.fullName
+        ) {
+          if (teacher.isActive !== false) {
+            changed = true;
+            return {
+              ...ekskul,
+              coachId: teacher.id,
+              coachName: teacher.fullName
+            };
+          }
+        }
+        // Case 3: Teacher was explicitly unassigned from this specific ekskul
+        else if (
+          oldTeacher && 
+          (oldTeacher.assignedExtracurriculars || []).some(item => 
+            item.toLowerCase() === ekskul.id.toLowerCase() || item.toLowerCase() === ekskul.name.toLowerCase()
+          ) &&
+          !isAssigned &&
+          ekskul.coachId === teacher.id
+        ) {
+          changed = true;
+          return {
+            ...ekskul,
+            coachName: 'Belum Ditentukan',
+            coachId: ''
+          };
+        }
+
+        return ekskul;
+      });
+
+      if (changed) {
+        try {
+          localStorage.setItem('sim_extracurriculars', JSON.stringify(updated));
+        } catch (e) {}
+      }
+      return updated;
+    });
+
+    // 2. Intrakurikuler Synchronization (OSIM, Wali Kelas, Waka Kesiswaan, Activities, Counseling)
+    const roleLower = (teacher.role || '').toLowerCase();
+
+    // A. Pembina OSIM (Organisasi Siswa Intra Madrasah)
+    if (roleLower.includes('osim') || roleLower.includes('pembina osim') || roleLower.includes('penasihat osim')) {
+      setSchoolSetting(prev => {
+        const next: SchoolSetting = {
+          ...prev,
+          pembinaOsim: teacher.fullName,
+          pembinaOsimNip: teacher.nip || prev.pembinaOsimNip || '-'
+        };
+        try {
+          localStorage.setItem('sim_school_setting', JSON.stringify(next));
+          setDoc(doc(db, 'schools', next.id || 'main_school'), next, { merge: true });
+        } catch (e) {}
+        return next;
+      });
+    }
+
+    // B. Waka Kesiswaan
+    if (roleLower.includes('waka') || roleLower.includes('kesiswaan')) {
+      setSchoolSetting(prev => {
+        const next: SchoolSetting = {
+          ...prev,
+          wakaName: teacher.fullName,
+          wakaKesiswaanName: teacher.fullName,
+          wakaNip: teacher.nip || prev.wakaNip || '-'
+        };
+        try {
+          localStorage.setItem('sim_school_setting', JSON.stringify(next));
+          setDoc(doc(db, 'schools', next.id || 'main_school'), next, { merge: true });
+        } catch (e) {}
+        return next;
+      });
+    }
+
+    // C. Homeroom Teacher / Wali Kelas for Intracurricular Classes
+    if (oldTeacher && oldTeacher.fullName !== teacher.fullName) {
+      setClasses(prev => prev.map(c => {
+        if (c.homeroomTeacher === oldTeacher.fullName) {
+          return { ...c, homeroomTeacher: teacher.fullName };
+        }
+        return c;
+      }));
+
+      // D. Intracurricular / School Activities Organizer
+      setActivities(prev => prev.map(act => {
+        if (act.organizer === oldTeacher.fullName) {
+          return { ...act, organizer: teacher.fullName };
+        }
+        return act;
+      }));
+
+      // E. Counseling & Home Visits
+      setCounseling(prev => prev.map(c => {
+        if (c.counselorName === oldTeacher.fullName) {
+          return { ...c, counselorName: teacher.fullName };
+        }
+        return c;
+      }));
+      setHomeVisits(prev => prev.map(h => {
+        if (h.counselorName === oldTeacher.fullName) {
+          return { ...h, counselorName: teacher.fullName };
+        }
+        return h;
+      }));
+    }
+  };
+
+  const getRoleLabelFromUserRole = (role: UserRole): string => {
+    switch (role) {
+      case 'guru_bk':
+        return 'Guru BK';
+      case 'pembina_osim':
+        return 'Pembina OSIM';
+      case 'pembina_ekskul':
+      case 'pembina':
+        return 'Pembina Ekskul';
+      case 'waka_kesiswaan':
+        return 'Waka Kesiswaan';
+      case 'super_admin':
+        return 'Super Admin / Proktor';
+      default:
+        return 'Guru / Pembina';
+    }
+  };
+
+  // cPanel Cross-Module Synchronization
+  const syncUserFromCPanel = async (user: UserProfile, oldUser?: UserProfile) => {
+    const roleLabel = getRoleLabelFromUserRole(user.role);
+    const assignedIds = user.extracurricularIds || [];
+
+    // 1. Sync Dewan Guru (teachers list)
+    setTeachers(prev => {
+      const idx = prev.findIndex(t => 
+        t.id === user.uid ||
+        (t.email && user.email && t.email.toLowerCase() === user.email.toLowerCase()) ||
+        (t.nip && user.nip && t.nip.replace(/\s+/g, '') === user.nip.replace(/\s+/g, '')) ||
+        (oldUser?.displayName && t.fullName.toLowerCase() === oldUser.displayName.toLowerCase()) ||
+        t.fullName.toLowerCase() === user.displayName.toLowerCase()
+      );
+
+      if (idx >= 0) {
+        const updated = [...prev];
+        const updatedTeacher: Teacher = {
+          ...updated[idx],
+          fullName: user.displayName,
+          nip: user.nip || updated[idx].nip || '-',
+          email: user.email,
+          phone: user.phone || updated[idx].phone || '-',
+          role: roleLabel,
+          assignedExtracurriculars: assignedIds,
+          photoUrl: user.photoURL || (user as any).photoUrl || updated[idx].photoUrl,
+          isActive: user.status !== 'Nonaktif'
+        };
+        updated[idx] = updatedTeacher;
+        try {
+          setDoc(doc(db, 'teachers', updatedTeacher.id), updatedTeacher, { merge: true });
+        } catch (e) {}
+        return updated;
+      } else {
+        const newTeacher: Teacher = {
+          id: user.uid,
+          fullName: user.displayName,
+          nip: user.nip || '-',
+          email: user.email,
+          phone: user.phone || '-',
+          role: roleLabel,
+          assignedExtracurriculars: assignedIds,
+          photoUrl: user.photoURL || (user as any).photoUrl,
+          isActive: user.status !== 'Nonaktif'
+        };
+        try {
+          setDoc(doc(db, 'teachers', newTeacher.id), newTeacher, { merge: true });
+        } catch (e) {}
+        return [newTeacher, ...prev];
+      }
+    });
+
+    // 2. Sync Unit Ekstrakurikuler (advisor / coach)
+    if (assignedIds.length > 0 || user.role === 'pembina_ekskul' || user.role === 'pembina') {
+      setExtracurriculars(prev => prev.map(ekskul => {
+        if (assignedIds.includes(ekskul.id)) {
+          return {
+            ...ekskul,
+            coachId: user.uid,
+            coachName: user.displayName
+          };
+        }
+        if (oldUser && (ekskul.coachId === user.uid || ekskul.coachName === oldUser.displayName)) {
+          return {
+            ...ekskul,
+            coachName: user.displayName
+          };
+        }
+        return ekskul;
+      }));
+    } else if (oldUser && oldUser.displayName !== user.displayName) {
+      setExtracurriculars(prev => prev.map(ekskul => {
+        if (ekskul.coachId === user.uid || ekskul.coachName === oldUser.displayName) {
+          return { ...ekskul, coachName: user.displayName };
+        }
+        return ekskul;
+      }));
+    }
+
+    // 3. Sync Waka Kesiswaan in School Settings (Letterheads, Kop, Signatures)
+    if (user.role === 'waka_kesiswaan') {
+      setSchoolSetting(prev => {
+        const nextSetting: SchoolSetting = {
+          ...prev,
+          wakaName: user.displayName,
+          wakaKesiswaanName: user.displayName,
+          wakaNip: user.nip || prev.wakaNip
+        };
+        localStorage.setItem('sim_school_setting', JSON.stringify(nextSetting));
+        try {
+          setDoc(doc(db, 'schools', nextSetting.id || 'main_school'), nextSetting, { merge: true });
+        } catch (e) {}
+        return nextSetting;
+      });
+    }
+
+    // 4. Sync Guru BK in Counseling Sessions / Home Visits if name changed
+    if (user.role === 'guru_bk' && oldUser && oldUser.displayName !== user.displayName) {
+      setCounseling(prev => prev.map(c => {
+        if (c.counselorName === oldUser.displayName) {
+          return { ...c, counselorName: user.displayName };
+        }
+        return c;
+      }));
+      setHomeVisits(prev => prev.map(h => {
+        if (h.counselorName === oldUser.displayName) {
+          return { ...h, counselorName: user.displayName };
+        }
+        return h;
+      }));
+    }
+
+    await logAction(
+      'CPANEL_SYNC_USER',
+      'cPanel Kesiswaan',
+      `Sinkronisasi data akun ${user.displayName} (${roleLabel}) ke dewan guru, ekskul, dan modul terkait.`
+    );
+  };
+
+  const syncDeleteUserFromCPanel = async (uid: string, user?: UserProfile) => {
+    setTeachers(prev => prev.filter(t => t.id !== uid && (!user?.email || t.email !== user.email)));
+    if (user) {
+      setExtracurriculars(prev => prev.map(ekskul => {
+        if (ekskul.coachId === uid || ekskul.coachName === user.displayName) {
+          return { ...ekskul, coachName: 'Belum Ditentukan', coachId: '' };
+        }
+        return ekskul;
+      }));
+    }
+    await logAction(
+      'CPANEL_DELETE_SYNC',
+      'cPanel Kesiswaan',
+      `Sinkronisasi penghapusan akun ${user?.displayName || uid} pada seluruh modul.`
+    );
+  };
+
+  const syncAllCPanelUsers = async (users: UserProfile[]) => {
+    for (const u of users) {
+      await syncUserFromCPanel(u);
+    }
+    // Also perform reverse sync for teachers list to cPanel user accounts
+    if (syncUsersFromTeachers && teachers.length > 0) {
+      await syncUsersFromTeachers(teachers, extracurriculars);
+    }
   };
 
   // Extracurricular Operations
@@ -580,27 +2066,133 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       id: `ekskul_${Date.now()}`,
       ...data
     };
-    setExtracurriculars(prev => [newEkskul, ...prev]);
+    setExtracurriculars(prev => {
+      const merged = [newEkskul, ...prev];
+      try {
+        localStorage.setItem('sim_extracurriculars', JSON.stringify(merged));
+      } catch (e) {}
+      return merged;
+    });
     try {
       await setDoc(doc(db, 'extracurriculars', newEkskul.id), newEkskul);
     } catch (e) {}
+
+    // Reverse sync: assign this ekskul to the matching teacher in teachers state
+    if (newEkskul.coachId || newEkskul.coachName) {
+      setTeachers(prev => {
+        let changed = false;
+        const updated = prev.map(t => {
+          if (t.id === newEkskul.coachId || t.fullName.toLowerCase() === newEkskul.coachName?.toLowerCase()) {
+            const currentAssigned = t.assignedExtracurriculars || [];
+            if (!currentAssigned.includes(newEkskul.name)) {
+              changed = true;
+              return {
+                ...t,
+                assignedExtracurriculars: [...currentAssigned, newEkskul.name]
+              };
+            }
+          }
+          return t;
+        });
+        if (changed) {
+          try {
+            localStorage.setItem('sim_teachers', JSON.stringify(updated));
+          } catch (e) {}
+        }
+        return updated;
+      });
+    }
+
     logAction('CREATE_EXTRACURRICULAR', 'Ekstrakurikuler', `Menambahkan ekstrakurikuler baru: ${newEkskul.name}`);
   };
 
   const updateExtracurricular = async (id: string, data: Partial<Extracurricular>) => {
-    setExtracurriculars(prev => prev.map(e => e.id === id ? { ...e, ...data } : e));
+    const oldEkskul = extracurriculars.find(e => e.id === id);
+    setExtracurriculars(prev => {
+      const updated = prev.map(e => e.id === id ? { ...e, ...data } : e);
+      try {
+        localStorage.setItem('sim_extracurriculars', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
     try {
       await updateDoc(doc(db, 'extracurriculars', id), data);
     } catch (e) {}
+
+    // Reverse sync coach assignments to teachers list
+    const newCoachId = data.coachId;
+    const newCoachName = data.coachName;
+    const ekskulName = data.name || oldEkskul?.name;
+
+    if (ekskulName && (newCoachId !== undefined || newCoachName !== undefined)) {
+      setTeachers(prev => {
+        let changed = false;
+        const updated = prev.map(t => {
+          const isNewCoach = (newCoachId && t.id === newCoachId) || (newCoachName && t.fullName.toLowerCase() === newCoachName.toLowerCase());
+          const isOldCoach = oldEkskul && ((oldEkskul.coachId && t.id === oldEkskul.coachId) || (oldEkskul.coachName && t.fullName.toLowerCase() === oldEkskul.coachName.toLowerCase()));
+
+          if (isNewCoach) {
+            const current = t.assignedExtracurriculars || [];
+            if (!current.includes(ekskulName)) {
+              changed = true;
+              return { ...t, assignedExtracurriculars: [...current, ekskulName] };
+            }
+          } else if (isOldCoach && !isNewCoach) {
+            const current = t.assignedExtracurriculars || [];
+            if (current.includes(ekskulName)) {
+              changed = true;
+              return { ...t, assignedExtracurriculars: current.filter(item => item !== ekskulName) };
+            }
+          }
+          return t;
+        });
+        if (changed) {
+          try {
+            localStorage.setItem('sim_teachers', JSON.stringify(updated));
+          } catch (e) {}
+        }
+        return updated;
+      });
+    }
+
     logAction('UPDATE_EXTRACURRICULAR', 'Ekstrakurikuler', `Memperbarui profil ekstrakurikuler ID: ${id}`);
   };
 
   const deleteExtracurricular = async (id: string) => {
     const target = extracurriculars.find(e => e.id === id);
-    setExtracurriculars(prev => prev.filter(e => e.id !== id));
+    setExtracurriculars(prev => {
+      const filtered = prev.filter(e => e.id !== id);
+      try {
+        localStorage.setItem('sim_extracurriculars', JSON.stringify(filtered));
+      } catch (e) {}
+      return filtered;
+    });
     try {
       await deleteDoc(doc(db, 'extracurriculars', id));
     } catch (e) {}
+
+    if (target) {
+      setTeachers(prev => {
+        let changed = false;
+        const updated = prev.map(t => {
+          if (t.assignedExtracurriculars && t.assignedExtracurriculars.includes(target.name)) {
+            changed = true;
+            return {
+              ...t,
+              assignedExtracurriculars: t.assignedExtracurriculars.filter(item => item !== target.name)
+            };
+          }
+          return t;
+        });
+        if (changed) {
+          try {
+            localStorage.setItem('sim_teachers', JSON.stringify(updated));
+          } catch (e) {}
+        }
+        return updated;
+      });
+    }
+
     logAction('DELETE_EXTRACURRICULAR', 'Ekstrakurikuler', `Menghapus ekstrakurikuler: ${target?.name || id}`);
   };
 
@@ -648,11 +2240,80 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     } catch (e) {}
   };
 
-  const updateMemberStatus = async (id: string, status: 'Aktif' | 'Nonaktif') => {
+  const updateMemberStatus = async (id: string, status: 'Aktif' | 'Nonaktif' | 'Cuti' | 'Keluar') => {
     setMembers(prev => prev.map(m => m.id === id ? { ...m, status } : m));
     try {
+      localStorage.setItem('sim_members', JSON.stringify(members.map(m => m.id === id ? { ...m, status } : m)));
       await updateDoc(doc(db, 'extracurricular_members', id), { status });
     } catch (e) {}
+  };
+
+  const deleteMembersBulk = async (ids: string[]) => {
+    if (!ids || ids.length === 0) return 0;
+    const idSet = new Set(ids);
+    const targetMembers = members.filter(m => idSet.has(m.id));
+
+    const ekskulCountDec: Record<string, number> = {};
+    targetMembers.forEach(m => {
+      if (m.extracurricularId) {
+        ekskulCountDec[m.extracurricularId] = (ekskulCountDec[m.extracurricularId] || 0) + 1;
+      }
+    });
+
+    setMembers(prev => {
+      const remaining = prev.filter(m => !idSet.has(m.id));
+      try {
+        localStorage.setItem('sim_members', JSON.stringify(remaining));
+      } catch (e) {}
+      return remaining;
+    });
+
+    setExtracurriculars(prev => {
+      const updated = prev.map(e => {
+        const dec = ekskulCountDec[e.id] || 0;
+        if (dec > 0) {
+          return { ...e, memberCount: Math.max(0, (e.memberCount || 0) - dec) };
+        }
+        return e;
+      });
+      try {
+        localStorage.setItem('sim_extracurriculars', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+
+    try {
+      const promises = ids.map(id => deleteDoc(doc(db, 'extracurricular_members', id)));
+      await Promise.allSettled(promises);
+    } catch (e) {
+      console.warn('Firestore bulk delete members error:', e);
+    }
+
+    logAction('DELETE_MEMBERS_BULK', 'Anggota Ekstrakurikuler', `Menghapus massal ${ids.length} data anggota ekstrakurikuler`);
+    return ids.length;
+  };
+
+  const updateMembersStatusBulk = async (ids: string[], status: 'Aktif' | 'Cuti' | 'Keluar') => {
+    if (!ids || ids.length === 0) return 0;
+    const idSet = new Set(ids);
+
+    setMembers(prev => {
+      const updated = prev.map(m => idSet.has(m.id) ? { ...m, status } : m);
+      try {
+        localStorage.setItem('sim_members', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+
+    try {
+      const promises = ids.map(id => updateDoc(doc(db, 'extracurricular_members', id), { status }));
+      await Promise.allSettled(promises);
+    } catch (e) {
+      console.warn('Firestore bulk update members status error:', e);
+    }
+
+    logAction('UPDATE_MEMBERS_STATUS_BULK', 'Anggota Ekstrakurikuler', `Memperbarui status massal ${ids.length} anggota menjadi ${status}`);
+    return ids.length;
   };
 
   // Schedules & Conflict Prevention
@@ -865,6 +2526,93 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const deleteCounselingSession = async (id: string) => {
     setCounseling(prev => prev.filter(c => c.id !== id));
+    try {
+      await deleteDoc(doc(db, 'counseling', id));
+    } catch (e) {}
+  };
+
+  // Home Visit (Kunjungan Rumah BK)
+  const addHomeVisit = async (data: Omit<HomeVisitRecord, 'id' | 'createdAt'>) => {
+    const newHv: HomeVisitRecord = {
+      id: `hv_${Date.now()}`,
+      ...data,
+      createdAt: new Date().toISOString().split('T')[0]
+    };
+    setHomeVisits(prev => [newHv, ...prev]);
+    try {
+      await setDoc(doc(db, 'home_visits', newHv.id), newHv);
+    } catch (e) {}
+    logAction('RECORD_HOME_VISIT', 'Bimbingan Konseling', `Mencatat kunjungan rumah siswa: ${data.studentName}`);
+  };
+
+  const updateHomeVisit = async (id: string, data: Partial<HomeVisitRecord>) => {
+    setHomeVisits(prev => prev.map(h => h.id === id ? { ...h, ...data } : h));
+    try {
+      await updateDoc(doc(db, 'home_visits', id), data);
+    } catch (e) {}
+  };
+
+  const deleteHomeVisit = async (id: string) => {
+    setHomeVisits(prev => prev.filter(h => h.id !== id));
+    try {
+      await deleteDoc(doc(db, 'home_visits', id));
+    } catch (e) {}
+  };
+
+  // Surat Panggilan Orang Tua BK
+  const addParentCallLetter = async (data: Omit<ParentCallLetter, 'id' | 'createdAt'>) => {
+    const newLetter: ParentCallLetter = {
+      id: `sp_${Date.now()}`,
+      ...data,
+      createdAt: new Date().toISOString().split('T')[0]
+    };
+    setParentCallLetters(prev => [newLetter, ...prev]);
+    try {
+      await setDoc(doc(db, 'parent_call_letters', newLetter.id), newLetter);
+    } catch (e) {}
+    logAction('ISSUE_PARENT_CALL_LETTER', 'Bimbingan Konseling', `Menerbitkan surat panggilan orang tua No: ${data.letterNumber} untuk siswa ${data.studentName}`);
+  };
+
+  const updateParentCallLetter = async (id: string, data: Partial<ParentCallLetter>) => {
+    setParentCallLetters(prev => prev.map(l => l.id === id ? { ...l, ...data } : l));
+    try {
+      await updateDoc(doc(db, 'parent_call_letters', id), data);
+    } catch (e) {}
+  };
+
+  const deleteParentCallLetter = async (id: string) => {
+    setParentCallLetters(prev => prev.filter(l => l.id !== id));
+    try {
+      await deleteDoc(doc(db, 'parent_call_letters', id));
+    } catch (e) {}
+  };
+
+  // Bimbingan Karir BK
+  const addCareerGuidance = async (data: Omit<CareerGuidanceRecord, 'id' | 'createdAt'>) => {
+    const newCg: CareerGuidanceRecord = {
+      id: `cg_${Date.now()}`,
+      ...data,
+      createdAt: new Date().toISOString().split('T')[0]
+    };
+    setCareerGuidances(prev => [newCg, ...prev]);
+    try {
+      await setDoc(doc(db, 'career_guidances', newCg.id), newCg);
+    } catch (e) {}
+    logAction('RECORD_CAREER_GUIDANCE', 'Bimbingan Karir', `Mencatat asesmen peminatan karir siswa: ${data.studentName} (${data.careerInterest})`);
+  };
+
+  const updateCareerGuidance = async (id: string, data: Partial<CareerGuidanceRecord>) => {
+    setCareerGuidances(prev => prev.map(c => c.id === id ? { ...c, ...data } : c));
+    try {
+      await updateDoc(doc(db, 'career_guidances', id), data);
+    } catch (e) {}
+  };
+
+  const deleteCareerGuidance = async (id: string) => {
+    setCareerGuidances(prev => prev.filter(c => c.id !== id));
+    try {
+      await deleteDoc(doc(db, 'career_guidances', id));
+    } catch (e) {}
   };
 
   // Achievements
@@ -959,10 +2707,20 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     logAction('REVIEW_NEEDS_REQUEST', 'Kebutuhan Ekstrakurikuler', `Verifikasi kebutuhan ID ${id} menjadi [${status}]`);
   };
 
+  const deleteNeedsRequest = async (id: string) => {
+    setNeedsRequests(prev => prev.filter(n => n.id !== id));
+    try {
+      await deleteDoc(doc(db, 'needs_requests', id));
+    } catch (e) {}
+    logAction('DELETE_NEEDS_REQUEST', 'Kebutuhan Ekstrakurikuler', `Menghapus pengajuan kebutuhan ID ${id}`);
+  };
+
   // Announcements
   const addAnnouncement = async (data: Omit<Announcement, 'id' | 'createdAt'>) => {
     const newAnn: Announcement = {
       id: `ann_${Date.now()}`,
+      isActive: data.isActive !== undefined ? data.isActive : true,
+      isPinned: data.isPinned !== undefined ? data.isPinned : false,
       ...data,
       createdAt: new Date().toISOString().split('T')[0]
     };
@@ -970,7 +2728,82 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     try {
       await setDoc(doc(db, 'announcements', newAnn.id), newAnn);
     } catch (e) {}
-    logAction('CREATE_ANNOUNCEMENT', 'Pengumuman', `Membuat pengumuman: ${newAnn.title}`);
+    logAction('CREATE_ANNOUNCEMENT', 'Pengumuman', `Membuat pengumuman: ${newAnn.title} (${newAnn.targetRole})`);
+  };
+
+  const updateAnnouncement = async (id: string, data: Partial<Announcement>) => {
+    const updated = { ...data, updatedAt: new Date().toISOString().split('T')[0] };
+    setAnnouncements(prev => prev.map(a => a.id === id ? { ...a, ...updated } : a));
+    try {
+      await setDoc(doc(db, 'announcements', id), updated, { merge: true });
+    } catch (e) {}
+    logAction('UPDATE_ANNOUNCEMENT', 'Pengumuman', `Memperbarui pengumuman ID ${id}`);
+  };
+
+  const deleteAnnouncement = async (id: string) => {
+    const target = announcements.find(a => a.id === id);
+    setAnnouncements(prev => prev.filter(a => a.id !== id));
+    try {
+      await deleteDoc(doc(db, 'announcements', id));
+    } catch (e) {}
+    logAction('DELETE_ANNOUNCEMENT', 'Pengumuman', `Menghapus pengumuman: ${target?.title || id}`);
+  };
+
+  const toggleAnnouncementPin = async (id: string) => {
+    const target = announcements.find(a => a.id === id);
+    if (!target) return;
+    const newPinned = !target.isPinned;
+    await updateAnnouncement(id, { isPinned: newPinned });
+  };
+
+  const toggleAnnouncementStatus = async (id: string) => {
+    const target = announcements.find(a => a.id === id);
+    if (!target) return;
+    const newStatus = target.isActive === false ? true : false;
+    await updateAnnouncement(id, { isActive: newStatus });
+  };
+
+  const markAnnouncementAsRead = async (id: string, uid?: string) => {
+    if (!id) return;
+    const userKey = uid || currentUser?.uid || 'guest';
+    const nowIso = new Date().toISOString();
+
+    setAnnouncements(prev => prev.map(a => {
+      if (a.id === id) {
+        const readBy = { ...(a.readByUsers || {}), [userKey]: nowIso };
+        return { ...a, readByUsers: readBy };
+      }
+      return a;
+    }));
+
+    try {
+      const targetDoc = doc(db, 'announcements', id);
+      await setDoc(targetDoc, {
+        readByUsers: { [userKey]: nowIso }
+      }, { merge: true });
+    } catch (e) {}
+  };
+
+  const markAllAnnouncementsAsReadForUser = async (ids: string[], uid?: string) => {
+    if (!ids || ids.length === 0) return;
+    const userKey = uid || currentUser?.uid || 'guest';
+    const nowIso = new Date().toISOString();
+
+    setAnnouncements(prev => prev.map(a => {
+      if (ids.includes(a.id)) {
+        const readBy = { ...(a.readByUsers || {}), [userKey]: nowIso };
+        return { ...a, readByUsers: readBy };
+      }
+      return a;
+    }));
+
+    for (const annId of ids) {
+      try {
+        await setDoc(doc(db, 'announcements', annId), {
+          readByUsers: { [userKey]: nowIso }
+        }, { merge: true });
+      } catch (e) {}
+    }
   };
 
   // Notifications
@@ -1128,6 +2961,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         activityReports,
         violations,
         counseling,
+        homeVisits,
+        parentCallLetters,
+        careerGuidances,
         achievements,
         permissions,
         needsRequests,
@@ -1141,18 +2977,31 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         addStudent,
         updateStudent,
         deleteStudent,
+        deleteStudentsBulk,
         importStudentsBulk,
+        clearAllStudents,
+        addClass,
+        updateClass,
+        deleteClass,
+        deleteClassesBulk,
+        clearAllClasses,
+        assignHomeroomTeacher,
         addTeacher,
         updateTeacher,
         deleteTeacher,
+        deleteTeachersBulk,
+        clearAllTeachers,
+        importTeachersBulk,
         addExtracurricular,
         updateExtracurricular,
         deleteExtracurricular,
         addMember,
         removeMember,
         deleteMember: removeMember,
+        deleteMembersBulk,
         updateMember,
         updateMemberStatus,
+        updateMembersStatusBulk,
         addSchedule,
         updateSchedule,
         deleteSchedule,
@@ -1176,6 +3025,15 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         addCounselingSession: addCounseling,
         updateCounselingSession: updateCounseling,
         deleteCounselingSession,
+        addHomeVisit,
+        updateHomeVisit,
+        deleteHomeVisit,
+        addParentCallLetter,
+        updateParentCallLetter,
+        deleteParentCallLetter,
+        addCareerGuidance,
+        updateCareerGuidance,
+        deleteCareerGuidance,
         addAchievement,
         updateAchievement,
         deleteAchievement,
@@ -1185,6 +3043,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         updatePermissionStatus,
         addNeedsRequest,
         reviewNeedsRequest,
+        deleteNeedsRequest,
         addOsimMember,
         updateOsimMember,
         deleteOsimMember,
@@ -1198,11 +3057,26 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         updateOsimMeeting,
         deleteOsimMeeting,
         addAnnouncement,
+        updateAnnouncement,
+        deleteAnnouncement,
+        toggleAnnouncementPin,
+        toggleAnnouncementStatus,
+        markAnnouncementAsRead,
+        markAllAnnouncementsAsReadForUser,
         markNotificationAsRead,
         markAllNotificationsAsRead,
+        syncUserFromCPanel,
+        syncDeleteUserFromCPanel,
+        syncAllCPanelUsers,
         logAction,
+        clearAuditLogs,
+        refreshAuditLogs,
         syncWithFirebase,
         seedFirebaseDatabase,
+        clearAllOperationalData,
+        exportFullDatabaseJSON,
+        importFullDatabaseJSON,
+        importClassesBulk,
         isSyncing
       }}
     >

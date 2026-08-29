@@ -9,7 +9,9 @@ interface ConfirmDialogProps {
   title: string;
   message: string;
   confirmText?: string;
+  confirmLabel?: string;
   cancelText?: string;
+  cancelLabel?: string;
   variant?: 'danger' | 'warning' | 'info' | 'success';
   isLoading?: boolean;
 }
@@ -20,23 +22,28 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   onConfirm,
   title,
   message,
-  confirmText = 'CONFIRM_ACTION',
-  cancelText = 'CANCEL',
+  confirmText,
+  confirmLabel,
+  cancelText,
+  cancelLabel,
   variant = 'danger',
   isLoading = false
 }) => {
+  const finalConfirmText = confirmLabel || confirmText || 'Konfirmasi';
+  const finalCancelText = cancelLabel || cancelText || 'Batal';
+
   const iconConfig = {
-    danger: { icon: Trash2, color: 'text-red-400 bg-red-500/10 border-red-500/30' },
-    warning: { icon: AlertTriangle, color: 'text-orange-400 bg-orange-500/10 border-orange-500/30' },
-    info: { icon: HelpCircle, color: 'text-blue-400 bg-blue-500/10 border-blue-500/30' },
-    success: { icon: CheckCircle2, color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30' }
+    danger: { icon: Trash2, color: 'text-rose-400 bg-rose-500/15 border-rose-500/30' },
+    warning: { icon: AlertTriangle, color: 'text-amber-400 bg-amber-500/15 border-amber-500/30' },
+    info: { icon: HelpCircle, color: 'text-blue-400 bg-blue-500/15 border-blue-500/30' },
+    success: { icon: CheckCircle2, color: 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30' }
   }[variant];
 
   const btnColor = {
-    danger: 'bg-red-600 hover:bg-red-500 text-white',
-    warning: 'bg-orange-600 hover:bg-orange-500 text-white',
-    info: 'bg-blue-600 hover:bg-blue-500 text-white',
-    success: 'bg-emerald-600 hover:bg-emerald-500 text-white'
+    danger: 'bg-rose-600 hover:bg-rose-700 text-white shadow-rose-600/20 shadow-md',
+    warning: 'bg-amber-600 hover:bg-amber-700 text-white shadow-amber-600/20 shadow-md',
+    info: 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-600/20 shadow-md',
+    success: 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20 shadow-md'
   }[variant];
 
   const IconComponent = iconConfig.icon;
@@ -53,28 +60,34 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             type="button"
             onClick={onClose}
             disabled={isLoading}
-            className="px-3 py-1 text-xs font-mono text-zinc-400 bg-[#161618] border border-[#27272a] rounded hover:border-zinc-700 hover:text-zinc-200 transition-colors"
+            className="px-3.5 py-1.5 text-xs font-semibold text-slate-300 bg-slate-800 border border-slate-700 rounded-xl hover:bg-slate-700 hover:text-white transition-colors"
           >
-            {cancelText}
+            {finalCancelText}
           </button>
           <button
             type="button"
-            onClick={() => {
-              onConfirm();
+            onClick={async () => {
+              try {
+                await onConfirm();
+              } catch (err) {
+                console.error('Error on confirm action:', err);
+              } finally {
+                onClose();
+              }
             }}
             disabled={isLoading}
-            className={`px-3 py-1 text-xs font-mono rounded font-semibold transition-all ${btnColor} disabled:opacity-50`}
+            className={`px-4 py-1.5 text-xs font-bold rounded-xl transition-all ${btnColor} disabled:opacity-50`}
           >
-            {isLoading ? 'PROCESSING...' : confirmText}
+            {isLoading ? 'Memproses...' : finalConfirmText}
           </button>
         </>
       }
     >
       <div className="flex items-start gap-3 py-1">
-        <div className={`p-2 rounded border ${iconConfig.color} shrink-0`}>
-          <IconComponent className="w-4 h-4" />
+        <div className={`p-2.5 rounded-xl border ${iconConfig.color} shrink-0`}>
+          <IconComponent className="w-5 h-5" />
         </div>
-        <p className="text-xs text-zinc-300 leading-relaxed font-sans pt-0.5">
+        <p className="text-xs text-slate-200 leading-relaxed pt-0.5">
           {message}
         </p>
       </div>

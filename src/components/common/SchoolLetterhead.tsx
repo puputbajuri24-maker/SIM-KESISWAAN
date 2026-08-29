@@ -20,21 +20,21 @@ export const SchoolLetterhead: React.FC<SchoolLetterheadProps> = ({
   showDoubleLine = true
 }) => {
   const info: Partial<SchoolSetting> = schoolInfo || {
-    name: 'SMA NEGERI 1 TELADAN NUSANTARA',
-    centralInstitution: 'KEMENTERIAN PENDIDIKAN, KEBUDAYAAN, RISET, DAN TEKNOLOGI',
-    regionalInstitution: 'DINAS PENDIDIKAN PROVINSI DKI JAKARTA',
-    npsn: '20108922',
-    address: 'Jl. Pemuda Pendidikan No. 45, Kebayoran Baru, Jakarta Selatan',
-    postalCode: '12120',
-    phone: '(021) 7892345',
-    email: 'info@sman1teladan.sch.id',
-    website: 'https://sman1teladan.sch.id',
+    name: 'MAN 2 SERAM BAGIAN TIMUR',
+    centralInstitution: 'KEMENTERIAN AGAMA REPUBLIK INDONESIA',
+    regionalInstitution: 'KANTOR KEMENTERIAN AGAMA KABUPATEN SERAM BAGIAN TIMUR',
+    npsn: '60728491',
+    address: 'Jl. Lintas Seram, Kec. Bula, Kab. Seram Bagian Timur, Maluku',
+    postalCode: '97554',
+    phone: '(0915) 21189',
+    email: 'man2sbt@kemenag.go.id',
+    website: 'https://man2serambagiantimur.sch.id',
     logoLeftUrl: '',
     logoRightUrl: ''
   };
 
-  const leftLogo = info.logoLeftUrl || info.logoUrl;
-  const rightLogo = info.logoRightUrl;
+  const leftLogo = info.logoLeftUrl;
+  const rightLogo = info.logoRightUrl || info.logoUrl;
 
   return (
     <div className={`w-full font-serif text-slate-900 ${className}`}>

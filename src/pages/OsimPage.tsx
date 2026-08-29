@@ -27,7 +27,11 @@ import {
   FileText,
   ThumbsUp,
   SlidersHorizontal,
-  FolderOpen
+  FolderOpen,
+  Eye,
+  UserCheck,
+  ShieldCheck,
+  GraduationCap
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -51,6 +55,7 @@ export const OsimPage: React.FC = () => {
     osimPrograms,
     osimAspirations,
     osimMeetings,
+    teachers,
     addOsimMember,
     updateOsimMember,
     deleteOsimMember,
@@ -82,15 +87,20 @@ export const OsimPage: React.FC = () => {
   const [isProkerDeleteOpen, setIsProkerDeleteOpen] = useState(false);
 
   const [isMemberModalOpen, setIsMemberModalOpen] = useState(false);
+  const [isMemberDetailOpen, setIsMemberDetailOpen] = useState(false);
   const [selectedMember, setSelectedMember] = useState<OsimMember | null>(null);
   const [isMemberDeleteOpen, setIsMemberDeleteOpen] = useState(false);
 
   const [isAspirationModalOpen, setIsAspirationModalOpen] = useState(false);
+  const [isAspirationDetailOpen, setIsAspirationDetailOpen] = useState(false);
   const [isAspirationResponseOpen, setIsAspirationResponseOpen] = useState(false);
   const [selectedAspiration, setSelectedAspiration] = useState<OsimAspiration | null>(null);
+  const [isAspirationDeleteOpen, setIsAspirationDeleteOpen] = useState(false);
 
   const [isMeetingModalOpen, setIsMeetingModalOpen] = useState(false);
+  const [isMeetingDetailOpen, setIsMeetingDetailOpen] = useState(false);
   const [selectedMeeting, setSelectedMeeting] = useState<OsimMeeting | null>(null);
+  const [isMeetingDeleteOpen, setIsMeetingDeleteOpen] = useState(false);
 
   // Forms data
   const [prokerForm, setProkerForm] = useState<Partial<OsimWorkProgram>>({
@@ -259,39 +269,56 @@ export const OsimPage: React.FC = () => {
       return;
     }
 
-    if (selectedProker) {
-      await updateOsimProgram(selectedProker.id, prokerForm);
-    } else {
-      await addOsimProgram({
-        title: prokerForm.title!,
-        sekbid: prokerForm.sekbid as OsimSekbid,
-        personInCharge: prokerForm.personInCharge || 'Pengurus OSIM',
-        startDate: prokerForm.startDate || new Date().toISOString().split('T')[0],
-        endDate: prokerForm.endDate || '',
-        location: prokerForm.location || 'Sekolah',
-        budgetEstimated: Number(prokerForm.budgetEstimated) || 0,
-        budgetRealized: Number(prokerForm.budgetRealized) || 0,
-        targetParticipants: prokerForm.targetParticipants || 'Seluruh Siswa',
-        participantCount: Number(prokerForm.participantCount) || 0,
-        successIndicator: prokerForm.successIndicator || 'Kegiatan terlaksana sesuai target.',
-        progressPercentage: Number(prokerForm.progressPercentage) || 0,
-        status: (prokerForm.status as OsimProgramStatus) || 'Diajukan',
-        description: prokerForm.description || '',
-        academicYear: prokerForm.academicYear || activeAcademicYear
-      });
-    }
-    setIsProkerModalOpen(false);
-  };
-
-  const handleDeleteProkerConfirm = async () => {
-    if (selectedProker) {
-      await deleteOsimProgram(selectedProker.id);
-      setIsProkerDeleteOpen(false);
+    try {
+      if (selectedProker) {
+        await updateOsimProgram(selectedProker.id, prokerForm);
+      } else {
+        await addOsimProgram({
+          title: prokerForm.title!,
+          sekbid: prokerForm.sekbid as OsimSekbid,
+          personInCharge: prokerForm.personInCharge || 'Pengurus OSIM',
+          startDate: prokerForm.startDate || new Date().toISOString().split('T')[0],
+          endDate: prokerForm.endDate || '',
+          location: prokerForm.location || 'Sekolah',
+          budgetEstimated: Number(prokerForm.budgetEstimated) || 0,
+          budgetRealized: Number(prokerForm.budgetRealized) || 0,
+          targetParticipants: prokerForm.targetParticipants || 'Seluruh Siswa',
+          participantCount: Number(prokerForm.participantCount) || 0,
+          successIndicator: prokerForm.successIndicator || 'Kegiatan terlaksana sesuai target.',
+          progressPercentage: Number(prokerForm.progressPercentage) || 0,
+          status: (prokerForm.status as OsimProgramStatus) || 'Diajukan',
+          description: prokerForm.description || '',
+          academicYear: prokerForm.academicYear || activeAcademicYear
+        });
+      }
+    } catch (err) {
+      console.error('Error saving proker:', err);
+    } finally {
+      setIsProkerModalOpen(false);
       setSelectedProker(null);
     }
   };
 
+  const handleDeleteProkerConfirm = async () => {
+    if (selectedProker) {
+      try {
+        await deleteOsimProgram(selectedProker.id);
+      } catch (err) {
+        console.error('Error deleting proker:', err);
+      } finally {
+        setIsProkerDeleteOpen(false);
+        setSelectedProker(null);
+      }
+    }
+  };
+
   // Member Handlers
+  const handleOpenDetailMember = (m: OsimMember, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setSelectedMember(m);
+    setIsMemberDetailOpen(true);
+  };
+
   const handleOpenAddMember = () => {
     setSelectedMember(null);
     setMemberForm({
@@ -324,36 +351,72 @@ export const OsimPage: React.FC = () => {
       return;
     }
 
-    if (selectedMember) {
-      await updateOsimMember(selectedMember.id, memberForm);
-    } else {
-      await addOsimMember({
-        fullName: memberForm.fullName!,
-        studentNis: memberForm.studentNis || '24251000',
-        className: memberForm.className || 'X RPL 1',
-        position: memberForm.position as any,
-        sekbid: memberForm.sekbid as OsimSekbid,
-        phone: memberForm.phone || '-',
-        email: memberForm.email || '',
-        photoUrl: memberForm.photoUrl || '',
-        status: (memberForm.status as any) || 'Aktif',
-        vision: memberForm.vision || '',
-        flagshipProgram: memberForm.flagshipProgram || '',
-        period: memberForm.period || activeAcademicYear
-      });
-    }
-    setIsMemberModalOpen(false);
-  };
-
-  const handleDeleteMemberConfirm = async () => {
-    if (selectedMember) {
-      await deleteOsimMember(selectedMember.id);
-      setIsMemberDeleteOpen(false);
+    try {
+      if (selectedMember) {
+        await updateOsimMember(selectedMember.id, memberForm);
+      } else {
+        await addOsimMember({
+          fullName: memberForm.fullName!,
+          studentNis: memberForm.studentNis || '24251000',
+          className: memberForm.className || 'X RPL 1',
+          position: memberForm.position as any,
+          sekbid: memberForm.sekbid as OsimSekbid,
+          phone: memberForm.phone || '-',
+          email: memberForm.email || '',
+          photoUrl: memberForm.photoUrl || '',
+          status: (memberForm.status as any) || 'Aktif',
+          vision: memberForm.vision || '',
+          flagshipProgram: memberForm.flagshipProgram || '',
+          period: memberForm.period || activeAcademicYear
+        });
+      }
+    } catch (err) {
+      console.error('Error saving member:', err);
+    } finally {
+      setIsMemberModalOpen(false);
       setSelectedMember(null);
     }
   };
 
+  const handleDeleteMemberConfirm = async () => {
+    if (selectedMember) {
+      try {
+        await deleteOsimMember(selectedMember.id);
+      } catch (err) {
+        console.error('Error deleting member:', err);
+      } finally {
+        setIsMemberDeleteOpen(false);
+        setSelectedMember(null);
+      }
+    }
+  };
+
   // Aspiration Handlers
+  const handleOpenDetailAspiration = (asp: OsimAspiration, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setSelectedAspiration(asp);
+    setIsAspirationDetailOpen(true);
+  };
+
+  const handleOpenDeleteAspiration = (asp: OsimAspiration, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setSelectedAspiration(asp);
+    setIsAspirationDeleteOpen(true);
+  };
+
+  const handleDeleteAspirationConfirm = async () => {
+    if (selectedAspiration) {
+      try {
+        await deleteOsimAspiration(selectedAspiration.id);
+      } catch (err) {
+        console.error('Error deleting aspiration:', err);
+      } finally {
+        setIsAspirationDeleteOpen(false);
+        setSelectedAspiration(null);
+      }
+    }
+  };
+
   const handleOpenAddAspiration = () => {
     setAspirationForm({
       studentName: currentUser?.displayName || 'Siswa Madrasah',
@@ -376,22 +439,27 @@ export const OsimPage: React.FC = () => {
       return;
     }
 
-    await addOsimAspiration({
-      studentName: aspirationForm.studentName || 'Anonim / Siswa Madrasah',
-      studentClass: aspirationForm.studentClass || 'Umum',
-      date: aspirationForm.date || new Date().toISOString().split('T')[0],
-      title: aspirationForm.title!,
-      content: aspirationForm.content!,
-      category: aspirationForm.category as any,
-      upvotes: 1,
-      status: 'Ditampung',
-      academicYear: aspirationForm.academicYear || activeAcademicYear
-    });
-
-    setIsAspirationModalOpen(false);
+    try {
+      await addOsimAspiration({
+        studentName: aspirationForm.studentName || 'Anonim / Siswa Madrasah',
+        studentClass: aspirationForm.studentClass || 'Umum',
+        date: aspirationForm.date || new Date().toISOString().split('T')[0],
+        title: aspirationForm.title!,
+        content: aspirationForm.content!,
+        category: aspirationForm.category as any,
+        upvotes: 1,
+        status: 'Ditampung',
+        academicYear: aspirationForm.academicYear || activeAcademicYear
+      });
+    } catch (err) {
+      console.error('Error saving aspiration:', err);
+    } finally {
+      setIsAspirationModalOpen(false);
+    }
   };
 
-  const handleOpenResponseAspiration = (asp: OsimAspiration) => {
+  const handleOpenResponseAspiration = (asp: OsimAspiration, e?: React.MouseEvent) => {
+    e?.stopPropagation();
     setSelectedAspiration(asp);
     setResponseNoteText(asp.responseNote || '');
     setResponseStatus(asp.status);
@@ -400,13 +468,19 @@ export const OsimPage: React.FC = () => {
 
   const handleSaveResponse = async () => {
     if (!selectedAspiration) return;
-    await updateOsimAspiration(selectedAspiration.id, {
-      status: responseStatus,
-      responseNote: responseNoteText,
-      respondedBy: currentUser?.displayName || 'Waka Kesiswaan / BPH OSIM',
-      respondedAt: new Date().toISOString().split('T')[0]
-    });
-    setIsAspirationResponseOpen(false);
+    try {
+      await updateOsimAspiration(selectedAspiration.id, {
+        status: responseStatus,
+        responseNote: responseNoteText,
+        respondedBy: currentUser?.displayName || 'Waka Kesiswaan / BPH OSIM',
+        respondedAt: new Date().toISOString().split('T')[0]
+      });
+    } catch (err) {
+      console.error('Error saving response:', err);
+    } finally {
+      setIsAspirationResponseOpen(false);
+      setSelectedAspiration(null);
+    }
   };
 
   const handleUpvoteAspiration = async (asp: OsimAspiration, e: React.MouseEvent) => {
@@ -417,6 +491,38 @@ export const OsimPage: React.FC = () => {
   };
 
   // Meeting Handlers
+  const handleOpenDetailMeeting = (meet: OsimMeeting, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setSelectedMeeting(meet);
+    setIsMeetingDetailOpen(true);
+  };
+
+  const handleOpenEditMeeting = (meet: OsimMeeting, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setSelectedMeeting(meet);
+    setMeetingForm(meet);
+    setIsMeetingModalOpen(true);
+  };
+
+  const handleOpenDeleteMeeting = (meet: OsimMeeting, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setSelectedMeeting(meet);
+    setIsMeetingDeleteOpen(true);
+  };
+
+  const handleDeleteMeetingConfirm = async () => {
+    if (selectedMeeting) {
+      try {
+        await deleteOsimMeeting(selectedMeeting.id);
+      } catch (err) {
+        console.error('Error deleting meeting:', err);
+      } finally {
+        setIsMeetingDeleteOpen(false);
+        setSelectedMeeting(null);
+      }
+    }
+  };
+
   const handleOpenAddMeeting = () => {
     setSelectedMeeting(null);
     setMeetingForm({
@@ -444,26 +550,32 @@ export const OsimPage: React.FC = () => {
       return;
     }
 
-    if (selectedMeeting) {
-      await updateOsimMeeting(selectedMeeting.id, meetingForm);
-    } else {
-      await addOsimMeeting({
-        title: meetingForm.title!,
-        type: meetingForm.type as any,
-        date: meetingForm.date || new Date().toISOString().split('T')[0],
-        startTime: meetingForm.startTime || '15:30',
-        endTime: meetingForm.endTime || '17:00',
-        location: meetingForm.location || 'Ruang Rapat OSIM',
-        leader: meetingForm.leader || 'Ketua Umum OSIM',
-        secretary: meetingForm.secretary || 'Sekretaris Umum',
-        attendeesCount: Number(meetingForm.attendeesCount) || 20,
-        agenda: meetingForm.agenda!,
-        decisionNotes: meetingForm.decisionNotes || 'Rapat mufakat disetujui.',
-        wakaNotes: meetingForm.wakaNotes || '',
-        academicYear: meetingForm.academicYear || activeAcademicYear
-      });
+    try {
+      if (selectedMeeting) {
+        await updateOsimMeeting(selectedMeeting.id, meetingForm);
+      } else {
+        await addOsimMeeting({
+          title: meetingForm.title!,
+          type: meetingForm.type as any,
+          date: meetingForm.date || new Date().toISOString().split('T')[0],
+          startTime: meetingForm.startTime || '15:30',
+          endTime: meetingForm.endTime || '17:00',
+          location: meetingForm.location || 'Ruang Rapat OSIM',
+          leader: meetingForm.leader || 'Ketua Umum OSIM',
+          secretary: meetingForm.secretary || 'Sekretaris Umum',
+          attendeesCount: Number(meetingForm.attendeesCount) || 20,
+          agenda: meetingForm.agenda!,
+          decisionNotes: meetingForm.decisionNotes || 'Rapat mufakat disetujui.',
+          wakaNotes: meetingForm.wakaNotes || '',
+          academicYear: meetingForm.academicYear || activeAcademicYear
+        });
+      }
+    } catch (err) {
+      console.error('Error saving meeting:', err);
+    } finally {
+      setIsMeetingModalOpen(false);
+      setSelectedMeeting(null);
     }
-    setIsMeetingModalOpen(false);
   };
 
   // Helper status color
@@ -863,6 +975,57 @@ export const OsimPage: React.FC = () => {
             </div>
           </div>
 
+          {/* Dewan Pembina & Penasihat Intrakurikuler (Synced with Dewan Guru & School Settings) */}
+          <div className="bg-[#121214] border border-indigo-500/30 rounded-lg p-4">
+            <div className="flex items-center justify-between mb-3 border-b border-zinc-800 pb-2">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-indigo-400" />
+                <h2 className="text-xs font-bold font-mono tracking-wider uppercase text-indigo-400">
+                  DEWAN PEMBINA & PENASIHAT INTRAKURIKULER (OSIM)
+                </h2>
+              </div>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                ⚡ Tersinkronisasi Otomatis dari Dewan Guru
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Penanggung Jawab / Kepala Madrasah */}
+              <div className="bg-zinc-900/90 border border-zinc-800 rounded-lg p-3">
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-zinc-800 text-zinc-300 border border-zinc-700">
+                  PENANGGUNG JAWAB UTAMA
+                </span>
+                <h4 className="font-bold text-xs text-zinc-100 mt-2">{schoolSetting?.principalName || 'Kepala Madrasah'}</h4>
+                <p className="text-[10px] text-zinc-400 font-mono mt-0.5">NIP: {schoolSetting?.principalNip || '-'}</p>
+                <p className="text-[10px] text-zinc-500 mt-1">Kepala Madrasah Aliyah</p>
+              </div>
+
+              {/* Pengarah / Waka Kesiswaan */}
+              <div className="bg-zinc-900/90 border border-zinc-800 rounded-lg p-3">
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                  PENGARAH & PENANGGUNG JAWAB
+                </span>
+                <h4 className="font-bold text-xs text-zinc-100 mt-2">{schoolSetting?.wakaKesiswaanName || schoolSetting?.wakaName || 'Waka Kesiswaan'}</h4>
+                <p className="text-[10px] text-zinc-400 font-mono mt-0.5">NIP: {schoolSetting?.wakaNip || '-'}</p>
+                <p className="text-[10px] text-zinc-500 mt-1">Wakil Kepala Bidang Kesiswaan</p>
+              </div>
+
+              {/* Pembina Resmi OSIM */}
+              <div className="bg-zinc-900/90 border border-indigo-500/30 rounded-lg p-3">
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                  PEMBINA RESMI OSIM
+                </span>
+                <h4 className="font-bold text-xs text-zinc-100 mt-2">
+                  {schoolSetting?.pembinaOsim || teachers.find(t => t.role?.toLowerCase().includes('osim'))?.fullName || 'Belum Ditetapkan'}
+                </h4>
+                <p className="text-[10px] text-zinc-400 font-mono mt-0.5">
+                  NIP: {schoolSetting?.pembinaOsimNip || teachers.find(t => t.role?.toLowerCase().includes('osim'))?.nip || '-'}
+                </p>
+                <p className="text-[10px] text-indigo-400 mt-1">Pembina Harian Organisasi Siswa</p>
+              </div>
+            </div>
+          </div>
+
           {/* Badan Pengurus Harian (BPH) Highlight Section */}
           <div className="bg-[#121214] border border-amber-500/30 rounded-lg p-4">
             <div className="flex items-center justify-between mb-3 border-b border-zinc-800 pb-2">
@@ -881,7 +1044,8 @@ export const OsimPage: React.FC = () => {
                 .map(bph => (
                   <div
                     key={bph.id}
-                    className="bg-zinc-900/90 border border-zinc-800 hover:border-amber-500/40 rounded-lg p-3.5 transition flex flex-col justify-between"
+                    onClick={() => handleOpenDetailMember(bph)}
+                    className="bg-zinc-900/90 border border-zinc-800 hover:border-amber-500/40 rounded-lg p-3.5 transition flex flex-col justify-between cursor-pointer group shadow-sm"
                   >
                     <div>
                       <div className="flex items-start gap-3 mb-2">
@@ -901,7 +1065,7 @@ export const OsimPage: React.FC = () => {
                           <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
                             {bph.position}
                           </span>
-                          <h4 className="font-bold text-xs text-zinc-100 mt-1 truncate">{bph.fullName}</h4>
+                          <h4 className="font-bold text-xs text-zinc-100 group-hover:text-amber-400 mt-1 truncate transition">{bph.fullName}</h4>
                           <p className="text-[10px] text-zinc-400 font-mono">{bph.className} • NIS {bph.studentNis}</p>
                         </div>
                       </div>
@@ -913,16 +1077,37 @@ export const OsimPage: React.FC = () => {
 
                     <div className="mt-3 pt-2 border-t border-zinc-800/80 flex items-center justify-between text-[10px]">
                       <span className="text-zinc-500 font-mono">📱 {bph.phone}</span>
-                      {isWakaOrAdmin && (
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={e => handleOpenEditMember(bph, e)}
-                            className="p-1 rounded bg-zinc-800 text-zinc-400 hover:text-amber-400 transition"
-                          >
-                            <Edit2 className="w-3 h-3" />
-                          </button>
-                        </div>
-                      )}
+                      <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                        <button
+                          onClick={e => handleOpenDetailMember(bph, e)}
+                          className="p-1 rounded bg-zinc-800 text-zinc-400 hover:text-cyan-400 transition"
+                          title="Lihat Detail Pengurus"
+                        >
+                          <Eye className="w-3 h-3" />
+                        </button>
+                        {isWakaOrAdmin && (
+                          <>
+                            <button
+                              onClick={e => handleOpenEditMember(bph, e)}
+                              className="p-1 rounded bg-zinc-800 text-zinc-400 hover:text-amber-400 transition"
+                              title="Edit Pengurus"
+                            >
+                              <Edit2 className="w-3 h-3" />
+                            </button>
+                            <button
+                              onClick={e => {
+                                e.stopPropagation();
+                                setSelectedMember(bph);
+                                setIsMemberDeleteOpen(true);
+                              }}
+                              className="p-1 rounded bg-zinc-800 text-zinc-400 hover:text-rose-400 transition"
+                              title="Hapus Pengurus"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -944,7 +1129,8 @@ export const OsimPage: React.FC = () => {
                 .map(member => (
                   <div
                     key={member.id}
-                    className="bg-[#121214] border border-zinc-800 hover:border-zinc-700 rounded-lg p-3.5 transition flex flex-col justify-between shadow-sm"
+                    onClick={() => handleOpenDetailMember(member)}
+                    className="bg-[#121214] border border-zinc-800 hover:border-zinc-700 rounded-lg p-3.5 transition flex flex-col justify-between shadow-sm cursor-pointer group"
                   >
                     <div>
                       <div className="flex items-start justify-between gap-2 mb-2">
@@ -956,7 +1142,7 @@ export const OsimPage: React.FC = () => {
                         </span>
                       </div>
 
-                      <h4 className="font-bold text-xs text-zinc-100">{member.fullName}</h4>
+                      <h4 className="font-bold text-xs text-zinc-100 group-hover:text-amber-400 transition">{member.fullName}</h4>
                       <p className="text-[10px] font-mono text-zinc-400 mt-0.5">
                         {member.className} • NIS {member.studentNis}
                       </p>
@@ -971,28 +1157,37 @@ export const OsimPage: React.FC = () => {
 
                     <div className="mt-3 pt-2 border-t border-zinc-800/80 flex items-center justify-between text-[10px]">
                       <span className="text-zinc-500 font-mono">{member.phone}</span>
-                      {isWakaOrAdmin && (
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            onClick={e => handleOpenEditMember(member, e)}
-                            className="p-1 rounded bg-zinc-800 text-zinc-400 hover:text-amber-400 transition"
-                            title="Edit"
-                          >
-                            <Edit2 className="w-3 h-3" />
-                          </button>
-                          <button
-                            onClick={e => {
-                              e.stopPropagation();
-                              setSelectedMember(member);
-                              setIsMemberDeleteOpen(true);
-                            }}
-                            className="p-1 rounded bg-zinc-800 text-zinc-400 hover:text-rose-400 transition"
-                            title="Hapus"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        </div>
-                      )}
+                      <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+                        <button
+                          onClick={e => handleOpenDetailMember(member, e)}
+                          className="p-1 rounded bg-zinc-800 text-zinc-400 hover:text-cyan-400 transition"
+                          title="Lihat Detail Pengurus"
+                        >
+                          <Eye className="w-3 h-3" />
+                        </button>
+                        {isWakaOrAdmin && (
+                          <>
+                            <button
+                              onClick={e => handleOpenEditMember(member, e)}
+                              className="p-1 rounded bg-zinc-800 text-zinc-400 hover:text-amber-400 transition"
+                              title="Edit"
+                            >
+                              <Edit2 className="w-3 h-3" />
+                            </button>
+                            <button
+                              onClick={e => {
+                                e.stopPropagation();
+                                setSelectedMember(member);
+                                setIsMemberDeleteOpen(true);
+                              }}
+                              className="p-1 rounded bg-zinc-800 text-zinc-400 hover:text-rose-400 transition"
+                              title="Hapus"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -1031,7 +1226,8 @@ export const OsimPage: React.FC = () => {
             {osimMeetings.map(meet => (
               <div
                 key={meet.id}
-                className="bg-[#121214] border border-zinc-800 rounded-lg p-4 hover:border-zinc-700 transition"
+                onClick={() => handleOpenDetailMeeting(meet)}
+                className="bg-[#121214] border border-zinc-800 rounded-lg p-4 hover:border-amber-500/40 transition cursor-pointer group shadow-sm"
               >
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-zinc-800 pb-2.5">
                   <div>
@@ -1043,12 +1239,39 @@ export const OsimPage: React.FC = () => {
                         📅 {meet.date} ({meet.startTime} - {meet.endTime} WIB)
                       </span>
                     </div>
-                    <h3 className="font-bold text-sm text-zinc-100 mt-1.5">{meet.title}</h3>
+                    <h3 className="font-bold text-sm text-zinc-100 group-hover:text-amber-400 mt-1.5 transition">{meet.title}</h3>
                   </div>
 
                   <div className="flex items-center gap-3 text-[11px] text-zinc-400 font-mono">
                     <span>📍 {meet.location}</span>
                     <span>👥 {meet.attendeesCount} Peserta Hadir</span>
+                    <div className="flex items-center gap-1 ml-2" onClick={e => e.stopPropagation()}>
+                      <button
+                        onClick={e => handleOpenDetailMeeting(meet, e)}
+                        className="p-1 rounded bg-zinc-800 text-zinc-400 hover:text-cyan-400 transition"
+                        title="Lihat Detail Notulensi"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                      </button>
+                      {isWakaOrAdmin && (
+                        <>
+                          <button
+                            onClick={e => handleOpenEditMeeting(meet, e)}
+                            className="p-1 rounded bg-zinc-800 text-zinc-400 hover:text-amber-400 transition"
+                            title="Edit Notulensi"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={e => handleOpenDeleteMeeting(meet, e)}
+                            className="p-1 rounded bg-zinc-800 text-zinc-400 hover:text-rose-400 transition"
+                            title="Hapus Notulensi"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -1057,7 +1280,7 @@ export const OsimPage: React.FC = () => {
                     <span className="text-[10px] font-mono font-bold uppercase text-zinc-400 block mb-1">
                       AGENDA PEMBAHASAN:
                     </span>
-                    <p className="text-zinc-300 leading-relaxed whitespace-pre-line">{meet.agenda}</p>
+                    <p className="text-zinc-300 leading-relaxed whitespace-pre-line line-clamp-3">{meet.agenda}</p>
                     <div className="mt-3 pt-2 border-t border-zinc-800 text-[11px] text-zinc-400">
                       Pimpinan Rapat: <strong className="text-zinc-200">{meet.leader}</strong> • Notulis: <strong className="text-zinc-200">{meet.secretary}</strong>
                     </div>
@@ -1067,9 +1290,9 @@ export const OsimPage: React.FC = () => {
                     <span className="text-[10px] font-mono font-bold uppercase text-emerald-400 block mb-1">
                       HASIL KEPUTUSAN & MUFAKAT:
                     </span>
-                    <p className="text-zinc-300 leading-relaxed whitespace-pre-line">{meet.decisionNotes}</p>
+                    <p className="text-zinc-300 leading-relaxed whitespace-pre-line line-clamp-3">{meet.decisionNotes}</p>
                     {meet.wakaNotes && (
-                      <div className="mt-3 pt-2 border-t border-zinc-800 text-[11px] text-amber-400/90">
+                      <div className="mt-3 pt-2 border-t border-zinc-800 text-[11px] text-amber-400/90 line-clamp-1">
                         Catatan Waka Kesiswaan: <em>"{meet.wakaNotes}"</em>
                       </div>
                     )}
@@ -1109,7 +1332,8 @@ export const OsimPage: React.FC = () => {
             {osimAspirations.map(asp => (
               <div
                 key={asp.id}
-                className="bg-[#121214] border border-zinc-800 rounded-lg p-4 flex flex-col justify-between hover:border-zinc-700 transition"
+                onClick={() => handleOpenDetailAspiration(asp)}
+                className="bg-[#121214] border border-zinc-800 rounded-lg p-4 flex flex-col justify-between hover:border-amber-500/40 transition cursor-pointer group shadow-sm"
               >
                 <div>
                   <div className="flex items-start justify-between gap-2 mb-2">
@@ -1129,8 +1353,8 @@ export const OsimPage: React.FC = () => {
                     </span>
                   </div>
 
-                  <h4 className="font-bold text-sm text-zinc-100">{asp.title}</h4>
-                  <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed">{asp.content}</p>
+                  <h4 className="font-bold text-sm text-zinc-100 group-hover:text-amber-400 transition">{asp.title}</h4>
+                  <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed line-clamp-3">{asp.content}</p>
 
                   <div className="mt-2 text-[10px] font-mono text-zinc-500">
                     Oleh: <span className="text-zinc-300">{asp.studentName}</span> ({asp.studentClass}) • {asp.date}
@@ -1141,12 +1365,12 @@ export const OsimPage: React.FC = () => {
                       <span className="text-[10px] font-mono font-bold uppercase text-emerald-400 block mb-0.5">
                         Tanggapan Resmi ({asp.respondedBy}):
                       </span>
-                      <p className="text-zinc-300 text-[11px] leading-snug">{asp.responseNote}</p>
+                      <p className="text-zinc-300 text-[11px] leading-snug line-clamp-2">{asp.responseNote}</p>
                     </div>
                   )}
                 </div>
 
-                <div className="mt-3 pt-2.5 border-t border-zinc-800/80 flex items-center justify-between">
+                <div className="mt-3 pt-2.5 border-t border-zinc-800/80 flex items-center justify-between" onClick={e => e.stopPropagation()}>
                   <button
                     onClick={e => handleUpvoteAspiration(asp, e)}
                     className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-amber-400 border border-zinc-800 text-xs font-mono transition"
@@ -1155,14 +1379,32 @@ export const OsimPage: React.FC = () => {
                     <span>Dukungan ({asp.upvotes || 1})</span>
                   </button>
 
-                  {isWakaOrAdmin && (
+                  <div className="flex items-center gap-1.5">
                     <button
-                      onClick={() => handleOpenResponseAspiration(asp)}
-                      className="px-2.5 py-1 rounded bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border border-amber-500/30 text-xs font-semibold transition"
+                      onClick={e => handleOpenDetailAspiration(asp, e)}
+                      className="p-1.5 rounded bg-zinc-800 text-zinc-400 hover:text-cyan-400 transition"
+                      title="Lihat Detail Aspirasi"
                     >
-                      Beri Respon OSIM
+                      <Eye className="w-3.5 h-3.5" />
                     </button>
-                  )}
+                    {isWakaOrAdmin && (
+                      <>
+                        <button
+                          onClick={e => handleOpenResponseAspiration(asp, e)}
+                          className="px-2.5 py-1 rounded bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border border-amber-500/30 text-xs font-semibold transition"
+                        >
+                          Beri Respon
+                        </button>
+                        <button
+                          onClick={e => handleOpenDeleteAspiration(asp, e)}
+                          className="p-1.5 rounded bg-zinc-800 text-zinc-400 hover:text-rose-400 transition"
+                          title="Hapus Aspirasi"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}
@@ -1815,6 +2057,318 @@ export const OsimPage: React.FC = () => {
         </form>
       </Modal>
 
+      {/* Modal Detail Pengurus OSIM */}
+      <Modal
+        isOpen={isMemberDetailOpen}
+        onClose={() => setIsMemberDetailOpen(false)}
+        title="Detail Profil Pengurus OSIM"
+        maxWidth="max-w-lg"
+      >
+        {selectedMember && (
+          <div className="space-y-4 text-xs">
+            <div className="flex items-start gap-3 bg-zinc-900/90 border border-zinc-800 p-3 rounded-lg">
+              {selectedMember.photoUrl ? (
+                <img
+                  src={selectedMember.photoUrl}
+                  alt={selectedMember.fullName}
+                  referrerPolicy="no-referrer"
+                  className="w-16 h-16 rounded-full object-cover border border-amber-500/40 shrink-0"
+                />
+              ) : (
+                <div className="w-16 h-16 rounded-full bg-amber-500/20 text-amber-400 font-bold flex items-center justify-center border border-amber-500/30 shrink-0 text-xl">
+                  {selectedMember.fullName.charAt(0)}
+                </div>
+              )}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                    {selectedMember.position}
+                  </span>
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-zinc-800 text-zinc-300 border border-zinc-700">
+                    {selectedMember.status}
+                  </span>
+                </div>
+                <h3 className="font-bold text-sm text-zinc-100 mt-1">{selectedMember.fullName}</h3>
+                <p className="text-zinc-400 font-mono text-[11px] mt-0.5">
+                  NIS: {selectedMember.studentNis} • Kelas: {selectedMember.className}
+                </p>
+                <p className="text-zinc-500 text-[10px] font-mono mt-0.5">
+                  Masa Bakti: {selectedMember.period || activeAcademicYear}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 bg-zinc-900/60 p-3 rounded-lg border border-zinc-800/80">
+              <div>
+                <span className="text-[10px] text-zinc-500 block font-mono">Seksi Bidang:</span>
+                <span className="text-zinc-200 font-semibold">{selectedMember.sekbid}</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-zinc-500 block font-mono">No. Telepon / WA:</span>
+                <span className="text-zinc-200 font-mono">{selectedMember.phone || '-'}</span>
+              </div>
+              {selectedMember.email && (
+                <div className="col-span-2">
+                  <span className="text-[10px] text-zinc-500 block font-mono">Email:</span>
+                  <span className="text-zinc-300 font-mono">{selectedMember.email}</span>
+                </div>
+              )}
+            </div>
+
+            {selectedMember.vision && (
+              <div className="bg-zinc-900/60 p-3 rounded-lg border border-zinc-800/80">
+                <span className="text-[10px] text-amber-400 font-mono font-bold uppercase block mb-1">
+                  Visi & Komitmen:
+                </span>
+                <p className="text-zinc-300 leading-relaxed italic">"{selectedMember.vision}"</p>
+              </div>
+            )}
+
+            {selectedMember.flagshipProgram && (
+              <div className="bg-zinc-900/60 p-3 rounded-lg border border-zinc-800/80">
+                <span className="text-[10px] text-sky-400 font-mono font-bold uppercase block mb-1">
+                  Program Unggulan yang Diusung:
+                </span>
+                <p className="text-zinc-200 font-medium">{selectedMember.flagshipProgram}</p>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-3 border-t border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setIsMemberDetailOpen(false)}
+                className="px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 text-xs hover:bg-zinc-700 transition"
+              >
+                Tutup
+              </button>
+              {isWakaOrAdmin && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMemberDetailOpen(false);
+                      handleOpenEditMember(selectedMember);
+                    }}
+                    className="px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold flex items-center gap-1.5 transition"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                    Edit Profil
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMemberDetailOpen(false);
+                      setIsMemberDeleteOpen(true);
+                    }}
+                    className="px-3 py-1.5 rounded bg-rose-600/20 hover:bg-rose-600/30 text-rose-400 border border-rose-500/30 text-xs font-semibold flex items-center gap-1.5 transition"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Hapus
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Modal Detail Notulensi Sidang Pleno */}
+      <Modal
+        isOpen={isMeetingDetailOpen}
+        onClose={() => setIsMeetingDetailOpen(false)}
+        title="Detail Notulensi Sidang & Rapat OSIM"
+        maxWidth="max-w-2xl"
+      >
+        {selectedMeeting && (
+          <div className="space-y-4 text-xs">
+            <div className="bg-zinc-900/90 border border-zinc-800 p-3.5 rounded-lg">
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                  {selectedMeeting.type}
+                </span>
+                <span className="text-zinc-400 font-mono text-[11px]">
+                  📅 {selectedMeeting.date} ({selectedMeeting.startTime} - {selectedMeeting.endTime} WIB)
+                </span>
+              </div>
+              <h3 className="font-bold text-base text-zinc-100">{selectedMeeting.title}</h3>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 pt-2.5 border-t border-zinc-800 text-[11px] font-mono text-zinc-400">
+                <div>
+                  <span className="text-zinc-500 block text-[10px]">Lokasi:</span>
+                  <strong className="text-zinc-200">{selectedMeeting.location}</strong>
+                </div>
+                <div>
+                  <span className="text-zinc-500 block text-[10px]">Kehadiran:</span>
+                  <strong className="text-zinc-200">{selectedMeeting.attendeesCount} Orang</strong>
+                </div>
+                <div>
+                  <span className="text-zinc-500 block text-[10px]">Pimpinan Rapat:</span>
+                  <strong className="text-zinc-200">{selectedMeeting.leader}</strong>
+                </div>
+                <div>
+                  <span className="text-zinc-500 block text-[10px]">Notulis:</span>
+                  <strong className="text-zinc-200">{selectedMeeting.secretary}</strong>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-zinc-900/60 border border-zinc-800/80 rounded-lg p-3.5">
+              <span className="text-[10px] font-mono font-bold uppercase text-zinc-400 block mb-1.5">
+                AGENDA PEMBAHASAN:
+              </span>
+              <p className="text-zinc-200 leading-relaxed whitespace-pre-line">{selectedMeeting.agenda}</p>
+            </div>
+
+            <div className="bg-zinc-900/60 border border-emerald-500/20 rounded-lg p-3.5">
+              <span className="text-[10px] font-mono font-bold uppercase text-emerald-400 block mb-1.5">
+                HASIL KEPUTUSAN & MUFAKAT SIDANG:
+              </span>
+              <p className="text-zinc-200 leading-relaxed whitespace-pre-line">{selectedMeeting.decisionNotes}</p>
+            </div>
+
+            {selectedMeeting.wakaNotes && (
+              <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-3.5">
+                <span className="text-[10px] font-mono font-bold uppercase text-amber-400 block mb-1">
+                  Catatan Waka Kesiswaan / Pembina:
+                </span>
+                <p className="text-zinc-200 italic">{selectedMeeting.wakaNotes}</p>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-3 border-t border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setIsMeetingDetailOpen(false)}
+                className="px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 text-xs hover:bg-zinc-700 transition"
+              >
+                Tutup
+              </button>
+              {isWakaOrAdmin && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMeetingDetailOpen(false);
+                      handleOpenEditMeeting(selectedMeeting);
+                    }}
+                    className="px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold flex items-center gap-1.5 transition"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                    Edit Notulensi
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsMeetingDetailOpen(false);
+                      handleOpenDeleteMeeting(selectedMeeting);
+                    }}
+                    className="px-3 py-1.5 rounded bg-rose-600/20 hover:bg-rose-600/30 text-rose-400 border border-rose-500/30 text-xs font-semibold flex items-center gap-1.5 transition"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Hapus
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* Modal Detail Aspirasi Santri */}
+      <Modal
+        isOpen={isAspirationDetailOpen}
+        onClose={() => setIsAspirationDetailOpen(false)}
+        title="Detail Aspirasi & Suara Santri"
+        maxWidth="max-w-lg"
+      >
+        {selectedAspiration && (
+          <div className="space-y-4 text-xs">
+            <div className="bg-zinc-900/90 border border-zinc-800 p-3.5 rounded-lg">
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-zinc-800 text-zinc-300 border border-zinc-700">
+                  {selectedAspiration.category}
+                </span>
+                <span
+                  className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+                    selectedAspiration.status === 'Direalisasikan'
+                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                      : selectedAspiration.status === 'Sedang Dibahas'
+                      ? 'bg-sky-500/10 text-sky-400 border border-sky-500/20'
+                      : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                  }`}
+                >
+                  {selectedAspiration.status}
+                </span>
+              </div>
+              <h3 className="font-bold text-base text-zinc-100">{selectedAspiration.title}</h3>
+              <p className="text-zinc-400 font-mono text-[11px] mt-1">
+                Pengirim: <strong className="text-zinc-200">{selectedAspiration.studentName}</strong> ({selectedAspiration.studentClass}) • Tanggal: {selectedAspiration.date}
+              </p>
+              <div className="mt-2 text-amber-400 font-mono text-[11px] flex items-center gap-1">
+                <ThumbsUp className="w-3.5 h-3.5" />
+                <span>{selectedAspiration.upvotes || 1} Santri Mendukung Aspirasi Ini</span>
+              </div>
+            </div>
+
+            <div className="bg-zinc-900/60 border border-zinc-800/80 rounded-lg p-3.5">
+              <span className="text-[10px] font-mono font-bold uppercase text-zinc-400 block mb-1.5">
+                ISI LENGKAP ASPIRASI:
+              </span>
+              <p className="text-zinc-200 leading-relaxed whitespace-pre-line">{selectedAspiration.content}</p>
+            </div>
+
+            {selectedAspiration.responseNote && (
+              <div className="bg-zinc-900/90 border border-emerald-500/30 rounded-lg p-3.5">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] font-mono font-bold uppercase text-emerald-400">
+                    TANGGAPAN RESMI PENGURUS:
+                  </span>
+                  <span className="text-[10px] font-mono text-zinc-400">{selectedAspiration.respondedAt}</span>
+                </div>
+                <p className="text-zinc-200 leading-relaxed">{selectedAspiration.responseNote}</p>
+                <span className="text-[10px] font-mono text-zinc-500 block mt-2">
+                  Ditanggapi oleh: {selectedAspiration.respondedBy || 'Pengurus OSIM'}
+                </span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-3 border-t border-zinc-800">
+              <button
+                type="button"
+                onClick={() => setIsAspirationDetailOpen(false)}
+                className="px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 text-xs hover:bg-zinc-700 transition"
+              >
+                Tutup
+              </button>
+              {isWakaOrAdmin && (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAspirationDetailOpen(false);
+                      handleOpenResponseAspiration(selectedAspiration);
+                    }}
+                    className="px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold transition"
+                  >
+                    Beri Respon
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAspirationDetailOpen(false);
+                      handleOpenDeleteAspiration(selectedAspiration);
+                    }}
+                    className="px-3 py-1.5 rounded bg-rose-600/20 hover:bg-rose-600/30 text-rose-400 border border-rose-500/30 text-xs font-semibold flex items-center gap-1.5 transition"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Hapus
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </Modal>
+
       {/* Dialog Konfirmasi Hapus Proker */}
       <ConfirmDialog
         isOpen={isProkerDeleteOpen}
@@ -1834,6 +2388,28 @@ export const OsimPage: React.FC = () => {
         title="Hapus Pengurus OSIM?"
         message={`Apakah Anda yakin ingin menghapus "${selectedMember?.fullName}" dari struktur pengurus OSIM?`}
         confirmText="Hapus Pengurus"
+        type="danger"
+      />
+
+      {/* Dialog Konfirmasi Hapus Notulensi Sidang */}
+      <ConfirmDialog
+        isOpen={isMeetingDeleteOpen}
+        onClose={() => setIsMeetingDeleteOpen(false)}
+        onConfirm={handleDeleteMeetingConfirm}
+        title="Hapus Notulensi Sidang / Rapat?"
+        message={`Apakah Anda yakin ingin menghapus arsip notulensi "${selectedMeeting?.title}"? Tindakan ini tidak dapat dibatalkan.`}
+        confirmText="Hapus Notulensi"
+        type="danger"
+      />
+
+      {/* Dialog Konfirmasi Hapus Aspirasi */}
+      <ConfirmDialog
+        isOpen={isAspirationDeleteOpen}
+        onClose={() => setIsAspirationDeleteOpen(false)}
+        onConfirm={handleDeleteAspirationConfirm}
+        title="Hapus Aspirasi Santri?"
+        message={`Apakah Anda yakin ingin menghapus aspirasi "${selectedAspiration?.title}"?`}
+        confirmText="Hapus Aspirasi"
         type="danger"
       />
     </div>

@@ -11,7 +11,9 @@ import {
   Edit2,
   Trash2,
   ClipboardCheck,
-  CalendarDays
+  CalendarDays,
+  Eye,
+  UserCheck
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -35,6 +37,7 @@ export const SchedulesPage: React.FC<SchedulesPageProps> = ({ onStartAttendance 
   const [viewMode, setViewMode] = useState<'timeline' | 'table'>('timeline');
 
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(null);
 
@@ -59,6 +62,12 @@ export const SchedulesPage: React.FC<SchedulesPageProps> = ({ onStartAttendance 
       return true;
     });
   }, [schedules, selectedEkskul, selectedType]);
+
+  const handleOpenDetail = (schedule: Schedule, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setSelectedSchedule(schedule);
+    setIsDetailOpen(true);
+  };
 
   const handleOpenAdd = () => {
     setSelectedSchedule(null);
@@ -99,37 +108,48 @@ export const SchedulesPage: React.FC<SchedulesPageProps> = ({ onStartAttendance 
       return;
     }
 
-    const ekskul = extracurriculars.find(e => e.id === formData.extracurricularId);
+    try {
+      const ekskul = extracurriculars.find(e => e.id === formData.extracurricularId);
 
-    if (selectedSchedule) {
-      await updateSchedule(selectedSchedule.id, {
-        ...formData,
-        extracurricularName: ekskul?.name || formData.extracurricularName
-      });
-    } else {
-      await addSchedule({
-        title: formData.title!,
-        extracurricularId: formData.extracurricularId!,
-        extracurricularName: ekskul?.name || 'Ekstrakurikuler',
-        date: formData.date!,
-        startTime: formData.startTime || '15:30',
-        endTime: formData.endTime || '17:00',
-        location: formData.location || 'Sekolah',
-        coachName: formData.coachName || ekskul?.coachName || 'Pembina',
-        type: formData.type as ScheduleType,
-        notes: (formData as any).description || (formData as any).notes || '',
-        status: (formData.status as any) || 'Dijadwalkan',
-        academicYear: activeAcademicYear
-      });
+      if (selectedSchedule) {
+        await updateSchedule(selectedSchedule.id, {
+          ...formData,
+          extracurricularName: ekskul?.name || formData.extracurricularName
+        });
+      } else {
+        await addSchedule({
+          title: formData.title!,
+          extracurricularId: formData.extracurricularId!,
+          extracurricularName: ekskul?.name || 'Ekstrakurikuler',
+          date: formData.date!,
+          startTime: formData.startTime || '15:30',
+          endTime: formData.endTime || '17:00',
+          location: formData.location || 'Sekolah',
+          coachName: formData.coachName || ekskul?.coachName || 'Pembina',
+          type: formData.type as ScheduleType,
+          notes: (formData as any).description || (formData as any).notes || '',
+          status: (formData.status as any) || 'Dijadwalkan',
+          academicYear: activeAcademicYear
+        });
+      }
+    } catch (err) {
+      console.error('Error saving schedule:', err);
+    } finally {
+      setIsFormOpen(false);
+      setSelectedSchedule(null);
     }
-    setIsFormOpen(false);
   };
 
   const handleDeleteConfirm = async () => {
     if (selectedSchedule) {
-      await deleteSchedule(selectedSchedule.id);
-      setIsDeleteOpen(false);
-      setSelectedSchedule(null);
+      try {
+        await deleteSchedule(selectedSchedule.id);
+      } catch (err) {
+        console.error('Error deleting schedule:', err);
+      } finally {
+        setIsDeleteOpen(false);
+        setSelectedSchedule(null);
+      }
     }
   };
 
@@ -140,7 +160,9 @@ export const SchedulesPage: React.FC<SchedulesPageProps> = ({ onStartAttendance 
       sortable: true,
       cell: s => (
         <div>
-          <p className="font-bold text-slate-900 dark:text-slate-100">{s.title}</p>
+          <p className="font-bold text-slate-900 dark:text-slate-100 hover:text-indigo-600 transition-colors cursor-pointer" onClick={() => handleOpenDetail(s)}>
+            {s.title}
+          </p>
           <p className="text-[11px] text-slate-400">{s.extracurricularName} • {s.coachName}</p>
         </div>
       )
@@ -183,7 +205,7 @@ export const SchedulesPage: React.FC<SchedulesPageProps> = ({ onStartAttendance 
           {onStartAttendance && (
             <button
               onClick={() => onStartAttendance(s)}
-              className="px-2.5 py-1 text-xs font-bold rounded-lg bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 flex items-center gap-1"
+              className="px-2.5 py-1 text-xs font-bold rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 flex items-center gap-1 transition-colors"
               title="Input Presensi Sesi Ini"
             >
               <ClipboardCheck className="w-3.5 h-3.5" />
@@ -191,14 +213,23 @@ export const SchedulesPage: React.FC<SchedulesPageProps> = ({ onStartAttendance 
             </button>
           )}
           <button
+            onClick={e => handleOpenDetail(s, e)}
+            className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-950/60 dark:hover:bg-indigo-900 dark:text-indigo-400 transition-colors"
+            title="Lihat Detail Jadwal"
+          >
+            <Eye className="w-4 h-4" />
+          </button>
+          <button
             onClick={e => handleOpenEdit(s, e)}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-slate-100 dark:hover:bg-slate-800"
+            className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:hover:bg-amber-900 dark:text-amber-400 transition-colors"
+            title="Edit Jadwal"
           >
             <Edit2 className="w-4 h-4" />
           </button>
           <button
             onClick={e => handleOpenDelete(s, e)}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800"
+            className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-400 transition-colors"
+            title="Hapus Jadwal"
           >
             <Trash2 className="w-4 h-4" />
           </button>
@@ -314,7 +345,8 @@ export const SchedulesPage: React.FC<SchedulesPageProps> = ({ onStartAttendance 
             filteredSchedules.map(sch => (
               <div
                 key={sch.id}
-                className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between"
+                onClick={() => handleOpenDetail(sch)}
+                className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-5 shadow-xs hover:shadow-md transition-all flex flex-col justify-between cursor-pointer hover:border-indigo-500/50"
               >
                 <div className="space-y-3">
                   <div className="flex items-start justify-between gap-2">
@@ -334,7 +366,7 @@ export const SchedulesPage: React.FC<SchedulesPageProps> = ({ onStartAttendance 
                   </div>
 
                   <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2">
-                    {sch.description}
+                    {sch.description || (sch as any).notes || 'Tidak ada catatan tambahan.'}
                   </p>
 
                   <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 space-y-1.5 text-xs text-slate-600 dark:text-slate-300">
@@ -353,7 +385,7 @@ export const SchedulesPage: React.FC<SchedulesPageProps> = ({ onStartAttendance 
                   </div>
                 </div>
 
-                <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2" onClick={e => e.stopPropagation()}>
                   {onStartAttendance ? (
                     <button
                       onClick={() => onStartAttendance(sch)}
@@ -364,16 +396,25 @@ export const SchedulesPage: React.FC<SchedulesPageProps> = ({ onStartAttendance 
                     </button>
                   ) : <div />}
 
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={e => handleOpenDetail(sch, e)}
+                      className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-950/60 dark:hover:bg-indigo-900 dark:text-indigo-400 transition-colors"
+                      title="Lihat Detail Jadwal"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
                     <button
                       onClick={e => handleOpenEdit(sch, e)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-amber-600 hover:bg-slate-100 dark:hover:bg-slate-800"
+                      className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:hover:bg-amber-900 dark:text-amber-400 transition-colors"
+                      title="Edit Jadwal"
                     >
                       <Edit2 className="w-4 h-4" />
                     </button>
                     <button
                       onClick={e => handleOpenDelete(sch, e)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-slate-100 dark:hover:bg-slate-800"
+                      className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-400 transition-colors"
+                      title="Hapus Jadwal"
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>
@@ -388,10 +429,124 @@ export const SchedulesPage: React.FC<SchedulesPageProps> = ({ onStartAttendance 
           id="schedules-table"
           data={filteredSchedules}
           columns={columns}
+          onRowClick={sch => handleOpenDetail(sch)}
           searchPlaceholder="Cari jadwal kegiatan atau ekstrakurikuler..."
           searchableKeys={['title', 'extracurricularName', 'location', 'coachName']}
         />
       )}
+
+      {/* Show Detail Modal Popup */}
+      <Modal
+        isOpen={isDetailOpen}
+        onClose={() => {
+          setIsDetailOpen(false);
+          setSelectedSchedule(null);
+        }}
+        title="Detail Jadwal Kegiatan"
+        subtitle={`Informasi Lengkap Agenda Sesi ${selectedSchedule?.title || ''}`}
+        maxWidth="lg"
+        footer={
+          <>
+            {onStartAttendance && selectedSchedule && (
+              <button
+                type="button"
+                onClick={() => {
+                  const target = selectedSchedule;
+                  setIsDetailOpen(false);
+                  onStartAttendance(target);
+                }}
+                className="px-4 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white flex items-center gap-1.5 transition"
+              >
+                <ClipboardCheck className="w-3.5 h-3.5" />
+                Mulai Presensi Sekarang
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setIsDetailOpen(false);
+                if (selectedSchedule) handleOpenEdit(selectedSchedule);
+              }}
+              className="px-4 py-2 text-xs font-semibold rounded-xl bg-amber-600 hover:bg-amber-500 text-white flex items-center gap-1.5 transition"
+            >
+              <Edit2 className="w-3.5 h-3.5" />
+              Edit Jadwal
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIsDetailOpen(false);
+                setSelectedSchedule(null);
+              }}
+              className="px-4 py-2 text-xs font-semibold rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition"
+            >
+              Tutup
+            </button>
+          </>
+        }
+      >
+        {selectedSchedule && (
+          <div className="space-y-4">
+            <div className="p-4 rounded-xl bg-zinc-900/90 border border-zinc-800">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-bold">
+                    {selectedSchedule.type}
+                  </span>
+                  <h3 className="text-base font-bold text-zinc-100 mt-2">{selectedSchedule.title}</h3>
+                  <p className="text-xs text-indigo-400 font-semibold mt-0.5">
+                    {selectedSchedule.extracurricularName}
+                  </p>
+                </div>
+                <StatusBadge status={selectedSchedule.status} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="p-3.5 rounded-xl bg-zinc-900/40 border border-zinc-800 space-y-2 text-xs">
+                <div className="flex items-center gap-2 text-zinc-300">
+                  <CalendarDays className="w-4 h-4 text-indigo-400 shrink-0" />
+                  <div>
+                    <span className="text-zinc-500 block text-[10px]">Tanggal:</span>
+                    <strong className="font-mono">{selectedSchedule.date}</strong>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 text-zinc-300">
+                  <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+                  <div>
+                    <span className="text-zinc-500 block text-[10px]">Waktu Sesi:</span>
+                    <strong className="font-mono">{selectedSchedule.startTime} - {selectedSchedule.endTime} WIB</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-zinc-900/40 border border-zinc-800 space-y-2 text-xs">
+                <div className="flex items-center gap-2 text-zinc-300">
+                  <MapPin className="w-4 h-4 text-rose-400 shrink-0" />
+                  <div>
+                    <span className="text-zinc-500 block text-[10px]">Lokasi Pelaksanaan:</span>
+                    <strong>{selectedSchedule.location}</strong>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 text-zinc-300">
+                  <UserCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <div>
+                    <span className="text-zinc-500 block text-[10px]">Pembina / Pelatih:</span>
+                    <strong>{selectedSchedule.coachName || 'Pembina Terjadwal'}</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-xl bg-zinc-900/30 border border-zinc-800 text-xs">
+              <span className="text-[10px] font-mono uppercase text-zinc-400 block mb-1">Materi / Deskripsi Kegiatan:</span>
+              <p className="text-zinc-300 leading-relaxed whitespace-pre-line">
+                {selectedSchedule.description || (selectedSchedule as any).notes || 'Tidak ada instruksi khusus untuk sesi ini.'}
+              </p>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* Form Modal (Add / Edit) */}
       <Modal
@@ -572,3 +727,4 @@ export const SchedulesPage: React.FC<SchedulesPageProps> = ({ onStartAttendance 
     </div>
   );
 };
+
