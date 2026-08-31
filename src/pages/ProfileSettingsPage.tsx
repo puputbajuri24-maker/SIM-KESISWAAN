@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSchool } from '../contexts/SchoolContext';
+import { TimezoneSettingsCard } from '../components/common/TimezoneSettingsCard';
 import { UserRole } from '../types';
 
 export const ProfileSettingsPage: React.FC = () => {
@@ -260,7 +261,7 @@ export const ProfileSettingsPage: React.FC = () => {
                 </h1>
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               </div>
-              <p className="text-xs text-zinc-400 mt-0.5">
+              <p className="text-xs text-zinc-200 mt-0.5">
                 Kelola identitas diri Anda. Perubahan akan otomatis terhubung & tersinkronisasi ke akun Administrator Super dan data master madrasah.
               </p>
             </div>
@@ -271,7 +272,7 @@ export const ProfileSettingsPage: React.FC = () => {
               <ShieldCheck className="w-3.5 h-3.5" />
               <span>{badgeInfo.label}</span>
             </span>
-            <span className="text-[10px] font-mono text-zinc-500">
+            <span className="text-[10px] font-mono text-zinc-300">
               UID: {currentUser?.uid || '-'}
             </span>
           </div>
@@ -279,11 +280,11 @@ export const ProfileSettingsPage: React.FC = () => {
 
         {/* Real-time Sync Telemetry Banner */}
         <div className="mt-4 pt-3 border-t border-[#222226] flex flex-wrap items-center justify-between gap-2 text-[11px] font-mono">
-          <div className="flex items-center space-x-2 text-emerald-400">
+          <div className="flex items-center space-x-2 text-emerald-400 font-semibold">
             <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
             <span>SINKRONISASI OTOMATIS AKTIF (SUPER ADMIN SYNC: CONNECTED)</span>
           </div>
-          <span className="text-zinc-500 text-[10px]">
+          <span className="text-zinc-300 text-[10px] font-medium">
             Format Foto: JPG, JPEG, PNG (Maksimal 500 KB)
           </span>
         </div>
@@ -291,7 +292,7 @@ export const ProfileSettingsPage: React.FC = () => {
 
       {/* Success Notification Alert */}
       {saveSuccessMsg && (
-        <div className="p-4 rounded-xl bg-emerald-950/30 border border-emerald-500/40 text-emerald-300 text-xs flex items-start space-x-3 shadow-lg animate-in fade-in slide-in-from-top-2 duration-200">
+        <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/50 text-emerald-200 text-xs flex items-start space-x-3 shadow-lg animate-in fade-in slide-in-from-top-2 duration-200">
           <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
           <div className="flex-1">
             <p className="font-semibold text-white">Perubahan Profil Berhasil Disimpan</p>
@@ -302,7 +303,7 @@ export const ProfileSettingsPage: React.FC = () => {
 
       {/* Error Alert */}
       {fileError && (
-        <div className="p-4 rounded-xl bg-red-950/30 border border-red-500/40 text-red-300 text-xs flex items-start space-x-3 shadow-lg animate-in fade-in duration-200">
+        <div className="p-4 rounded-xl bg-red-950/40 border border-red-500/50 text-red-200 text-xs flex items-start space-x-3 shadow-lg animate-in fade-in duration-200">
           <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
           <div className="flex-1">
             <p className="font-semibold text-white">Perhatian</p>
@@ -317,11 +318,11 @@ export const ProfileSettingsPage: React.FC = () => {
           {/* Left Column: Photo Upload Section (JPG, JPEG, PNG <= 500 KB) */}
           <div className="md:col-span-5 bg-[#151518] border border-[#27272a] rounded-xl p-5 space-y-4 flex flex-col items-center text-center">
             <div className="w-full flex items-center justify-between pb-3 border-b border-[#27272a]">
-              <span className="text-xs font-bold text-zinc-200 uppercase tracking-wider flex items-center space-x-1.5 font-mono">
+              <span className="text-xs font-bold text-zinc-100 uppercase tracking-wider flex items-center space-x-1.5 font-mono">
                 <Camera className="w-4 h-4 text-emerald-400" />
                 <span>Foto Profil</span>
               </span>
-              <span className="px-2 py-0.5 rounded text-[9px] font-mono bg-zinc-800 text-zinc-400 border border-zinc-700">
+              <span className="px-2 py-0.5 rounded text-[9px] font-mono bg-zinc-800 text-zinc-200 border border-zinc-600 font-semibold">
                 MAKS. 500 KB
               </span>
             </div>
@@ -337,9 +338,9 @@ export const ProfileSettingsPage: React.FC = () => {
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="flex flex-col items-center justify-center p-3 text-zinc-500">
-                    <User className="w-16 h-16 text-zinc-600 mb-1" />
-                    <span className="text-[10px] font-mono uppercase tracking-wider">Belum Ada Foto</span>
+                  <div className="flex flex-col items-center justify-center p-3 text-zinc-400">
+                    <User className="w-16 h-16 text-zinc-400 mb-1" />
+                    <span className="text-[10px] font-mono uppercase tracking-wider font-semibold">Belum Ada Foto</span>
                   </div>
                 )}
               </div>
@@ -366,7 +367,7 @@ export const ProfileSettingsPage: React.FC = () => {
               className={`w-full p-4 rounded-xl border-2 border-dashed transition-all cursor-pointer flex flex-col items-center justify-center text-xs ${
                 isDragOver
                   ? 'border-emerald-500 bg-emerald-950/20 text-emerald-300'
-                  : 'border-[#37373f] hover:border-emerald-500/50 bg-[#19191d] text-zinc-400 hover:text-zinc-200'
+                  : 'border-[#37373f] hover:border-emerald-500/50 bg-[#19191d] text-zinc-300 hover:text-white'
               }`}
             >
               <input
@@ -377,20 +378,20 @@ export const ProfileSettingsPage: React.FC = () => {
                 className="hidden"
               />
               <Upload className="w-5 h-5 text-emerald-400 mb-1.5" />
-              <span className="font-semibold text-zinc-200">
+              <span className="font-semibold text-zinc-100">
                 Pilih atau Tarik Foto ke Sini
               </span>
-              <span className="text-[10px] text-zinc-500 mt-1">
-                Format: <strong>JPG, JPEG, PNG</strong>
+              <span className="text-[11px] text-zinc-300 mt-1">
+                Format: <strong className="text-zinc-100">JPG, JPEG, PNG</strong>
               </span>
-              <span className="text-[10px] text-emerald-400/90 font-mono mt-0.5 font-bold">
+              <span className="text-[10px] text-emerald-400 font-mono mt-0.5 font-bold">
                 Batas Ukuran: Maksimal 500 KB
               </span>
             </div>
 
             {/* File info badge if uploaded */}
             {photoFileSizeKb && (
-              <div className="w-full bg-[#1c1c20] p-2.5 rounded-lg border border-[#2e2e34] text-[11px] font-mono flex items-center justify-between text-zinc-300">
+              <div className="w-full bg-[#1c1c20] p-2.5 rounded-lg border border-[#2e2e34] text-[11px] font-mono flex items-center justify-between text-zinc-200">
                 <span className="truncate max-w-[170px]" title={photoFileName}>
                   {photoFileName || 'Foto Profil Terpilih'}
                 </span>
@@ -400,7 +401,7 @@ export const ProfileSettingsPage: React.FC = () => {
               </div>
             )}
 
-            <p className="text-[10px] text-zinc-500 text-left leading-relaxed">
+            <p className="text-[11px] text-zinc-300 text-left leading-relaxed">
               Foto akan ditampilkan pada Header, Dewan Guru, cPanel Master Super Admin, dan Kartu Tanda Anggota/Pembina.
             </p>
           </div>
@@ -409,11 +410,11 @@ export const ProfileSettingsPage: React.FC = () => {
           <div className="md:col-span-7 bg-[#151518] border border-[#27272a] rounded-xl p-5 space-y-5">
             <div className="pb-3 border-b border-[#27272a] flex items-center justify-between">
               <div>
-                <h2 className="text-xs font-bold text-zinc-200 uppercase tracking-wider flex items-center space-x-1.5 font-mono">
+                <h2 className="text-xs font-bold text-zinc-100 uppercase tracking-wider flex items-center space-x-1.5 font-mono">
                   <UserCheck className="w-4 h-4 text-emerald-400" />
                   <span>Identitas & Informasi Kontak</span>
                 </h2>
-                <p className="text-[11px] text-zinc-400 mt-0.5">
+                <p className="text-[11px] text-zinc-300 mt-0.5">
                   Pengaturan ini meliputi Nama, Nomor WhatsApp, dan NIP/NUPTK.
                 </p>
               </div>
@@ -421,12 +422,12 @@ export const ProfileSettingsPage: React.FC = () => {
 
             {/* Field 1: Nama Lengkap & Gelar */}
             <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-zinc-200 flex items-center justify-between">
+              <label className="block text-xs font-semibold text-zinc-100 flex items-center justify-between">
                 <span>Nama Lengkap & Gelar *</span>
-                <span className="text-[10px] font-normal text-zinc-500 font-mono">Wajib Diisi</span>
+                <span className="text-[10px] font-medium text-emerald-400 font-mono">Wajib Diisi</span>
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-500">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-400">
                   <User className="w-4 h-4" />
                 </div>
                 <input
@@ -435,19 +436,19 @@ export const ProfileSettingsPage: React.FC = () => {
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
                   placeholder="Contoh: Dra. Hj. Siti Marwiyah, M.Pd."
-                  className="w-full pl-9 pr-3 py-2.5 rounded-lg bg-[#1c1c20] border border-[#323238] text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 font-medium transition-colors"
+                  className="w-full pl-9 pr-3 py-2.5 rounded-lg bg-[#1c1c20] border border-[#323238] text-xs text-white placeholder-zinc-400 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 font-medium transition-colors"
                 />
               </div>
-              <p className="text-[10px] text-zinc-500">
+              <p className="text-[11px] text-zinc-300">
                 Nama ini akan muncul pada seluruh laporan kegiatan, lembar presensi, SK pembina, dan catatan konseling.
               </p>
             </div>
 
             {/* Field 2: Nomor WhatsApp */}
             <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-zinc-200 flex items-center justify-between">
+              <label className="block text-xs font-semibold text-zinc-100 flex items-center justify-between">
                 <span>Nomor WhatsApp Aktif *</span>
-                <span className="text-[10px] font-normal text-zinc-500 font-mono">Untuk Komunikasi & Notifikasi</span>
+                <span className="text-[10px] font-medium text-zinc-300 font-mono">Untuk Komunikasi & Notifikasi</span>
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-emerald-400">
@@ -459,22 +460,22 @@ export const ProfileSettingsPage: React.FC = () => {
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="Contoh: 081234567890 atau 6281234567890"
-                  className="w-full pl-9 pr-3 py-2.5 rounded-lg bg-[#1c1c20] border border-[#323238] text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 font-mono transition-colors"
+                  className="w-full pl-9 pr-3 py-2.5 rounded-lg bg-[#1c1c20] border border-[#323238] text-xs text-white placeholder-zinc-400 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 font-mono transition-colors"
                 />
               </div>
-              <p className="text-[10px] text-zinc-500">
+              <p className="text-[11px] text-zinc-300">
                 Nomor WhatsApp digunakan untuk koordinasi kegiatan kesiswaan, panggilan orang tua siswa, dan kontak darurat.
               </p>
             </div>
 
             {/* Field 3: NIP / NUPTK */}
             <div className="space-y-1.5">
-              <label className="block text-xs font-semibold text-zinc-200 flex items-center justify-between">
+              <label className="block text-xs font-semibold text-zinc-100 flex items-center justify-between">
                 <span>NIP / NUPTK / NIK *</span>
-                <span className="text-[10px] font-normal text-zinc-500 font-mono">Identitas Resmi Guru/Pembina</span>
+                <span className="text-[10px] font-medium text-zinc-300 font-mono">Identitas Resmi Guru/Pembina</span>
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-500">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-400">
                   <CreditCard className="w-4 h-4" />
                 </div>
                 <input
@@ -482,28 +483,28 @@ export const ProfileSettingsPage: React.FC = () => {
                   value={nip}
                   onChange={(e) => setNip(e.target.value)}
                   placeholder="Contoh: 19800101 200501 1 001 atau NUPTK"
-                  className="w-full pl-9 pr-3 py-2.5 rounded-lg bg-[#1c1c20] border border-[#323238] text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 font-mono transition-colors"
+                  className="w-full pl-9 pr-3 py-2.5 rounded-lg bg-[#1c1c20] border border-[#323238] text-xs text-white placeholder-zinc-400 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 font-mono transition-colors"
                 />
               </div>
-              <p className="text-[10px] text-zinc-500">
+              <p className="text-[11px] text-zinc-300">
                 NIP/NUPTK dapat digunakan sebagai identifier kredensial untuk masuk (login) ke aplikasi SIM Kesiswaan.
               </p>
             </div>
 
             {/* Additional Context Info (Read-only metadata) */}
             <div className="pt-3 border-t border-[#222226] space-y-2">
-              <span className="text-[10px] font-mono font-bold text-zinc-500 uppercase tracking-wider block">
+              <span className="text-[10px] font-mono font-bold text-zinc-300 uppercase tracking-wider block">
                 INFORMASI SISTEM & TUGAS BINAAN
               </span>
               <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
                 <div className="bg-[#1c1c20] p-2 rounded-lg border border-[#27272a]">
-                  <span className="text-zinc-500 block text-[9px]">EMAIL RESMI:</span>
-                  <span className="text-zinc-200 truncate block mt-0.5" title={currentUser?.email}>
+                  <span className="text-zinc-400 block text-[9px] font-bold">EMAIL RESMI:</span>
+                  <span className="text-zinc-100 font-medium truncate block mt-0.5" title={currentUser?.email}>
                     {currentUser?.email || '-'}
                   </span>
                 </div>
                 <div className="bg-[#1c1c20] p-2 rounded-lg border border-[#27272a]">
-                  <span className="text-zinc-500 block text-[9px]">STATUS AKUN:</span>
+                  <span className="text-zinc-400 block text-[9px] font-bold">STATUS AKUN:</span>
                   <span className="text-emerald-400 font-bold flex items-center space-x-1 mt-0.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                     <span>{currentUser?.status || 'Aktif'}</span>
@@ -553,6 +554,9 @@ export const ProfileSettingsPage: React.FC = () => {
           </div>
         </div>
       </form>
+
+      {/* Timezone & Clock Preferences Card */}
+      <TimezoneSettingsCard />
     </div>
   );
 };

@@ -543,6 +543,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             role: existing.role === 'super_admin' ? 'super_admin' : role,
             phone: t.phone || existing.phone,
             status: t.isActive !== false ? 'Aktif' : 'Nonaktif',
+            isCashManager: t.isCashManager !== undefined ? t.isCashManager : existing.isCashManager,
+            cashManagerTitle: t.cashManagerTitle || existing.cashManagerTitle,
             extracurricularIds: assignedEkskulIds.length > 0 ? assignedEkskulIds : existing.extracurricularIds,
             counselorSpecialization: role === 'guru_bk' ? (t.subject || existing.counselorSpecialization || 'Bimbingan Konseling Siswa & Karir') : existing.counselorSpecialization,
             photoURL: t.photoUrl || (t as any).photoURL || existing.photoURL,
@@ -562,6 +564,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             role: role,
             phone: t.phone || undefined,
             status: t.isActive !== false ? 'Aktif' : 'Nonaktif',
+            isCashManager: t.isCashManager || false,
+            cashManagerTitle: t.cashManagerTitle || undefined,
             extracurricularIds: assignedEkskulIds.length > 0 ? assignedEkskulIds : undefined,
             counselorSpecialization: role === 'guru_bk' ? (t.subject || 'Bimbingan Konseling Siswa & Karir') : undefined,
             photoURL: t.photoUrl || (t as any).photoURL || undefined,
@@ -601,6 +605,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Profile setting and Announcements Center are accessible by all authenticated users
     if (tabId === 'profile' || tabId === 'announcements') return true;
 
+    // Cash Ledger (Neraca Kas & Transparansi Keuangan) is viewable by all teachers & staff for total transparency
+    if (tabId === 'cash' || tabId === 'cash_ledger') {
+      return true;
+    }
+
     // Super admin has unrestricted root access to all tabs including cpanel and root settings
     if (isSuperAdmin) return true;
 
@@ -624,24 +633,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         'activities',
         'reports',
         'permissions',
+        'cash',
         'profile'
       ];
       return allowedWakaTabs.includes(tabId);
     }
 
-    // Guru BK has access to counseling hub, discipline/violations, student directory, reports, permissions, profile
+    // Guru BK has access to counseling hub, discipline/violations, student directory, reports, permissions, cash (transparansi), profile
     if (isGuruBK) {
-      const allowedBkTabs = ['dashboard', 'counseling', 'violations', 'students', 'reports', 'permissions', 'profile'];
+      const allowedBkTabs = ['dashboard', 'counseling', 'violations', 'students', 'reports', 'permissions', 'cash', 'profile'];
       return allowedBkTabs.includes(tabId);
     }
 
-    // Pembina OSIM has strictly scoped access to OSIM / Intrakurikuler menus & profile
+    // Pembina OSIM has access to OSIM / Intrakurikuler menus, reports, activities, cash (transparansi), profile
     if (isPembinaOsim) {
-      const allowedOsimTabs = ['dashboard', 'osim', 'activities', 'reports', 'profile'];
+      const allowedOsimTabs = ['dashboard', 'osim', 'activities', 'reports', 'cash', 'profile'];
       return allowedOsimTabs.includes(tabId);
     }
 
-    // Pembina Ekstrakurikuler has strictly scoped access to Extracurricular menus & profile
+    // Pembina Ekstrakurikuler has access to Extracurricular menus, reports, achievements, cash (transparansi), profile
     if (isPembinaEkskul) {
       const allowedEkskulTabs = [
         'dashboard',
@@ -653,6 +663,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         'reports',
         'achievements',
         'permissions',
+        'cash',
         'profile'
       ];
       return allowedEkskulTabs.includes(tabId);

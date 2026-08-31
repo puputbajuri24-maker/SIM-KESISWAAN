@@ -33,6 +33,8 @@ import {
   OsimWorkProgram,
   OsimAspiration,
   OsimMeeting,
+  CashAccount,
+  CashTransaction,
   UserProfile,
   UserRole
 } from '../types';
@@ -63,6 +65,8 @@ import {
   INITIAL_OSIM_PROGRAMS,
   INITIAL_OSIM_ASPIRATIONS,
   INITIAL_OSIM_MEETINGS,
+  INITIAL_CASH_ACCOUNTS,
+  INITIAL_CASH_TRANSACTIONS,
   seedAllFirebaseData,
   clearAllFirebaseOperationalData
 } from '../services/seedData';
@@ -223,6 +227,17 @@ interface SchoolContextType {
   updateOsimMeeting: (id: string, data: Partial<OsimMeeting>) => Promise<void>;
   deleteOsimMeeting: (id: string) => Promise<void>;
 
+  // Neraca Kas & Transparansi Keuangan Kesiswaan
+  cashAccounts: CashAccount[];
+  cashTransactions: CashTransaction[];
+  addCashAccount: (data: Omit<CashAccount, 'id' | 'createdAt'>) => Promise<void>;
+  updateCashAccount: (id: string, data: Partial<CashAccount>) => Promise<void>;
+  deleteCashAccount: (id: string) => Promise<void>;
+  assignCashManager: (accountId: string, userIds: string[], userNames?: string[]) => Promise<void>;
+  addCashTransaction: (data: Omit<CashTransaction, 'id' | 'createdAt'>) => Promise<void>;
+  updateCashTransaction: (id: string, data: Partial<CashTransaction>) => Promise<void>;
+  deleteCashTransaction: (id: string) => Promise<void>;
+
   // Announcements & Notifications
   addAnnouncement: (data: Omit<Announcement, 'id' | 'createdAt'>) => Promise<void>;
   updateAnnouncement: (id: string, data: Partial<Announcement>) => Promise<void>;
@@ -310,7 +325,23 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const [extracurriculars, setExtracurriculars] = useState<Extracurricular[]>(() => {
     const saved = localStorage.getItem('sim_extracurriculars');
-    return saved ? JSON.parse(saved) : INITIAL_EXTRACURRICULARS;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          if (parsed.length >= 11) {
+            return parsed;
+          }
+          // Merge missing standard extracurriculars from INITIAL_EXTRACURRICULARS
+          const existingIds = new Set(parsed.map((e: any) => e.id || e.name?.toLowerCase()));
+          const missing = INITIAL_EXTRACURRICULARS.filter(
+            e => !existingIds.has(e.id) && !existingIds.has(e.name?.toLowerCase())
+          );
+          return [...parsed, ...missing];
+        }
+      } catch (e) {}
+    }
+    return INITIAL_EXTRACURRICULARS;
   });
 
   const [members, setMembers] = useState<ExtracurricularMember[]>(() => {
@@ -551,6 +582,28 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return INITIAL_OSIM_MEETINGS;
   });
 
+  const [cashAccounts, setCashAccounts] = useState<CashAccount[]>(() => {
+    const saved = localStorage.getItem('sim_cash_accounts');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {}
+    }
+    return INITIAL_CASH_ACCOUNTS;
+  });
+
+  const [cashTransactions, setCashTransactions] = useState<CashTransaction[]>(() => {
+    const saved = localStorage.getItem('sim_cash_transactions');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {}
+    }
+    return INITIAL_CASH_TRANSACTIONS;
+  });
+
   const [announcements, setAnnouncements] = useState<Announcement[]>(() => {
     const local = localStorage.getItem('sim_announcements');
     if (local) {
@@ -597,6 +650,8 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     localStorage.setItem('sim_osim_programs', JSON.stringify(osimPrograms));
     localStorage.setItem('sim_osim_aspirations', JSON.stringify(osimAspirations));
     localStorage.setItem('sim_osim_meetings', JSON.stringify(osimMeetings));
+    localStorage.setItem('sim_cash_accounts', JSON.stringify(cashAccounts));
+    localStorage.setItem('sim_cash_transactions', JSON.stringify(cashTransactions));
     localStorage.setItem('sim_announcements', JSON.stringify(announcements));
     localStorage.setItem('sim_audit_logs', JSON.stringify(auditLogs));
   }, [
@@ -622,6 +677,8 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     osimPrograms,
     osimAspirations,
     osimMeetings,
+    cashAccounts,
+    cashTransactions,
     announcements,
     auditLogs
   ]);
@@ -796,6 +853,23 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           const loadedOsimMeet: OsimMeeting[] = [];
           osimMeetSnap.forEach(doc => loadedOsimMeet.push({ id: doc.id, ...doc.data() } as OsimMeeting));
           setOsimMeetings(loadedOsimMeet);
+
+          // Cash Ledger Sync
+          const cashAccSnap = await getDocs(collection(db, 'cash_accounts'));
+          if (!cashAccSnap.empty) {
+            const loadedCashAcc: CashAccount[] = [];
+            cashAccSnap.forEach(doc => loadedCashAcc.push({ id: doc.id, ...doc.data() } as CashAccount));
+            setCashAccounts(loadedCashAcc);
+          }
+
+          const cashTrxSnap = await getDocs(collection(db, 'cash_transactions'));
+          if (!cashTrxSnap.empty) {
+            const loadedCashTrx: CashTransaction[] = [];
+            cashTrxSnap.forEach(doc => loadedCashTrx.push({ id: doc.id, ...doc.data() } as CashTransaction));
+            // Sort newest first
+            loadedCashTrx.sort((a, b) => (b.date > a.date ? 1 : b.date < a.date ? -1 : (b.id > a.id ? 1 : -1)));
+            setCashTransactions(loadedCashTrx);
+          }
 
           // Announcements Sync
           const annSnap = await getDocs(collection(db, 'announcements'));
@@ -2939,6 +3013,128 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     logAction('DELETE_OSIM_MEETING', 'Intrakurikuler & OSIM', `Menghapus notulensi rapat OSIM ID ${id}`);
   };
 
+  // ==========================================
+  // NERACA KAS & KEUANGAN KESISWAAN HANDLERS
+  // ==========================================
+
+  // Cash Accounts
+  const addCashAccount = async (data: Omit<CashAccount, 'id' | 'createdAt'>) => {
+    const newAcc: CashAccount = {
+      id: `kas_${Date.now()}`,
+      ...data,
+      createdAt: new Date().toISOString().split('T')[0]
+    };
+    setCashAccounts(prev => [newAcc, ...prev]);
+    try {
+      await setDoc(doc(db, 'cash_accounts', newAcc.id), newAcc);
+    } catch (e) {}
+    logAction('ADD_CASH_ACCOUNT', 'Neraca Kas', `Membuat akun kas baru: ${newAcc.name} (${newAcc.code})`);
+  };
+
+  const updateCashAccount = async (id: string, data: Partial<CashAccount>) => {
+    setCashAccounts(prev => prev.map(a => a.id === id ? { ...a, ...data, updatedAt: new Date().toISOString() } : a));
+    try {
+      await updateDoc(doc(db, 'cash_accounts', id), { ...data, updatedAt: new Date().toISOString() });
+    } catch (e) {}
+    logAction('UPDATE_CASH_ACCOUNT', 'Neraca Kas', `Memperbarui akun kas: ${data.name || id}`);
+  };
+
+  const deleteCashAccount = async (id: string) => {
+    const target = cashAccounts.find(a => a.id === id);
+    setCashAccounts(prev => prev.filter(a => a.id !== id));
+    // Also remove associated transactions
+    setCashTransactions(prev => prev.filter(t => t.accountId !== id));
+    try {
+      await deleteDoc(doc(db, 'cash_accounts', id));
+    } catch (e) {}
+    logAction('DELETE_CASH_ACCOUNT', 'Neraca Kas', `Menghapus akun kas: ${target?.name || id}`);
+  };
+
+  const assignCashManager = async (accountId: string, userIds: string[], userNames?: string[]) => {
+    const targetAcc = cashAccounts.find(a => a.id === accountId);
+    if (!targetAcc) return;
+
+    const updatedAcc = {
+      ...targetAcc,
+      assignedManagerUserIds: userIds,
+      assignedManagerNames: userNames || [],
+      updatedAt: new Date().toISOString()
+    };
+
+    setCashAccounts(prev => prev.map(a => a.id === accountId ? updatedAcc : a));
+    try {
+      await setDoc(doc(db, 'cash_accounts', accountId), updatedAcc, { merge: true });
+    } catch (e) {}
+
+    // Update users' cash manager flags in users collection / localStorage
+    try {
+      const allUsersRaw = localStorage.getItem('sim_kesiswaan_all_users_registry');
+      if (allUsersRaw) {
+        const parsedUsers: UserProfile[] = JSON.parse(allUsersRaw);
+        const updatedUsers = parsedUsers.map(u => {
+          if (userIds.includes(u.uid)) {
+            const currentScopes = u.cashFundScopes || [];
+            const newScopes = Array.from(new Set([...currentScopes, accountId]));
+            return {
+              ...u,
+              isCashManager: true,
+              cashFundScopes: newScopes,
+              cashManagerTitle: u.cashManagerTitle || `Pemegang ${targetAcc.name}`,
+              updatedAt: new Date().toISOString()
+            };
+          }
+          return u;
+        });
+        localStorage.setItem('sim_kesiswaan_all_users_registry', JSON.stringify(updatedUsers));
+      }
+    } catch (e) {}
+
+    logAction('ASSIGN_CASH_AMANAH', 'Neraca Kas', `Mengamanahkan pengelolaan kas ${targetAcc.name} kepada: ${(userNames || userIds).join(', ')}`);
+  };
+
+  // Cash Transactions
+  const addCashTransaction = async (data: Omit<CashTransaction, 'id' | 'createdAt'>) => {
+    const autoRef = data.referenceNumber || (
+      data.type === 'MASUK'
+        ? `BKM-${new Date().toISOString().slice(0, 7).replace('-', '')}-${String(Date.now()).slice(-4)}`
+        : `BKK-${new Date().toISOString().slice(0, 7).replace('-', '')}-${String(Date.now()).slice(-4)}`
+    );
+
+    const newTrx: CashTransaction = {
+      id: `trx_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      ...data,
+      referenceNumber: autoRef,
+      createdAt: new Date().toISOString().split('T')[0]
+    };
+
+    setCashTransactions(prev => [newTrx, ...prev]);
+    try {
+      await setDoc(doc(db, 'cash_transactions', newTrx.id), newTrx);
+    } catch (e) {}
+    logAction(
+      data.type === 'MASUK' ? 'CASH_INFLOW' : 'CASH_OUTFLOW',
+      'Neraca Kas',
+      `Mencatat uang ${data.type === 'MASUK' ? 'masuk' : 'keluar'}: Rp ${data.amount.toLocaleString('id-ID')} (${data.title}) pada ${data.accountName}`
+    );
+  };
+
+  const updateCashTransaction = async (id: string, data: Partial<CashTransaction>) => {
+    setCashTransactions(prev => prev.map(t => t.id === id ? { ...t, ...data, updatedAt: new Date().toISOString() } : t));
+    try {
+      await updateDoc(doc(db, 'cash_transactions', id), { ...data, updatedAt: new Date().toISOString() });
+    } catch (e) {}
+    logAction('UPDATE_CASH_TRANSACTION', 'Neraca Kas', `Memperbarui transaksi kas ID ${id}`);
+  };
+
+  const deleteCashTransaction = async (id: string) => {
+    const target = cashTransactions.find(t => t.id === id);
+    setCashTransactions(prev => prev.filter(t => t.id !== id));
+    try {
+      await deleteDoc(doc(db, 'cash_transactions', id));
+    } catch (e) {}
+    logAction('DELETE_CASH_TRANSACTION', 'Neraca Kas', `Menghapus transaksi kas: ${target?.title || id} (Rp ${target?.amount.toLocaleString('id-ID') || 0})`);
+  };
+
   return (
     <SchoolContext.Provider
       value={{
@@ -2974,6 +3170,15 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         osimPrograms,
         osimAspirations,
         osimMeetings,
+        cashAccounts,
+        cashTransactions,
+        addCashAccount,
+        updateCashAccount,
+        deleteCashAccount,
+        assignCashManager,
+        addCashTransaction,
+        updateCashTransaction,
+        deleteCashTransaction,
         addStudent,
         updateStudent,
         deleteStudent,

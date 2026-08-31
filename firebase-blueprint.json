@@ -95,6 +95,14 @@
     "osim_meetings": {
       "title": "OSIM Meetings & Minutes",
       "description": "Plenary sessions, deliberations, and formal meeting records"
+    },
+    "cash_accounts": {
+      "title": "Cash Accounts & Funds",
+      "description": "Ledger cash funds (Kesiswaan, OSIM, BK, Ekstrakurikuler) with delegated managers"
+    },
+    "cash_transactions": {
+      "title": "Cash Ledger Transactions",
+      "description": "Debit and credit financial transactions, receipts, and mutations"
     }
   }
 }

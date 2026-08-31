@@ -170,7 +170,7 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ initialSchedule 
     });
 
     const total = activeEkskulMembers.length;
-    const rate = total > 0 ? Math.round((hadir / total) * 100) : 100;
+    const rate = total > 0 ? Math.round((hadir / total) * 100) : 0;
 
     return { hadir, izin, sakit, alpa, total, rate };
   }, [attendanceState, activeEkskulMembers]);

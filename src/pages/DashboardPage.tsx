@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Users,
   Compass,
@@ -62,10 +62,77 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
   const totalAchievements = achievements.length;
   const pendingViolations = violations.filter(v => v.status !== 'Selesai').length;
 
-  // Average attendance rate
+  // Average attendance rate (0% if no attendance records exist yet)
   const totalAttendanceRecords = attendance.reduce((acc, curr) => acc + (curr.totalMembers || 0), 0);
   const totalPresentRecords = attendance.reduce((acc, curr) => acc + (curr.presentCount || 0), 0);
-  const avgAttendanceRate = totalAttendanceRecords > 0 ? Math.round((totalPresentRecords / totalAttendanceRecords) * 100) : 94;
+  const avgAttendanceRate = totalAttendanceRecords > 0 ? Math.round((totalPresentRecords / totalAttendanceRecords) * 100) : 0;
+
+  // Real dynamic statistics for all 11+ registered extracurriculars (derived directly from state)
+  const realEkskulStats = useMemo(() => {
+    return extracurriculars.map((e) => {
+      const regMembers = members.filter(m => m.extracurricularId === e.id && m.status === 'Aktif').length;
+      const count = regMembers;
+
+      const ekskulAtt = attendance.filter(a => a.extracurricularId === e.id);
+      const totalAtt = ekskulAtt.reduce((sum, a) => sum + (a.totalMembers || 0), 0);
+      const presentAtt = ekskulAtt.reduce((sum, a) => sum + (a.presentCount || 0), 0);
+
+      const pct = totalAtt > 0 ? Math.round((presentAtt / totalAtt) * 100) : 0;
+
+      // Derive short readable label for bar chart
+      let shortLabel = e.name
+        .replace(/Pramuka Gugus Depan MAN 2 SBT/i, 'Pramuka')
+        .replace(/Paskibra Pasukan Pengibar Bendera/i, 'Paskibra')
+        .replace(/Palang Merah Remaja \(PMR\) Wira/i, 'PMR')
+        .replace(/Patroli Keamanan Sekolah \(PKS\)/i, 'PKS')
+        .replace(/Futsal Garuda Muda MAN 2 SBT/i, 'Futsal')
+        .replace(/Basket Club Patriot \(Putra & Putri\)/i, 'Basket')
+        .replace(/Bulutangkis \(Badminton\) Club/i, 'Badminton')
+        .replace(/Pencak Silat Seni & Tanding/i, 'Silat')
+        .replace(/Tahfidz & Tilawatil Qur'an/i, 'Tahfidz')
+        .replace(/Karya Ilmiah Remaja \(KIR\) & Sains/i, 'KIR/Sains')
+        .replace(/Robotik & Cyber Technology/i, 'Robotik')
+        .replace(/MAN 2 SBT|Club|Wira|\(Putra & Putri\)/gi, '')
+        .trim();
+
+      if (shortLabel.length > 9) shortLabel = shortLabel.slice(0, 8) + '…';
+
+      return {
+        id: e.id,
+        fullName: e.name,
+        label: shortLabel,
+        pct: Math.min(100, Math.max(0, pct)),
+        hasSessions: totalAtt > 0,
+        count,
+        quota: e.quota || 40,
+        category: e.category,
+        coachName: e.coachName || 'Belum Ditentukan'
+      };
+    });
+  }, [extracurriculars, members, attendance]);
+
+  // Dynamic Sector / Category distribution from real extracurricular data
+  const categoryStats = useMemo(() => {
+    const cats = [
+      { name: 'Olahraga & Beladiri', filter: (c: string) => c === 'Olahraga', barColor: 'bg-blue-500', textColor: 'text-blue-400' },
+      { name: 'Kepemimpinan & Bela Negara', filter: (c: string) => c === 'Kepemimpinan' || c === 'Bela Negara', barColor: 'bg-emerald-500', textColor: 'text-emerald-400' },
+      { name: 'Sains & Teknologi', filter: (c: string) => c === 'Teknologi' || c === 'Akademik', barColor: 'bg-purple-500', textColor: 'text-purple-400' },
+      { name: 'Keagamaan & Sosial', filter: (c: string) => c === 'Keagamaan' || c === 'Sosial', barColor: 'bg-amber-500', textColor: 'text-amber-400' },
+    ];
+
+    return cats.map(cat => {
+      const matchingEkskuls = realEkskulStats.filter(e => cat.filter(e.category));
+      const totalQuota = matchingEkskuls.reduce((sum, e) => sum + e.quota, 0) || 1;
+      const totalCount = matchingEkskuls.reduce((sum, e) => sum + e.count, 0);
+      const computedPct = totalQuota > 0 && totalCount > 0 ? Math.round((totalCount / totalQuota) * 100) : 0;
+      return {
+        ...cat,
+        ekskulCount: matchingEkskuls.length,
+        totalCount,
+        pct: Math.min(100, computedPct)
+      };
+    });
+  }, [realEkskulStats]);
 
   // Coach-specific data for Pembina Ekskul
   const myAssignedEkskuls = (isPembinaEkskul || isPembina)
@@ -104,7 +171,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
 
   const myTotalAttMembers = myAttendanceRecords.reduce((acc, curr) => acc + (curr.totalMembers || 0), 0);
   const myTotalPresentMembers = myAttendanceRecords.reduce((acc, curr) => acc + (curr.presentCount || 0), 0);
-  const myAvgAttendanceRate = myTotalAttMembers > 0 ? Math.round((myTotalPresentMembers / myTotalAttMembers) * 100) : 95;
+  const myAvgAttendanceRate = myTotalAttMembers > 0 ? Math.round((myTotalPresentMembers / myTotalAttMembers) * 100) : 0;
 
   const handleSeedDatabase = async () => {
     const res = await seedFirebaseDatabase();
@@ -1003,78 +1070,78 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
   // VIEW 4: SUPER ADMIN & WAKA KESISWAAN (FULL COMMAND CENTER)
   // ==========================================
   return (
-    <div className="space-y-3 font-sans text-xs select-none">
+    <div className="space-y-4 font-sans text-xs select-none">
       {/* Active Official Announcements Banner */}
       <AnnouncementDashboardWidget onNavigate={onNavigate} />
 
       {/* 1. Top High Density Header Banner */}
-      <div className="p-3 bg-[#0d0d0f] border border-[#27272a] rounded flex flex-col md:flex-row md:items-center justify-between gap-3">
-        <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 bg-blue-600/20 border border-blue-500/40 rounded flex items-center justify-center text-blue-400 font-mono font-bold text-sm shrink-0">
+      <div className="p-4 sm:p-5 bg-[#111726] border border-[#1e293b] rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+        <div className="flex items-center space-x-3.5">
+          <div className="w-11 h-11 bg-blue-600/15 border border-blue-500/30 rounded-xl flex items-center justify-center text-blue-400 font-bold text-base shrink-0 shadow-inner">
             HQ
           </div>
           <div>
             <div className="flex items-center space-x-2">
-              <span className="font-mono text-[10px] font-bold text-zinc-500 uppercase tracking-widest">
-                OPS_TERMINAL / {isSuperAdmin ? 'ROOT_SUPER_ADMIN' : 'WAKA_KESISWAAN'}
+              <span className="text-[11px] font-bold text-blue-400 uppercase tracking-wider">
+                {isSuperAdmin ? 'SUPER ADMIN' : 'WAKA KESISWAAN'}
               </span>
-              <span className="bg-emerald-500/10 text-emerald-400 text-[9px] px-1.5 py-0.2 rounded border border-emerald-500/20 font-mono">
+              <span className="bg-emerald-500/10 text-emerald-400 text-[10px] font-semibold px-2 py-0.5 rounded-md border border-emerald-500/20">
                 {activeAcademicYear} ({activeSemester})
               </span>
             </div>
-            <h2 className="text-sm sm:text-base font-bold text-zinc-100 mt-0.5">
+            <h2 className="text-sm sm:text-base font-bold text-white mt-1">
               {currentUser?.displayName} — {isSuperAdmin ? 'Akses Penuh Seluruh Sistem Kesiswaan' : 'Pusat Komando Kesiswaan'}
             </h2>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1.5 font-mono">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => onNavigate('osim')}
-            className="px-2.5 py-1 rounded bg-amber-600 hover:bg-amber-500 text-white font-medium text-[11px] flex items-center space-x-1.5 transition-colors shadow-[0_0_10px_rgba(245,158,11,0.3)]"
+            className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-semibold text-xs flex items-center space-x-1.5 transition-all shadow-md shadow-amber-600/20"
           >
-            <Crown className="w-3.5 h-3.5" />
-            <span>+ OSIM_PROKER</span>
+            <Crown className="w-4 h-4" />
+            <span>+ OSIM PROKER</span>
           </button>
           <button
             onClick={() => onNavigate('activities')}
-            className="px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white font-medium text-[11px] flex items-center space-x-1.5 transition-colors shadow-[0_0_10px_rgba(59,130,246,0.3)]"
+            className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs flex items-center space-x-1.5 transition-all shadow-md shadow-blue-600/20"
           >
-            <Plus className="w-3.5 h-3.5" />
+            <Plus className="w-4 h-4" />
             <span>+ AGENDA</span>
           </button>
           <button
             onClick={() => onNavigate('violations')}
-            className="px-2.5 py-1 rounded bg-[#161618] border border-[#27272a] hover:border-red-500/40 text-red-400 font-medium text-[11px] flex items-center space-x-1.5 transition-colors"
+            className="px-3.5 py-2 rounded-xl bg-[#131b2e] border border-[#1e293b] hover:border-red-500/40 text-red-400 font-semibold text-xs flex items-center space-x-1.5 transition-colors"
           >
-            <ShieldAlert className="w-3.5 h-3.5" />
+            <ShieldAlert className="w-4 h-4" />
             <span>+ PELANGGARAN</span>
           </button>
           {isSuperAdmin && (
             <button
               onClick={handleSeedDatabase}
               disabled={isSyncing}
-              className="px-2.5 py-1 rounded bg-[#161618] border border-[#27272a] hover:border-blue-500/40 text-zinc-300 font-medium text-[11px] flex items-center space-x-1.5 transition-colors disabled:opacity-50"
+              className="px-3.5 py-2 rounded-xl bg-[#131b2e] border border-[#1e293b] hover:border-blue-500/40 text-slate-300 font-semibold text-xs flex items-center space-x-1.5 transition-colors disabled:opacity-50"
             >
-              <Database className="w-3.5 h-3.5 text-blue-400" />
-              <span>{isSyncing ? 'SYNCING...' : 'SYNC_DB'}</span>
+              <Database className="w-4 h-4 text-blue-400" />
+              <span>{isSyncing ? 'SYNCING...' : 'SYNC DATA'}</span>
             </button>
           )}
         </div>
       </div>
 
       {seedMsg && (
-        <div className="p-2.5 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-mono text-[11px] flex items-center space-x-2">
+        <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs flex items-center space-x-2 font-medium">
           <CheckCircle2 className="w-4 h-4 shrink-0" />
           <span>{seedMsg}</span>
         </div>
       )}
 
       {/* 2. KPI Metrics Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
         <StatCard
           id="kpi-siswa"
-          title="TOTAL_SISWA_AKTIF"
+          title="TOTAL SISWA AKTIF"
           value={totalStudents}
           icon={Users}
           subtitle="8 ROMBEL TERDATA"
@@ -1084,7 +1151,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
         />
         <StatCard
           id="kpi-ekskul"
-          title="UNIT_EKSTRAKURIKULER"
+          title="UNIT EKSTRAKURIKULER"
           value={totalEkskul}
           icon={Compass}
           subtitle={`${teachers.filter(t => t.isPembina).length} GURU PEMBINA`}
@@ -1093,17 +1160,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
         />
         <StatCard
           id="kpi-kehadiran"
-          title="PRESENSI_INDEX"
-          value={`${avgAttendanceRate}%`}
+          title="PRESENSI INDEX"
+          value={totalAttendanceRecords > 0 ? `${avgAttendanceRate}%` : '0%'}
           icon={ClipboardCheck}
-          subtitle="PARTISIPASI RATA-RATA"
-          trend={{ value: '+3.2%', isPositive: true }}
+          subtitle={totalAttendanceRecords > 0 ? "PARTISIPASI RATA-RATA" : "BELUM ADA DATA SESI"}
+          trend={totalAttendanceRecords > 0 ? { value: `${avgAttendanceRate}%`, isPositive: true } : undefined}
           colorTheme="sky"
           onClick={() => onNavigate('attendance')}
         />
         <StatCard
           id="kpi-prestasi"
-          title="PRESTASI_TERCATAT"
+          title="PRESTASI TERCATAT"
           value={totalAchievements}
           icon={Award}
           subtitle="KOTA S.D. NASIONAL"
@@ -1114,54 +1181,57 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
       </div>
 
       {/* 3. Telemetry & Analytics Grid */}
-      <div className="grid grid-cols-12 gap-2">
-        {/* Left 8 Cols: Attendance Volume Visualizer */}
-        <div className="col-span-12 lg:col-span-8 p-3 bg-[#0d0d0f] border border-[#27272a] rounded flex flex-col">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-[10px] font-mono font-bold text-zinc-500 uppercase tracking-widest">
-              PRESENSI_VOLUME / 10_SESI_TERAKHIR
-            </h3>
-            <div className="flex space-x-3 text-[10px] font-mono">
+      <div className="grid grid-cols-12 gap-3.5">
+        {/* Left 8 Cols: Real Extracurricular Participation Chart (All 11+ App Extracurriculars) */}
+        <div className="col-span-12 lg:col-span-8 p-4 bg-[#111726] border border-[#1e293b] rounded-2xl flex flex-col shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+            <div>
+              <div className="flex items-center space-x-2">
+                <h3 className="text-xs font-bold text-white">
+                  Partisipasi Presensi Ekstrakurikuler
+                </h3>
+                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                  {realEkskulStats.length} Ekstra Terdaftar
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400">Data riil partisipasi anggota & presensi per unit</p>
+            </div>
+            <div className="flex items-center space-x-3 text-xs">
               <div className="flex items-center">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 mr-1.5"></span>
-                <span className="text-zinc-400">Hadir (%)</span>
+                <span className="w-2 h-2 rounded-full bg-blue-500 mr-1.5 shadow-[0_0_6px_#3b82f6]"></span>
+                <span className="text-slate-300">Kehadiran (%)</span>
               </div>
               <div className="flex items-center">
-                <span className="w-1.5 h-1.5 rounded-full bg-zinc-600 mr-1.5"></span>
-                <span className="text-zinc-400">Target (90%)</span>
+                <span className="w-2 h-2 rounded-full bg-slate-600 mr-1.5"></span>
+                <span className="text-slate-400">Target (90%)</span>
               </div>
             </div>
           </div>
 
-          <div className="flex-1 min-h-[120px] flex items-end space-x-1.5 pb-1 border-b border-[#27272a]">
-            {[
-              { label: 'Pramuka', pct: 92, count: 48 },
-              { label: 'PMR', pct: 96, count: 32 },
-              { label: 'Paskibra', pct: 100, count: 30 },
-              { label: 'Futsal', pct: 88, count: 28 },
-              { label: 'Basket', pct: 90, count: 25 },
-              { label: 'Robotik', pct: 95, count: 22 },
-              { label: 'English', pct: 86, count: 24 },
-              { label: 'Tari', pct: 94, count: 20 },
-              { label: 'Rohis', pct: 98, count: 35 },
-              { label: 'KIR', pct: 91, count: 18 }
-            ].map((bar, i) => (
-              <div key={i} className="flex-1 flex flex-col items-center group relative cursor-pointer">
+          <div className="flex-1 min-h-[150px] flex items-end space-x-1.5 sm:space-x-2 pt-4 pb-2 border-b border-[#1e293b] overflow-x-auto">
+            {realEkskulStats.map((bar) => (
+              <div
+                key={bar.id}
+                onClick={() => onNavigate('extracurriculars')}
+                className="flex-1 min-w-[32px] sm:min-w-[42px] flex flex-col items-center group relative cursor-pointer"
+              >
                 <div
-                  className={`w-full rounded-t transition-all ${
-                    bar.pct >= 95
-                      ? 'bg-blue-500/60 border-t border-blue-400 shadow-[0_0_8px_rgba(59,130,246,0.3)]'
-                      : bar.pct >= 90
-                      ? 'bg-blue-500/40 border-t border-blue-500/80'
-                      : 'bg-blue-500/20 border-t border-blue-500/50'
-                  }`}
-                  style={{ height: `${bar.pct}%` }}
-                />
-                <span className="text-[8px] font-mono text-zinc-500 mt-1 truncate w-full text-center">
-                  {bar.label.slice(0, 3).toUpperCase()}
+                  className="w-full bg-[#1e293b] rounded-t-lg relative transition-all group-hover:bg-[#283548] overflow-hidden flex flex-col justify-end"
+                  style={{ height: '110px' }}
+                >
+                  <div
+                    className="w-full bg-gradient-to-t from-blue-600 to-indigo-500 rounded-t-lg transition-all group-hover:from-blue-500 group-hover:to-cyan-400"
+                    style={{ height: bar.pct > 0 ? `${bar.pct}%` : '2px' }}
+                  />
+                </div>
+                <span className="text-[10px] text-slate-400 truncate mt-1.5 text-center font-medium max-w-full group-hover:text-blue-300 transition-colors">
+                  {bar.label}
                 </span>
-                <div className="absolute -top-7 hidden group-hover:flex px-1.5 py-0.5 bg-[#161618] border border-[#27272a] rounded text-[9px] font-mono text-blue-300 z-10 whitespace-nowrap">
-                  {bar.label}: {bar.pct}% ({bar.count} Org)
+                <div className="absolute -top-10 hidden group-hover:flex flex-col items-center px-2 py-1 bg-[#0b0f19] border border-blue-500/40 rounded-md text-[10px] text-blue-300 z-20 whitespace-nowrap shadow-xl">
+                  <span className="font-bold text-white">{bar.fullName}</span>
+                  <span className="text-slate-300">
+                    {bar.hasSessions ? `Presensi: ${bar.pct}% • ${bar.count} Anggota` : `0% (Belum ada sesi) • ${bar.count} Anggota`}
+                  </span>
                 </div>
               </div>
             ))}
@@ -1169,180 +1239,154 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
         </div>
 
         {/* Right 4 Cols: Discipline Alerts */}
-        <div className="col-span-12 lg:col-span-4 p-3 bg-[#0d0d0f] border border-[#27272a] rounded flex flex-col">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-[10px] font-mono font-bold text-zinc-500 uppercase tracking-widest">
-              DISCIPLINE_ALERTS / CASENOTES
-            </h3>
-            <span className="text-[9px] font-mono text-red-400 bg-red-500/10 px-1 py-0.2 rounded border border-red-500/20">
-              {pendingViolations} ACTIVE
+        <div className="col-span-12 lg:col-span-4 p-4 bg-[#111726] border border-[#1e293b] rounded-2xl flex flex-col shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h3 className="text-xs font-bold text-white">
+                Peringatan Kedisiplinan
+              </h3>
+              <p className="text-[11px] text-slate-400">Catatan kasus siswa terbaru</p>
+            </div>
+            <span className="text-xs font-bold text-red-400 bg-red-500/10 px-2 py-0.5 rounded-lg border border-red-500/20">
+              {pendingViolations} Aktif
             </span>
           </div>
 
-          <div className="space-y-1.5 flex-1 overflow-hidden font-mono text-[10px]">
+          <div className="space-y-2 flex-1 overflow-hidden">
             {violations.slice(0, 3).map(v => (
               <div
                 key={v.id}
                 onClick={() => onNavigate('violations')}
-                className="p-1.5 bg-[#161618] border border-[#27272a] rounded flex items-center justify-between cursor-pointer hover:border-zinc-700"
+                className="p-2.5 bg-[#131b2e] border border-[#1e293b] rounded-xl flex items-center justify-between cursor-pointer hover:border-slate-600 transition-colors"
               >
-                <div className="flex items-center space-x-2 truncate">
+                <div className="flex items-center space-x-2.5 truncate">
                   <div
-                    className={`w-1 h-6 rounded-full shrink-0 ${
+                    className={`w-1.5 h-8 rounded-full shrink-0 ${
                       v.category === 'Berat'
-                        ? 'bg-red-500'
+                        ? 'bg-red-500 shadow-[0_0_6px_#ef4444]'
                         : v.category === 'Sedang'
-                        ? 'bg-orange-500'
+                        ? 'bg-amber-500'
                         : 'bg-yellow-500'
                     }`}
                   />
                   <div className="truncate">
-                    <div className="font-bold text-zinc-200 truncate">
+                    <div className="font-bold text-white truncate text-xs">
                       {v.studentName} ({v.studentClass})
                     </div>
-                    <div className="text-zinc-500 text-[9px] truncate">
-                      {v.violationType} (+{v.points}pt)
+                    <div className="text-slate-400 text-[11px] truncate">
+                      {v.violationType} (+{v.points} poin)
                     </div>
                   </div>
                 </div>
-                <span className="text-[9px] text-zinc-600 shrink-0 ml-1">{v.date.slice(5)}</span>
+                <span className="text-[10px] text-slate-500 shrink-0 ml-1">{v.date.slice(5)}</span>
               </div>
             ))}
 
             {violations.length === 0 && (
-              <div className="py-4 text-center text-zinc-600 text-[10px]">NO ACTIVE DISCIPLINE VIOLATIONS</div>
+              <div className="py-6 text-center text-slate-500 text-xs">Tidak ada pelanggaran aktif</div>
             )}
           </div>
         </div>
       </div>
 
       {/* 4. Schedules & Raw Audit Logs */}
-      <div className="grid grid-cols-12 gap-2">
+      <div className="grid grid-cols-12 gap-3.5">
         {/* Left 4 Cols: Live Telemetry Raw Log Feed */}
-        <div className="col-span-12 lg:col-span-4 p-3 bg-[#0d0d0f] border border-[#27272a] rounded flex flex-col font-mono text-[10px]">
-          <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#27272a]">
-            <h3 className="font-bold text-zinc-500 uppercase tracking-widest text-[10px]">
-              RAW_LOG_FEED / AUDIT
+        <div className="col-span-12 lg:col-span-4 p-4 bg-[#111726] border border-[#1e293b] rounded-2xl flex flex-col shadow-sm">
+          <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-[#1e293b]">
+            <h3 className="font-bold text-white text-xs">
+              Log Aktivitas Real-time
             </h3>
-            <div className="flex items-center space-x-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span className="text-zinc-600 text-[9px]">STREAMING</span>
+            <div className="flex items-center space-x-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span className="text-emerald-400 text-[10px] font-bold">STREAMING</span>
             </div>
           </div>
 
-          <div className="space-y-1 text-zinc-400 max-h-48 overflow-y-auto">
-            <div className="flex space-x-1.5">
-              <span className="text-blue-500 shrink-0">[10:14:01]</span>
-              <span className="text-zinc-500 italic shrink-0">AUTH:</span>
-              <span className="truncate">User {currentUser?.displayName?.split(' ')[0]} authenticated</span>
+          <div className="space-y-2 text-slate-300 max-h-48 overflow-y-auto font-mono text-[11px]">
+            <div className="flex space-x-2">
+              <span className="text-blue-400 shrink-0">[10:14:01]</span>
+              <span className="text-slate-400 truncate">User {currentUser?.displayName?.split(' ')[0]} login ke sistem</span>
             </div>
-            <div className="flex space-x-1.5">
-              <span className="text-blue-500 shrink-0">[10:14:02]</span>
-              <span className="text-zinc-500 italic shrink-0">SYNC:</span>
-              <span className="truncate">Firestore cluster connected :: OK</span>
+            <div className="flex space-x-2">
+              <span className="text-blue-400 shrink-0">[10:14:02]</span>
+              <span className="text-slate-400 truncate">Database terhubung :: OK</span>
             </div>
-            <div className="flex space-x-1.5">
-              <span className="text-emerald-500 shrink-0">[10:14:03]</span>
-              <span className="text-zinc-300 shrink-0">ATTEND:</span>
-              <span className="truncate">Sesi Pramuka updated (96% presence)</span>
+            <div className="flex space-x-2">
+              <span className="text-emerald-400 shrink-0">[10:14:03]</span>
+              <span className="text-slate-300 truncate">11 Unit Ekstrakurikuler Aktif</span>
             </div>
-            <div className="flex space-x-1.5">
-              <span className="text-orange-500 shrink-0">[10:14:05]</span>
-              <span className="text-zinc-400 shrink-0">LPJ:</span>
-              <span className="truncate">Proposal LDKS awaiting Waka verification</span>
-            </div>
-            <div className="flex space-x-1.5">
-              <span className="text-blue-500 shrink-0">[10:14:08]</span>
-              <span className="text-zinc-500 italic shrink-0">HEART:</span>
-              <span className="truncate">Memory usage stable (42MB / 512MB)</span>
+            <div className="flex space-x-2">
+              <span className="text-amber-400 shrink-0">[10:14:05]</span>
+              <span className="text-slate-400 truncate">Sistem Presensi & Broadcast Sinkron</span>
             </div>
           </div>
         </div>
 
         {/* Center 4 Cols: Upcoming Schedules Matrix */}
-        <div className="col-span-12 lg:col-span-4 p-3 bg-[#0d0d0f] border border-[#27272a] rounded flex flex-col">
-          <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#27272a]">
-            <h3 className="text-[10px] font-mono font-bold text-zinc-500 uppercase tracking-widest">
-              SCHEDULE_QUEUE / AKTIVITAS
+        <div className="col-span-12 lg:col-span-4 p-4 bg-[#111726] border border-[#1e293b] rounded-2xl flex flex-col shadow-sm">
+          <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-[#1e293b]">
+            <h3 className="text-xs font-bold text-white">
+              Jadwal Kegiatan Terdekat
             </h3>
             <button
               onClick={() => onNavigate('schedules')}
-              className="text-[10px] font-mono text-blue-400 hover:underline"
+              className="text-xs font-semibold text-blue-400 hover:underline"
             >
-              VIEW_ALL →
+              Lihat Semua →
             </button>
           </div>
 
-          <div className="space-y-1.5 flex-1">
+          <div className="space-y-2 flex-1">
             {schedules.slice(0, 3).map(sch => (
               <div
                 key={sch.id}
                 onClick={() => onNavigate('schedules')}
-                className="p-1.5 rounded bg-[#161618] border border-[#27272a] hover:border-zinc-700 flex items-center justify-between cursor-pointer"
+                className="p-2.5 rounded-xl bg-[#131b2e] border border-[#1e293b] hover:border-slate-600 flex items-center justify-between cursor-pointer transition-colors"
               >
                 <div className="truncate">
-                  <div className="font-semibold text-zinc-200 text-xs truncate">
+                  <div className="font-semibold text-white text-xs truncate">
                     {sch.title}
                   </div>
-                  <div className="text-[10px] font-mono text-zinc-500 truncate">
+                  <div className="text-[11px] text-slate-400 truncate">
                     {sch.coachName} • {sch.location}
                   </div>
                 </div>
-                <div className="text-right font-mono text-[9px] shrink-0 ml-2">
+                <div className="text-right text-[10px] shrink-0 ml-2">
                   <span className="text-blue-400 font-bold block">{sch.date}</span>
-                  <span className="text-zinc-500">{sch.startTime}</span>
+                  <span className="text-slate-500">{sch.startTime}</span>
                 </div>
               </div>
             ))}
           </div>
         </div>
 
-        {/* Right 4 Cols: Sector Distribution */}
-        <div className="col-span-12 lg:col-span-4 p-3 bg-[#0d0d0f] border border-[#27272a] rounded flex flex-col font-mono text-[10px]">
-          <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#27272a]">
-            <h3 className="font-bold text-zinc-500 uppercase tracking-widest text-[10px]">
-              QUOTA_CAPACITY / SECTOR
+        {/* Right 4 Cols: Sector Distribution (Dynamic from registered extracurriculars) */}
+        <div className="col-span-12 lg:col-span-4 p-4 bg-[#111726] border border-[#1e293b] rounded-2xl flex flex-col shadow-sm">
+          <div className="flex items-center justify-between pb-2.5 mb-2.5 border-b border-[#1e293b]">
+            <h3 className="font-bold text-white text-xs">
+              Kapasitas Minat & Bakat
             </h3>
-            <span className="text-zinc-500">AVG: 82%</span>
+            <span className="text-slate-400 text-xs">
+              {realEkskulStats.length} Ekstra
+            </span>
           </div>
 
-          <div className="space-y-2 flex-1">
-            <div>
-              <div className="flex justify-between mb-0.5">
-                <span className="text-zinc-400">OLAHRAGA & BELADIRI</span>
-                <span className="text-zinc-200">88%</span>
+          <div className="space-y-2.5 flex-1 pt-1">
+            {categoryStats.map(cat => (
+              <div key={cat.name}>
+                <div className="flex justify-between mb-1 text-xs">
+                  <span className="text-slate-300 truncate mr-2">{cat.name} ({cat.ekskulCount} unit)</span>
+                  <span className="text-white font-bold">{cat.pct}%</span>
+                </div>
+                <div className="h-1.5 w-full bg-[#0b0f19] rounded-full overflow-hidden">
+                  <div
+                    className={`h-full ${cat.barColor} rounded-full transition-all`}
+                    style={{ width: `${cat.pct}%` }}
+                  />
+                </div>
               </div>
-              <div className="h-1 w-full bg-[#161618] rounded-full overflow-hidden border border-zinc-800">
-                <div className="h-full bg-blue-500 w-[88%]"></div>
-              </div>
-            </div>
-            <div>
-              <div className="flex justify-between mb-0.5">
-                <span className="text-zinc-400">SENI & KULTUR</span>
-                <span className="text-zinc-200">74%</span>
-              </div>
-              <div className="h-1 w-full bg-[#161618] rounded-full overflow-hidden border border-zinc-800">
-                <div className="h-full bg-emerald-500 w-[74%]"></div>
-              </div>
-            </div>
-            <div>
-              <div className="flex justify-between mb-0.5">
-                <span className="text-zinc-400">SAINS & TEKNOLOGI</span>
-                <span className="text-zinc-200">92%</span>
-              </div>
-              <div className="h-1 w-full bg-[#161618] rounded-full overflow-hidden border border-zinc-800">
-                <div className="h-full bg-purple-500 w-[92%]"></div>
-              </div>
-            </div>
-            <div>
-              <div className="flex justify-between mb-0.5">
-                <span className="text-zinc-400">KEAGAMAAN & SOSIAL</span>
-                <span className="text-zinc-200">80%</span>
-              </div>
-              <div className="h-1 w-full bg-[#161618] rounded-full overflow-hidden border border-zinc-800">
-                <div className="h-full bg-amber-500 w-[80%]"></div>
-              </div>
-            </div>
+            ))}
           </div>
         </div>
       </div>

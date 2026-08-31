@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ThemeProvider } from './contexts/ThemeContext';
 import { SchoolProvider } from './contexts/SchoolContext';
+import { TimezoneProvider } from './contexts/TimezoneContext';
 import { AppLayout, NavTab } from './components/layout/AppLayout';
 import { DashboardPage } from './pages/DashboardPage';
 import { CPanelPage } from './pages/CPanelPage';
@@ -20,6 +22,7 @@ import { TeachersPage } from './pages/TeachersPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ProfileSettingsPage } from './pages/ProfileSettingsPage';
 import { AnnouncementsPage } from './pages/AnnouncementsPage';
+import { CashLedgerPage } from './pages/CashLedgerPage';
 import { LoginPage } from './pages/LoginPage';
 import { Schedule, Violation } from './types';
 import { ShieldAlert, ArrowLeft, Lock } from 'lucide-react';
@@ -40,6 +43,7 @@ const VALID_TABS: NavTab[] = [
   'achievements',
   'permissions',
   'teachers',
+  'cash',
   'announcements',
   'settings',
   'profile'
@@ -203,6 +207,8 @@ const MainContent: React.FC = () => {
         return <PermissionsPage />;
       case 'teachers':
         return <TeachersPage />;
+      case 'cash':
+        return <CashLedgerPage />;
       case 'announcements':
         return <AnnouncementsPage />;
       case 'settings':
@@ -223,10 +229,14 @@ const MainContent: React.FC = () => {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <SchoolProvider>
-        <MainContent />
-      </SchoolProvider>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <TimezoneProvider>
+          <SchoolProvider>
+            <MainContent />
+          </SchoolProvider>
+        </TimezoneProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

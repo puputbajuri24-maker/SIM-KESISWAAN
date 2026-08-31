@@ -27,6 +27,8 @@ import { UserRole, SchoolSetting } from '../types';
 import { LogoUploader } from '../components/common/LogoUploader';
 import { SchoolLetterhead } from '../components/common/SchoolLetterhead';
 import { ClassManagementModal } from '../components/common/ClassManagementModal';
+import { TimezoneSettingsCard } from '../components/common/TimezoneSettingsCard';
+import { ThemeSettingsCard } from '../components/common/ThemeSettingsCard';
 
 // Preset logos for quick Indonesian official letterhead setup
 const LEFT_LOGO_PRESETS = [
@@ -448,7 +450,13 @@ export const SettingsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Form Identitas Sekolah & Logo Kop Surat */}
+      {/* 2. Zona Waktu & Sinkronisasi Waktu Aplikasi */}
+      <TimezoneSettingsCard />
+
+      {/* 3. Pengaturan Tampilan, Mode & Tema Warna */}
+      <ThemeSettingsCard />
+
+      {/* 4. Form Identitas Sekolah & Logo Kop Surat */}
       <form onSubmit={handleSaveSchoolInfo} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-6 shadow-sm space-y-6">
         <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
           <div className="flex items-center gap-2">

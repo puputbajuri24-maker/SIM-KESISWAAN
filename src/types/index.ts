@@ -12,6 +12,9 @@ export interface UserProfile {
   photoURL?: string;
   nip?: string;
   counselorSpecialization?: string; // e.g. "Bimbingan Karir & Psikologi Remaja"
+  isCashManager?: boolean; // Delegasi Hak Kelola Kas / Bendahara Amanah
+  cashFundScopes?: string[]; // Daftar ID akun kas yang diamanahkan, e.g. ['all'] or ['kas_utama_kesiswaan', 'kas_bk']
+  cashManagerTitle?: string; // Jabatan amanah kas, e.g. "Bendahara Kesiswaan", "Bendahara OSIM", "Bendahara BK"
   status?: 'Aktif' | 'Nonaktif';
   lastLogin?: string;
   createdAt?: string;
@@ -102,6 +105,8 @@ export interface Teacher {
   extracurricularName?: string;
   assignedExtracurriculars?: string[];
   isActive?: boolean;
+  isCashManager?: boolean;
+  cashManagerTitle?: string;
 }
 
 export type ExtracurricularCategory = 
@@ -694,3 +699,63 @@ export interface OsimMeeting {
   academicYear: string;
   createdAt?: string;
 }
+
+// ==========================================
+// NERACA KAS & KEUANGAN KESISWAAN (TRANSPARANSI KAS)
+// ==========================================
+
+export type CashAccountCategory =
+  | 'Kesiswaan'
+  | 'OSIM'
+  | 'BK'
+  | 'Ekstrakurikuler'
+  | 'Sosial & Infaq'
+  | 'Lainnya';
+
+export interface CashAccount {
+  id: string;
+  name: string; // e.g. "Kas Utama Kesiswaan", "Kas OSIM & Intrakurikuler", "Kas Peduli BK / Sosial Siswa", "Kas Pramuka"
+  code: string; // e.g. "KAS-KSW", "KAS-OSIM", "KAS-BK", "KAS-PRA"
+  category: CashAccountCategory;
+  description: string;
+  assignedManagerUserIds: string[]; // List of user UIDs who have amanah/rights to manage this cash
+  assignedManagerNames?: string[];
+  initialBalance: number;
+  currentBalance?: number; // Calculated dynamic balance
+  targetEkskulId?: string; // If tied to specific extracurricular
+  academicYear: string;
+  isActive: boolean;
+  color?: string; // UI theme badge color
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type CashTransactionType = 'MASUK' | 'KELUAR';
+
+export type CashTransactionStatus = 'VERIFIED' | 'PENDING' | 'DRAFT';
+
+export interface CashTransaction {
+  id: string;
+  accountId: string; // ID of CashAccount
+  accountName: string;
+  accountCode?: string;
+  type: CashTransactionType; // 'MASUK' (Debit) | 'KELUAR' (Kredit)
+  category: string; // e.g., 'Iuran Kas Rutin', 'Dana BOS/BOM Kesiswaan', 'Infaq / Shadaqah Peduli BK', 'Sponsorship / Donatur', 'Honor Pelatih', 'Konsumsi & Logistik', 'Peralatan & Perlengkapan', 'Transportasi Lomba / Event', 'Santunan Siswa Kurang Mampu', 'Hadiah / Medali / Piagam', 'Lain-lain'
+  amount: number;
+  date: string; // YYYY-MM-DD
+  title: string; // Ringkasan transaksi
+  description?: string; // Rincian / Uraian lengkap
+  recipientOrPayer: string; // Penyetor (bila Masuk) atau Penerima / Toko / Vendor (bila Keluar)
+  referenceNumber: string; // No. Kwitansi / Bukti Kas (e.g. BKM-202608-001 / BKK-202608-001)
+  receiptUrl?: string; // Foto Kwitansi / Nota / Bukti Pembayaran
+  receiptName?: string;
+  status: CashTransactionStatus;
+  recordedByUid: string;
+  recordedByName: string;
+  recordedByRole: string;
+  academicYear: string;
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+

@@ -40,7 +40,8 @@ import {
   School,
   X,
   History,
-  Megaphone
+  Megaphone,
+  Wallet
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSchool } from '../contexts/SchoolContext';
@@ -122,6 +123,8 @@ export const CPanelPage: React.FC = () => {
     counselorSpecialization: string;
     extracurricularIds: string[];
     status: 'Aktif' | 'Nonaktif';
+    isCashManager: boolean;
+    cashManagerTitle: string;
   }>({
     displayName: '',
     nip: '',
@@ -132,7 +135,9 @@ export const CPanelPage: React.FC = () => {
     phone: '',
     counselorSpecialization: 'Bimbingan Konseling Siswa & Karir',
     extracurricularIds: [],
-    status: 'Aktif'
+    status: 'Aktif',
+    isCashManager: false,
+    cashManagerTitle: 'Bendahara Kesiswaan'
   });
 
   const [feedbackMsg, setFeedbackMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -263,7 +268,9 @@ export const CPanelPage: React.FC = () => {
       phone: '',
       counselorSpecialization: 'Bimbingan Konseling Siswa & Karir',
       extracurricularIds: [],
-      status: 'Aktif'
+      status: 'Aktif',
+      isCashManager: false,
+      cashManagerTitle: 'Bendahara Kesiswaan'
     });
     setIsAddModalOpen(true);
   };
@@ -280,9 +287,30 @@ export const CPanelPage: React.FC = () => {
       phone: u.phone || '',
       counselorSpecialization: u.counselorSpecialization || 'Bimbingan Konseling Siswa & Karir',
       extracurricularIds: u.extracurricularIds || [],
-      status: u.status || 'Aktif'
+      status: u.status || 'Aktif',
+      isCashManager: !!u.isCashManager,
+      cashManagerTitle: u.cashManagerTitle || 'Bendahara Kesiswaan'
     });
     setIsEditModalOpen(true);
+  };
+
+  const handleToggleCashManager = async (u: UserProfile) => {
+    const nextState = !u.isCashManager;
+    const title = nextState ? (u.cashManagerTitle || 'Bendahara Kesiswaan') : undefined;
+    const res = await updateUser(u.uid, {
+      isCashManager: nextState,
+      cashManagerTitle: title
+    });
+    if (res.success) {
+      await syncUserFromCPanel({ ...u, isCashManager: nextState, cashManagerTitle: title }, u);
+      showToast(
+        nextState
+          ? `Hak Pengelola Kas & Keuangan berhasil diberikan kepada ${u.displayName}! Menu Neraca Kas otomatis muncul pada akun ini.`
+          : `Hak Pengelola Kas dinonaktifkan untuk ${u.displayName}. Menu Neraca Kas ditutup.`
+      );
+    } else {
+      showToast(res.error || 'Gagal mengubah status pengelola kas.', 'error');
+    }
   };
 
   const handleSaveAddUser = async (e: React.FormEvent) => {
@@ -303,7 +331,9 @@ export const CPanelPage: React.FC = () => {
       phone: formData.phone.trim() || undefined,
       counselorSpecialization: formData.role === 'guru_bk' ? formData.counselorSpecialization : undefined,
       extracurricularIds: formData.role === 'pembina_ekskul' ? formData.extracurricularIds : undefined,
-      status: formData.status
+      status: formData.status,
+      isCashManager: formData.isCashManager,
+      cashManagerTitle: formData.isCashManager ? (formData.cashManagerTitle.trim() || 'Bendahara') : undefined
     };
 
     const res = await addUser(newUser);
@@ -331,7 +361,9 @@ export const CPanelPage: React.FC = () => {
       phone: formData.phone.trim() || undefined,
       counselorSpecialization: formData.role === 'guru_bk' ? formData.counselorSpecialization : undefined,
       extracurricularIds: formData.role === 'pembina_ekskul' ? formData.extracurricularIds : undefined,
-      status: formData.status
+      status: formData.status,
+      isCashManager: formData.isCashManager,
+      cashManagerTitle: formData.isCashManager ? (formData.cashManagerTitle.trim() || 'Bendahara') : undefined
     };
 
     const res = await updateUser(selectedUserForAction.uid, updatedData);
@@ -585,7 +617,7 @@ export const CPanelPage: React.FC = () => {
                 PROKTOR_ROOT
               </span>
             </div>
-            <p className="text-xs text-zinc-400 mt-1">
+            <p className="text-xs text-zinc-200 mt-1">
               Manajemen akun Pembina OSIM, Ekstrakurikuler, Guru BK, matriks hak akses peran, kredensial login, dan sinkronisasi server Kemenag.
             </p>
           </div>
@@ -617,9 +649,9 @@ export const CPanelPage: React.FC = () => {
           </button>
           <button
             onClick={handlePrintAllSlips}
-            className="px-3 py-2 rounded-lg bg-[#222226] hover:bg-[#2b2b30] border border-[#37373f] text-xs font-semibold text-zinc-200 flex items-center space-x-2 transition-colors"
+            className="px-3 py-2 rounded-lg bg-[#222226] hover:bg-[#2b2b30] border border-[#37373f] text-xs font-semibold text-zinc-100 flex items-center space-x-2 transition-colors"
           >
-            <Printer className="w-3.5 h-3.5 text-zinc-400" />
+            <Printer className="w-3.5 h-3.5 text-zinc-300" />
             <span>Cetak Semua Slip Akun</span>
           </button>
           <button
@@ -635,31 +667,31 @@ export const CPanelPage: React.FC = () => {
       {/* Metrics Row */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="bg-[#151518] border border-[#27272a] rounded-xl p-4">
-          <span className="text-[10px] font-mono text-zinc-500 uppercase block">TOTAL PENGGUNA TERDAFTAR</span>
+          <span className="text-[10px] font-mono text-zinc-300 font-bold uppercase block">TOTAL PENGGUNA TERDAFTAR</span>
           <span className="text-2xl font-black text-white font-mono">{allUsers.length}</span>
-          <span className="text-[10px] text-emerald-400 block mt-0.5">Semua Role Terdaftar</span>
+          <span className="text-[10px] text-emerald-400 font-semibold block mt-0.5">Semua Role Terdaftar</span>
         </div>
         <div className="bg-[#151518] border border-[#27272a] rounded-xl p-4">
-          <span className="text-[10px] font-mono text-zinc-500 uppercase block">GURU BK & KONSELOR</span>
+          <span className="text-[10px] font-mono text-zinc-300 font-bold uppercase block">GURU BK & KONSELOR</span>
           <span className="text-2xl font-black text-purple-400 font-mono">
             {allUsers.filter(u => u.role === 'guru_bk').length}
           </span>
-          <span className="text-[10px] text-zinc-500 block mt-0.5">Layanan Konseling & SP</span>
+          <span className="text-[10px] text-zinc-300 font-medium block mt-0.5">Layanan Konseling & SP</span>
         </div>
         <div className="bg-[#151518] border border-[#27272a] rounded-xl p-4">
-          <span className="text-[10px] font-mono text-zinc-500 uppercase block">PEMBINA OSIM & EKSKUL</span>
+          <span className="text-[10px] font-mono text-zinc-300 font-bold uppercase block">PEMBINA OSIM & EKSKUL</span>
           <span className="text-2xl font-black text-amber-400 font-mono">
             {allUsers.filter(u => u.role === 'pembina_osim' || u.role === 'pembina_ekskul' || u.role === 'pembina').length}
           </span>
-          <span className="text-[10px] text-zinc-500 block mt-0.5">Intra & Ekstrakurikuler</span>
+          <span className="text-[10px] text-zinc-300 font-medium block mt-0.5">Intra & Ekstrakurikuler</span>
         </div>
         <div className="bg-[#151518] border border-[#27272a] rounded-xl p-4">
-          <span className="text-[10px] font-mono text-zinc-500 uppercase block">STATUS SINKRONISASI</span>
+          <span className="text-[10px] font-mono text-zinc-300 font-bold uppercase block">STATUS SINKRONISASI</span>
           <span className="text-sm font-bold text-emerald-400 flex items-center space-x-1.5 mt-1 font-mono">
             <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
             <span>REAL-TIME AKTIF</span>
           </span>
-          <span className="text-[10px] text-zinc-500 block mt-1">TA: {activeAcademicYear} {activeSemester}</span>
+          <span className="text-[10px] text-zinc-300 font-medium block mt-1">TA: {activeAcademicYear} {activeSemester}</span>
         </div>
       </div>
 
@@ -670,7 +702,7 @@ export const CPanelPage: React.FC = () => {
           className={`pb-3 px-3 text-xs font-bold border-b-2 transition-all flex items-center space-x-2 whitespace-nowrap ${
             activeSubTab === 'users'
               ? 'border-emerald-500 text-emerald-400'
-              : 'border-transparent text-zinc-400 hover:text-zinc-200'
+              : 'border-transparent text-zinc-300 hover:text-white'
           }`}
         >
           <Users className="w-4 h-4" />
@@ -681,7 +713,7 @@ export const CPanelPage: React.FC = () => {
           className={`pb-3 px-3 text-xs font-bold border-b-2 transition-all flex items-center space-x-2 whitespace-nowrap ${
             activeSubTab === 'announcements'
               ? 'border-blue-500 text-blue-400'
-              : 'border-transparent text-zinc-400 hover:text-zinc-200'
+              : 'border-transparent text-zinc-300 hover:text-white'
           }`}
         >
           <Megaphone className="w-4 h-4" />
@@ -692,7 +724,7 @@ export const CPanelPage: React.FC = () => {
           className={`pb-3 px-3 text-xs font-bold border-b-2 transition-all flex items-center space-x-2 whitespace-nowrap ${
             activeSubTab === 'school'
               ? 'border-emerald-500 text-emerald-400'
-              : 'border-transparent text-zinc-400 hover:text-zinc-200'
+              : 'border-transparent text-zinc-300 hover:text-white'
           }`}
         >
           <Building className="w-4 h-4" />
@@ -703,7 +735,7 @@ export const CPanelPage: React.FC = () => {
           className={`pb-3 px-3 text-xs font-bold border-b-2 transition-all flex items-center space-x-2 whitespace-nowrap ${
             activeSubTab === 'matrix'
               ? 'border-emerald-500 text-emerald-400'
-              : 'border-transparent text-zinc-400 hover:text-zinc-200'
+              : 'border-transparent text-zinc-300 hover:text-white'
           }`}
         >
           <ShieldCheck className="w-4 h-4" />
@@ -714,7 +746,7 @@ export const CPanelPage: React.FC = () => {
           className={`pb-3 px-3 text-xs font-bold border-b-2 transition-all flex items-center space-x-2 whitespace-nowrap ${
             activeSubTab === 'sync'
               ? 'border-emerald-500 text-emerald-400'
-              : 'border-transparent text-zinc-400 hover:text-zinc-200'
+              : 'border-transparent text-zinc-300 hover:text-white'
           }`}
         >
           <Database className="w-4 h-4" />
@@ -725,7 +757,7 @@ export const CPanelPage: React.FC = () => {
           className={`pb-3 px-3 text-xs font-bold border-b-2 transition-all flex items-center space-x-2 whitespace-nowrap ${
             activeSubTab === 'logs'
               ? 'border-emerald-500 text-emerald-400'
-              : 'border-transparent text-zinc-400 hover:text-zinc-200'
+              : 'border-transparent text-zinc-300 hover:text-white'
           }`}
         >
           <History className="w-4 h-4" />
@@ -752,7 +784,7 @@ export const CPanelPage: React.FC = () => {
                   <h4 className="text-xs font-bold text-amber-300">
                     Terdapat {unregisteredTeachers.length} Data Guru & Pembina Belum Memiliki Akun cPanel
                   </h4>
-                  <p className="text-[11px] text-zinc-300 mt-0.5">
+                  <p className="text-[11px] text-zinc-200 mt-0.5">
                     Data guru baru dari menu Dewan Guru atau hasil Import Excel belum disinkronkan ke daftar akun login cPanel. Klik tombol di samping untuk membuat akun otomatis.
                   </p>
                 </div>
@@ -771,22 +803,22 @@ export const CPanelPage: React.FC = () => {
           {/* Filter Bar */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#151518] p-3 rounded-xl border border-[#27272a]">
             <div className="relative flex-1 max-w-md">
-              <Search className="w-4 h-4 text-zinc-500 absolute left-3 top-2.5" />
+              <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-2.5" />
               <input
                 type="text"
                 placeholder="Cari berdasarkan nama, email, atau NIP..."
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-3 py-1.5 rounded-lg bg-[#1c1c20] border border-[#323238] text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-emerald-500"
+                className="w-full pl-9 pr-3 py-1.5 rounded-lg bg-[#1c1c20] border border-[#323238] text-xs text-white placeholder-zinc-400 focus:outline-none focus:border-emerald-500"
               />
             </div>
 
             <div className="flex items-center space-x-2">
-              <Filter className="w-3.5 h-3.5 text-zinc-400" />
+              <Filter className="w-3.5 h-3.5 text-zinc-300" />
               <select
                 value={roleFilter}
                 onChange={e => setRoleFilter(e.target.value)}
-                className="px-2.5 py-1.5 rounded-lg bg-[#1c1c20] border border-[#323238] text-xs text-zinc-200 focus:outline-none focus:border-emerald-500"
+                className="px-2.5 py-1.5 rounded-lg bg-[#1c1c20] border border-[#323238] text-xs text-zinc-100 focus:outline-none focus:border-emerald-500 font-medium"
               >
                 <option value="all">Semua Peran ({allUsers.length})</option>
                 <option value="super_admin">Super Admin / Proktor</option>
@@ -803,12 +835,12 @@ export const CPanelPage: React.FC = () => {
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
-                  <tr className="border-b border-[#27272a] bg-[#1a1a1e] text-zinc-400 font-mono text-[10px] uppercase">
-                    <th className="py-3 px-4 font-semibold">Pengguna & Identitas</th>
-                    <th className="py-3 px-4 font-semibold">Peran / Hak Akses</th>
-                    <th className="py-3 px-4 font-semibold">Kredensial Login (NIP / Password)</th>
-                    <th className="py-3 px-4 font-semibold">Status & Tugas Binaan</th>
-                    <th className="py-3 px-4 font-semibold text-right">Tindakan cPanel</th>
+                  <tr className="border-b border-[#27272a] bg-[#1a1a1e] text-zinc-300 font-mono text-[10px] uppercase">
+                    <th className="py-3 px-4 font-bold">Pengguna & Identitas</th>
+                    <th className="py-3 px-4 font-bold">Peran / Hak Akses</th>
+                    <th className="py-3 px-4 font-bold">Kredensial Login (NIP / Password)</th>
+                    <th className="py-3 px-4 font-bold">Status & Tugas Binaan</th>
+                    <th className="py-3 px-4 font-bold text-right">Tindakan cPanel</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#222226]">
@@ -828,14 +860,14 @@ export const CPanelPage: React.FC = () => {
                                 className="w-8 h-8 rounded-lg object-cover border border-emerald-500/40 shrink-0"
                               />
                             ) : (
-                              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-zinc-700 to-zinc-800 border border-zinc-700 flex items-center justify-center font-bold text-xs text-zinc-300 font-mono shrink-0">
+                              <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-950/80 border border-emerald-300 dark:border-emerald-700/60 flex items-center justify-center font-bold text-xs text-emerald-800 dark:text-emerald-300 font-mono shrink-0">
                                 {u.displayName ? u.displayName.charAt(0).toUpperCase() : 'U'}
                               </div>
                             )}
                             <div>
                               <div className="font-bold text-zinc-100">{u.displayName}</div>
-                              <div className="text-[11px] text-zinc-400 font-mono">{u.email}</div>
-                              {u.phone && <div className="text-[10px] text-emerald-400 font-mono">WA: {u.phone}</div>}
+                              <div className="text-[11px] text-zinc-300 font-mono">{u.email}</div>
+                              {u.phone && <div className="text-[10px] text-emerald-400 font-mono font-semibold">WA: {u.phone}</div>}
                             </div>
                           </div>
                         </td>
@@ -847,17 +879,17 @@ export const CPanelPage: React.FC = () => {
                         </td>
 
                         <td className="py-3 px-4 font-mono text-[11px]">
-                          <div className="text-zinc-300">
-                            NIP: <span className="font-bold">{u.nip || '-'}</span>
+                          <div className="text-zinc-200">
+                            NIP: <span className="font-bold text-white">{u.nip || '-'}</span>
                           </div>
                           <div className="flex items-center space-x-1.5 mt-0.5">
-                            <span className="text-zinc-500">Pass:</span>
+                            <span className="text-zinc-300 font-medium">Pass:</span>
                             <span className="font-bold text-emerald-400">
                               {isRevealed ? u.password || 'password' : '••••••••'}
                             </span>
                             <button
                               onClick={() => togglePasswordVisibility(u.uid)}
-                              className="text-zinc-500 hover:text-zinc-300 p-0.5"
+                              className="text-zinc-400 hover:text-white p-0.5"
                               title={isRevealed ? 'Sembunyikan' : 'Lihat password'}
                             >
                               {isRevealed ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
@@ -868,20 +900,43 @@ export const CPanelPage: React.FC = () => {
                         <td className="py-3 px-4 text-[11px]">
                           <div className="flex items-center space-x-1.5 mb-1">
                             <span className={`w-1.5 h-1.5 rounded-full ${u.status === 'Nonaktif' ? 'bg-red-500' : 'bg-emerald-500'}`} />
-                            <span className={u.status === 'Nonaktif' ? 'text-red-400 font-bold' : 'text-zinc-300'}>
+                            <span className={u.status === 'Nonaktif' ? 'text-red-400 font-bold' : 'text-zinc-200 font-medium'}>
                               {u.status || 'Aktif'}
                             </span>
                           </div>
                           {u.counselorSpecialization && (
-                            <span className="text-[10px] text-purple-400 block line-clamp-1">
+                            <span className="text-[10px] text-purple-300 font-medium block line-clamp-1">
                               BK: {u.counselorSpecialization}
                             </span>
                           )}
                           {u.extracurricularIds && u.extracurricularIds.length > 0 && (
-                            <span className="text-[10px] text-emerald-400 block line-clamp-1">
+                            <span className="text-[10px] text-emerald-300 font-medium block line-clamp-1">
                               Ekskul: {u.extracurricularIds.join(', ').replace(/ekskul_/g, '').toUpperCase()}
                             </span>
                           )}
+                          <div className="mt-1">
+                            {u.isCashManager ? (
+                              <button
+                                type="button"
+                                onClick={() => handleToggleCashManager(u)}
+                                title="Klik untuk mencabut hak pengelola kas dari akun ini"
+                                className="px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-[10px] font-bold flex items-center gap-1 transition-all"
+                              >
+                                <Wallet className="w-2.5 h-2.5 text-amber-400" />
+                                <span>★ {u.cashManagerTitle || 'Pengelola Kas'}</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleToggleCashManager(u)}
+                                title="Pilih akun ini sebagai Pengelola Uang Kas (Menu Neraca Kas & Keuangan otomatis muncul)"
+                                className="px-1.5 py-0.5 rounded bg-[#1f1f24] hover:bg-[#282830] text-zinc-300 hover:text-amber-300 border border-zinc-700/60 hover:border-amber-500/40 text-[9px] font-medium flex items-center gap-1 transition-all"
+                              >
+                                <Wallet className="w-2.5 h-2.5 text-zinc-400" />
+                                <span>+ Set Kas</span>
+                              </button>
+                            )}
+                          </div>
                         </td>
 
                         <td className="py-3 px-4 text-right">
@@ -889,35 +944,35 @@ export const CPanelPage: React.FC = () => {
                             <button
                               onClick={() => handleOpenDetailModal(u)}
                               title="Lihat Detail Akun"
-                              className="p-1.5 rounded bg-[#222226] hover:bg-[#2e2e35] text-zinc-300 transition-colors"
+                              className="p-1.5 rounded bg-[#222226] hover:bg-[#2e2e35] text-zinc-100 transition-colors"
                             >
                               <Eye className="w-3.5 h-3.5 text-blue-400" />
                             </button>
                             <button
                               onClick={() => handleCopyCredentials(u)}
                               title="Salin Kredensial"
-                              className="p-1.5 rounded bg-[#222226] hover:bg-[#2e2e35] text-zinc-300 transition-colors"
+                              className="p-1.5 rounded bg-[#222226] hover:bg-[#2e2e35] text-zinc-100 transition-colors"
                             >
                               <Copy className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={() => handlePrintAccountSlip(u)}
                               title="Cetak Kartu Login SIM Kesiswaan"
-                              className="p-1.5 rounded bg-[#222226] hover:bg-[#2e2e35] text-zinc-300 transition-colors"
+                              className="p-1.5 rounded bg-[#222226] hover:bg-[#2e2e35] text-zinc-100 transition-colors"
                             >
                               <Printer className="w-3.5 h-3.5 text-emerald-400" />
                             </button>
                             <button
                               onClick={() => handlePromptResetPassword(u)}
                               title="Reset Password ke default"
-                              className="p-1.5 rounded bg-[#222226] hover:bg-[#2e2e35] text-zinc-300 transition-colors"
+                              className="p-1.5 rounded bg-[#222226] hover:bg-[#2e2e35] text-zinc-100 transition-colors"
                             >
                               <Key className="w-3.5 h-3.5 text-amber-400" />
                             </button>
                             <button
                               onClick={() => handleOpenEditModal(u)}
                               title="Edit Akun"
-                              className="p-1.5 rounded bg-[#222226] hover:bg-[#2e2e35] text-zinc-300 transition-colors"
+                              className="p-1.5 rounded bg-[#222226] hover:bg-[#2e2e35] text-zinc-100 transition-colors"
                             >
                               <Edit2 className="w-3.5 h-3.5 text-blue-400" />
                             </button>
@@ -925,7 +980,7 @@ export const CPanelPage: React.FC = () => {
                               <button
                                 onClick={() => handlePromptDeleteUser(u)}
                                 title="Hapus Akun"
-                                className="p-1.5 rounded bg-[#222226] hover:bg-red-500/20 text-zinc-400 hover:text-red-400 transition-colors"
+                                className="p-1.5 rounded bg-[#222226] hover:bg-red-500/20 text-zinc-300 hover:text-red-400 transition-colors"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -951,11 +1006,11 @@ export const CPanelPage: React.FC = () => {
                 <Building className="w-4 h-4 text-emerald-400" />
                 <span>Identitas Madrasah, Pejabat & Kop Surat Master</span>
               </h2>
-              <p className="text-xs text-zinc-400 mt-0.5">
+              <p className="text-xs text-zinc-300 mt-0.5">
                 Perubahan data di sini akan otomatis memperbarui Kop Surat, Nama Kepala Madrasah, Waka Kesiswaan, dan Tahun Ajaran di seluruh menu.
               </p>
             </div>
-            <span className="px-2.5 py-1 rounded text-[11px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 self-start sm:self-auto">
+            <span className="px-2.5 py-1 rounded text-[11px] font-mono font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 self-start sm:self-auto">
               GLOBAL_SETTING_SYNC
             </span>
           </div>
@@ -963,103 +1018,103 @@ export const CPanelPage: React.FC = () => {
           <form onSubmit={handleSaveSchoolMaster} className="space-y-4 text-xs">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="block text-zinc-300 font-semibold">Nama Madrasah / Sekolah *</label>
+                <label className="block text-zinc-200 font-bold">Nama Madrasah / Sekolah *</label>
                 <input
                   type="text"
                   required
                   value={schoolFormData.name}
                   onChange={e => setSchoolFormData({ ...schoolFormData, name: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-zinc-100 focus:outline-none focus:border-emerald-500"
+                  className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-white focus:outline-none focus:border-emerald-500"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-zinc-300 font-semibold">NPSN *</label>
+                <label className="block text-zinc-200 font-bold">NPSN *</label>
                 <input
                   type="text"
                   required
                   value={schoolFormData.npsn}
                   onChange={e => setSchoolFormData({ ...schoolFormData, npsn: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-zinc-100 font-mono focus:outline-none focus:border-emerald-500"
+                  className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-white font-mono focus:outline-none focus:border-emerald-500"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="block text-zinc-300 font-semibold">Instansi Pusat (Header Kop 1)</label>
+                <label className="block text-zinc-200 font-bold">Instansi Pusat (Header Kop 1)</label>
                 <input
                   type="text"
                   value={schoolFormData.centralInstitution}
                   onChange={e => setSchoolFormData({ ...schoolFormData, centralInstitution: e.target.value })}
                   placeholder="KEMENTERIAN AGAMA REPUBLIK INDONESIA"
-                  className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-zinc-100 focus:outline-none focus:border-emerald-500"
+                  className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-zinc-300 font-semibold">Instansi Wilayah (Header Kop 2)</label>
+                <label className="block text-zinc-200 font-bold">Instansi Wilayah (Header Kop 2)</label>
                 <input
                   type="text"
                   value={schoolFormData.regionalInstitution}
                   onChange={e => setSchoolFormData({ ...schoolFormData, regionalInstitution: e.target.value })}
                   placeholder="KANTOR WILAYAH KEMENTERIAN AGAMA PROVINSI"
-                  className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-zinc-100 focus:outline-none focus:border-emerald-500"
+                  className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="block text-zinc-300 font-semibold">Nama Kepala Madrasah & Gelar</label>
+                <label className="block text-zinc-200 font-bold">Nama Kepala Madrasah & Gelar</label>
                 <input
                   type="text"
                   value={schoolFormData.principalName}
                   onChange={e => setSchoolFormData({ ...schoolFormData, principalName: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-zinc-100 focus:outline-none focus:border-emerald-500"
+                  className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-white focus:outline-none focus:border-emerald-500"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-zinc-300 font-semibold">NIP Kepala Madrasah</label>
+                <label className="block text-zinc-200 font-bold">NIP Kepala Madrasah</label>
                 <input
                   type="text"
                   value={schoolFormData.principalNip}
                   onChange={e => setSchoolFormData({ ...schoolFormData, principalNip: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-zinc-100 font-mono focus:outline-none focus:border-emerald-500"
+                  className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-white font-mono focus:outline-none focus:border-emerald-500"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="block text-zinc-300 font-semibold">Nama Waka Kesiswaan & Gelar</label>
+                <label className="block text-zinc-200 font-bold">Nama Waka Kesiswaan & Gelar</label>
                 <input
                   type="text"
                   value={schoolFormData.wakaName || schoolFormData.wakaKesiswaanName}
                   onChange={e => setSchoolFormData({ ...schoolFormData, wakaName: e.target.value, wakaKesiswaanName: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-zinc-100 focus:outline-none focus:border-emerald-500"
+                  className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-white focus:outline-none focus:border-emerald-500"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-zinc-300 font-semibold">NIP Waka Kesiswaan</label>
+                <label className="block text-zinc-200 font-bold">NIP Waka Kesiswaan</label>
                 <input
                   type="text"
                   value={schoolFormData.wakaNip}
                   onChange={e => setSchoolFormData({ ...schoolFormData, wakaNip: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-zinc-100 font-mono focus:outline-none focus:border-emerald-500"
+                  className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-white font-mono focus:outline-none focus:border-emerald-500"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="block text-zinc-300 font-semibold">Tahun Pelajaran Aktif (Sistem)</label>
+                <label className="block text-zinc-200 font-bold">Tahun Pelajaran Aktif (Sistem)</label>
                 <select
                   value={schoolFormData.currentAcademicYear || activeAcademicYear}
                   onChange={e => setSchoolFormData({ ...schoolFormData, currentAcademicYear: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-zinc-100 focus:outline-none focus:border-emerald-500"
+                  className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-white focus:outline-none focus:border-emerald-500"
                 >
                   <option value="2026/2027">2026/2027 (Berjalan)</option>
                   <option value="2025/2026">2025/2026</option>
@@ -1068,11 +1123,11 @@ export const CPanelPage: React.FC = () => {
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-zinc-300 font-semibold">Semester Aktif (Sistem)</label>
+                <label className="block text-zinc-200 font-bold">Semester Aktif (Sistem)</label>
                 <select
                   value={schoolFormData.currentSemester || activeSemester}
                   onChange={e => setSchoolFormData({ ...schoolFormData, currentSemester: e.target.value as any })}
-                  className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-zinc-100 focus:outline-none focus:border-emerald-500"
+                  className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-white focus:outline-none focus:border-emerald-500"
                 >
                   <option value="Ganjil">Semester Ganjil</option>
                   <option value="Genap">Semester Genap</option>
@@ -1081,43 +1136,43 @@ export const CPanelPage: React.FC = () => {
             </div>
 
             <div className="space-y-1.5">
-              <label className="block text-zinc-300 font-semibold">Alamat Lengkap Madrasah</label>
+              <label className="block text-zinc-200 font-bold">Alamat Lengkap Madrasah</label>
               <input
                 type="text"
                 value={schoolFormData.address}
                 onChange={e => setSchoolFormData({ ...schoolFormData, address: e.target.value })}
-                className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-zinc-100 focus:outline-none focus:border-emerald-500"
+                className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-white focus:outline-none focus:border-emerald-500"
               />
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-1.5">
-                <label className="block text-zinc-300 font-semibold">Nomor Telepon</label>
+                <label className="block text-zinc-200 font-bold">Nomor Telepon</label>
                 <input
                   type="text"
                   value={schoolFormData.phone}
                   onChange={e => setSchoolFormData({ ...schoolFormData, phone: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-zinc-100"
+                  className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-white"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-zinc-300 font-semibold">Email Resmi</label>
+                <label className="block text-zinc-200 font-bold">Email Resmi</label>
                 <input
                   type="email"
                   value={schoolFormData.email}
                   onChange={e => setSchoolFormData({ ...schoolFormData, email: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-zinc-100 font-mono"
+                  className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-white font-mono"
                 />
               </div>
 
               <div className="space-y-1.5">
-                <label className="block text-zinc-300 font-semibold">Website</label>
+                <label className="block text-zinc-200 font-bold">Website</label>
                 <input
                   type="text"
                   value={schoolFormData.website}
                   onChange={e => setSchoolFormData({ ...schoolFormData, website: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-zinc-100 font-mono"
+                  className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-white font-mono"
                 />
               </div>
             </div>
@@ -1143,7 +1198,7 @@ export const CPanelPage: React.FC = () => {
             <h2 className="text-sm font-bold text-white uppercase tracking-wider">
               Matriks Hak Akses Berbasis Peran (RBAC)
             </h2>
-            <p className="text-xs text-zinc-400 mt-0.5">
+            <p className="text-xs text-zinc-300 mt-0.5">
               Setiap akun memiliki isolasi wewenang yang dijamin di tingkat routing dan konteks sistem.
             </p>
           </div>
@@ -1151,7 +1206,7 @@ export const CPanelPage: React.FC = () => {
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
-                <tr className="border-b border-[#27272a] bg-[#1a1a1e] text-zinc-300 text-[10px] font-mono uppercase">
+                <tr className="border-b border-[#27272a] bg-[#1a1a1e] text-zinc-200 text-[10px] font-mono font-bold uppercase">
                   <th className="py-2.5 px-3">Modul / Fitur Kesiswaan</th>
                   <th className="py-2.5 px-3 text-center text-red-400">Super Admin / Proktor</th>
                   <th className="py-2.5 px-3 text-center text-blue-400">Waka Kesiswaan</th>
@@ -1176,7 +1231,7 @@ export const CPanelPage: React.FC = () => {
                   { feature: 'Dispensasi & Surat Izin Resmi', sa: 'Full', waka: 'Verifikasi/TTD', bk: 'Buat/Lihat', osim: 'Tolak (403)', ekskul: 'Ajukan Atlet' }
                 ].map((row, idx) => (
                   <tr key={idx} className="hover:bg-[#1a1a1f]">
-                    <td className="py-2.5 px-3 font-sans font-semibold text-zinc-200">{row.feature}</td>
+                    <td className="py-2.5 px-3 font-sans font-semibold text-zinc-100">{row.feature}</td>
                     <td className="py-2.5 px-3 text-center text-emerald-400 font-bold">{row.sa}</td>
                     <td className="py-2.5 px-3 text-center text-blue-400 font-bold">{row.waka}</td>
                     <td className="py-2.5 px-3 text-center text-purple-400 font-bold">{row.bk}</td>
@@ -1203,7 +1258,7 @@ export const CPanelPage: React.FC = () => {
                 </div>
                 <div>
                   <h3 className="font-bold text-sm text-zinc-100">Sinkronisasi Dua Arah: Dewan Guru & Pembina ↔ Akun Pengguna cPanel</h3>
-                  <p className="text-[11px] text-zinc-400">
+                  <p className="text-[11px] text-zinc-300">
                     Memastikan seluruh guru & pembina hasil import file Excel terdaftar sebagai user login cPanel, serta menyelaraskan tugas pembinaan ekskul & konselor BK.
                   </p>
                 </div>
@@ -1220,15 +1275,15 @@ export const CPanelPage: React.FC = () => {
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
               <div className="p-3 bg-[#1a1a1e] rounded-lg border border-[#2a2a30]">
-                <span className="text-[10px] text-zinc-400 font-mono uppercase block">TOTAL DATA DI DEWAN GURU</span>
+                <span className="text-[10px] text-zinc-300 font-mono font-bold uppercase block">TOTAL DATA DI DEWAN GURU</span>
                 <span className="text-xl font-bold font-mono text-zinc-100">{teachers.length} Guru/Pembina</span>
               </div>
               <div className="p-3 bg-[#1a1a1e] rounded-lg border border-[#2a2a30]">
-                <span className="text-[10px] text-zinc-400 font-mono uppercase block">TOTAL AKUN PENGGUNA CPANEL</span>
+                <span className="text-[10px] text-zinc-300 font-mono font-bold uppercase block">TOTAL AKUN PENGGUNA CPANEL</span>
                 <span className="text-xl font-bold font-mono text-emerald-400">{allUsers.length} Akun</span>
               </div>
               <div className="p-3 bg-[#1a1a1e] rounded-lg border border-[#2a2a30]">
-                <span className="text-[10px] text-zinc-400 font-mono uppercase block">STATUS KESELARASAN DATA</span>
+                <span className="text-[10px] text-zinc-300 font-mono font-bold uppercase block">STATUS KESELARASAN DATA</span>
                 <span className={`text-xs font-bold font-mono block mt-1 ${unregisteredTeachers.length === 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
                   {unregisteredTeachers.length === 0 ? '✓ 100% Selaras & Tersinkron' : `⚠ ${unregisteredTeachers.length} Guru Belum Memiliki Akun`}
                 </span>
@@ -1243,18 +1298,18 @@ export const CPanelPage: React.FC = () => {
               </div>
               <div>
                 <h3 className="font-bold text-sm text-zinc-100">Sinkronisasi EMIS & Simpatika</h3>
-                <p className="text-[11px] text-zinc-400">Integrasi data kepegawaian guru dan data pokok siswa Kemenag.</p>
+                <p className="text-[11px] text-zinc-300">Integrasi data kepegawaian guru dan data pokok siswa Kemenag.</p>
               </div>
             </div>
 
             <div className="p-3 bg-[#1a1a1e] rounded-lg border border-[#2a2a30] space-y-2">
               <div className="flex items-center justify-between text-xs">
-                <span className="text-zinc-400">Token Sinkronisasi Server:</span>
+                <span className="text-zinc-300">Token Sinkronisasi Server:</span>
                 <span className="font-mono text-emerald-400 font-bold">SIMKESISWAAN-SYNC-8890-EMIS</span>
               </div>
               <div className="flex items-center justify-between text-xs">
-                <span className="text-zinc-400">Sinkronisasi Terakhir:</span>
-                <span className="font-mono text-zinc-300">{new Date().toLocaleDateString('id-ID')}</span>
+                <span className="text-zinc-300">Sinkronisasi Terakhir:</span>
+                <span className="font-mono text-zinc-200 font-bold">{new Date().toLocaleDateString('id-ID')}</span>
               </div>
             </div>
 
@@ -1275,7 +1330,7 @@ export const CPanelPage: React.FC = () => {
               </div>
               <div>
                 <h3 className="font-bold text-sm text-red-200">Kosongkan Data Bawaan / Persiapan Unggah Data Resmi</h3>
-                <p className="text-[11px] text-zinc-400">Hapus seluruh data siswa, absensi, pelanggaran, konseling, dan kegiatan bawaan agar siap diisi dengan data sekolah resmi.</p>
+                <p className="text-[11px] text-zinc-300">Hapus seluruh data siswa, absensi, pelanggaran, konseling, dan kegiatan bawaan agar siap diisi dengan data sekolah resmi.</p>
               </div>
             </div>
 
@@ -1284,7 +1339,7 @@ export const CPanelPage: React.FC = () => {
                 <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
                 <span>Peringatan Pembersihan:</span>
               </div>
-              <p className="text-[11px] text-zinc-400 leading-relaxed">
+              <p className="text-[11px] text-zinc-300 leading-relaxed">
                 Tindakan ini akan mengosongkan seluruh data operasional (data siswa sampel, catatan absensi, rekam pelanggaran, bimbingan konseling, kepengurusan OSIM, prestasi, dan izin siswa). Struktur kelas dan akun dewan guru tetap aman dipertahankan.
               </p>
             </div>
@@ -1307,11 +1362,11 @@ export const CPanelPage: React.FC = () => {
               </div>
               <div>
                 <h3 className="font-bold text-sm text-emerald-200">Cadangkan & Pulihkan Database Lengkap (JSON)</h3>
-                <p className="text-[11px] text-zinc-400">Ekspor seluruh database ke file JSON atau pulihkan database dari berkas cadangan kapan saja.</p>
+                <p className="text-[11px] text-zinc-300">Ekspor seluruh database ke file JSON atau pulihkan database dari berkas cadangan kapan saja.</p>
               </div>
             </div>
 
-            <div className="text-xs text-zinc-400">
+            <div className="text-xs text-zinc-300">
               Format JSON mencakup seluruh data: Profil Madrasah, Rombel Kelas, Dewan Guru, Data Siswa Lengkap, Kegiatan Ekskul, Rekam BK, Prestasi, hingga Riwayat Audit.
             </div>
 
@@ -1353,11 +1408,11 @@ export const CPanelPage: React.FC = () => {
               </div>
               <div>
                 <h3 className="font-bold text-sm text-zinc-100">Inisialisasi Master Struktur Sekolah</h3>
-                <p className="text-[11px] text-zinc-400">Sinkronisasi struktur master data (Setting Sekolah, Rombel, & Dewan Guru) ke Firebase Firestore.</p>
+                <p className="text-[11px] text-zinc-300">Sinkronisasi struktur master data (Setting Sekolah, Rombel, & Dewan Guru) ke Firebase Firestore.</p>
               </div>
             </div>
 
-            <div className="text-xs text-zinc-400">
+            <div className="text-xs text-zinc-300">
               Menyimpan struktur master sekolah ke cloud database Firestore tanpa menimpa data siswa yang telah diunggah.
             </div>
 
@@ -1398,34 +1453,34 @@ export const CPanelPage: React.FC = () => {
       >
         <form onSubmit={handleSaveAddUser} className="space-y-3.5 text-xs">
           <div>
-            <label className="block text-zinc-300 font-semibold mb-1">Nama Lengkap & Gelar *</label>
+            <label className="block text-zinc-200 font-bold mb-1">Nama Lengkap & Gelar *</label>
             <input
               type="text"
               required
               placeholder="Contoh: Dra. Hj. Siti Marwiyah, M.Pd."
               value={formData.displayName}
               onChange={e => setFormData({ ...formData, displayName: e.target.value })}
-              className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-zinc-100 focus:outline-none focus:border-emerald-500"
+              className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-zinc-300 font-semibold mb-1">NIP / NIK</label>
+              <label className="block text-zinc-200 font-bold mb-1">NIP / NIK</label>
               <input
                 type="text"
                 placeholder="19800101 200501 1 001"
                 value={formData.nip}
                 onChange={e => setFormData({ ...formData, nip: e.target.value })}
-                className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-zinc-100 focus:outline-none focus:border-emerald-500 font-mono"
+                className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500 font-mono"
               />
             </div>
             <div>
-              <label className="block text-zinc-300 font-semibold mb-1">Peran / Role *</label>
+              <label className="block text-zinc-200 font-bold mb-1">Peran / Role *</label>
               <select
                 value={formData.role}
                 onChange={e => setFormData({ ...formData, role: e.target.value as UserRole })}
-                className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-zinc-100 focus:outline-none focus:border-emerald-500"
+                className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-white focus:outline-none focus:border-emerald-500 font-medium"
               >
                 <option value="guru_bk">Guru BK (Bimbingan Konseling)</option>
                 <option value="pembina_osim">Pembina OSIM</option>
@@ -1437,44 +1492,44 @@ export const CPanelPage: React.FC = () => {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-zinc-300 font-semibold mb-1">Email Akun *</label>
+              <label className="block text-zinc-200 font-bold mb-1">Email Akun *</label>
               <input
                 type="email"
                 required
                 placeholder="pembina@sekolah.sch.id"
                 value={formData.email}
                 onChange={e => setFormData({ ...formData, email: e.target.value })}
-                className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-zinc-100 focus:outline-none focus:border-emerald-500 font-mono"
+                className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-white placeholder-zinc-500 focus:outline-none focus:border-emerald-500 font-mono"
               />
             </div>
             <div>
-              <label className="block text-zinc-300 font-semibold mb-1">Password Default *</label>
+              <label className="block text-zinc-200 font-bold mb-1">Password Default *</label>
               <input
                 type="text"
                 required
                 value={formData.password}
                 onChange={e => setFormData({ ...formData, password: e.target.value })}
-                className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-zinc-100 focus:outline-none focus:border-emerald-500 font-mono"
+                className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-white focus:outline-none focus:border-emerald-500 font-mono"
               />
             </div>
           </div>
 
           {formData.role === 'guru_bk' && (
             <div>
-              <label className="block text-purple-400 font-semibold mb-1">Spesialisasi Bimbingan BK</label>
+              <label className="block text-purple-300 font-bold mb-1">Spesialisasi Bimbingan BK</label>
               <input
                 type="text"
                 value={formData.counselorSpecialization}
                 onChange={e => setFormData({ ...formData, counselorSpecialization: e.target.value })}
                 placeholder="Contoh: Bimbingan Karir & Psikologi Remaja"
-                className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-zinc-100 focus:outline-none focus:border-purple-500"
+                className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-white placeholder-zinc-500 focus:outline-none focus:border-purple-500"
               />
             </div>
           )}
 
           {formData.role === 'pembina_ekskul' && (
             <div>
-              <label className="block text-emerald-400 font-semibold mb-1">Ekstrakurikuler yang Diampu</label>
+              <label className="block text-emerald-300 font-bold mb-1">Ekstrakurikuler yang Diampu</label>
               <select
                 multiple
                 value={formData.extracurricularIds}
@@ -1482,7 +1537,7 @@ export const CPanelPage: React.FC = () => {
                   const selected = Array.from(e.target.selectedOptions, (opt: HTMLOptionElement) => opt.value);
                   setFormData({ ...formData, extracurricularIds: selected });
                 }}
-                className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-zinc-100 focus:outline-none focus:border-emerald-500 h-24"
+                className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-white focus:outline-none focus:border-emerald-500 h-24"
               >
                 {extracurriculars.map(e => (
                   <option key={e.id} value={e.id}>
@@ -1490,15 +1545,44 @@ export const CPanelPage: React.FC = () => {
                   </option>
                 ))}
               </select>
-              <span className="text-[10px] text-zinc-500">Tahan tombol Ctrl / Cmd untuk memilih lebih dari 1 ekskul.</span>
+              <span className="text-[10px] text-zinc-400">Tahan tombol Ctrl / Cmd untuk memilih lebih dari 1 ekskul.</span>
             </div>
           )}
+
+          {/* Cash Manager Privilege Section */}
+          <div className="p-3 bg-[#18181d] rounded-lg border border-[#2e2e36] space-y-2">
+            <label className="flex items-center space-x-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={formData.isCashManager || false}
+                onChange={e => setFormData({ ...formData, isCashManager: e.target.checked })}
+                className="rounded bg-zinc-800 border-zinc-700 text-amber-500 focus:ring-amber-500 w-4 h-4"
+              />
+              <span className="text-zinc-100 font-bold text-xs">
+                Beri Hak Otoritas Pemegang Uang Kas (Neraca Keuangan)
+              </span>
+            </label>
+            {formData.isCashManager && (
+              <div>
+                <label className="block text-amber-300 font-bold text-[11px] mb-1">
+                  Gelar / Jabatan Pemegang Kas
+                </label>
+                <input
+                  type="text"
+                  value={formData.cashManagerTitle || ''}
+                  onChange={e => setFormData({ ...formData, cashManagerTitle: e.target.value })}
+                  placeholder="Contoh: Bendahara Kas BK / Bendahara OSIM"
+                  className="w-full px-3 py-1.5 rounded-lg bg-[#1c1c20] border border-[#323238] text-white placeholder-zinc-500 text-xs focus:outline-none focus:border-amber-500"
+                />
+              </div>
+            )}
+          </div>
 
           <div className="pt-3 flex items-center justify-end space-x-2">
             <button
               type="button"
               onClick={() => setIsAddModalOpen(false)}
-              className="px-3.5 py-2 rounded-lg bg-[#222226] text-zinc-400 hover:text-zinc-200 font-medium"
+              className="px-3.5 py-2 rounded-lg bg-[#222226] text-zinc-300 hover:text-white font-medium"
             >
               Batal
             </button>
@@ -1521,32 +1605,32 @@ export const CPanelPage: React.FC = () => {
       >
         <form onSubmit={handleSaveEditUser} className="space-y-3.5 text-xs">
           <div>
-            <label className="block text-zinc-300 font-semibold mb-1">Nama Lengkap & Gelar *</label>
+            <label className="block text-zinc-200 font-bold mb-1">Nama Lengkap & Gelar *</label>
             <input
               type="text"
               required
               value={formData.displayName}
               onChange={e => setFormData({ ...formData, displayName: e.target.value })}
-              className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-zinc-100 focus:outline-none focus:border-blue-500"
+              className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-white focus:outline-none focus:border-blue-500"
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-zinc-300 font-semibold mb-1">NIP / NIK</label>
+              <label className="block text-zinc-200 font-bold mb-1">NIP / NIK</label>
               <input
                 type="text"
                 value={formData.nip}
                 onChange={e => setFormData({ ...formData, nip: e.target.value })}
-                className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-zinc-100 font-mono"
+                className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-white font-mono"
               />
             </div>
             <div>
-              <label className="block text-zinc-300 font-semibold mb-1">Status Akun</label>
+              <label className="block text-zinc-200 font-bold mb-1">Status Akun</label>
               <select
                 value={formData.status}
                 onChange={e => setFormData({ ...formData, status: e.target.value as any })}
-                className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-zinc-100"
+                className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-white"
               >
                 <option value="Aktif">Aktif</option>
                 <option value="Nonaktif">Nonaktif</option>
@@ -1556,32 +1640,61 @@ export const CPanelPage: React.FC = () => {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-zinc-300 font-semibold mb-1">Email</label>
+              <label className="block text-zinc-200 font-bold mb-1">Email</label>
               <input
                 type="email"
                 required
                 value={formData.email}
                 onChange={e => setFormData({ ...formData, email: e.target.value })}
-                className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-zinc-100 font-mono"
+                className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-white font-mono"
               />
             </div>
             <div>
-              <label className="block text-zinc-300 font-semibold mb-1">Password</label>
+              <label className="block text-zinc-200 font-bold mb-1">Password</label>
               <input
                 type="text"
                 required
                 value={formData.password}
                 onChange={e => setFormData({ ...formData, password: e.target.value })}
-                className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-zinc-100 font-mono"
+                className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-white font-mono"
               />
             </div>
+          </div>
+
+          {/* Cash Manager Privilege in Edit Modal */}
+          <div className="p-3 bg-[#18181d] rounded-lg border border-[#2e2e36] space-y-2">
+            <label className="flex items-center space-x-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={formData.isCashManager || false}
+                onChange={e => setFormData({ ...formData, isCashManager: e.target.checked })}
+                className="rounded bg-zinc-800 border-zinc-700 text-amber-500 focus:ring-amber-500 w-4 h-4"
+              />
+              <span className="text-zinc-100 font-bold text-xs">
+                Beri Hak Otoritas Pemegang Uang Kas (Neraca Keuangan)
+              </span>
+            </label>
+            {formData.isCashManager && (
+              <div>
+                <label className="block text-amber-300 font-bold text-[11px] mb-1">
+                  Gelar / Jabatan Pemegang Kas
+                </label>
+                <input
+                  type="text"
+                  value={formData.cashManagerTitle || ''}
+                  onChange={e => setFormData({ ...formData, cashManagerTitle: e.target.value })}
+                  placeholder="Contoh: Bendahara Kas BK / Bendahara OSIM"
+                  className="w-full px-3 py-1.5 rounded-lg bg-[#1c1c20] border border-[#323238] text-white text-xs focus:outline-none focus:border-amber-500"
+                />
+              </div>
+            )}
           </div>
 
           <div className="pt-3 flex items-center justify-end space-x-2">
             <button
               type="button"
               onClick={() => setIsEditModalOpen(false)}
-              className="px-3.5 py-2 rounded-lg bg-[#222226] text-zinc-400 hover:text-zinc-200 font-medium"
+              className="px-3.5 py-2 rounded-lg bg-[#222226] text-zinc-300 hover:text-white font-medium"
             >
               Batal
             </button>
@@ -1619,7 +1732,7 @@ export const CPanelPage: React.FC = () => {
               )}
               <div className="flex-1 min-w-0">
                 <h4 className="text-sm font-bold text-white truncate">{selectedUserForAction.displayName}</h4>
-                <p className="text-xs text-zinc-400 font-mono">{selectedUserForAction.email}</p>
+                <p className="text-xs text-zinc-300 font-mono">{selectedUserForAction.email}</p>
                 <span className={`inline-block mt-1 text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${getRoleBadge(selectedUserForAction.role).color}`}>
                   {getRoleBadge(selectedUserForAction.role).label}
                 </span>
@@ -1628,37 +1741,37 @@ export const CPanelPage: React.FC = () => {
 
             <div className="space-y-2 text-xs font-mono bg-[#141416] p-3.5 rounded-xl border border-[#27272a]">
               <div className="flex justify-between py-1 border-b border-[#222226]">
-                <span className="text-zinc-500">NIP / NIK:</span>
-                <span className="text-zinc-200 font-bold">{selectedUserForAction.nip || '-'}</span>
+                <span className="text-zinc-400 font-bold">NIP / NIK:</span>
+                <span className="text-white font-bold">{selectedUserForAction.nip || '-'}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-[#222226]">
-                <span className="text-zinc-500">USERNAME:</span>
-                <span className="text-zinc-200">{selectedUserForAction.username || '-'}</span>
+                <span className="text-zinc-400 font-bold">USERNAME:</span>
+                <span className="text-zinc-100">{selectedUserForAction.username || '-'}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-[#222226]">
-                <span className="text-zinc-500">NO. TELEPON / WA:</span>
-                <span className="text-zinc-200">{selectedUserForAction.phone || '-'}</span>
+                <span className="text-zinc-400 font-bold">NO. TELEPON / WA:</span>
+                <span className="text-zinc-100">{selectedUserForAction.phone || '-'}</span>
               </div>
               <div className="flex justify-between py-1 border-b border-[#222226]">
-                <span className="text-zinc-500">STATUS AKUN:</span>
+                <span className="text-zinc-400 font-bold">STATUS AKUN:</span>
                 <span className={selectedUserForAction.status === 'Nonaktif' ? 'text-red-400 font-bold' : 'text-emerald-400 font-bold'}>
                   {selectedUserForAction.status || 'Aktif'}
                 </span>
               </div>
               {selectedUserForAction.counselorSpecialization && (
                 <div className="py-1 border-b border-[#222226]">
-                  <span className="text-purple-400 block mb-0.5">SPESIALISASI BK:</span>
-                  <span className="text-zinc-300 font-sans">{selectedUserForAction.counselorSpecialization}</span>
+                  <span className="text-purple-300 font-bold block mb-0.5">SPESIALISASI BK:</span>
+                  <span className="text-zinc-200 font-sans">{selectedUserForAction.counselorSpecialization}</span>
                 </div>
               )}
               {selectedUserForAction.extracurricularIds && selectedUserForAction.extracurricularIds.length > 0 && (
                 <div className="py-1">
-                  <span className="text-emerald-400 block mb-1">EKSKUL BINAAN:</span>
+                  <span className="text-emerald-300 font-bold block mb-1">EKSKUL BINAAN:</span>
                   <div className="flex flex-wrap gap-1">
                     {selectedUserForAction.extracurricularIds.map(eid => {
                       const ek = extracurriculars.find(e => e.id === eid);
                       return (
-                        <span key={eid} className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-sans">
+                        <span key={eid} className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-sans font-semibold">
                           {ek ? ek.name : eid}
                         </span>
                       );
@@ -1672,7 +1785,7 @@ export const CPanelPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setIsDetailModalOpen(false)}
-                className="px-4 py-2 rounded-xl bg-zinc-800 text-zinc-300 hover:bg-zinc-700 text-xs font-bold"
+                className="px-4 py-2 rounded-xl bg-zinc-800 text-zinc-200 hover:bg-zinc-700 text-xs font-bold"
               >
                 Tutup
               </button>
