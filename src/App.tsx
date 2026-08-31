@@ -23,6 +23,7 @@ import { SettingsPage } from './pages/SettingsPage';
 import { ProfileSettingsPage } from './pages/ProfileSettingsPage';
 import { AnnouncementsPage } from './pages/AnnouncementsPage';
 import { CashLedgerPage } from './pages/CashLedgerPage';
+import { TataTertibPage } from './pages/TataTertibPage';
 import { LoginPage } from './pages/LoginPage';
 import { Schedule, Violation } from './types';
 import { ShieldAlert, ArrowLeft, Lock } from 'lucide-react';
@@ -38,6 +39,7 @@ const VALID_TABS: NavTab[] = [
   'attendance',
   'activities',
   'reports',
+  'rules',
   'violations',
   'counseling',
   'achievements',
@@ -197,6 +199,8 @@ const MainContent: React.FC = () => {
         return <ActivitiesPage />;
       case 'reports':
         return <ReportsPage />;
+      case 'rules':
+        return <TataTertibPage />;
       case 'violations':
         return <ViolationsPage onReferToCounseling={handleReferViolationToCounseling} />;
       case 'counseling':

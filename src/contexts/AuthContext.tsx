@@ -602,8 +602,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const isPembina = isPembinaEkskul || isPembinaOsim;
 
   const canAccessTab = (tabId: string): boolean => {
-    // Profile setting and Announcements Center are accessible by all authenticated users
-    if (tabId === 'profile' || tabId === 'announcements') return true;
+    // Profile, Announcements Center, and Buku Tata Tertib Siswa are accessible by all authenticated users
+    if (tabId === 'profile' || tabId === 'announcements' || tabId === 'rules' || tabId === 'handbook' || tabId === 'tatib') return true;
 
     // Cash Ledger (Neraca Kas & Transparansi Keuangan) is viewable by all teachers & staff for total transparency
     if (tabId === 'cash' || tabId === 'cash_ledger') {

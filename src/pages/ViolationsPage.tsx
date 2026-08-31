@@ -34,6 +34,7 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
     students,
     classes,
     teachers,
+    schoolRules,
     addViolation,
     updateViolation,
     deleteViolation,
@@ -430,6 +431,48 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
               ))}
             </select>
           </div>
+
+          {/* Quick Select from Official School Rules */}
+          {schoolRules && schoolRules.length > 0 && (
+            <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-xl">
+              <label className="block text-[11px] font-bold text-amber-900 dark:text-amber-300 mb-1 flex items-center justify-between">
+                <span>📖 Rujukan Pasal Buku Tata Tertib (Otomatisasi)</span>
+                <span className="text-[10px] text-amber-700 dark:text-amber-400 font-normal">Pilih untuk isi otomatis</span>
+              </label>
+              <select
+                onChange={e => {
+                  const rule = schoolRules.find(r => r.id === e.target.value);
+                  if (rule) {
+                    const catMap: Record<string, ViolationCategory> = {
+                      'Ringan': 'Ringan',
+                      'Sedang': 'Sedang',
+                      'Berat': 'Berat',
+                      'Sangat Berat': 'Sangat Berat',
+                      'Apresiasi': 'Ringan'
+                    };
+                    setFormData({
+                      ...formData,
+                      violationType: `[${rule.articleNumber}] ${rule.title}`,
+                      category: catMap[rule.severity] || 'Ringan',
+                      points: rule.points,
+                      description: rule.description,
+                      actionTaken: rule.consequence,
+                      officerName: rule.authorizedOfficer || (currentUser?.displayName || 'Guru Piket')
+                    });
+                  }
+                }}
+                defaultValue=""
+                className="w-full px-3 py-1.5 text-xs rounded-lg bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-800 text-slate-800 dark:text-slate-200 font-medium"
+              >
+                <option value="">-- Pilih dari Daftar Pasal Tata Tertib Resmi ({schoolRules.length} Aturan) --</option>
+                {schoolRules.map(r => (
+                  <option key={r.id} value={r.id}>
+                    {r.articleNumber}: {r.title} ({r.points} Poin - {r.severity})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div>
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">

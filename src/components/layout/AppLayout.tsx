@@ -50,7 +50,8 @@ import {
   Pin,
   ExternalLink,
   CheckCheck,
-  Palette
+  Palette,
+  BookOpenCheck
 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSchool } from '../../contexts/SchoolContext';
@@ -74,6 +75,7 @@ export type NavTab =
   | 'attendance'
   | 'activities'
   | 'reports'
+  | 'rules'
   | 'violations'
   | 'counseling'
   | 'achievements'
@@ -261,6 +263,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
       case 'UTAMA':
       case 'PROKER':
         return 'bg-indigo-100 text-indigo-800 border-indigo-300 dark:bg-indigo-950/70 dark:text-indigo-300 dark:border-indigo-800/60';
+      case 'TATIB':
+        return 'bg-amber-100 text-amber-900 border-amber-300 dark:bg-amber-950/80 dark:text-amber-300 dark:border-amber-800/70 font-black';
       case 'TRANSPARANSI':
       case 'DOC':
         return 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/70 dark:text-amber-300 dark:border-amber-800/60';
@@ -300,6 +304,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
           title: 'LAYANAN BK & KEUANGAN',
           items: [
             { id: 'cash', label: 'Neraca Kas & Keuangan', icon: Wallet, tag: 'KAS' },
+            { id: 'rules', label: 'Buku Tata Tertib Siswa', icon: BookOpenCheck, tag: 'TATIB' },
             { id: 'violations', label: 'Pelanggaran & Disiplin', icon: ShieldAlert, alert: true },
             { id: 'counseling', label: 'Bimbingan Konseling (BK)', icon: HeartHandshake },
             { id: 'achievements', label: 'Prestasi & Penghargaan', icon: Award, tag: 'BARU' },
@@ -345,6 +350,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
           title: 'LAYANAN BK & KEUANGAN',
           items: [
             { id: 'cash', label: 'Neraca Kas & Keuangan', icon: Wallet, tag: 'KAS' },
+            { id: 'rules', label: 'Buku Tata Tertib Siswa', icon: BookOpenCheck, tag: 'TATIB' },
             { id: 'violations', label: 'Pelanggaran & Disiplin', icon: ShieldAlert, alert: true },
             { id: 'counseling', label: 'Bimbingan Konseling (BK)', icon: HeartHandshake },
             { id: 'achievements', label: 'Prestasi & Penghargaan', icon: Award },
@@ -372,6 +378,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
           title: 'MANAJEMEN BK & KESISWAAN',
           items: [
             { id: 'announcements', label: 'Pusat Pengumuman', icon: Megaphone, count: unreadAnnouncements.length ? `${unreadAnnouncements.length}` : undefined },
+            { id: 'rules', label: 'Buku Tata Tertib Siswa', icon: BookOpenCheck, tag: 'TATIB' },
             { id: 'violations', label: 'Pelanggaran & Disiplin', icon: ShieldAlert, alert: true },
             { id: 'students', label: 'Data & Riwayat Siswa', icon: Users },
             { id: 'permissions', label: 'Dispensasi & Izin', icon: FileCheck }
@@ -404,6 +411,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
           title: 'PROGRAM & AKTIVITAS',
           items: [
             { id: 'announcements', label: 'Pusat Pengumuman', icon: Megaphone, count: unreadAnnouncements.length ? `${unreadAnnouncements.length}` : undefined },
+            { id: 'rules', label: 'Buku Tata Tertib Siswa', icon: BookOpenCheck, tag: 'TATIB' },
             { id: 'activities', label: 'Agenda & Sidang OSIM', icon: FileSpreadsheet },
             { id: 'reports', label: 'LPJ Kegiatan OSIM', icon: FileText }
           ]
@@ -433,6 +441,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
           title: 'MANAJEMEN EKSKUL',
           items: [
             { id: 'announcements', label: 'Pusat Pengumuman', icon: Megaphone, count: unreadAnnouncements.length ? `${unreadAnnouncements.length}` : undefined },
+            { id: 'rules', label: 'Buku Tata Tertib Siswa', icon: BookOpenCheck, tag: 'TATIB' },
             { id: 'members', label: 'Daftar Anggota', icon: Users },
             { id: 'schedules', label: 'Jadwal & Kalender Latihan', icon: Calendar },
             { id: 'attendance', label: 'Presensi Digital', icon: ClipboardCheck, tag: 'AUTO' }
@@ -918,9 +927,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                 {isProfileModalOpen && (
                   <>
                     <div className="fixed inset-0 z-30" onClick={() => setIsProfileModalOpen(false)} />
-                    <div className="absolute right-0 mt-2 w-80 rounded-2xl bg-[#111726] border border-[#1e293b] shadow-2xl z-40 p-4 font-sans text-xs">
+                    <div className="absolute right-0 mt-2 w-80 rounded-2xl bg-white dark:bg-[#111726] border border-slate-200 dark:border-[#1e293b] shadow-2xl z-40 p-4 font-sans text-xs">
                       {/* User Header Profile */}
-                      <div className="p-3 bg-[#131b2e] border border-[#1e293b] rounded-xl mb-3">
+                      <div className="p-3 bg-slate-50 dark:bg-[#131b2e] border border-slate-200 dark:border-[#1e293b] rounded-xl mb-3">
                         <div className="flex items-center space-x-3">
                           {currentUser.photoURL ? (
                             <img
@@ -937,14 +946,14 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center space-x-1.5">
                               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                              <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider">
+                              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">
                                 ONLINE
                               </span>
                             </div>
-                            <h4 className="text-xs font-bold text-white truncate mt-0.5" title={currentUser.displayName}>
+                            <h4 className="text-xs font-bold text-slate-900 dark:text-white truncate mt-0.5" title={currentUser.displayName}>
                               {currentUser.displayName}
                             </h4>
-                            <span className="inline-block mt-0.5 text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-300 border border-blue-500/20">
+                            <span className="inline-block mt-0.5 text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-500/20">
                               {currentUser.role === 'super_admin'
                                 ? 'Super Admin'
                                 : currentUser.role === 'waka_kesiswaan'
@@ -960,14 +969,14 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                       </div>
 
                       {/* Detailed Metadata Fields */}
-                      <div className="space-y-2 bg-[#0d121f] p-3 rounded-xl border border-[#1e293b] text-xs mb-3">
-                        <div className="flex items-center justify-between text-slate-400">
-                          <span className="text-slate-500">NIP:</span>
-                          <span className="text-slate-200 font-medium">{currentUser.nip || '-'}</span>
+                      <div className="space-y-2 bg-slate-50 dark:bg-[#0d121f] p-3 rounded-xl border border-slate-200 dark:border-[#1e293b] text-xs mb-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wider text-[10px]">NIP:</span>
+                          <span className="text-slate-800 dark:text-slate-200 font-mono font-medium">{currentUser.nip || '-'}</span>
                         </div>
-                        <div className="flex items-center justify-between text-slate-400">
-                          <span className="text-slate-500">EMAIL:</span>
-                          <span className="text-slate-200 font-medium truncate max-w-[170px]" title={currentUser.email}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wider text-[10px]">EMAIL:</span>
+                          <span className="text-slate-800 dark:text-slate-200 font-medium truncate max-w-[170px]" title={currentUser.email}>
                             {currentUser.email}
                           </span>
                         </div>
@@ -994,7 +1003,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                           logout();
                           setIsProfileModalOpen(false);
                         }}
-                        className="w-full py-2 px-3 rounded-xl bg-red-950/40 border border-red-500/30 hover:bg-red-900/50 text-red-300 text-xs font-bold flex items-center justify-center space-x-2 transition-all"
+                        className="w-full py-2 px-3 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 dark:bg-red-950/40 dark:border-red-500/30 dark:hover:bg-red-900/50 dark:text-red-300 text-xs font-bold flex items-center justify-center space-x-2 transition-all shadow-sm"
                       >
                         <LogOut className="w-4 h-4" />
                         <span>KELUAR DARI APLIKASI</span>

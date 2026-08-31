@@ -759,3 +759,50 @@ export interface CashTransaction {
   updatedAt?: string;
 }
 
+// ==========================================
+// BUKU TATA TERTIB & KODE ETIK SISWA (HANDBOOK)
+// ==========================================
+export type RuleSeverity = 'Ringan' | 'Sedang' | 'Berat' | 'Sangat Berat' | 'Apresiasi';
+
+export type RuleCategoryChapter = 
+  | 'Bab I: Ketentuan Umum & Kehadiran'
+  | 'Bab II: Pakaian, Seragam & Kerapian'
+  | 'Bab III: Etika, Perilaku & Sopan Santun'
+  | 'Bab IV: Larangan Keras & Ketertiban Umum'
+  | 'Bab V: Penggunaan Perangkat Elektronik & Medsos'
+  | 'Bab VI: Kegiatan Ekstrakurikuler & Organisasi'
+  | 'Bab VII: Apresiasi, Prestasi & Pemulihan Disiplin';
+
+export interface SchoolRuleArticle {
+  id: string;
+  chapter: RuleCategoryChapter;
+  articleNumber: string; // e.g. "Pasal 3 Ayat 1"
+  title: string; // e.g. "Keterlambatan Masuk Sekolah"
+  description: string; // Uraian bunyi aturan
+  points: number; // Bobot poin (5-100 untuk pelanggaran, atau positif untuk apresiasi)
+  severity: RuleSeverity;
+  consequence: string; // Sanksi / Tindakan Pembinaan Edukatif
+  authorizedOfficer: string; // Pihak berwenang menindak
+  sopSteps?: string[];
+  isMandatory?: boolean;
+  academicYear?: string;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+export interface SchoolHandbookMeta {
+  decreeNumber: string;
+  decreeTitle: string;
+  effectiveDate: string;
+  academicYear: string;
+  totalPoinMax: number;
+  thresholdSp1: number;
+  thresholdSp2: number;
+  thresholdSp3: number;
+  thresholdDrop: number;
+  signedBy: string;
+  signedNip?: string;
+  lastUpdated?: string;
+}
+
+

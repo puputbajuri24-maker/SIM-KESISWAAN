@@ -36,7 +36,9 @@ import {
   CashAccount,
   CashTransaction,
   UserProfile,
-  UserRole
+  UserRole,
+  SchoolRuleArticle,
+  SchoolHandbookMeta
 } from '../types';
 import {
   INITIAL_SCHOOL_SETTING,
@@ -67,6 +69,8 @@ import {
   INITIAL_OSIM_MEETINGS,
   INITIAL_CASH_ACCOUNTS,
   INITIAL_CASH_TRANSACTIONS,
+  INITIAL_SCHOOL_RULES,
+  INITIAL_HANDBOOK_META,
   seedAllFirebaseData,
   clearAllFirebaseOperationalData
 } from '../services/seedData';
@@ -237,6 +241,15 @@ interface SchoolContextType {
   addCashTransaction: (data: Omit<CashTransaction, 'id' | 'createdAt'>) => Promise<void>;
   updateCashTransaction: (id: string, data: Partial<CashTransaction>) => Promise<void>;
   deleteCashTransaction: (id: string) => Promise<void>;
+
+  // Buku Tata Tertib & Pedoman Disiplin Siswa
+  schoolRules: SchoolRuleArticle[];
+  handbookMeta: SchoolHandbookMeta;
+  addSchoolRule: (data: Omit<SchoolRuleArticle, 'id'>) => Promise<void>;
+  updateSchoolRule: (id: string, data: Partial<SchoolRuleArticle>) => Promise<void>;
+  deleteSchoolRule: (id: string) => Promise<void>;
+  resetSchoolRulesToDefault: () => Promise<void>;
+  updateHandbookMeta: (meta: Partial<SchoolHandbookMeta>) => Promise<void>;
 
   // Announcements & Notifications
   addAnnouncement: (data: Omit<Announcement, 'id' | 'createdAt'>) => Promise<void>;
@@ -604,6 +617,28 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return INITIAL_CASH_TRANSACTIONS;
   });
 
+  const [schoolRules, setSchoolRules] = useState<SchoolRuleArticle[]>(() => {
+    const saved = localStorage.getItem('sim_school_rules');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {}
+    }
+    return INITIAL_SCHOOL_RULES;
+  });
+
+  const [handbookMeta, setHandbookMeta] = useState<SchoolHandbookMeta>(() => {
+    const saved = localStorage.getItem('sim_handbook_meta');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.decreeNumber) return parsed;
+      } catch (e) {}
+    }
+    return INITIAL_HANDBOOK_META;
+  });
+
   const [announcements, setAnnouncements] = useState<Announcement[]>(() => {
     const local = localStorage.getItem('sim_announcements');
     if (local) {
@@ -652,6 +687,8 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     localStorage.setItem('sim_osim_meetings', JSON.stringify(osimMeetings));
     localStorage.setItem('sim_cash_accounts', JSON.stringify(cashAccounts));
     localStorage.setItem('sim_cash_transactions', JSON.stringify(cashTransactions));
+    localStorage.setItem('sim_school_rules', JSON.stringify(schoolRules));
+    localStorage.setItem('sim_handbook_meta', JSON.stringify(handbookMeta));
     localStorage.setItem('sim_announcements', JSON.stringify(announcements));
     localStorage.setItem('sim_audit_logs', JSON.stringify(auditLogs));
   }, [
@@ -3135,6 +3172,71 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     logAction('DELETE_CASH_TRANSACTION', 'Neraca Kas', `Menghapus transaksi kas: ${target?.title || id} (Rp ${target?.amount.toLocaleString('id-ID') || 0})`);
   };
 
+  // ==========================================
+  // Buku Tata Tertib & Pedoman Disiplin Siswa
+  // ==========================================
+  const addSchoolRule = async (data: Omit<SchoolRuleArticle, 'id'>) => {
+    const newRule: SchoolRuleArticle = {
+      id: `rule_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      ...data,
+      academicYear: activeAcademicYear,
+      updatedAt: new Date().toISOString(),
+      updatedBy: currentUser?.displayName || 'Admin Kesiswaan'
+    };
+    setSchoolRules(prev => [...prev, newRule]);
+    try {
+      await setDoc(doc(db, 'school_rules', newRule.id), newRule);
+    } catch (e) {}
+    logAction('ADD_SCHOOL_RULE', 'Buku Tata Tertib', `Menambahkan pasal tata tertib: ${newRule.articleNumber} - ${newRule.title}`);
+  };
+
+  const updateSchoolRule = async (id: string, data: Partial<SchoolRuleArticle>) => {
+    const updatedData = {
+      ...data,
+      updatedAt: new Date().toISOString(),
+      updatedBy: currentUser?.displayName || 'Admin Kesiswaan'
+    };
+    setSchoolRules(prev => prev.map(r => r.id === id ? { ...r, ...updatedData } : r));
+    try {
+      await updateDoc(doc(db, 'school_rules', id), updatedData);
+    } catch (e) {}
+    logAction('UPDATE_SCHOOL_RULE', 'Buku Tata Tertib', `Memperbarui aturan tata tertib: ${data.articleNumber || ''} ${data.title || id}`);
+  };
+
+  const deleteSchoolRule = async (id: string) => {
+    const target = schoolRules.find(r => r.id === id);
+    setSchoolRules(prev => prev.filter(r => r.id !== id));
+    try {
+      await deleteDoc(doc(db, 'school_rules', id));
+    } catch (e) {}
+    logAction('DELETE_SCHOOL_RULE', 'Buku Tata Tertib', `Menghapus pasal aturan: ${target?.articleNumber || ''} ${target?.title || id}`);
+  };
+
+  const resetSchoolRulesToDefault = async () => {
+    setSchoolRules(INITIAL_SCHOOL_RULES);
+    setHandbookMeta(INITIAL_HANDBOOK_META);
+    try {
+      for (const r of INITIAL_SCHOOL_RULES) {
+        await setDoc(doc(db, 'school_rules', r.id), r);
+      }
+      await setDoc(doc(db, 'settings', 'handbook_meta'), INITIAL_HANDBOOK_META);
+    } catch (e) {}
+    logAction('RESET_SCHOOL_RULES', 'Buku Tata Tertib', 'Mereset pasal aturan tata tertib ke standar baku nasional');
+  };
+
+  const updateHandbookMeta = async (meta: Partial<SchoolHandbookMeta>) => {
+    const updated: SchoolHandbookMeta = {
+      ...handbookMeta,
+      ...meta,
+      lastUpdated: new Date().toISOString()
+    };
+    setHandbookMeta(updated);
+    try {
+      await setDoc(doc(db, 'settings', 'handbook_meta'), updated);
+    } catch (e) {}
+    logAction('UPDATE_HANDBOOK_META', 'Buku Tata Tertib', `Memperbarui SK & Ambang Poin Tata Tertib (${updated.decreeNumber})`);
+  };
+
   return (
     <SchoolContext.Provider
       value={{
@@ -3179,6 +3281,13 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         addCashTransaction,
         updateCashTransaction,
         deleteCashTransaction,
+        schoolRules,
+        handbookMeta,
+        addSchoolRule,
+        updateSchoolRule,
+        deleteSchoolRule,
+        resetSchoolRulesToDefault,
+        updateHandbookMeta,
         addStudent,
         updateStudent,
         deleteStudent,
