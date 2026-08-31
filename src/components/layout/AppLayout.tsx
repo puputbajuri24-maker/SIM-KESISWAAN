@@ -244,6 +244,31 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
     await handleMarkAllAnnouncementsAsRead();
   };
 
+  const getNavTagClass = (tag: string, isActive: boolean) => {
+    if (isActive) {
+      return 'bg-white/20 text-white border border-white/30';
+    }
+    switch (tag) {
+      case 'LIVE':
+        return 'bg-rose-100 text-rose-700 border-rose-300 dark:bg-rose-950/70 dark:text-rose-300 dark:border-rose-800/60';
+      case 'AUTO':
+        return 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/70 dark:text-emerald-300 dark:border-emerald-800/60';
+      case 'KAS':
+      case 'BENDAHARA':
+        return 'bg-emerald-100 text-emerald-800 border-emerald-300 dark:bg-emerald-950/70 dark:text-emerald-300 dark:border-emerald-800/60';
+      case 'BARU':
+        return 'bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-950/70 dark:text-blue-300 dark:border-blue-800/60';
+      case 'UTAMA':
+      case 'PROKER':
+        return 'bg-indigo-100 text-indigo-800 border-indigo-300 dark:bg-indigo-950/70 dark:text-indigo-300 dark:border-indigo-800/60';
+      case 'TRANSPARANSI':
+      case 'DOC':
+        return 'bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-950/70 dark:text-amber-300 dark:border-amber-800/60';
+      default:
+        return 'bg-slate-200 text-slate-800 border-slate-300 dark:bg-slate-800 dark:text-slate-200 dark:border-slate-700';
+    }
+  };
+
   // Grouped Navigation Items for Modern Navy Dashboard matching Screenshot
   const navSections = isSuperAdmin
     ? [
@@ -506,15 +531,10 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
 
                       {item.tag && (
                         <span
-                          className={`text-[9px] font-semibold px-1.5 py-0.5 rounded-md ${
+                          className={`text-[9px] font-bold font-mono px-1.5 py-0.5 rounded-md border tracking-wider uppercase ${getNavTagClass(
+                            item.tag,
                             isActive
-                              ? 'bg-white/20 text-white'
-                              : item.tag === 'LIVE'
-                              ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
-                              : item.tag === 'AUTO'
-                              ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                              : 'bg-[#1e293b] text-slate-400'
-                          }`}
+                          )}`}
                         >
                           {item.tag}
                         </span>
@@ -1079,7 +1099,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                             <span className="truncate">{item.label}</span>
                           </div>
                           {item.tag && (
-                            <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded-md bg-[#1e293b] light:bg-slate-200 text-slate-400 light:text-slate-700">
+                            <span
+                              className={`text-[9px] font-bold font-mono px-1.5 py-0.5 rounded-md border tracking-wider uppercase ${getNavTagClass(
+                                item.tag,
+                                isActive
+                              )}`}
+                            >
                               {item.tag}
                             </span>
                           )}
