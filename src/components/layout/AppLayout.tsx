@@ -288,7 +288,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
             { id: 'announcements', label: 'Pusat Pengumuman', icon: Megaphone, count: unreadAnnouncements.length ? `${unreadAnnouncements.length}` : undefined },
             { id: 'students', label: 'Data Siswa', icon: Users },
             { id: 'teachers', label: 'Guru & Pembina', icon: UserCog },
-            { id: 'extracurriculars', label: 'Ekstrakurikuler', icon: Crown },
+            { id: 'osim', label: 'Pengurus & Proker OSIM', icon: Crown, tag: 'OSIM' },
+            { id: 'extracurriculars', label: 'Ekstrakurikuler', icon: Compass },
             { id: 'schedules', label: 'Jadwal & Kalender', icon: Calendar }
           ]
         },
@@ -334,7 +335,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
             { id: 'announcements', label: 'Pusat Pengumuman', icon: Megaphone, count: unreadAnnouncements.length ? `${unreadAnnouncements.length}` : undefined },
             { id: 'students', label: 'Data Siswa', icon: Users },
             { id: 'teachers', label: 'Guru & Pembina', icon: UserCog },
-            { id: 'extracurriculars', label: 'Ekstrakurikuler', icon: Crown },
+            { id: 'osim', label: 'Pengurus & Proker OSIM', icon: Crown, tag: 'OSIM' },
+            { id: 'extracurriculars', label: 'Ekstrakurikuler', icon: Compass },
             { id: 'schedules', label: 'Jadwal & Kalender', icon: Calendar }
           ]
         },
@@ -493,10 +495,10 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
               </div>
             )}
             <div className="min-w-0">
-              <div className="font-bold text-sm text-white tracking-tight leading-tight uppercase truncate">
+              <div className="font-extrabold text-sm text-slate-900 dark:text-white tracking-tight leading-tight uppercase truncate">
                 MAN 2 SERAM
               </div>
-              <div className="text-[10px] font-medium text-slate-400 tracking-wider uppercase">
+              <div className="text-[10px] font-bold text-slate-600 dark:text-slate-400 tracking-wider uppercase">
                 BAGIAN TIMUR
               </div>
             </div>
@@ -516,7 +518,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
         <div className="flex-1 px-3 py-3 space-y-4 overflow-y-auto custom-scrollbar">
           {navSections.map(sec => (
             <div key={sec.title} className="space-y-1">
-              <div className="px-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+              <div className="px-3 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                 {sec.title}
               </div>
               <div className="space-y-0.5">
@@ -527,14 +529,14 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                     <button
                       key={`${sec.title}-${item.id}`}
                       onClick={() => handleNavClick(item.id)}
-                      className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all ${
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
                         isActive
                           ? 'bg-blue-600 text-white shadow-md shadow-blue-600/25'
-                          : 'text-slate-400 hover:text-white hover:bg-[#131b2e]'
+                          : 'text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#131b2e]'
                       }`}
                     >
                       <div className="flex items-center space-x-2.5 truncate">
-                        <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                        <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`} />
                         <span className="truncate">{item.label}</span>
                       </div>
 
@@ -1039,7 +1041,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                     <img
                       src={schoolSetting.logoRightUrl || schoolSetting.logoUrl}
                       alt="Logo Sekolah"
-                      className="w-8 h-8 object-contain rounded-lg p-0.5 bg-white/10 light:bg-slate-100 shrink-0"
+                      className="w-8 h-8 object-contain rounded-lg p-0.5 bg-white/10 light:bg-slate-100 shrink-0 border border-slate-200 dark:border-transparent"
                       referrerPolicy="no-referrer"
                     />
                   ) : (
@@ -1048,38 +1050,38 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                     </div>
                   )}
                   <div>
-                    <div className="font-bold text-xs text-white light:text-slate-900 uppercase">MAN 2 SERAM</div>
-                    <div className="text-[9px] text-slate-400 light:text-slate-500 uppercase">BAGIAN TIMUR</div>
+                    <div className="font-extrabold text-xs text-slate-900 dark:text-white uppercase tracking-tight">MAN 2 SERAM</div>
+                    <div className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wide">BAGIAN TIMUR</div>
                   </div>
                 </div>
                 <button
                   onClick={() => setIsMobileMenuOpen(false)}
-                  className="p-1 rounded-lg bg-[#131b2e] light:bg-slate-100 text-slate-400 light:text-slate-600"
+                  className="p-1.5 rounded-lg bg-[#131b2e] light:bg-slate-100 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
                 >
                   <X className="w-4 h-4" />
                 </button>
               </div>
 
               {/* Mobile Quick Theme Switcher */}
-              <div className="py-2.5 px-1 flex items-center justify-between border-b border-[#1e293b] light:border-slate-200">
-                <span className="text-[11px] font-bold text-slate-400 light:text-slate-600">TEMA & MODE</span>
-                <div className="flex items-center space-x-1.5">
+              <div className="py-3 px-1 flex items-center justify-between border-b border-[#1e293b] light:border-slate-200">
+                <span className="text-xs font-extrabold text-slate-800 dark:text-slate-300 tracking-wide">TEMA & MODE</span>
+                <div className="flex items-center space-x-2">
                   <button
                     onClick={toggleMode}
-                    className="p-1.5 rounded-lg bg-[#131b2e] light:bg-slate-100 border border-[#1e293b] light:border-slate-200 text-amber-400"
-                    title="Ganti Mode"
+                    className="p-2 rounded-xl bg-slate-100 dark:bg-[#131b2e] border border-slate-300 dark:border-[#1e293b] text-amber-500 dark:text-amber-400 hover:bg-slate-200 dark:hover:bg-[#1a253d] transition-all shadow-xs"
+                    title="Ganti Mode Gelap / Terang"
                   >
-                    {resolvedMode === 'dark' ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5 text-indigo-600" />}
+                    {resolvedMode === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4 text-indigo-600" />}
                   </button>
                   <button
                     onClick={() => {
                       setIsMobileMenuOpen(false);
                       setIsThemeModalOpen(true);
                     }}
-                    className="p-1.5 rounded-lg bg-[#131b2e] light:bg-slate-100 border border-[#1e293b] light:border-slate-200 text-blue-400"
-                    title="Palet Tema"
+                    className="p-2 rounded-xl bg-slate-100 dark:bg-[#131b2e] border border-slate-300 dark:border-[#1e293b] text-blue-600 dark:text-blue-400 hover:bg-slate-200 dark:hover:bg-[#1a253d] transition-all shadow-xs"
+                    title="Buka Pusat Tema"
                   >
-                    <Palette className="w-3.5 h-3.5" />
+                    <Palette className="w-4 h-4" />
                   </button>
                 </div>
               </div>
@@ -1087,7 +1089,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
               <div className="py-3 space-y-4">
                 {navSections.map(sec => (
                   <div key={sec.title} className="space-y-1">
-                    <div className="px-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+                    <div className="px-2 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                       {sec.title}
                     </div>
                     {sec.items.map(item => {
@@ -1097,14 +1099,14 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                         <button
                           key={`${sec.title}-${item.id}`}
                           onClick={() => handleNavClick(item.id)}
-                          className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors ${
+                          className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-colors ${
                             isActive
                               ? 'bg-blue-600 text-white shadow-md'
-                              : 'text-slate-400 light:text-slate-600 hover:text-slate-200 light:hover:text-slate-900 hover:bg-[#131c2e] light:hover:bg-slate-100'
+                              : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#131c2e]'
                           }`}
                         >
                           <div className="flex items-center space-x-2.5 truncate">
-                            <Icon className="w-4 h-4 shrink-0" />
+                            <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`} />
                             <span className="truncate">{item.label}</span>
                           </div>
                           {item.tag && (

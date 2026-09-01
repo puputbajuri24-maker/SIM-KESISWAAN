@@ -588,16 +588,94 @@ export interface AuditLogItem {
 // INTRAKURIKULER & OSIM (ORGANISASI SISWA INTRA MADRASAH)
 // ==========================================
 
-export type OsimSekbid =
-  | 'BPH (Badan Pengurus Harian)'
-  | 'Sekbid 1: Keimanan, Ketaqwaan & Moderasi Beragama'
-  | 'Sekbid 2: Wawasan Kebangsaan, Bela Negara & Kedisiplinan'
-  | 'Sekbid 3: Akademik, Sains, Riset & Literasi'
-  | 'Sekbid 4: Demokrasi, HAM, Kepemimpinan & Politik Pelajar'
-  | 'Sekbid 5: Keterampilan, Kewirausahaan & Koperasi Siswa'
-  | 'Sekbid 6: Kesehatan Jasmani, Olahraga & Lingkungan Hidup'
-  | 'Sekbid 7: Sastra, Seni, Budaya & Bahasa'
-  | 'Sekbid 8: Teknologi Informasi, Multimedia & Komunikasi';
+export interface OsimDepartment {
+  id: string;
+  name: string;
+  code?: string;
+  description?: string;
+  coordinatorName?: string;
+  sortOrder?: number;
+  color?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export const DEFAULT_OSIM_DEPARTMENTS: OsimDepartment[] = [
+  {
+    id: 'dept_bph',
+    name: 'BPH (Badan Pengurus Harian)',
+    code: 'BPH',
+    description: 'Pimpinan inti organisasi: Ketua Umum, Wakil Ketua, Sekretaris, dan Bendahara Umum.',
+    sortOrder: 0,
+    color: '#3b82f6'
+  },
+  {
+    id: 'dept_sekbid_1',
+    name: 'Sekbid 1: Keimanan, Ketaqwaan & Moderasi Beragama',
+    code: 'SEKBID-1',
+    description: 'Pembinaan akhlak mulia, kegiatan PHBI, tadarus, keputrian, dan moderasi beragama.',
+    sortOrder: 1,
+    color: '#10b981'
+  },
+  {
+    id: 'dept_sekbid_2',
+    name: 'Sekbid 2: Wawasan Kebangsaan, Bela Negara & Kedisiplinan',
+    code: 'SEKBID-2',
+    description: 'Kedisiplinan upacara, tata tertib siswa, jiwa nasionalisme, dan bela negara.',
+    sortOrder: 2,
+    color: '#ef4444'
+  },
+  {
+    id: 'dept_sekbid_3',
+    name: 'Sekbid 3: Akademik, Sains, Riset & Literasi',
+    code: 'SEKBID-3',
+    description: 'Pengembangan minat bakat akademik, literasi madrasah, olimpiade, dan karya ilmiah.',
+    sortOrder: 3,
+    color: '#8b5cf6'
+  },
+  {
+    id: 'dept_sekbid_4',
+    name: 'Sekbid 4: Demokrasi, HAM, Kepemimpinan & Politik Pelajar',
+    code: 'SEKBID-4',
+    description: 'Pendidikan kepemimpinan, pemilu raya ketua OSIM (Pilketos), dan musyawarah perwakilan kelas.',
+    sortOrder: 4,
+    color: '#f59e0b'
+  },
+  {
+    id: 'dept_sekbid_5',
+    name: 'Sekbid 5: Keterampilan, Kewirausahaan & Koperasi Siswa',
+    code: 'SEKBID-5',
+    description: 'Kreativitas usaha mandiri, pengelolaan kantin/koperasi siswa, dan bazar amal.',
+    sortOrder: 5,
+    color: '#14b8a6'
+  },
+  {
+    id: 'dept_sekbid_6',
+    name: 'Sekbid 6: Kesehatan Jasmani, Olahraga & Lingkungan Hidup',
+    code: 'SEKBID-6',
+    description: 'Kesehatan jasmani, pekan olahraga madrasah (Class Meeting), UKS, dan adiwiyata kebersihan.',
+    sortOrder: 6,
+    color: '#06b6d4'
+  },
+  {
+    id: 'dept_sekbid_7',
+    name: 'Sekbid 7: Sastra, Seni, Budaya & Bahasa',
+    code: 'SEKBID-7',
+    description: 'Apresiasi seni budaya, pentas kreasi, bulan bahasa, dan pameran karya siswa.',
+    sortOrder: 7,
+    color: '#ec4899'
+  },
+  {
+    id: 'dept_sekbid_8',
+    name: 'Sekbid 8: Teknologi Informasi, Multimedia & Komunikasi',
+    code: 'SEKBID-8',
+    description: 'Pengelolaan media sosial OSIM, publikasi dokumentasi, konten grafis & video, dan jurnalistik digital.',
+    sortOrder: 8,
+    color: '#6366f1'
+  }
+];
+
+export type OsimSekbid = string;
 
 export type OsimPosition =
   | 'Ketua Umum OSIM'
@@ -800,8 +878,12 @@ export interface SchoolHandbookMeta {
   thresholdSp2: number;
   thresholdSp3: number;
   thresholdDrop: number;
-  signedBy: string;
+  signedBy: string; // Mengetahui Kepala Madrasah / Sekolah
   signedNip?: string;
+  wakaName?: string; // Yang menandatangani / Waka Kesiswaan
+  wakaNip?: string;
+  issuedPlace?: string; // Tempat Penetapan / Cetak
+  issuedDate?: string; // Tanggal Cetak / Penetapan
   lastUpdated?: string;
 }
 

@@ -218,18 +218,20 @@ export const LoginPage: React.FC = () => {
         <div className="w-full bg-[#082a1b] text-white rounded-3xl shadow-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-12 min-h-[640px] border border-emerald-900/50">
           
           {/* LEFT HERO PANEL (Branding, Information & Madrasah Building) */}
-          <div className="lg:col-span-7 flex flex-col justify-between p-6 sm:p-10 relative overflow-hidden bg-gradient-to-br from-[#062417] via-[#093522] to-[#0c442c]">
+          <div className="lg:col-span-7 flex flex-col justify-between p-6 sm:p-10 relative overflow-hidden bg-gradient-to-br from-[#041e13] via-[#062c1d] to-[#0a3e29] text-white auth-hero-panel">
             {/* Soft decorative background circles & light beams */}
-            <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
-            <div className="absolute bottom-1/3 left-0 w-72 h-72 bg-emerald-400/10 rounded-full blur-2xl pointer-events-none" />
+            <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-400/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
+            <div className="absolute bottom-1/3 left-0 w-72 h-72 bg-emerald-300/10 rounded-full blur-2xl pointer-events-none" />
 
             {/* Top Left Institution Badge */}
             <div className="relative z-10 flex items-center gap-3">
-              <div className="inline-flex items-center gap-3 px-4 py-2 rounded-2xl bg-white/10 backdrop-blur-md border border-white/15 shadow-sm">
-                <MadrasahEmblem size={34} customUrl={schoolLogo} />
+              <div className="hero-badge inline-flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-[#03190f]/90 backdrop-blur-md border border-emerald-500/40 shadow-md">
+                <MadrasahEmblem size={36} customUrl={schoolLogo} />
                 <div>
-                  <h3 className="text-xs font-black tracking-wide text-white uppercase">MAN 2 SERAM BAGIAN TIMUR</h3>
-                  <p className="text-[10px] text-emerald-200/90 font-medium leading-tight">
+                  <h3 className="text-xs font-black tracking-wide text-white uppercase" style={{ color: '#ffffff' }}>
+                    MAN 2 SERAM BAGIAN TIMUR
+                  </h3>
+                  <p className="text-[10px] text-emerald-300 font-semibold leading-tight mt-0.5" style={{ color: '#6ee7b7' }}>
                     Madrasah Aliyah Negeri 2<br />
                     Seram Bagian Timur, Maluku
                   </p>
@@ -242,56 +244,62 @@ export const LoginPage: React.FC = () => {
               {/* Logo SIM-Kesiswaan (Hanya Logo Sekolah) */}
               <SimKesiswaanLogo className="mb-4" logoSchool={schoolLogo} />
 
-              {/* Title & Subtitle */}
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-wider drop-shadow-sm uppercase">
+              {/* Title & Subtitle with Guaranteed High Contrast */}
+              <h1 className="hero-title text-2xl sm:text-3xl lg:text-4xl font-black tracking-wider drop-shadow-md uppercase text-white" style={{ color: '#ffffff' }}>
                 SIM-KESISWAAN
               </h1>
-              <p className="text-[11px] sm:text-xs font-bold text-emerald-300 uppercase tracking-widest mt-1.5 mb-4">
+              <p className="hero-subtitle text-[11px] sm:text-xs font-black uppercase tracking-widest mt-2 mb-4" style={{ color: '#fde047' }}>
                 SISTEM INFORMASI MANAJEMEN KESISWAAN
               </p>
 
               {/* Description Quote */}
-              <p className="text-xs sm:text-sm text-emerald-100/90 max-w-md mx-auto leading-relaxed font-medium">
+              <p className="hero-description text-xs sm:text-sm max-w-md mx-auto leading-relaxed font-medium" style={{ color: '#ecfdf5' }}>
                 Satu sistem terintegrasi untuk mendukung seluruh kegiatan kesiswaan madrasah secara efektif, efisien dan terstruktur.
               </p>
 
-              {/* 3 Translucent Feature Cards */}
+              {/* 3 Translucent Feature Cards with Guaranteed Contrast */}
               <div className="grid grid-cols-3 gap-3 sm:gap-4 mt-7 w-full max-w-md">
-                <div className="bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/15 rounded-2xl p-3.5 sm:p-4 text-center transition-all shadow-sm">
-                  <div className="w-10 h-10 rounded-xl bg-amber-400/20 border border-amber-400/30 flex items-center justify-center mx-auto mb-2 text-amber-300">
-                    <Users className="w-5 h-5" />
+                <div className="hero-feature-card bg-[#041d13]/90 border border-emerald-500/35 rounded-2xl p-3.5 sm:p-4 text-center transition-all shadow-md">
+                  <div className="w-10 h-10 rounded-xl bg-amber-400/25 border border-amber-400/50 flex items-center justify-center mx-auto mb-2 text-amber-300 shadow-xs">
+                    <Users className="w-5 h-5" style={{ color: '#fde047' }} />
                   </div>
-                  <span className="text-[11px] sm:text-xs font-bold text-white block">Kegiatan Intra</span>
+                  <span className="text-[11px] sm:text-xs font-bold block" style={{ color: '#ffffff' }}>
+                    Kegiatan Intra
+                  </span>
                 </div>
 
-                <div className="bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/15 rounded-2xl p-3.5 sm:p-4 text-center transition-all shadow-sm">
-                  <div className="w-10 h-10 rounded-xl bg-amber-400/20 border border-amber-400/30 flex items-center justify-center mx-auto mb-2 text-amber-300">
-                    <Trophy className="w-5 h-5" />
+                <div className="hero-feature-card bg-[#041d13]/90 border border-emerald-500/35 rounded-2xl p-3.5 sm:p-4 text-center transition-all shadow-md">
+                  <div className="w-10 h-10 rounded-xl bg-amber-400/25 border border-amber-400/50 flex items-center justify-center mx-auto mb-2 text-amber-300 shadow-xs">
+                    <Trophy className="w-5 h-5" style={{ color: '#fde047' }} />
                   </div>
-                  <span className="text-[11px] sm:text-xs font-bold text-white block">Kegiatan Ekstra</span>
+                  <span className="text-[11px] sm:text-xs font-bold block" style={{ color: '#ffffff' }}>
+                    Kegiatan Ekstra
+                  </span>
                 </div>
 
-                <div className="bg-white/10 hover:bg-white/15 backdrop-blur-md border border-white/15 rounded-2xl p-3.5 sm:p-4 text-center transition-all shadow-sm">
-                  <div className="w-10 h-10 rounded-xl bg-amber-400/20 border border-amber-400/30 flex items-center justify-center mx-auto mb-2 text-amber-300">
-                    <HeartHandshake className="w-5 h-5" />
+                <div className="hero-feature-card bg-[#041d13]/90 border border-emerald-500/35 rounded-2xl p-3.5 sm:p-4 text-center transition-all shadow-md">
+                  <div className="w-10 h-10 rounded-xl bg-amber-400/25 border border-amber-400/50 flex items-center justify-center mx-auto mb-2 text-amber-300 shadow-xs">
+                    <HeartHandshake className="w-5 h-5" style={{ color: '#fde047' }} />
                   </div>
-                  <span className="text-[11px] sm:text-xs font-bold text-white block">Konseling</span>
+                  <span className="text-[11px] sm:text-xs font-bold block" style={{ color: '#ffffff' }}>
+                    Konseling
+                  </span>
                 </div>
               </div>
             </div>
 
             {/* Bottom Madrasah Building Photo Banner */}
-            <div className="relative z-10 mt-4 rounded-2xl overflow-hidden border border-white/20 shadow-lg group">
-              <div className="h-32 sm:h-40 w-full overflow-hidden relative bg-emerald-950">
+            <div className="relative z-10 mt-4 rounded-2xl overflow-hidden border border-emerald-500/40 shadow-xl group bg-[#02130b]">
+              <div className="h-32 sm:h-40 w-full overflow-hidden relative bg-[#02130b]">
                 <img
                   src={man2SbtBuildingImg}
                   alt="Gedung MAN 2 Seram Bagian Timur"
                   referrerPolicy="no-referrer"
                   className="w-full h-full object-cover object-center transform group-hover:scale-105 transition-transform duration-700"
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#062417]/90 via-transparent to-transparent flex items-end p-3">
-                  <span className="text-[11px] font-semibold text-white/90 flex items-center gap-1.5">
-                    <Building2 className="w-3.5 h-3.5 text-emerald-400" />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#02130b] via-[#02130b]/60 to-transparent flex items-end p-3.5">
+                  <span className="text-[11px] font-bold text-white flex items-center gap-2 drop-shadow-md" style={{ color: '#ffffff' }}>
+                    <Building2 className="w-4 h-4 text-emerald-400 shrink-0" style={{ color: '#34d399' }} />
                     Kampus Terpadu MAN 2 SERAM BAGIAN TIMUR
                   </span>
                 </div>
@@ -402,10 +410,11 @@ export const LoginPage: React.FC = () => {
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full py-3 px-4 rounded-xl bg-[#082a1b] hover:bg-[#062015] text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-md shadow-[#082a1b]/30 active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed"
+                  style={{ color: '#ffffff', backgroundColor: '#065f46' }}
+                  className="w-full py-3 px-4 rounded-xl hover:bg-emerald-800 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-md shadow-emerald-950/20 active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer"
                 >
-                  <Lock className="w-4 h-4" />
-                  <span>{isLoading ? 'Memverifikasi...' : 'Masuk'}</span>
+                  <Lock className="w-4 h-4 shrink-0" style={{ color: '#ffffff', stroke: '#ffffff' }} />
+                  <span style={{ color: '#ffffff' }} className="font-bold tracking-wider">{isLoading ? 'Memverifikasi...' : 'Masuk'}</span>
                 </button>
               </form>
 
@@ -494,7 +503,7 @@ export const LoginPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setIsForgotOpen(false)}
-                className="px-4 py-2 bg-[#082a1b] hover:bg-[#062015] text-white font-bold text-xs rounded-xl transition"
+                className="px-4 py-2 bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs rounded-xl transition"
               >
                 Saya Mengerti
               </button>

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   BookOpenCheck,
   Plus,
@@ -25,7 +25,13 @@ import {
   Copy,
   Check,
   Info,
-  Calendar
+  Calendar,
+  MapPin,
+  SlidersHorizontal,
+  Save,
+  RefreshCw,
+  PenTool,
+  CheckCheck
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -38,6 +44,7 @@ import {
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { StatusBadge } from '../components/common/Badge';
+import { SchoolLetterhead } from '../components/common/SchoolLetterhead';
 
 const ALL_CHAPTERS: RuleCategoryChapter[] = [
   'Bab I: Ketentuan Umum & Kehadiran',
@@ -99,6 +106,57 @@ export const TataTertibPage: React.FC = () => {
   // Form State for Handbook Metadata (SK & Poin)
   const [metaFormData, setMetaFormData] = useState<SchoolHandbookMeta>(handbookMeta);
 
+  // Dynamic Print Customization State (Tempat, Tanggal, Penandatangan Waka & Mengetahui Kepala)
+  const defaultCity = schoolSetting.address ? schoolSetting.address.split(',').pop()?.trim() || 'Bula' : 'Bula';
+  const defaultWaka = schoolSetting.wakaKesiswaanName || schoolSetting.wakaName || 'Abdul Malik Kelian, S.Pd.I.';
+  const defaultWakaNip = schoolSetting.wakaNip || '19820515 200901 1 012';
+  const defaultPrincipal = schoolSetting.principalName || 'Drs. H. M. Nur Latarissa, M.Pd.I.';
+  const defaultPrincipalNip = schoolSetting.principalNip || '19700412 199803 1 003';
+
+  const [printCustomSettings, setPrintCustomSettings] = useState({
+    issuedPlace: handbookMeta.issuedPlace || defaultCity,
+    issuedDate: handbookMeta.issuedDate || handbookMeta.effectiveDate || new Date().toISOString().split('T')[0],
+    wakaName: handbookMeta.wakaName || defaultWaka,
+    wakaNip: handbookMeta.wakaNip || defaultWakaNip,
+    signedBy: handbookMeta.signedBy || defaultPrincipal,
+    signedNip: handbookMeta.signedNip || defaultPrincipalNip,
+  });
+
+  const [showPrintOptions, setShowPrintOptions] = useState(false);
+  const [isSavedAsDefaultNotice, setIsSavedAsDefaultNotice] = useState(false);
+
+  useEffect(() => {
+    setPrintCustomSettings(prev => ({
+      ...prev,
+      issuedPlace: handbookMeta.issuedPlace || defaultCity,
+      issuedDate: handbookMeta.issuedDate || handbookMeta.effectiveDate || prev.issuedDate,
+      wakaName: handbookMeta.wakaName || defaultWaka,
+      wakaNip: handbookMeta.wakaNip || defaultWakaNip,
+      signedBy: handbookMeta.signedBy || defaultPrincipal,
+      signedNip: handbookMeta.signedNip || defaultPrincipalNip,
+    }));
+  }, [handbookMeta, schoolSetting]);
+
+  const schoolTypeLabel = useMemo(() => {
+    const sName = schoolSetting.name?.toUpperCase() || '';
+    if (sName.includes('MADRASAH') || sName.startsWith('MA') || sName.startsWith('MT') || sName.startsWith('MI')) {
+      return 'Madrasah';
+    }
+    return 'Sekolah';
+  }, [schoolSetting.name]);
+
+  const formatIndonesianDate = (dateStr: string) => {
+    if (!dateStr) return '';
+    if (/[a-zA-Z]/.test(dateStr)) return dateStr;
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      return d.toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
+    } catch {
+      return dateStr;
+    }
+  };
+
   // Filtered Rules
   const filteredRules = useMemo(() => {
     return schoolRules.filter(r => {
@@ -134,6 +192,20 @@ export const TataTertibPage: React.FC = () => {
 
     return map;
   }, [filteredRules]);
+
+  // Grouped All Rules by Chapter for Complete Official Document Printing (No filter truncation)
+  const allGroupedRules = useMemo(() => {
+    const map = new Map<RuleCategoryChapter, SchoolRuleArticle[]>();
+    ALL_CHAPTERS.forEach(ch => map.set(ch, []));
+
+    schoolRules.forEach(rule => {
+      const list = map.get(rule.chapter) || [];
+      list.push(rule);
+      map.set(rule.chapter, list);
+    });
+
+    return map;
+  }, [schoolRules]);
 
   // Statistics
   const stats = useMemo(() => {
@@ -235,6 +307,369 @@ export const TataTertibPage: React.FC = () => {
       default:
         return 'bg-slate-500/10 text-slate-600 dark:text-slate-400 border-slate-500/20';
     }
+  };
+
+  const handlePrintOfficialHandbook = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      window.print();
+      return;
+    }
+
+    const leftLogo = schoolSetting.logoLeftUrl || (schoolSetting.logoUrl && !schoolSetting.logoRightUrl ? schoolSetting.logoUrl : '');
+    const rightLogo = schoolSetting.logoRightUrl || (schoolSetting.logoUrl && schoolSetting.logoLeftUrl ? schoolSetting.logoUrl : '');
+
+    // Format address and contacts
+    const contactParts: string[] = [];
+    if (schoolSetting.address) contactParts.push(schoolSetting.address.trim());
+    if (schoolSetting.email && !schoolSetting.address?.toLowerCase().includes(schoolSetting.email.toLowerCase())) {
+      contactParts.push(`Email: ${schoolSetting.email}`);
+    }
+    if (schoolSetting.phone && !schoolSetting.address?.toLowerCase().includes(schoolSetting.phone.toLowerCase())) {
+      contactParts.push(`Telp. ${schoolSetting.phone}`);
+    }
+    if (schoolSetting.postalCode && !schoolSetting.address?.includes(schoolSetting.postalCode)) {
+      contactParts.push(`Kode Pos: ${schoolSetting.postalCode}`);
+    }
+    if (schoolSetting.npsn && !schoolSetting.address?.toLowerCase().includes(schoolSetting.npsn.toLowerCase())) {
+      contactParts.push(`NPSN: ${schoolSetting.npsn}`);
+    }
+    if (schoolSetting.website && !schoolSetting.address?.toLowerCase().includes(schoolSetting.website.toLowerCase())) {
+      contactParts.push(`Website: ${schoolSetting.website}`);
+    }
+    const fullContact = contactParts.join(' , ');
+
+    const cityLocation = schoolSetting.address ? schoolSetting.address.split(',').pop()?.trim() || 'Bula' : 'Bula';
+    const effectiveIssuedPlace = printCustomSettings.issuedPlace || handbookMeta.issuedPlace || cityLocation;
+    const effectiveIssuedDateStr = formatIndonesianDate(printCustomSettings.issuedDate || handbookMeta.issuedDate || handbookMeta.effectiveDate);
+    const effectiveWakaName = printCustomSettings.wakaName || handbookMeta.wakaName || defaultWaka;
+    const effectiveWakaNip = printCustomSettings.wakaNip || handbookMeta.wakaNip || defaultWakaNip;
+    const effectivePrincipalName = printCustomSettings.signedBy || handbookMeta.signedBy || defaultPrincipal;
+    const effectivePrincipalNip = printCustomSettings.signedNip || handbookMeta.signedNip || defaultPrincipalNip;
+
+    // Generate chapters HTML
+    let chaptersHtml = '';
+    allGroupedRules.forEach((rules, chapter) => {
+      if (rules.length === 0) return;
+      chaptersHtml += `
+        <div class="chapter-container">
+          <div class="chapter-title">${chapter.toUpperCase()}</div>
+          <table class="rules-table">
+            <thead>
+              <tr>
+                <th style="width: 14%;">Pasal / Ayat</th>
+                <th style="width: 28%;">Ketentuan Tata Tertib</th>
+                <th style="width: 38%;">Deskripsi & Sanksi Edukatif</th>
+                <th style="width: 10%; text-align: center;">Bobot</th>
+                <th style="width: 10%;">Petugas</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rules.map(r => `
+                <tr>
+                  <td class="font-bold">${r.articleNumber}</td>
+                  <td>
+                    <div class="font-bold">${r.title}</div>
+                    <div class="text-muted" style="font-size: 10px; margin-top: 2px;">Tingkat: ${r.severity}</div>
+                  </td>
+                  <td>
+                    <div>${r.description}</div>
+                    <div class="sanksi-text"><strong>Sanksi:</strong> ${r.consequence}</div>
+                  </td>
+                  <td style="text-align: center; font-weight: bold; ${r.severity === 'Apresiasi' ? 'color: #059669;' : 'color: #dc2626;'}">
+                    ${r.severity === 'Apresiasi' ? '+ ' + r.points + ' (Apresiasi)' : r.points + ' Poin'}
+                  </td>
+                  <td style="font-size: 10px;">${r.authorizedOfficer || 'Guru Piket / Wali Kelas'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+    });
+
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html lang="id">
+        <head>
+          <meta charset="UTF-8">
+          <title>Buku Tata Tertib & Pedoman Disiplin Siswa - ${schoolSetting.name || 'Madrasah'}</title>
+          <style>
+            @page {
+              size: A4 portrait;
+              margin: 12mm 15mm 15mm 15mm;
+            }
+            body {
+              font-family: "Times New Roman", Times, Georgia, serif;
+              color: #0f172a;
+              margin: 0;
+              padding: 10px 15px;
+              line-height: 1.45;
+              background-color: #ffffff;
+            }
+            .header-kop {
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+              gap: 12px;
+              margin-bottom: 4px;
+            }
+            .logo-kop {
+              width: 75px;
+              height: 75px;
+              object-fit: contain;
+            }
+            .center-kop {
+              flex: 1;
+              text-align: center;
+            }
+            .center-kop h4 {
+              font-size: 13px;
+              margin: 0;
+              text-transform: uppercase;
+              font-weight: bold;
+              letter-spacing: 0.5px;
+            }
+            .center-kop h5 {
+              font-size: 11px;
+              margin: 2px 0 0 0;
+              text-transform: uppercase;
+              font-weight: bold;
+            }
+            .center-kop h2 {
+              font-size: 16px;
+              margin: 3px 0;
+              text-transform: uppercase;
+              font-weight: 900;
+              letter-spacing: 0.5px;
+            }
+            .center-kop p {
+              font-family: Arial, sans-serif;
+              font-size: 10px;
+              margin: 2px 0;
+              color: #334155;
+            }
+            .double-line-top {
+              border-bottom: 3px solid #000;
+              margin-bottom: 2px;
+            }
+            .double-line-bottom {
+              border-bottom: 1px solid #000;
+              margin-bottom: 16px;
+            }
+            .decree-header {
+              text-align: center;
+              margin-bottom: 16px;
+            }
+            .decree-header h3 {
+              font-size: 13px;
+              font-weight: bold;
+              text-transform: uppercase;
+              text-decoration: underline;
+              margin: 0 0 3px 0;
+            }
+            .decree-header .decree-number {
+              font-family: Arial, sans-serif;
+              font-size: 11px;
+              font-weight: bold;
+              margin: 0;
+            }
+            .decree-header .decree-about {
+              font-size: 11px;
+              font-weight: bold;
+              text-transform: uppercase;
+              margin: 4px 0 0 0;
+            }
+            .decree-header .decree-title {
+              font-size: 11.5px;
+              font-weight: 900;
+              text-transform: uppercase;
+              margin: 2px auto 0 auto;
+              max-width: 620px;
+            }
+            .chapter-container {
+              page-break-inside: avoid;
+              break-inside: avoid;
+              margin-bottom: 16px;
+            }
+            .chapter-title {
+              background-color: #f1f5f9;
+              border-left: 4px solid #059669;
+              padding: 5px 8px;
+              font-weight: bold;
+              font-size: 11px;
+              text-transform: uppercase;
+              margin-bottom: 6px;
+              font-family: Arial, sans-serif;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            .rules-table {
+              width: 100%;
+              border-collapse: collapse;
+              font-family: Arial, sans-serif;
+              font-size: 10.5px;
+              margin-bottom: 10px;
+            }
+            .rules-table th {
+              background-color: #f8fafc;
+              border: 1px solid #94a3b8;
+              padding: 5px 6px;
+              text-align: left;
+              font-size: 10px;
+              text-transform: uppercase;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            .rules-table td {
+              border: 1px solid #cbd5e1;
+              padding: 5px 6px;
+              vertical-align: top;
+              line-height: 1.35;
+            }
+            .font-bold { font-weight: bold; }
+            .text-muted { color: #64748b; }
+            .sanksi-text {
+              color: #b91c1c;
+              margin-top: 3px;
+              font-size: 10px;
+            }
+            .threshold-box {
+              page-break-inside: avoid;
+              break-inside: avoid;
+              margin: 16px 0;
+              border: 1px solid #94a3b8;
+              border-radius: 6px;
+              padding: 8px 12px;
+              background-color: #fafaf9;
+              font-family: Arial, sans-serif;
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            .threshold-grid {
+              display: grid;
+              grid-template-columns: repeat(4, 1fr);
+              gap: 8px;
+              margin-top: 6px;
+              font-size: 10.5px;
+            }
+            .threshold-item {
+              border: 1px solid #e2e8f0;
+              background: #ffffff;
+              padding: 6px;
+              border-radius: 4px;
+              text-align: center;
+            }
+            .signature-section {
+              page-break-inside: avoid;
+              break-inside: avoid;
+              margin-top: 25px;
+              display: flex;
+              justify-content: space-between;
+              font-family: "Times New Roman", Times, serif;
+              width: 100%;
+            }
+            .signature-box {
+              width: 44%;
+              font-size: 11px;
+            }
+            .signature-box.left-box {
+              text-align: left;
+            }
+            .signature-box.right-box {
+              text-align: right;
+            }
+            .signature-space {
+              height: 55px;
+            }
+          </style>
+        </head>
+        <body>
+          <!-- KOP SURAT RESMI MENGIKUTI SETTING APLIKASI -->
+          <div class="header-kop">
+            ${leftLogo ? `<img class="logo-kop" src="${leftLogo}" alt="Logo Instansi Kiri" />` : '<div style="width: 75px;"></div>'}
+            <div class="center-kop">
+              ${schoolSetting.centralInstitution ? `<h4>${schoolSetting.centralInstitution}</h4>` : ''}
+              ${schoolSetting.regionalInstitution ? `<h5>${schoolSetting.regionalInstitution}</h5>` : ''}
+              <h2>${schoolSetting.name || 'NAMA SEKOLAH / MADRASAH'}</h2>
+              ${fullContact ? `<p>${fullContact}</p>` : ''}
+            </div>
+            ${rightLogo ? `<img class="logo-kop" src="${rightLogo}" alt="Logo Sekolah Kanan" />` : '<div style="width: 75px;"></div>'}
+          </div>
+          <div class="double-line-top"></div>
+          <div class="double-line-bottom"></div>
+
+          <!-- KEPALA SURAT KEPUTUSAN -->
+          <div class="decree-header">
+            <h3>SURAT KEPUTUSAN KEPALA ${schoolSetting.name?.toUpperCase().includes('MADRASAH') || schoolSetting.name?.toUpperCase().startsWith('MA') || schoolSetting.name?.toUpperCase().startsWith('MT') || schoolSetting.name?.toUpperCase().startsWith('MI') ? 'MADRASAH' : 'SEKOLAH'}</h3>
+            <p class="decree-number">Nomor: ${handbookMeta.decreeNumber}</p>
+            <p class="decree-about">TENTANG</p>
+            <p class="decree-title">${handbookMeta.decreeTitle} TAHUN PELAJARAN ${handbookMeta.academicYear || activeAcademicYear}</p>
+          </div>
+
+          <!-- DAFTAR BAB & PASAL TATA TERTIB -->
+          ${chaptersHtml}
+
+          <!-- MATRIKS AMBANG BATAS POIN SANKSI -->
+          <div class="threshold-box">
+            <div style="font-weight: bold; font-size: 11px; text-transform: uppercase;">
+              ⚖️ Matriks Ambang Batas Akumulasi Poin Pelanggaran & Tindak Lanjut:
+            </div>
+            <div class="threshold-grid">
+              <div class="threshold-item">
+                <div style="font-weight: bold; color: #d97706;">Peringatan I (SP 1)</div>
+                <div style="font-size: 12px; font-weight: 900; margin-top: 2px;">${handbookMeta.thresholdSp1} Poin</div>
+                <div style="color: #64748b; font-size: 9.5px;">Teguran Tertulis & Pembinaan</div>
+              </div>
+              <div class="threshold-item">
+                <div style="font-weight: bold; color: #ea580c;">Peringatan II (SP 2)</div>
+                <div style="font-size: 12px; font-weight: 900; margin-top: 2px;">${handbookMeta.thresholdSp2} Poin</div>
+                <div style="color: #64748b; font-size: 9.5px;">Panggilan Orang Tua & Perjanjian</div>
+              </div>
+              <div class="threshold-item">
+                <div style="font-weight: bold; color: #dc2626;">Peringatan III (SP 3)</div>
+                <div style="font-size: 12px; font-weight: 900; margin-top: 2px;">${handbookMeta.thresholdSp3} Poin</div>
+                <div style="color: #64748b; font-size: 9.5px;">Skorsing & Konferensi Kasus</div>
+              </div>
+              <div class="threshold-item">
+                <div style="font-weight: bold; color: #7f1d1d;">Dikembalikan ke Ortu</div>
+                <div style="font-size: 12px; font-weight: 900; margin-top: 2px;">${handbookMeta.thresholdDrop} Poin</div>
+                <div style="color: #64748b; font-size: 9.5px;">Pemberhentian / Mutasi</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- KOLOM TANDA TANGAN & PENGESAHAN DUA PIHAK (KIRI: KEPALA MADRASAH, KANAN: WAKA KESISWAAN) -->
+          <div class="signature-section">
+            <div class="signature-box left-box">
+              <p style="margin: 0;">Mengetahui,</p>
+              <p style="font-weight: bold; margin: 2px 0 0 0;">Kepala ${schoolTypeLabel},</p>
+              <div class="signature-space"></div>
+              <p style="font-weight: bold; text-decoration: underline; margin: 0;">${effectivePrincipalName}</p>
+              ${effectivePrincipalNip ? `<p style="font-family: Arial, sans-serif; font-size: 10px; margin: 2px 0 0 0;">NIP. ${effectivePrincipalNip}</p>` : ''}
+            </div>
+
+            <div class="signature-box right-box">
+              <p style="margin: 0;">Ditetapkan di: ${effectiveIssuedPlace}</p>
+              <p style="margin: 2px 0 0 0;">Pada tanggal: ${effectiveIssuedDateStr}</p>
+              <p style="font-weight: bold; margin: 4px 0 0 0;">Waka Kesiswaan,</p>
+              <div class="signature-space"></div>
+              <p style="font-weight: bold; text-decoration: underline; margin: 0;">${effectiveWakaName}</p>
+              ${effectiveWakaNip ? `<p style="font-family: Arial, sans-serif; font-size: 10px; margin: 2px 0 0 0;">NIP. ${effectiveWakaNip}</p>` : ''}
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    printWindow.document.open();
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+
+    setTimeout(() => {
+      printWindow.focus();
+      printWindow.print();
+    }, 350);
   };
 
   return (
@@ -1139,7 +1574,19 @@ export const TataTertibPage: React.FC = () => {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Tempat Penetapan / Kota
+              </label>
+              <input
+                type="text"
+                value={metaFormData.issuedPlace || ''}
+                onChange={e => setMetaFormData({ ...metaFormData, issuedPlace: e.target.value })}
+                placeholder="Contoh: Bula"
+                className="w-full p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-white"
+              />
+            </div>
             <div>
               <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
                 Tanggal Penetapan Berlaku
@@ -1147,7 +1594,7 @@ export const TataTertibPage: React.FC = () => {
               <input
                 type="date"
                 value={metaFormData.effectiveDate}
-                onChange={e => setMetaFormData({ ...metaFormData, effectiveDate: e.target.value })}
+                onChange={e => setMetaFormData({ ...metaFormData, effectiveDate: e.target.value, issuedDate: e.target.value })}
                 className="w-full p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-white"
               />
             </div>
@@ -1159,6 +1606,7 @@ export const TataTertibPage: React.FC = () => {
                 type="text"
                 value={metaFormData.academicYear}
                 onChange={e => setMetaFormData({ ...metaFormData, academicYear: e.target.value })}
+                placeholder="2026/2027"
                 className="w-full p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-white"
               />
             </div>
@@ -1216,29 +1664,69 @@ export const TataTertibPage: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Nama Kepala Madrasah / Sekolah
-              </label>
-              <input
-                type="text"
-                value={metaFormData.signedBy}
-                onChange={e => setMetaFormData({ ...metaFormData, signedBy: e.target.value })}
-                className="w-full p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-white"
-              />
+          {/* Penandatangan (Waka Kesiswaan) */}
+          <div className="p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/40 rounded-xl space-y-3">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-blue-800 dark:text-blue-300 block">
+              Penandatangan: Waka Kesiswaan
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Nama Waka Kesiswaan
+                </label>
+                <input
+                  type="text"
+                  value={metaFormData.wakaName || ''}
+                  onChange={e => setMetaFormData({ ...metaFormData, wakaName: e.target.value })}
+                  placeholder="Abdul Malik Kelian, S.Pd.I."
+                  className="w-full p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-white"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  NIP Waka Kesiswaan
+                </label>
+                <input
+                  type="text"
+                  value={metaFormData.wakaNip || ''}
+                  onChange={e => setMetaFormData({ ...metaFormData, wakaNip: e.target.value })}
+                  placeholder="19820515 200901 1 012"
+                  className="w-full p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-white font-mono"
+                />
+              </div>
             </div>
-            <div>
-              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                NIP Kepala Sekolah
-              </label>
-              <input
-                type="text"
-                value={metaFormData.signedNip || ''}
-                onChange={e => setMetaFormData({ ...metaFormData, signedNip: e.target.value })}
-                placeholder="197508122003121002"
-                className="w-full p-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-white font-mono"
-              />
+          </div>
+
+          {/* Mengetahui (Kepala Madrasah / Sekolah) */}
+          <div className="p-3 bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl space-y-3">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-800 dark:text-slate-300 block">
+              Mengetahui: Kepala {schoolTypeLabel}
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Nama Kepala {schoolTypeLabel}
+                </label>
+                <input
+                  type="text"
+                  value={metaFormData.signedBy}
+                  onChange={e => setMetaFormData({ ...metaFormData, signedBy: e.target.value })}
+                  placeholder="Drs. H. M. Nur Latarissa, M.Pd.I."
+                  className="w-full p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-white"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  NIP Kepala {schoolTypeLabel}
+                </label>
+                <input
+                  type="text"
+                  value={metaFormData.signedNip || ''}
+                  onChange={e => setMetaFormData({ ...metaFormData, signedNip: e.target.value })}
+                  placeholder="19700412 199803 1 003"
+                  className="w-full p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-white font-mono"
+                />
+              </div>
             </div>
           </div>
 
@@ -1339,57 +1827,257 @@ export const TataTertibPage: React.FC = () => {
         onClose={() => setIsPrintModalOpen(false)}
         title="Dokumen Resmi Buku Tata Tertib Siswa"
         subtitle="Format siap cetak untuk lampiran rapat dinas, sosialisasi wali murid & guru piket"
-        maxWidth="4xl"
+        maxWidth="5xl"
       >
         <div className="space-y-6 text-xs font-sans text-slate-900 dark:text-slate-100">
-          {/* Header Kop Resmi */}
-          <div className="p-6 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl space-y-4">
-            <div className="text-center pb-4 border-b-2 border-slate-900 dark:border-slate-100">
-              <h2 className="text-sm font-bold tracking-widest uppercase">
-                KEMENTERIAN AGAMA REPUBLIK INDONESIA
-              </h2>
-              <h1 className="text-base font-black uppercase tracking-wider text-slate-900 dark:text-white">
-                {schoolSetting.name || 'MADRASAH ALIYAH NEGERI'}
-              </h1>
-              <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">
-                {schoolSetting.address || 'Jl. Pendidikan Karakter No. 1'} • NPSN: {schoolSetting.npsn || '12345678'}
-              </p>
+          {/* Action Bar & Customizer at Top */}
+          <div className="space-y-3 no-print">
+            <div className="flex flex-wrap items-center justify-between gap-3 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-xl">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span className="text-xs text-amber-900 dark:text-amber-200 font-medium">
+                  Kop surat sinkron otomatis. Ditandatangani Waka Kesiswaan & Mengetahui Kepala {schoolTypeLabel}.
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowPrintOptions(!showPrintOptions)}
+                  className={`px-3 py-2 rounded-lg text-xs font-semibold flex items-center gap-1.5 border transition-all ${
+                    showPrintOptions
+                      ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                      : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-300 dark:border-slate-700 hover:bg-slate-50'
+                  }`}
+                >
+                  <SlidersHorizontal className="w-3.5 h-3.5" />
+                  <span>{showPrintOptions ? 'Tutup Pengaturan Cetak' : 'Sesuaikan Tempat, Tanggal & TTD'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePrintOfficialHandbook}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg flex items-center gap-1.5 shadow-xs transition-all text-xs"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>Cetak / Cetak PDF (A4)</span>
+                </button>
+              </div>
             </div>
 
-            <div className="text-center py-2">
-              <h3 className="text-sm font-black uppercase underline">
-                SURAT KEPUTUSAN KEPALA MADRASAH
+            {/* Collapsible Quick Customization Toolbar */}
+            {showPrintOptions && (
+              <div className="p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <PenTool className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    <h5 className="font-bold text-xs text-slate-800 dark:text-slate-200">
+                      Penyesuaian Tempat, Tanggal & Penandatangan Dokumen Cetak
+                    </h5>
+                  </div>
+                  {isSavedAsDefaultNotice && (
+                    <span className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                      <CheckCheck className="w-3.5 h-3.5" /> Tersimpan ke Database
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1">
+                      <MapPin className="w-3 h-3 text-slate-500" /> Tempat Penetapan
+                    </label>
+                    <input
+                      type="text"
+                      value={printCustomSettings.issuedPlace}
+                      onChange={e => setPrintCustomSettings({ ...printCustomSettings, issuedPlace: e.target.value })}
+                      placeholder="Bula"
+                      className="w-full p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center gap-1">
+                      <Calendar className="w-3 h-3 text-slate-500" /> Tanggal Penetapan
+                    </label>
+                    <input
+                      type="date"
+                      value={printCustomSettings.issuedDate}
+                      onChange={e => setPrintCustomSettings({ ...printCustomSettings, issuedDate: e.target.value })}
+                      className="w-full p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Waka Kesiswaan (Penandatangan)
+                    </label>
+                    <input
+                      type="text"
+                      value={printCustomSettings.wakaName}
+                      onChange={e => setPrintCustomSettings({ ...printCustomSettings, wakaName: e.target.value })}
+                      placeholder="Abdul Malik Kelian, S.Pd.I."
+                      className="w-full p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      NIP Waka Kesiswaan
+                    </label>
+                    <input
+                      type="text"
+                      value={printCustomSettings.wakaNip}
+                      onChange={e => setPrintCustomSettings({ ...printCustomSettings, wakaNip: e.target.value })}
+                      placeholder="19820515 200901 1 012"
+                      className="w-full p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white font-mono text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Kepala {schoolTypeLabel} (Mengetahui)
+                    </label>
+                    <input
+                      type="text"
+                      value={printCustomSettings.signedBy}
+                      onChange={e => setPrintCustomSettings({ ...printCustomSettings, signedBy: e.target.value })}
+                      placeholder="Drs. H. M. Nur Latarissa, M.Pd.I."
+                      className="w-full p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      NIP Kepala {schoolTypeLabel}
+                    </label>
+                    <input
+                      type="text"
+                      value={printCustomSettings.signedNip}
+                      onChange={e => setPrintCustomSettings({ ...printCustomSettings, signedNip: e.target.value })}
+                      placeholder="19700412 199803 1 003"
+                      className="w-full p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white font-mono text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-200 dark:border-slate-800">
+                  <span className="text-[11px] text-slate-500">
+                    Perubahan pada form ini langsung terlihat pada pratinjau di bawah dan hasil cetak.
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPrintCustomSettings({
+                          issuedPlace: defaultCity,
+                          issuedDate: new Date().toISOString().split('T')[0],
+                          wakaName: defaultWaka,
+                          wakaNip: defaultWakaNip,
+                          signedBy: defaultPrincipal,
+                          signedNip: defaultPrincipalNip,
+                        });
+                      }}
+                      className="px-3 py-1.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-medium flex items-center gap-1"
+                    >
+                      <RefreshCw className="w-3 h-3" /> Reset Default
+                    </button>
+                    {isWakaOrAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          updateHandbookMeta({
+                            ...handbookMeta,
+                            issuedPlace: printCustomSettings.issuedPlace,
+                            issuedDate: printCustomSettings.issuedDate,
+                            effectiveDate: printCustomSettings.issuedDate,
+                            wakaName: printCustomSettings.wakaName,
+                            wakaNip: printCustomSettings.wakaNip,
+                            signedBy: printCustomSettings.signedBy,
+                            signedNip: printCustomSettings.signedNip
+                          });
+                          setIsSavedAsDefaultNotice(true);
+                          setTimeout(() => setIsSavedAsDefaultNotice(false), 3000);
+                        }}
+                        className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 shadow-2xs"
+                      >
+                        <Save className="w-3 h-3" /> Simpan Permanen
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Kertas Dokumen Resmi Siap Cetak (Tanpa Box Gulir / Scroll) */}
+          <div className="p-6 sm:p-8 bg-white text-slate-900 border border-slate-300 rounded-xl shadow-lg space-y-6">
+            {/* Header Kop Resmi Mengikuti Setting Aplikasi */}
+            <SchoolLetterhead
+              schoolInfo={schoolSetting}
+              className="mb-2"
+            />
+
+            {/* Judul Keputusan */}
+            <div className="text-center py-2 border-b border-slate-200 pb-4">
+              <h3 className="text-sm sm:text-base font-black uppercase underline tracking-wide">
+                SURAT KEPUTUSAN KEPALA {schoolSetting.name?.toUpperCase().includes('MADRASAH') || schoolSetting.name?.toUpperCase().startsWith('MA') || schoolSetting.name?.toUpperCase().startsWith('MT') || schoolSetting.name?.toUpperCase().startsWith('MI') ? 'MADRASAH' : 'SEKOLAH'}
               </h3>
-              <p className="font-mono font-bold text-xs mt-0.5">Nomor: {handbookMeta.decreeNumber}</p>
-              <p className="text-xs font-semibold mt-1">TENTANG</p>
-              <p className="text-xs font-bold uppercase max-w-lg mx-auto">
+              <p className="font-mono font-bold text-xs sm:text-sm mt-1 text-slate-800">
+                Nomor: {handbookMeta.decreeNumber}
+              </p>
+              <p className="text-xs font-bold uppercase text-slate-600 mt-1">TENTANG</p>
+              <p className="text-xs sm:text-sm font-extrabold uppercase max-w-2xl mx-auto text-slate-900 mt-0.5 leading-snug">
                 {handbookMeta.decreeTitle} TAHUN PELAJARAN {handbookMeta.academicYear || activeAcademicYear}
               </p>
             </div>
 
-            <div className="space-y-4 pt-2 max-h-[400px] overflow-y-auto pr-2">
-              {Array.from(groupedRules.entries()).map(([chapter, rules]) => {
+            {/* Seluruh Isi Dokumen Terbuka Penuh (Tidak Menggunakan Tipe Gulir / No Scroll) */}
+            <div className="space-y-6 pt-1">
+              {Array.from(allGroupedRules.entries()).map(([chapter, rules]) => {
                 if (rules.length === 0) return null;
                 return (
-                  <div key={chapter} className="space-y-2">
-                    <h4 className="font-bold text-xs bg-slate-100 dark:bg-slate-800 p-2 rounded uppercase border-l-4 border-amber-500">
-                      {chapter}
-                    </h4>
-                    <div className="space-y-2 pl-2">
+                  <div key={chapter} className="space-y-3 print-avoid-break">
+                    <div className="flex items-center justify-between bg-slate-100 px-3 py-2 rounded-lg border-l-4 border-emerald-600">
+                      <h4 className="font-bold text-xs sm:text-sm uppercase text-slate-900 tracking-wide">
+                        {chapter}
+                      </h4>
+                      <span className="text-[11px] font-semibold text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200 shadow-2xs">
+                        {rules.length} Klausul
+                      </span>
+                    </div>
+                    
+                    <div className="space-y-2.5">
                       {rules.map(r => (
-                        <div key={r.id} className="text-[11px] pb-2 border-b border-slate-200 dark:border-slate-800">
-                          <div className="flex items-center justify-between font-bold">
-                            <span>
+                        <div
+                          key={r.id}
+                          className="p-3 rounded-lg border border-slate-200 bg-slate-50/70 space-y-1.5 print-avoid-break"
+                        >
+                          <div className="flex items-start justify-between gap-2 font-bold">
+                            <span className="text-xs text-slate-950 font-semibold">
                               {r.articleNumber}: {r.title}
                             </span>
-                            <span className="font-mono text-amber-600">
-                              {r.severity === 'Apresiasi' ? 'Apresiasi' : `${r.points} Poin`}
+                            <span className={`shrink-0 font-mono text-[11px] font-bold px-2 py-0.5 rounded border ${
+                              r.severity === 'Apresiasi'
+                                ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                                : 'bg-rose-100 text-rose-800 border-rose-300'
+                            }`}>
+                              {r.severity === 'Apresiasi' ? `+${r.points} Poin (Apresiasi)` : `${r.points} Poin`}
                             </span>
                           </div>
-                          <p className="text-slate-600 dark:text-slate-300 mt-0.5">{r.description}</p>
-                          <p className="text-[10px] text-rose-600 dark:text-rose-400 mt-0.5">
-                            <strong>Sanksi:</strong> {r.consequence}
+                          
+                          <p className="text-slate-700 text-xs leading-relaxed">
+                            {r.description}
                           </p>
+
+                          <div className="pt-1.5 flex flex-wrap items-center justify-between gap-2 text-[11px] border-t border-slate-200">
+                            <span className="text-rose-700 font-medium">
+                              <strong>Sanksi Edukatif:</strong> {r.consequence}
+                            </span>
+                            <span className="text-slate-500 font-medium">
+                              Petugas: {r.authorizedOfficer || 'Guru Piket & Wali Kelas'}
+                            </span>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1398,35 +2086,100 @@ export const TataTertibPage: React.FC = () => {
               })}
             </div>
 
-            {/* Signature Area */}
-            <div className="pt-6 flex justify-end">
-              <div className="text-center w-64">
-                <p className="text-xs">Ditetapkan di: Tempat Kedudukan Sekolah</p>
-                <p className="text-xs">Pada tanggal: {new Date(handbookMeta.effectiveDate).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-                <p className="text-xs font-bold mt-2">Kepala Madrasah / Sekolah,</p>
-                <div className="h-16 flex items-center justify-center text-slate-300 italic text-[10px]">
-                  [Tanda Tangan & Stempel Resmi]
+            {/* Matriks Ambang Batas Poin Sanksi */}
+            <div className="p-4 rounded-xl border border-slate-300 bg-slate-50 print-avoid-break space-y-2">
+              <div className="font-bold text-xs uppercase text-slate-900 flex items-center gap-1.5">
+                <Scale className="w-4 h-4 text-amber-600" />
+                <span>Matriks Ambang Batas Akumulasi Poin Pelanggaran & Tindak Lanjut</span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
+                <div className="p-2.5 rounded bg-white border border-slate-200 text-center">
+                  <div className="font-bold text-amber-700 text-[11px]">Peringatan I (SP 1)</div>
+                  <div className="text-sm font-black text-slate-900 mt-0.5">{handbookMeta.thresholdSp1} Poin</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">Teguran & Pembinaan</div>
                 </div>
-                <p className="text-xs font-bold underline">{handbookMeta.signedBy}</p>
-                {handbookMeta.signedNip && <p className="text-[10px] font-mono">NIP. {handbookMeta.signedNip}</p>}
+                <div className="p-2.5 rounded bg-white border border-slate-200 text-center">
+                  <div className="font-bold text-orange-700 text-[11px]">Peringatan II (SP 2)</div>
+                  <div className="text-sm font-black text-slate-900 mt-0.5">{handbookMeta.thresholdSp2} Poin</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">Panggilan Orang Tua</div>
+                </div>
+                <div className="p-2.5 rounded bg-white border border-slate-200 text-center">
+                  <div className="font-bold text-rose-700 text-[11px]">Peringatan III (SP 3)</div>
+                  <div className="text-sm font-black text-slate-900 mt-0.5">{handbookMeta.thresholdSp3} Poin</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">Skorsing & Konferensi Kasus</div>
+                </div>
+                <div className="p-2.5 rounded bg-white border border-slate-200 text-center">
+                  <div className="font-bold text-red-900 text-[11px]">Dikembalikan ke Ortu</div>
+                  <div className="text-sm font-black text-slate-900 mt-0.5">{handbookMeta.thresholdDrop} Poin</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">Pemberhentian / Mutasi</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Signature Area (Kiri: Kepala Madrasah / Sekolah, Kanan: Waka Kesiswaan) */}
+            <div className="pt-6 flex flex-col sm:flex-row justify-between items-start gap-8 font-serif print-avoid-break">
+              {/* Kolom Mengetahui: Kepala Madrasah / Sekolah */}
+              <div className="text-center w-full sm:w-64">
+                <p className="text-xs">Mengetahui,</p>
+                <p className="text-xs font-bold mt-0.5">
+                  Kepala {schoolTypeLabel},
+                </p>
+                <div className="h-20 flex items-center justify-center text-slate-300 italic text-[11px]">
+                  [Tanda Tangan & Stempel]
+                </div>
+                <p className="text-xs font-bold underline">
+                  {printCustomSettings.signedBy || defaultPrincipal}
+                </p>
+                {(printCustomSettings.signedNip || defaultPrincipalNip) && (
+                  <p className="text-[11px] font-sans font-medium text-slate-700 mt-0.5">
+                    NIP. {printCustomSettings.signedNip || defaultPrincipalNip}
+                  </p>
+                )}
+              </div>
+
+              {/* Kolom Penandatangan: Waka Kesiswaan */}
+              <div className="text-center w-full sm:w-64">
+                <p className="text-xs">
+                  Ditetapkan di: {printCustomSettings.issuedPlace || defaultCity}
+                </p>
+                <p className="text-xs mt-0.5">
+                  Pada tanggal: {formatIndonesianDate(printCustomSettings.issuedDate)}
+                </p>
+                <p className="text-xs font-bold mt-2">
+                  Waka Kesiswaan,
+                </p>
+                <div className="h-20 flex items-center justify-center text-slate-300 italic text-[11px]">
+                  [Tanda Tangan]
+                </div>
+                <p className="text-xs font-bold underline">
+                  {printCustomSettings.wakaName || defaultWaka}
+                </p>
+                {(printCustomSettings.wakaNip || defaultWakaNip) && (
+                  <p className="text-[11px] font-sans font-medium text-slate-700 mt-0.5">
+                    NIP. {printCustomSettings.wakaNip || defaultWakaNip}
+                  </p>
+                )}
               </div>
             </div>
           </div>
 
+          {/* Modal Bottom Footer Controls */}
           <div className="flex justify-between items-center pt-2">
-            <span className="text-[11px] text-slate-500">Total {schoolRules.length} pasal terdaftar dalam sistem</span>
+            <span className="text-[11px] text-slate-500">
+              Total {schoolRules.length} pasal terdaftar • Format Standar Naskah Dinas Cetak A4
+            </span>
             <div className="flex space-x-2">
               <button
                 type="button"
                 onClick={() => setIsPrintModalOpen(false)}
-                className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg"
+                className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-medium hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
               >
                 Tutup
               </button>
               <button
                 type="button"
-                onClick={() => window.print()}
-                className="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg flex items-center gap-1.5 shadow-xs"
+                onClick={handlePrintOfficialHandbook}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg flex items-center gap-1.5 shadow-xs text-xs transition-colors"
               >
                 <Printer className="w-4 h-4" />
                 <span>Cetak / Cetak PDF</span>

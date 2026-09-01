@@ -26,6 +26,8 @@ import {
   OsimWorkProgram,
   OsimAspiration,
   OsimMeeting,
+  OsimDepartment,
+  DEFAULT_OSIM_DEPARTMENTS,
   CashAccount,
   CashTransaction,
   SchoolRuleArticle,
@@ -367,6 +369,7 @@ export const INITIAL_OSIM_MEMBERS: OsimMember[] = [];
 export const INITIAL_OSIM_PROGRAMS: OsimWorkProgram[] = [];
 export const INITIAL_OSIM_ASPIRATIONS: OsimAspiration[] = [];
 export const INITIAL_OSIM_MEETINGS: OsimMeeting[] = [];
+export const INITIAL_OSIM_DEPARTMENTS: OsimDepartment[] = DEFAULT_OSIM_DEPARTMENTS;
 
 export const INITIAL_ANNOUNCEMENTS: Announcement[] = [
   {
@@ -685,7 +688,7 @@ export const PURGED_DEMO_EMAILS = [
 export const INITIAL_HANDBOOK_META: SchoolHandbookMeta = {
   decreeNumber: 'SK/421.3/089/MAN-SBT/KESISWAAN/2026',
   decreeTitle: 'Surat Keputusan Kepala Madrasah tentang Tata Tertib, Kode Etik, dan Pedoman Disiplin Siswa',
-  effectiveDate: '15 Juli 2026',
+  effectiveDate: '2026-07-15',
   academicYear: '2026/2027',
   totalPoinMax: 100,
   thresholdSp1: 25, // SP 1 & Pembinaan Wali Kelas / BK
@@ -694,6 +697,10 @@ export const INITIAL_HANDBOOK_META: SchoolHandbookMeta = {
   thresholdDrop: 100, // Konferensi Pleno Kasus & Pengembalian ke Orang Tua
   signedBy: 'Drs. H. M. Nur Latarissa, M.Pd.I.',
   signedNip: '19700412 199803 1 003',
+  wakaName: 'Abdul Malik Kelian, S.Pd.I.',
+  wakaNip: '19820515 200901 1 012',
+  issuedPlace: 'Bula',
+  issuedDate: '2026-07-15',
   lastUpdated: new Date().toISOString()
 };
 

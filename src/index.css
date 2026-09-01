@@ -1,11 +1,14 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700;800&family=Roboto:wght@400;500;700;900&display=swap');
 @import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));
+@custom-variant light (&:where(.light, .light *, [data-mode="light"], [data-mode="light"] *));
 
 @layer base {
   :root {
     color-scheme: dark;
-    --font-app: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-app: "Plus Jakarta Sans", "Inter", "Roboto", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   }
 
   :root.light, [data-mode="light"], html.light {
@@ -18,18 +21,25 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  body, button, input, select, textarea, div, span, p, h1, h2, h3, h4, h5, h6, table, tr, th, td, label, a {
+    font-family: var(--font-app);
+  }
+
+  .font-mono, [class*="font-mono"] {
+    font-family: var(--font-mono) !important;
   }
 
   /* Font Family Switching */
   [data-font-family="jakarta"] {
-    --font-app: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-app: "Plus Jakarta Sans", "Inter", "Roboto", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
   }
   [data-font-family="inter"] {
-    --font-app: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-app: "Inter", "Plus Jakarta Sans", "Roboto", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
   }
   [data-font-family="system"] {
-    --font-app: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --font-app: "Roboto", -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   }
 
   /* Font Sizing Scaling */
@@ -439,9 +449,6 @@ html.light,
   .bg-\[\#16161a\],
   .bg-\[\#111318\],
   .bg-\[\#101013\],
-  .bg-\[\#082a1b\],
-  .bg-\[\#0a4829\],
-  .bg-\[\#062015\],
   .bg-slate-900,
   .bg-slate-950,
   .bg-zinc-900,
@@ -595,7 +602,8 @@ html.light,
     border-color: var(--border-color) !important;
   }
 
-  /* High contrast primary text & headings */
+  /* High contrast primary text & headings in Light Mode */
+  .text-white:not(button):not([class*="bg-blue-"]):not([class*="bg-indigo-"]):not([class*="bg-emerald-"]):not([class*="bg-amber-"]):not([class*="bg-red-"]):not([class*="bg-purple-"]):not([class*="bg-rose-"]):not(.auth-hero-panel *):not(.preserve-dark *):not(.preserve-dark),
   .text-slate-50,
   .text-slate-100,
   .text-slate-200,
@@ -608,33 +616,31 @@ html.light,
     color: var(--text-primary) !important;
   }
 
-  /* Secondary texts */
+  /* Secondary texts in Light Mode */
   .text-slate-300,
   .text-zinc-300,
   .text-gray-300 {
     color: var(--text-secondary) !important;
+    font-weight: 550;
   }
 
-  /* Muted & Subtitle texts */
+  /* Muted & Subtitle texts with enhanced WCAG AAA readability */
   .text-slate-400,
   .text-zinc-400,
   .text-gray-400 {
     color: var(--text-muted) !important;
+    font-weight: 500;
   }
 
   .text-slate-500,
   .text-zinc-500,
   .text-gray-500 {
-    color: #475569 !important;
+    color: var(--text-secondary) !important;
+    font-weight: 500;
   }
 
   .text-slate-600,
   .text-zinc-600 {
-    color: #64748b !important;
-  }
-
-  /* Unstyled text-white in light mode gets primary text color */
-  .text-white:not(button):not(a):not([class*="bg-blue"]):not([class*="bg-indigo"]):not([class*="bg-emerald"]):not([class*="bg-red"]):not([class*="bg-rose"]):not([class*="bg-purple"]):not([class*="bg-amber"]):not([class*="from-"]):not([class*="badge"]) {
     color: var(--text-primary) !important;
   }
 
@@ -642,19 +648,27 @@ html.light,
   button.bg-blue-600,
   button.bg-indigo-600,
   button.bg-emerald-600,
+  button.bg-emerald-700,
+  button.bg-emerald-800,
+  button.bg-emerald-900,
+  button.bg-\[\#082a1b\],
+  button.bg-\[\#0a4829\],
   button.bg-red-600,
   button.bg-purple-600,
   button.bg-amber-600,
   button.bg-rose-600,
-  button.bg-emerald-700,
   .bg-blue-600,
   .bg-indigo-600,
   .bg-emerald-600,
+  .bg-emerald-700,
+  .bg-emerald-800,
+  .bg-emerald-900,
+  .bg-\[\#082a1b\],
+  .bg-\[\#0a4829\],
   .bg-red-600,
   .bg-purple-600,
   .bg-amber-600,
   .bg-rose-600,
-  .bg-emerald-700,
   .bg-red-500,
   .bg-emerald-500,
   .bg-blue-500,
@@ -662,6 +676,11 @@ html.light,
   button.bg-blue-600 *,
   button.bg-indigo-600 *,
   button.bg-emerald-600 *,
+  button.bg-emerald-700 *,
+  button.bg-emerald-800 *,
+  button.bg-emerald-900 *,
+  button.bg-\[\#082a1b\] *,
+  button.bg-\[\#0a4829\] *,
   button.bg-red-600 *,
   button.bg-purple-600 *,
   button.bg-amber-600 *,
@@ -670,6 +689,7 @@ html.light,
   [class*="from-indigo-600"] *,
   [class*="from-emerald-600"] * {
     color: #ffffff !important;
+    fill: currentColor;
   }
 
   /* Neon & Pastel text colors converted to deep, high-contrast, crisp colors in Light Mode */
@@ -952,6 +972,67 @@ html.light,
 }
 
 /* ------------------------------------------------------------- */
+/* 2.1 AUTH HERO & PRESERVED DARK PANELS (GUARANTEED CONTRAST)   */
+/* ------------------------------------------------------------- */
+.auth-hero-panel,
+.preserve-dark {
+  background: linear-gradient(135deg, #052015 0%, #082d1e 50%, #0c3e29 100%) !important;
+  color: #ffffff !important;
+}
+
+.auth-hero-panel *,
+.preserve-dark * {
+  -webkit-font-smoothing: antialiased;
+}
+
+.auth-hero-panel .hero-title,
+.preserve-dark .hero-title {
+  color: #ffffff !important;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+}
+
+.auth-hero-panel .hero-subtitle,
+.preserve-dark .hero-subtitle {
+  color: #fde047 !important; /* High contrast vibrant gold */
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.auth-hero-panel .hero-description,
+.preserve-dark .hero-description {
+  color: #ecfdf5 !important; /* Mint white with 14:1 contrast */
+}
+
+.auth-hero-panel .hero-feature-card,
+.preserve-dark .hero-feature-card {
+  background-color: rgba(4, 28, 18, 0.88) !important;
+  border: 1px solid rgba(16, 185, 129, 0.4) !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25) !important;
+}
+
+.auth-hero-panel .hero-feature-card span,
+.preserve-dark .hero-feature-card span {
+  color: #ffffff !important;
+  font-weight: 700 !important;
+}
+
+.auth-hero-panel .hero-badge,
+.preserve-dark .hero-badge {
+  background-color: rgba(3, 22, 14, 0.85) !important;
+  border: 1px solid rgba(16, 185, 129, 0.4) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
+}
+
+.auth-hero-panel .hero-badge h3,
+.preserve-dark .hero-badge h3 {
+  color: #ffffff !important;
+}
+
+.auth-hero-panel .hero-badge p,
+.preserve-dark .hero-badge p {
+  color: #6ee7b7 !important;
+}
+
+/* ------------------------------------------------------------- */
 /* 3. HIGH CONTRAST & TYPOGRAPHY SHARPNESS ENHANCEMENTS          */
 /* ------------------------------------------------------------- */
 [data-font-contrast="high"] h1,
@@ -968,4 +1049,86 @@ html.light,
 [data-font-contrast="high"] span,
 [data-font-contrast="high"] label {
   text-rendering: geometricPrecision;
+}
+
+/* ------------------------------------------------------------- */
+/* 4. OFFICIAL PRINT MEDIA STYLES (NO-SCROLL, FULL-PAGE PRINT)   */
+/* ------------------------------------------------------------- */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm 15mm 15mm 15mm;
+  }
+
+  body {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    font-family: "Times New Roman", Times, Georgia, serif !important;
+    overflow: visible !important;
+    height: auto !important;
+  }
+
+  /* Hide app navigation, sidebar, fixed floating bars, toolbars, buttons */
+  nav,
+  aside,
+  header,
+  .no-print,
+  button:not(.print-include),
+  .fixed.bottom-0,
+  .fixed.top-0:not(.print-modal-container) {
+    display: none !important;
+  }
+
+  /* Unfold modal containers to full height during print */
+  .fixed.inset-0 {
+    position: static !important;
+    overflow: visible !important;
+    height: auto !important;
+    min-height: 0 !important;
+    background: transparent !important;
+    display: block !important;
+    z-index: auto !important;
+  }
+
+  .fixed.inset-0 > div:first-child {
+    display: none !important; /* Hide backdrop */
+  }
+
+  .fixed.inset-0 .min-h-screen {
+    min-height: 0 !important;
+    padding: 0 !important;
+    display: block !important;
+  }
+
+  .fixed.inset-0 .max-h-\[90vh\],
+  .fixed.inset-0 [class*="max-h-"],
+  .fixed.inset-0 .overflow-y-auto,
+  .overflow-y-auto {
+    max-height: none !important;
+    height: auto !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    border: none !important;
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    display: block !important;
+  }
+
+  .print-page-break {
+    page-break-before: always;
+    break-before: page;
+  }
+
+  .print-avoid-break,
+  .chapter-block,
+  .rule-print-item {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  /* Retain full fidelity colors for badges, borders and official headers */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
 }

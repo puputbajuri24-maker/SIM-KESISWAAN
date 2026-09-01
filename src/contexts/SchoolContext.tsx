@@ -33,6 +33,7 @@ import {
   OsimWorkProgram,
   OsimAspiration,
   OsimMeeting,
+  OsimDepartment,
   CashAccount,
   CashTransaction,
   UserProfile,
@@ -67,6 +68,7 @@ import {
   INITIAL_OSIM_PROGRAMS,
   INITIAL_OSIM_ASPIRATIONS,
   INITIAL_OSIM_MEETINGS,
+  INITIAL_OSIM_DEPARTMENTS,
   INITIAL_CASH_ACCOUNTS,
   INITIAL_CASH_TRANSACTIONS,
   INITIAL_SCHOOL_RULES,
@@ -218,6 +220,7 @@ interface SchoolContextType {
   osimPrograms: OsimWorkProgram[];
   osimAspirations: OsimAspiration[];
   osimMeetings: OsimMeeting[];
+  osimDepartments: OsimDepartment[];
   addOsimMember: (data: Omit<OsimMember, 'id' | 'createdAt'>) => Promise<void>;
   updateOsimMember: (id: string, data: Partial<OsimMember>) => Promise<void>;
   deleteOsimMember: (id: string) => Promise<void>;
@@ -230,6 +233,10 @@ interface SchoolContextType {
   addOsimMeeting: (data: Omit<OsimMeeting, 'id' | 'createdAt'>) => Promise<void>;
   updateOsimMeeting: (id: string, data: Partial<OsimMeeting>) => Promise<void>;
   deleteOsimMeeting: (id: string) => Promise<void>;
+  addOsimDepartment: (data: Omit<OsimDepartment, 'id' | 'createdAt'>) => Promise<void>;
+  updateOsimDepartment: (id: string, data: Partial<OsimDepartment>) => Promise<void>;
+  deleteOsimDepartment: (id: string) => Promise<void>;
+  resetOsimDepartmentsToDefault: () => Promise<void>;
 
   // Neraca Kas & Transparansi Keuangan Kesiswaan
   cashAccounts: CashAccount[];
@@ -595,6 +602,19 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return INITIAL_OSIM_MEETINGS;
   });
 
+  const [osimDepartments, setOsimDepartments] = useState<OsimDepartment[]>(() => {
+    const saved = localStorage.getItem('sim_osim_departments');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      } catch (e) {}
+    }
+    return INITIAL_OSIM_DEPARTMENTS;
+  });
+
   const [cashAccounts, setCashAccounts] = useState<CashAccount[]>(() => {
     const saved = localStorage.getItem('sim_cash_accounts');
     if (saved) {
@@ -685,6 +705,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     localStorage.setItem('sim_osim_programs', JSON.stringify(osimPrograms));
     localStorage.setItem('sim_osim_aspirations', JSON.stringify(osimAspirations));
     localStorage.setItem('sim_osim_meetings', JSON.stringify(osimMeetings));
+    localStorage.setItem('sim_osim_departments', JSON.stringify(osimDepartments));
     localStorage.setItem('sim_cash_accounts', JSON.stringify(cashAccounts));
     localStorage.setItem('sim_cash_transactions', JSON.stringify(cashTransactions));
     localStorage.setItem('sim_school_rules', JSON.stringify(schoolRules));
@@ -714,6 +735,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     osimPrograms,
     osimAspirations,
     osimMeetings,
+    osimDepartments,
     cashAccounts,
     cashTransactions,
     announcements,
@@ -890,6 +912,14 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           const loadedOsimMeet: OsimMeeting[] = [];
           osimMeetSnap.forEach(doc => loadedOsimMeet.push({ id: doc.id, ...doc.data() } as OsimMeeting));
           setOsimMeetings(loadedOsimMeet);
+
+          const osimDeptSnap = await getDocs(collection(db, 'osim_departments'));
+          if (!osimDeptSnap.empty) {
+            const loadedOsimDept: OsimDepartment[] = [];
+            osimDeptSnap.forEach(doc => loadedOsimDept.push({ id: doc.id, ...doc.data() } as OsimDepartment));
+            loadedOsimDept.sort((a, b) => (a.sortOrder ?? 99) - (b.sortOrder ?? 99));
+            setOsimDepartments(loadedOsimDept);
+          }
 
           // Cash Ledger Sync
           const cashAccSnap = await getDocs(collection(db, 'cash_accounts'));
@@ -3050,6 +3080,90 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     logAction('DELETE_OSIM_MEETING', 'Intrakurikuler & OSIM', `Menghapus notulensi rapat OSIM ID ${id}`);
   };
 
+  // OSIM Departments / Sekbid Management
+  const addOsimDepartment = async (data: Omit<OsimDepartment, 'id' | 'createdAt'>) => {
+    const newDept: OsimDepartment = {
+      id: `dept_${Date.now()}`,
+      ...data,
+      sortOrder: data.sortOrder ?? (osimDepartments.length + 1),
+      createdAt: new Date().toISOString().split('T')[0]
+    };
+    const next = [...osimDepartments, newDept];
+    setOsimDepartments(next);
+    try {
+      localStorage.setItem('sim_osim_departments', JSON.stringify(next));
+      await setDoc(doc(db, 'osim_departments', newDept.id), newDept);
+    } catch (e) {}
+    logAction('ADD_OSIM_DEPARTMENT', 'Intrakurikuler & OSIM', `Menambahkan bidang/sekbid baru: ${newDept.name}`);
+  };
+
+  const updateOsimDepartment = async (id: string, data: Partial<OsimDepartment>) => {
+    const oldDept = osimDepartments.find(d => d.id === id);
+    const updatedName = data.name;
+    const isNameChanged = oldDept && updatedName && oldDept.name !== updatedName;
+
+    const next = osimDepartments.map(d => (d.id === id ? { ...d, ...data, updatedAt: new Date().toISOString() } : d));
+    setOsimDepartments(next);
+    try {
+      localStorage.setItem('sim_osim_departments', JSON.stringify(next));
+      await updateDoc(doc(db, 'osim_departments', id), { ...data, updatedAt: new Date().toISOString() });
+    } catch (e) {}
+
+    // Cascade rename to members & proker if name changed
+    if (isNameChanged && oldDept && updatedName) {
+      setOsimMembers(prev => {
+        const updated = prev.map(m => m.sekbid === oldDept.name ? { ...m, sekbid: updatedName } : m);
+        try { localStorage.setItem('sim_osim_members', JSON.stringify(updated)); } catch (e) {}
+        return updated;
+      });
+      setOsimPrograms(prev => {
+        const updated = prev.map(p => p.sekbid === oldDept.name ? { ...p, sekbid: updatedName } : p);
+        try { localStorage.setItem('sim_osim_programs', JSON.stringify(updated)); } catch (e) {}
+        return updated;
+      });
+    }
+
+    logAction('UPDATE_OSIM_DEPARTMENT', 'Intrakurikuler & OSIM', `Memperbarui data bidang/sekbid: ${data.name || id}`);
+  };
+
+  const deleteOsimDepartment = async (id: string) => {
+    const target = osimDepartments.find(d => d.id === id);
+    if (!target) return;
+
+    const next = osimDepartments.filter(d => d.id !== id);
+    setOsimDepartments(next);
+    try {
+      localStorage.setItem('sim_osim_departments', JSON.stringify(next));
+      await deleteDoc(doc(db, 'osim_departments', id));
+    } catch (e) {}
+
+    // Reassign any members and proker in deleted department to first available or BPH
+    const fallbackDept = next[0]?.name || 'BPH (Badan Pengurus Harian)';
+    setOsimMembers(prev => {
+      const updated = prev.map(m => m.sekbid === target.name ? { ...m, sekbid: fallbackDept } : m);
+      try { localStorage.setItem('sim_osim_members', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
+    setOsimPrograms(prev => {
+      const updated = prev.map(p => p.sekbid === target.name ? { ...p, sekbid: fallbackDept } : p);
+      try { localStorage.setItem('sim_osim_programs', JSON.stringify(updated)); } catch (e) {}
+      return updated;
+    });
+
+    logAction('DELETE_OSIM_DEPARTMENT', 'Intrakurikuler & OSIM', `Menghapus bidang/sekbid kabinet: ${target.name}`);
+  };
+
+  const resetOsimDepartmentsToDefault = async () => {
+    setOsimDepartments(INITIAL_OSIM_DEPARTMENTS);
+    try {
+      localStorage.setItem('sim_osim_departments', JSON.stringify(INITIAL_OSIM_DEPARTMENTS));
+      for (const d of INITIAL_OSIM_DEPARTMENTS) {
+        await setDoc(doc(db, 'osim_departments', d.id), d);
+      }
+    } catch (e) {}
+    logAction('RESET_OSIM_DEPARTMENTS', 'Intrakurikuler & OSIM', 'Mereset struktur bidang kabinet OSIM ke 8 Sekbid standar');
+  };
+
   // ==========================================
   // NERACA KAS & KEUANGAN KESISWAAN HANDLERS
   // ==========================================
@@ -3272,6 +3386,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         osimPrograms,
         osimAspirations,
         osimMeetings,
+        osimDepartments,
         cashAccounts,
         cashTransactions,
         addCashAccount,
@@ -3370,6 +3485,10 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         addOsimMeeting,
         updateOsimMeeting,
         deleteOsimMeeting,
+        addOsimDepartment,
+        updateOsimDepartment,
+        deleteOsimDepartment,
+        resetOsimDepartmentsToDefault,
         addAnnouncement,
         updateAnnouncement,
         deleteAnnouncement,

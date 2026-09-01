@@ -31,7 +31,10 @@ import {
   Eye,
   UserCheck,
   ShieldCheck,
-  GraduationCap
+  GraduationCap,
+  RotateCcw,
+  Layers,
+  Settings2
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -41,7 +44,8 @@ import {
   OsimAspiration,
   OsimMeeting,
   OsimSekbid,
-  OsimProgramStatus
+  OsimProgramStatus,
+  OsimDepartment
 } from '../types';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
@@ -49,12 +53,15 @@ import { ExportActions } from '../components/common/ExportActions';
 import { StatusBadge } from '../components/common/Badge';
 
 export const OsimPage: React.FC = () => {
-  const { isWakaOrAdmin, currentUser } = useAuth();
+  const { isWakaOrAdmin, isPembinaOsim, currentUser } = useAuth();
+  const canManageOsim = isWakaOrAdmin || isPembinaOsim;
+
   const {
     osimMembers,
     osimPrograms,
     osimAspirations,
     osimMeetings,
+    osimDepartments,
     teachers,
     addOsimMember,
     updateOsimMember,
@@ -68,6 +75,10 @@ export const OsimPage: React.FC = () => {
     addOsimMeeting,
     updateOsimMeeting,
     deleteOsimMeeting,
+    addOsimDepartment,
+    updateOsimDepartment,
+    deleteOsimDepartment,
+    resetOsimDepartmentsToDefault,
     activeAcademicYear,
     schoolSetting
   } = useSchool();
@@ -101,6 +112,19 @@ export const OsimPage: React.FC = () => {
   const [isMeetingDetailOpen, setIsMeetingDetailOpen] = useState(false);
   const [selectedMeeting, setSelectedMeeting] = useState<OsimMeeting | null>(null);
   const [isMeetingDeleteOpen, setIsMeetingDeleteOpen] = useState(false);
+
+  // Department (Bidang/Sekbid) modal states
+  const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
+  const [selectedDept, setSelectedDept] = useState<OsimDepartment | null>(null);
+  const [isDeptDeleteOpen, setIsDeptDeleteOpen] = useState(false);
+  const [isDeptResetOpen, setIsDeptResetOpen] = useState(false);
+  const [deptForm, setDeptForm] = useState<Partial<OsimDepartment>>({
+    name: '',
+    code: '',
+    description: '',
+    coordinatorName: '',
+    sortOrder: 1
+  });
 
   // Forms data
   const [prokerForm, setProkerForm] = useState<Partial<OsimWorkProgram>>({
@@ -166,17 +190,27 @@ export const OsimPage: React.FC = () => {
     academicYear: activeAcademicYear
   });
 
-  const sekbidList: OsimSekbid[] = [
-    'BPH (Badan Pengurus Harian)',
-    'Sekbid 1: Keimanan, Ketaqwaan & Moderasi Beragama',
-    'Sekbid 2: Wawasan Kebangsaan, Bela Negara & Kedisiplinan',
-    'Sekbid 3: Akademik, Sains, Riset & Literasi',
-    'Sekbid 4: Demokrasi, HAM, Kepemimpinan & Politik Pelajar',
-    'Sekbid 5: Keterampilan, Kewirausahaan & Koperasi Siswa',
-    'Sekbid 6: Kesehatan Jasmani, Olahraga & Lingkungan Hidup',
-    'Sekbid 7: Sastra, Seni, Budaya & Bahasa',
-    'Sekbid 8: Teknologi Informasi, Multimedia & Komunikasi'
-  ];
+  const sortedDepartments = useMemo(() => {
+    if (!osimDepartments || osimDepartments.length === 0) return [];
+    return [...osimDepartments].sort((a, b) => a.sortOrder - b.sortOrder);
+  }, [osimDepartments]);
+
+  const sekbidList: string[] = useMemo(() => {
+    if (sortedDepartments.length > 0) {
+      return sortedDepartments.map(d => d.name);
+    }
+    return [
+      'BPH (Badan Pengurus Harian)',
+      'Sekbid 1: Keimanan, Ketaqwaan & Moderasi Beragama',
+      'Sekbid 2: Wawasan Kebangsaan, Bela Negara & Kedisiplinan',
+      'Sekbid 3: Akademik, Sains, Riset & Literasi',
+      'Sekbid 4: Demokrasi, HAM, Kepemimpinan & Politik Pelajar',
+      'Sekbid 5: Keterampilan, Kewirausahaan & Koperasi Siswa',
+      'Sekbid 6: Kesehatan Jasmani, Olahraga & Lingkungan Hidup',
+      'Sekbid 7: Sastra, Seni, Budaya & Bahasa',
+      'Sekbid 8: Teknologi Informasi, Multimedia & Komunikasi'
+    ];
+  }, [sortedDepartments]);
 
   // Calculations & KPIs
   const totalBudgetEst = useMemo(() => {
@@ -388,6 +422,88 @@ export const OsimPage: React.FC = () => {
         setIsMemberDeleteOpen(false);
         setSelectedMember(null);
       }
+    }
+  };
+
+  // Department (Bidang / Sekbid) Handlers
+  const handleOpenAddDept = () => {
+    setSelectedDept(null);
+    const nextOrder = (osimDepartments?.length || 0) + 1;
+    setDeptForm({
+      name: `Sekbid ${nextOrder}: `,
+      code: `SEKBID-${nextOrder}`,
+      description: '',
+      coordinatorName: '',
+      sortOrder: nextOrder
+    });
+    setIsDeptModalOpen(true);
+  };
+
+  const handleOpenEditDept = (dept: OsimDepartment, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setSelectedDept(dept);
+    setDeptForm(dept);
+    setIsDeptModalOpen(true);
+  };
+
+  const handleOpenDeleteDept = (dept: OsimDepartment, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setSelectedDept(dept);
+    setIsDeptDeleteOpen(true);
+  };
+
+  const handleSaveDept = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!deptForm.name?.trim()) {
+      alert('Mohon masukkan nama bidang / sekbid OSIM.');
+      return;
+    }
+    try {
+      if (selectedDept) {
+        await updateOsimDepartment(selectedDept.id, {
+          name: deptForm.name.trim(),
+          code: deptForm.code?.trim() || selectedDept.code,
+          description: deptForm.description?.trim() || '',
+          coordinatorName: deptForm.coordinatorName?.trim() || '',
+          sortOrder: Number(deptForm.sortOrder) || selectedDept.sortOrder
+        });
+      } else {
+        await addOsimDepartment({
+          name: deptForm.name.trim(),
+          code: deptForm.code?.trim() || `SEKBID-${Date.now()}`,
+          description: deptForm.description?.trim() || '',
+          coordinatorName: deptForm.coordinatorName?.trim() || '',
+          sortOrder: Number(deptForm.sortOrder) || ((osimDepartments?.length || 0) + 1)
+        });
+      }
+    } catch (err) {
+      console.error('Error saving department:', err);
+    } finally {
+      setIsDeptModalOpen(false);
+      setSelectedDept(null);
+    }
+  };
+
+  const handleDeleteDeptConfirm = async () => {
+    if (selectedDept) {
+      try {
+        await deleteOsimDepartment(selectedDept.id);
+      } catch (err) {
+        console.error('Error deleting department:', err);
+      } finally {
+        setIsDeptDeleteOpen(false);
+        setSelectedDept(null);
+      }
+    }
+  };
+
+  const handleResetDeptConfirm = async () => {
+    try {
+      await resetOsimDepartmentsToDefault();
+    } catch (err) {
+      console.error('Error resetting departments:', err);
+    } finally {
+      setIsDeptResetOpen(false);
     }
   };
 
@@ -631,7 +747,7 @@ export const OsimPage: React.FC = () => {
               filename={`Laporan_Program_Kerja_OSIM_${activeAcademicYear}`}
               title="Ekspor Proker"
             />
-            {isWakaOrAdmin && (
+            {canManageOsim && (
               <button
                 id="btn-add-proker-top"
                 onClick={handleOpenAddProker}
@@ -684,7 +800,7 @@ export const OsimPage: React.FC = () => {
             <span className="text-[10px] uppercase text-zinc-400 block font-sans font-medium">Pengurus Kabinet</span>
             <div className="flex items-baseline justify-between mt-1">
               <span className="text-lg font-bold text-indigo-400">{osimMembers.length}</span>
-              <span className="text-[10px] text-zinc-400">8 Sekbid</span>
+              <span className="text-[10px] text-zinc-400">{sortedDepartments.length || 8} Bidang</span>
             </div>
           </div>
 
@@ -724,7 +840,7 @@ export const OsimPage: React.FC = () => {
             }`}
           >
             <Users className="w-3.5 h-3.5" />
-            Struktur Kabinet & Sekbid ({osimMembers.length})
+            Struktur Kabinet & Bidang ({osimMembers.length})
           </button>
 
           <button
@@ -921,7 +1037,7 @@ export const OsimPage: React.FC = () => {
               <Target className="w-10 h-10 text-zinc-600 mx-auto mb-2" />
               <p className="text-sm font-semibold text-zinc-300">Tidak ada program kerja intrakurikuler yang sesuai.</p>
               <p className="text-xs text-zinc-500 mt-1">Coba sesuaikan kata kunci pencarian atau ganti filter seksi bidang.</p>
-              {isWakaOrAdmin && (
+              {canManageOsim && (
                 <button
                   onClick={handleOpenAddProker}
                   className="mt-4 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded text-xs font-semibold"
@@ -939,8 +1055,8 @@ export const OsimPage: React.FC = () => {
       {/* ========================================================== */}
       {activeSubTab === 'struktur' && (
         <div className="space-y-5" id="view-struktur-osim">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-[#121214] border border-zinc-800 p-3 rounded">
-            <div className="relative flex-1 w-full">
+          <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 bg-[#121214] border border-zinc-800 p-3 rounded">
+            <div className="relative flex-1">
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
               <input
                 type="text"
@@ -951,26 +1067,36 @@ export const OsimPage: React.FC = () => {
               />
             </div>
 
-            <div className="flex items-center gap-2 w-full sm:w-auto">
+            <div className="flex flex-wrap items-center gap-2">
               <select
                 value={filterSekbid}
                 onChange={e => setFilterSekbid(e.target.value)}
                 className="bg-zinc-900 border border-zinc-800 rounded px-2.5 py-1.5 text-xs text-zinc-300 focus:outline-none focus:border-amber-500"
               >
-                <option value="all">Semua Sekbid & BPH</option>
+                <option value="all">Semua Bidang & BPH</option>
                 {sekbidList.map(s => (
                   <option key={s} value={s}>{s}</option>
                 ))}
               </select>
 
-              {isWakaOrAdmin && (
-                <button
-                  onClick={handleOpenAddMember}
-                  className="flex items-center gap-1 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded text-xs font-semibold transition whitespace-nowrap"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Tambah Pengurus
-                </button>
+              {canManageOsim && (
+                <>
+                  <button
+                    onClick={handleOpenAddDept}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-400 border border-indigo-500/30 rounded text-xs font-semibold transition"
+                    title="Tambah Bidang / Sekbid Baru sesuai kebijakan sekolah"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Tambah Bidang
+                  </button>
+                  <button
+                    onClick={handleOpenAddMember}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded text-xs font-semibold transition whitespace-nowrap"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Tambah Pengurus
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -1013,7 +1139,7 @@ export const OsimPage: React.FC = () => {
               {/* Pembina Resmi OSIM */}
               <div className="bg-zinc-900/90 border border-indigo-500/30 rounded-lg p-3">
                 <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                  PEMBINA RESMI OSIM
+                  PEMBINA RESMI OSIM (HAK AKSES PENUH)
                 </span>
                 <h4 className="font-bold text-xs text-zinc-100 mt-2">
                   {schoolSetting?.pembinaOsim || teachers.find(t => t.role?.toLowerCase().includes('osim'))?.fullName || 'Belum Ditetapkan'}
@@ -1032,15 +1158,15 @@ export const OsimPage: React.FC = () => {
               <div className="flex items-center gap-2">
                 <Crown className="w-4 h-4 text-amber-400" />
                 <h2 className="text-xs font-bold font-mono tracking-wider uppercase text-amber-400">
-                  BADAN PENGURUS HARIAN (BPH OSIM 2026/2027)
+                  BADAN PENGURUS HARIAN (BPH OSIM)
                 </h2>
               </div>
-              <span className="text-[11px] font-mono text-zinc-400">Ketua, Wakil, Sekretaris & Bendahara</span>
+              <span className="text-[11px] font-mono text-zinc-400">Ketua Umum, Wakil, Sekretaris & Bendahara</span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {osimMembers
-                .filter(m => m.sekbid === 'BPH (Badan Pengurus Harian)')
+                .filter(m => m.sekbid === 'BPH (Badan Pengurus Harian)' || m.position.toLowerCase().includes('ketua') || m.position.toLowerCase().includes('sekretaris') || m.position.toLowerCase().includes('bendahara'))
                 .map(bph => (
                   <div
                     key={bph.id}
@@ -1085,7 +1211,7 @@ export const OsimPage: React.FC = () => {
                         >
                           <Eye className="w-3 h-3" />
                         </button>
-                        {isWakaOrAdmin && (
+                        {canManageOsim && (
                           <>
                             <button
                               onClick={e => handleOpenEditMember(bph, e)}
@@ -1114,83 +1240,225 @@ export const OsimPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Seksi Bidang 1 - 8 Matrix */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-mono font-bold uppercase text-zinc-300 tracking-wider">
-                DEWAN SEKSI BIDANG (SEKBID 1 - 8)
-              </h3>
-              <span className="text-[11px] font-mono text-zinc-500">Total {filteredMembers.filter(m => m.sekbid !== 'BPH (Badan Pengurus Harian)').length} Pengurus Sekbid</span>
+          {/* Dynamic Cabinet Structure & Fields / Divisions Management */}
+          <div className="space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-zinc-800 pb-2">
+              <div>
+                <div className="flex items-center gap-2">
+                  <Layers className="w-4 h-4 text-amber-400" />
+                  <h3 className="text-xs font-mono font-bold uppercase text-zinc-200 tracking-wider">
+                    STRUKTUR BIDANG & DEWAN SEKSI BIDANG ({sortedDepartments.length} Bidang Terdaftar)
+                  </h3>
+                </div>
+                <p className="text-[11px] text-zinc-400 mt-0.5">
+                  Struktur bidang dapat disesuaikan, ditambah, diubah, atau dihapus secara dinamis oleh Pembina OSIM sesuai kebijakan sekolah.
+                </p>
+              </div>
+
+              {canManageOsim && (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setIsDeptResetOpen(true)}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 text-xs font-mono transition"
+                    title="Kembalikan struktur bidang ke standar (8 Sekbid)"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    Reset 8 Sekbid
+                  </button>
+                  <button
+                    onClick={handleOpenAddDept}
+                    className="flex items-center gap-1 px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded text-xs font-semibold transition"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Tambah Bidang Baru
+                  </button>
+                </div>
+              )}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-              {filteredMembers
-                .filter(m => m.sekbid !== 'BPH (Badan Pengurus Harian)')
-                .map(member => (
-                  <div
-                    key={member.id}
-                    onClick={() => handleOpenDetailMember(member)}
-                    className="bg-[#121214] border border-zinc-800 hover:border-zinc-700 rounded-lg p-3.5 transition flex flex-col justify-between shadow-sm cursor-pointer group"
-                  >
-                    <div>
-                      <div className="flex items-start justify-between gap-2 mb-2">
-                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-800/80 text-zinc-300 border border-zinc-700/80 line-clamp-1">
-                          {member.sekbid}
-                        </span>
-                        <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                          {member.position}
-                        </span>
+            {/* Department Accordions / Cards */}
+            <div className="space-y-4">
+              {sortedDepartments
+                .filter(dept => filterSekbid === 'all' || dept.name === filterSekbid)
+                .map(dept => {
+                  const deptMembers = filteredMembers.filter(m => m.sekbid === dept.name);
+                  const deptPrograms = osimPrograms.filter(p => p.sekbid === dept.name);
+
+                  return (
+                    <div
+                      key={dept.id}
+                      className="bg-[#121214] border border-zinc-800 rounded-lg overflow-hidden shadow-sm hover:border-zinc-700 transition"
+                    >
+                      {/* Department Header */}
+                      <div className="p-3.5 bg-zinc-900/70 border-b border-zinc-800 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                        <div className="flex items-start gap-3">
+                          <div className="px-2 py-1 rounded bg-amber-500/10 border border-amber-500/30 text-amber-400 font-mono font-bold text-xs shrink-0">
+                            {dept.code}
+                          </div>
+                          <div>
+                            <h4 className="font-bold text-sm text-zinc-100">{dept.name}</h4>
+                            {dept.description && (
+                              <p className="text-xs text-zinc-400 mt-0.5 leading-relaxed">{dept.description}</p>
+                            )}
+                            <div className="flex items-center gap-3 text-[11px] font-mono text-zinc-400 mt-1.5">
+                              {dept.coordinatorName && (
+                                <span>Koordinator: <strong className="text-zinc-200">{dept.coordinatorName}</strong></span>
+                              )}
+                              <span>• {deptMembers.length} Pengurus</span>
+                              <span>• {deptPrograms.length} Proker</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {canManageOsim && (
+                          <div className="flex items-center gap-1.5 self-end md:self-center">
+                            <button
+                              onClick={() => {
+                                setSelectedMember(null);
+                                setMemberForm({
+                                  fullName: '',
+                                  studentNis: '',
+                                  className: 'X RPL 1',
+                                  position: 'Anggota Sekbid',
+                                  sekbid: dept.name,
+                                  phone: '081234567890',
+                                  email: '',
+                                  status: 'Aktif',
+                                  vision: '',
+                                  flagshipProgram: '',
+                                  period: activeAcademicYear
+                                });
+                                setIsMemberModalOpen(true);
+                              }}
+                              className="px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-amber-400 text-xs font-semibold flex items-center gap-1 transition"
+                              title="Tambah pengurus ke bidang ini"
+                            >
+                              <Plus className="w-3 h-3" />
+                              Tambah Pengurus
+                            </button>
+                            <button
+                              onClick={(e) => handleOpenEditDept(dept, e)}
+                              className="p-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-amber-400 transition"
+                              title="Edit Nama / Data Bidang"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={(e) => handleOpenDeleteDept(dept, e)}
+                              className="p-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-rose-400 transition"
+                              title="Hapus Bidang Ini"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
                       </div>
 
-                      <h4 className="font-bold text-xs text-zinc-100 group-hover:text-amber-400 transition">{member.fullName}</h4>
-                      <p className="text-[10px] font-mono text-zinc-400 mt-0.5">
-                        {member.className} • NIS {member.studentNis}
-                      </p>
+                      {/* Department Members List */}
+                      <div className="p-3.5">
+                        {deptMembers.length > 0 ? (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {deptMembers.map(member => (
+                              <div
+                                key={member.id}
+                                onClick={() => handleOpenDetailMember(member)}
+                                className="bg-zinc-900/90 border border-zinc-800/90 hover:border-zinc-700 rounded-lg p-3 transition flex flex-col justify-between cursor-pointer group shadow-sm"
+                              >
+                                <div>
+                                  <div className="flex items-start justify-between gap-2 mb-1.5">
+                                    <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                                      {member.position}
+                                    </span>
+                                    <span className="text-[9px] font-mono text-zinc-500">
+                                      NIS {member.studentNis}
+                                    </span>
+                                  </div>
 
-                      {member.flagshipProgram && (
-                        <div className="mt-2.5 bg-zinc-900/80 border border-zinc-800/80 rounded p-2 text-[10px]">
-                          <span className="text-amber-400 font-semibold block mb-0.5">Program Unggulan:</span>
-                          <span className="text-zinc-300">{member.flagshipProgram}</span>
-                        </div>
-                      )}
-                    </div>
+                                  <h5 className="font-bold text-xs text-zinc-100 group-hover:text-amber-400 transition">
+                                    {member.fullName}
+                                  </h5>
+                                  <p className="text-[10px] text-zinc-400 font-mono mt-0.5">
+                                    {member.className}
+                                  </p>
 
-                    <div className="mt-3 pt-2 border-t border-zinc-800/80 flex items-center justify-between text-[10px]">
-                      <span className="text-zinc-500 font-mono">{member.phone}</span>
-                      <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
-                        <button
-                          onClick={e => handleOpenDetailMember(member, e)}
-                          className="p-1 rounded bg-zinc-800 text-zinc-400 hover:text-cyan-400 transition"
-                          title="Lihat Detail Pengurus"
-                        >
-                          <Eye className="w-3 h-3" />
-                        </button>
-                        {isWakaOrAdmin && (
-                          <>
-                            <button
-                              onClick={e => handleOpenEditMember(member, e)}
-                              className="p-1 rounded bg-zinc-800 text-zinc-400 hover:text-amber-400 transition"
-                              title="Edit"
-                            >
-                              <Edit2 className="w-3 h-3" />
-                            </button>
-                            <button
-                              onClick={e => {
-                                e.stopPropagation();
-                                setSelectedMember(member);
-                                setIsMemberDeleteOpen(true);
-                              }}
-                              className="p-1 rounded bg-zinc-800 text-zinc-400 hover:text-rose-400 transition"
-                              title="Hapus"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                          </>
+                                  {member.flagshipProgram && (
+                                    <div className="mt-2 bg-zinc-900 border border-zinc-800 rounded p-1.5 text-[10px]">
+                                      <span className="text-amber-400 font-semibold block text-[9px]">Program Kerja:</span>
+                                      <span className="text-zinc-300 line-clamp-1">{member.flagshipProgram}</span>
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="mt-2.5 pt-2 border-t border-zinc-800/80 flex items-center justify-between text-[10px]">
+                                  <span className="text-zinc-500 font-mono">{member.phone}</span>
+                                  <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                                    <button
+                                      onClick={e => handleOpenDetailMember(member, e)}
+                                      className="p-1 rounded bg-zinc-800 text-zinc-400 hover:text-cyan-400 transition"
+                                      title="Lihat Detail Pengurus"
+                                    >
+                                      <Eye className="w-3 h-3" />
+                                    </button>
+                                    {canManageOsim && (
+                                      <>
+                                        <button
+                                          onClick={e => handleOpenEditMember(member, e)}
+                                          className="p-1 rounded bg-zinc-800 text-zinc-400 hover:text-amber-400 transition"
+                                          title="Edit"
+                                        >
+                                          <Edit2 className="w-3 h-3" />
+                                        </button>
+                                        <button
+                                          onClick={e => {
+                                            e.stopPropagation();
+                                            setSelectedMember(member);
+                                            setIsMemberDeleteOpen(true);
+                                          }}
+                                          className="p-1 rounded bg-zinc-800 text-zinc-400 hover:text-rose-400 transition"
+                                          title="Hapus"
+                                        >
+                                          <Trash2 className="w-3 h-3" />
+                                        </button>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-center py-6 border border-dashed border-zinc-800 rounded-lg">
+                            <p className="text-xs text-zinc-500">Belum ada pengurus yang terdaftar di bidang ini.</p>
+                            {canManageOsim && (
+                              <button
+                                onClick={() => {
+                                  setSelectedMember(null);
+                                  setMemberForm({
+                                    fullName: '',
+                                    studentNis: '',
+                                    className: 'X RPL 1',
+                                    position: 'Ketua Sekbid',
+                                    sekbid: dept.name,
+                                    phone: '081234567890',
+                                    email: '',
+                                    status: 'Aktif',
+                                    vision: '',
+                                    flagshipProgram: '',
+                                    period: activeAcademicYear
+                                  });
+                                  setIsMemberModalOpen(true);
+                                }}
+                                className="mt-2 text-xs text-amber-400 hover:underline font-semibold"
+                              >
+                                + Tambah Pengurus Pertama untuk Bidang Ini
+                              </button>
+                            )}
+                          </div>
                         )}
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
             </div>
           </div>
         </div>
@@ -1211,7 +1479,7 @@ export const OsimPage: React.FC = () => {
               </p>
             </div>
 
-            {isWakaOrAdmin && (
+            {canManageOsim && (
               <button
                 onClick={handleOpenAddMeeting}
                 className="flex items-center gap-1 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded text-xs font-semibold transition"
@@ -1253,7 +1521,7 @@ export const OsimPage: React.FC = () => {
                       >
                         <Eye className="w-3.5 h-3.5" />
                       </button>
-                      {isWakaOrAdmin && (
+                      {canManageOsim && (
                         <>
                           <button
                             onClick={e => handleOpenEditMeeting(meet, e)}
@@ -1387,7 +1655,7 @@ export const OsimPage: React.FC = () => {
                     >
                       <Eye className="w-3.5 h-3.5" />
                     </button>
-                    {isWakaOrAdmin && (
+                    {canManageOsim && (
                       <>
                         <button
                           onClick={e => handleOpenResponseAspiration(asp, e)}
@@ -1673,7 +1941,7 @@ export const OsimPage: React.FC = () => {
 
             <div className="flex items-center justify-between pt-3 border-t border-zinc-800">
               <div className="flex items-center gap-2">
-                {isWakaOrAdmin && (
+                {canManageOsim && (
                   <>
                     <button
                       onClick={() => {
@@ -2141,7 +2409,7 @@ export const OsimPage: React.FC = () => {
               >
                 Tutup
               </button>
-              {isWakaOrAdmin && (
+              {canManageOsim && (
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
@@ -2242,7 +2510,7 @@ export const OsimPage: React.FC = () => {
               >
                 Tutup
               </button>
-              {isWakaOrAdmin && (
+              {canManageOsim && (
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
@@ -2339,7 +2607,7 @@ export const OsimPage: React.FC = () => {
               >
                 Tutup
               </button>
-              {isWakaOrAdmin && (
+              {canManageOsim && (
                 <div className="flex items-center gap-2">
                   <button
                     type="button"

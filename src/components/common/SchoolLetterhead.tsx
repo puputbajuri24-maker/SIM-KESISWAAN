@@ -33,8 +33,31 @@ export const SchoolLetterhead: React.FC<SchoolLetterheadProps> = ({
     logoRightUrl: ''
   };
 
-  const leftLogo = info.logoLeftUrl;
-  const rightLogo = info.logoRightUrl || info.logoUrl;
+  const leftLogo = info.logoLeftUrl || (info.logoUrl && !info.logoRightUrl ? info.logoUrl : '');
+  const rightLogo = info.logoRightUrl || (info.logoUrl && info.logoLeftUrl ? info.logoUrl : '');
+
+  // Format comprehensive address and contact information
+  const addressLine = React.useMemo(() => {
+    if (!info.address && !info.email && !info.phone && !info.npsn) return '';
+    const parts: string[] = [];
+    if (info.address) parts.push(info.address.trim());
+    if (info.email && !info.address?.toLowerCase().includes(info.email.toLowerCase())) {
+      parts.push(`Email: ${info.email}`);
+    }
+    if (info.phone && !info.address?.toLowerCase().includes(info.phone.toLowerCase())) {
+      parts.push(`Telp. ${info.phone}`);
+    }
+    if (info.postalCode && !info.address?.includes(info.postalCode)) {
+      parts.push(`Kode Pos: ${info.postalCode}`);
+    }
+    if (info.npsn && !info.address?.toLowerCase().includes(info.npsn.toLowerCase())) {
+      parts.push(`NPSN: ${info.npsn}`);
+    }
+    if (info.website && !info.address?.toLowerCase().includes(info.website.toLowerCase())) {
+      parts.push(`Website: ${info.website}`);
+    }
+    return parts.join(' , ');
+  }, [info]);
 
   return (
     <div className={`w-full font-serif text-slate-900 ${className}`}>
@@ -51,8 +74,8 @@ export const SchoolLetterhead: React.FC<SchoolLetterheadProps> = ({
               onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
             />
           ) : (
-            <div className="w-14 h-14 rounded-full border border-dashed border-slate-300 flex items-center justify-center text-[9px] text-slate-400 text-center p-1 leading-tight">
-              Logo Instansi Kiri
+            <div className="w-14 h-14 rounded-full border border-dashed border-slate-300 print:hidden flex items-center justify-center text-[9px] text-slate-400 text-center p-1 leading-tight">
+              Logo Kiri
             </div>
           )}
         </div>
@@ -76,9 +99,9 @@ export const SchoolLetterhead: React.FC<SchoolLetterheadProps> = ({
             {info.name || 'NAMA SEKOLAH / MADRASAH'}
           </h2>
           {/* Baris 4: Kalimat Alamat / Kontak Resmi Persis Sesuai yang Ditulis User */}
-          {info.address && (
+          {addressLine && (
             <p className={`font-sans text-slate-700 leading-tight ${compact ? 'text-[9px]' : 'text-[10px] sm:text-[11px]'}`}>
-              {info.address}
+              {addressLine}
             </p>
           )}
         </div>
@@ -94,8 +117,8 @@ export const SchoolLetterhead: React.FC<SchoolLetterheadProps> = ({
               onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
             />
           ) : (
-            <div className="w-14 h-14 rounded-full border border-dashed border-slate-300 flex items-center justify-center text-[9px] text-slate-400 text-center p-1 leading-tight">
-              Logo Sekolah Kanan
+            <div className="w-14 h-14 rounded-full border border-dashed border-slate-300 print:hidden flex items-center justify-center text-[9px] text-slate-400 text-center p-1 leading-tight">
+              Logo Kanan
             </div>
           )}
         </div>
