@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   LayoutDashboard,
   Users,
@@ -108,6 +109,15 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
   const [hasPromptedPopup, setHasPromptedPopup] = useState(false);
 
   const { mode, resolvedMode, toggleMode, palette, currentPaletteInfo } = useTheme();
+
+  const mainScrollRef = useRef<HTMLElement>(null);
+
+  // Smooth reset scroll position to top when switching pages
+  useEffect(() => {
+    if (mainScrollRef.current) {
+      mainScrollRef.current.scrollTo({ top: 0, behavior: 'instant' });
+    }
+  }, [activeTab]);
 
   // Read announcements storage key
   const userKey = currentUser?.uid || 'guest';
@@ -466,6 +476,19 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
         }
       ];
 
+  const currentNavItem = useMemo(() => {
+    for (const section of navSections) {
+      const found = section.items.find(item => item.id === activeTab);
+      if (found) return found;
+    }
+    return {
+      id: activeTab,
+      label: activeTab === 'dashboard' ? 'Command Center' : String(activeTab).toUpperCase(),
+      icon: LayoutDashboard
+    };
+  }, [navSections, activeTab]);
+  const CurrentNavIcon = currentNavItem.icon;
+
   const handleNavClick = (id: string) => {
     setActiveTab(id);
     setIsMobileMenuOpen(false);
@@ -526,23 +549,31 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                   const Icon = item.icon;
                   const isActive = activeTab === item.id;
                   return (
-                    <button
+                    <motion.button
                       key={`${sec.title}-${item.id}`}
                       onClick={() => handleNavClick(item.id)}
-                      className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all ${
+                      whileTap={{ scale: 0.98 }}
+                      className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-colors duration-150 ${
                         isActive
-                          ? 'bg-blue-600 text-white shadow-md shadow-blue-600/25'
-                          : 'text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#131b2e]'
+                          ? 'text-white font-bold'
+                          : 'text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100/70 dark:hover:bg-[#131c2e]/60'
                       }`}
                     >
-                      <div className="flex items-center space-x-2.5 truncate">
-                        <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`} />
+                      {isActive && (
+                        <motion.div
+                          layoutId="activeSidebarIndicator"
+                          className="absolute inset-0 bg-blue-600 rounded-xl shadow-md shadow-blue-600/25 z-0"
+                          transition={{ type: 'spring', stiffness: 450, damping: 35 }}
+                        />
+                      )}
+                      <div className="relative z-10 flex items-center space-x-2.5 truncate">
+                        <Icon className={`w-4 h-4 shrink-0 transition-colors duration-150 ${isActive ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`} />
                         <span className="truncate">{item.label}</span>
                       </div>
 
                       {item.tag && (
                         <span
-                          className={`text-[9px] font-bold font-mono px-1.5 py-0.5 rounded-md border tracking-wider uppercase ${getNavTagClass(
+                          className={`relative z-10 text-[9px] font-bold font-mono px-1.5 py-0.5 rounded-md border tracking-wider uppercase transition-colors duration-150 ${getNavTagClass(
                             item.tag,
                             isActive
                           )}`}
@@ -552,9 +583,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                       )}
 
                       {item.alert && (
-                        <span className="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_6px_#ef4444]" />
+                        <span className="relative z-10 w-2 h-2 rounded-full bg-red-500 shadow-[0_0_6px_#ef4444]" />
                       )}
-                    </button>
+                    </motion.button>
                   );
                 })}
               </div>
@@ -593,35 +624,54 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
         {/* Top Header Navbar */}
         <header className="h-16 border-b border-[var(--border-color)] bg-[var(--bg-header)] flex items-center justify-between px-4 sm:px-6 z-20 shrink-0 gap-3 transition-colors duration-200">
           {/* Left: Mobile Toggle & Quick Search */}
-          <div className="flex items-center space-x-3 flex-1 max-w-md">
+          <div className="flex items-center space-x-3 flex-1 max-w-xl min-w-0">
             <button
               onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-              className="lg:hidden p-2 rounded-xl bg-[#131b2e] border border-[#1e293b] text-slate-400 hover:text-slate-200"
+              className="lg:hidden p-2 rounded-xl bg-slate-100/80 dark:bg-[#131b2e] border border-slate-200 dark:border-[#1e293b] text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 shrink-0"
             >
               {isMobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
             </button>
 
+            {/* Active Tab Page Badge with Animated Transition */}
+            <div className="hidden sm:flex items-center shrink-0">
+              <AnimatePresence mode="wait">
+                <motion.div
+                  key={activeTab}
+                  initial={{ opacity: 0, scale: 0.94, y: -2 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.94, y: 2 }}
+                  transition={{ duration: 0.16, ease: 'easeOut' }}
+                  className="flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-[#131b2e] border border-blue-200 dark:border-blue-500/30 text-xs font-semibold shadow-xs"
+                >
+                  <CurrentNavIcon className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                  <span className="truncate max-w-[130px] md:max-w-[170px] lg:max-w-[210px] text-blue-950 dark:text-blue-200 font-bold">
+                    {currentNavItem.label}
+                  </span>
+                </motion.div>
+              </AnimatePresence>
+            </div>
+
             {/* Pill-shaped Search Bar */}
             <button
               onClick={() => setIsSearchOpen(true)}
-              className="w-full flex items-center justify-between px-3.5 py-2 text-xs bg-[#131b2e] border border-[#1e293b] rounded-xl text-slate-400 hover:border-slate-700 hover:text-slate-300 transition-colors shadow-sm"
+              className="w-full flex items-center justify-between px-3.5 py-2 text-xs bg-slate-100/80 dark:bg-[#131b2e] border border-slate-200 dark:border-[#1e293b] rounded-xl text-slate-500 dark:text-slate-400 hover:border-blue-400 dark:hover:border-slate-700 hover:text-slate-800 dark:hover:text-slate-300 transition-colors shadow-xs min-w-0"
             >
               <div className="flex items-center gap-2 truncate">
-                <Search className="w-4 h-4 text-slate-400 shrink-0" />
-                <span className="truncate text-slate-400">Cari siswa, guru, kegiatan...</span>
+                <Search className="w-4 h-4 text-slate-500 dark:text-slate-400 shrink-0" />
+                <span className="truncate text-slate-600 dark:text-slate-400 font-medium">Cari siswa, guru, kegiatan...</span>
               </div>
-              <kbd className="px-1.5 py-0.5 text-[10px] font-mono text-slate-400 bg-[#080c16] rounded-md border border-[#1e293b]">
+              <kbd className="px-1.5 py-0.5 text-[10px] font-mono text-slate-500 dark:text-slate-400 bg-white dark:bg-[#080c16] rounded-md border border-slate-300 dark:border-[#1e293b]">
                 ⌘K
               </kbd>
             </button>
           </div>
 
           {/* Right: Live Telemetry, Status, Mode/Theme Toggle, Notification & Profile */}
-          <div className="flex items-center space-x-2 sm:space-x-3 text-xs text-slate-300">
+          <div className="flex items-center space-x-2 sm:space-x-3 text-xs">
             {/* Quick Dark/Light Mode Switcher */}
             <button
               onClick={toggleMode}
-              className="p-2 rounded-xl bg-[#131b2e] border border-[#1e293b] text-slate-300 hover:border-blue-500/50 hover:bg-[#1a253d] transition-all shadow-sm flex items-center gap-1.5"
+              className="p-2 rounded-xl bg-slate-100/80 dark:bg-[#131b2e] border border-slate-200 dark:border-[#1e293b] text-slate-700 dark:text-slate-300 hover:border-blue-400 dark:hover:border-blue-500/50 hover:bg-slate-200/60 dark:hover:bg-[#1a253d] transition-all shadow-xs flex items-center gap-1.5"
               title={`Mode Saat Ini: ${resolvedMode === 'dark' ? 'Mode Gelap' : 'Mode Terang'} (Klik untuk beralih)`}
             >
               {resolvedMode === 'dark' ? (
@@ -629,7 +679,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
               ) : (
                 <Moon className="w-4 h-4 text-indigo-600" />
               )}
-              <span className="hidden xl:inline text-[11px] font-semibold text-slate-300">
+              <span className="hidden xl:inline text-[11px] font-semibold text-slate-700 dark:text-slate-300">
                 {resolvedMode === 'dark' ? 'Gelap' : 'Terang'}
               </span>
             </button>
@@ -637,32 +687,32 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
             {/* Quick Theme Palette Modal Opener */}
             <button
               onClick={() => setIsThemeModalOpen(true)}
-              className="hidden sm:flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl bg-[#131b2e] border border-[#1e293b] hover:border-blue-500/50 hover:bg-[#1a253d] transition-all text-xs font-semibold text-slate-300 shadow-sm"
+              className="hidden sm:flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100/80 dark:bg-[#131b2e] border border-slate-200 dark:border-[#1e293b] hover:border-blue-400 dark:hover:border-blue-500/50 hover:bg-slate-200/60 dark:hover:bg-[#1a253d] transition-all text-xs font-semibold text-slate-700 dark:text-slate-300 shadow-xs"
               title={`Tema Warna: ${currentPaletteInfo.name}`}
             >
-              <Palette className="w-3.5 h-3.5 text-blue-400" />
-              <span className="hidden md:inline font-bold capitalize text-slate-200">{palette}</span>
+              <Palette className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              <span className="hidden md:inline font-bold capitalize text-slate-800 dark:text-slate-200">{palette}</span>
             </button>
 
             {/* Live Clock Pill */}
             <button
               onClick={() => setIsTimezoneModalOpen(true)}
-              className="hidden md:flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-[#131b2e] border border-[#1e293b] hover:border-blue-500/50 hover:bg-[#1a253d] transition-all text-xs font-mono text-blue-400 shadow-sm"
+              className="hidden md:flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-slate-100/80 dark:bg-[#131b2e] border border-slate-200 dark:border-[#1e293b] hover:border-blue-400 dark:hover:border-blue-500/50 hover:bg-slate-200/60 dark:hover:bg-[#1a253d] transition-all text-xs font-mono shadow-xs"
               title={`Zona Waktu: ${resolvedTimezone} (${utcOffsetString})`}
             >
-              <Clock className="w-3.5 h-3.5 text-blue-400" />
-              <span className="font-semibold text-blue-300">{formattedTime}</span>
+              <Clock className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              <span className="font-semibold text-blue-700 dark:text-blue-300">{formattedTime}</span>
             </button>
 
             {/* Academic Year Dropdown Pill */}
-            <div className="hidden lg:flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-[#131b2e] border border-[#1e293b] text-slate-300 text-xs font-medium">
-              <span>TA:</span>
-              <span className="text-blue-400 font-bold">{activeAcademicYear || '2026/2027'}</span>
-              <ChevronDown className="w-3 h-3 text-slate-500 ml-0.5" />
+            <div className="hidden lg:flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-slate-100/80 dark:bg-[#131b2e] border border-slate-200 dark:border-[#1e293b] text-slate-700 dark:text-slate-300 text-xs font-medium">
+              <span className="text-slate-500 dark:text-slate-400">TA:</span>
+              <span className="text-blue-700 dark:text-blue-400 font-bold">{activeAcademicYear || '2026/2027'}</span>
+              <ChevronDown className="w-3 h-3 text-slate-400 ml-0.5" />
             </div>
 
             {/* Status Online Pill */}
-            <div className="hidden xl:flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-400 text-xs font-semibold">
+            <div className="hidden xl:flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-400 text-xs font-semibold">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               <span>ONLINE</span>
             </div>
@@ -671,10 +721,10 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
             <div className="relative">
               <button
                 onClick={() => setIsNotifOpen(!isNotifOpen)}
-                className="p-2 rounded-xl bg-[#131b2e] border border-[#1e293b] text-slate-400 hover:text-slate-200 relative transition-colors hover:border-blue-500/40"
+                className="p-2 rounded-xl bg-slate-100/80 dark:bg-[#131b2e] border border-slate-200 dark:border-[#1e293b] text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 relative transition-colors hover:border-blue-400 dark:hover:border-blue-500/40"
                 title="Pusat Notifikasi & Broadcast"
               >
-                <Bell className="w-4 h-4 text-slate-300" />
+                <Bell className="w-4 h-4 text-slate-600 dark:text-slate-300" />
                 {totalUnreadCount > 0 && (
                   <span className="absolute -top-1 -right-1 min-w-[17px] h-[17px] px-1 bg-red-500 text-white rounded-full text-[9px] font-bold flex items-center justify-center shadow-lg shadow-red-500/50 animate-pulse">
                     {totalUnreadCount > 9 ? '9+' : totalUnreadCount}
@@ -685,16 +735,16 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
               {isNotifOpen && (
                 <>
                   <div className="fixed inset-0 z-30" onClick={() => setIsNotifOpen(false)} />
-                  <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-2xl bg-[#111726] border border-[#1e293b] shadow-2xl z-40 p-0 overflow-hidden font-sans text-xs flex flex-col">
+                  <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-2xl bg-white dark:bg-[#111726] border border-slate-200 dark:border-[#1e293b] shadow-2xl z-40 p-0 overflow-hidden font-sans text-xs flex flex-col">
                     {/* Header */}
-                    <div className="p-3 border-b border-[#1e293b] flex items-center justify-between bg-[#131b2e]">
+                    <div className="p-3 border-b border-slate-200 dark:border-[#1e293b] flex items-center justify-between bg-slate-50 dark:bg-[#131b2e]">
                       <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-lg bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400">
+                        <div className="w-6 h-6 rounded-lg bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-600 dark:text-blue-400">
                           <Megaphone className="w-3.5 h-3.5" />
                         </div>
                         <div>
-                          <div className="font-bold text-slate-200 text-xs">Notifikasi & Broadcast</div>
-                          <div className="text-[10px] text-slate-400">
+                          <div className="font-bold text-slate-900 dark:text-slate-200 text-xs">Notifikasi & Broadcast</div>
+                          <div className="text-[10px] text-slate-500 dark:text-slate-400">
                             {totalUnreadCount > 0 ? `${totalUnreadCount} pesan belum dibaca` : 'Semua telah dibaca'}
                           </div>
                         </div>
@@ -702,7 +752,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                       {totalUnreadCount > 0 && (
                         <button
                           onClick={handleMarkEverythingAsRead}
-                          className="text-[10px] font-semibold text-blue-400 hover:text-blue-300 flex items-center gap-1 transition-colors px-2 py-1 rounded bg-blue-500/10 border border-blue-500/20"
+                          className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 flex items-center gap-1 transition-colors px-2 py-1 rounded bg-blue-500/10 border border-blue-500/20"
                         >
                           <CheckCheck className="w-3 h-3" />
                           <span>Tandai Semua</span>
@@ -711,13 +761,13 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                     </div>
 
                     {/* Filter Segmented Tabs */}
-                    <div className="flex border-b border-[#1e293b] bg-[#0e1422] p-1 gap-1">
+                    <div className="flex border-b border-slate-200 dark:border-[#1e293b] bg-slate-100 dark:bg-[#0e1422] p-1 gap-1">
                       <button
                         onClick={() => setNotifTab('all')}
                         className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-semibold transition-all flex items-center justify-center gap-1.5 ${
                           notifTab === 'all'
-                            ? 'bg-[#1e293b] text-white shadow-sm'
-                            : 'text-slate-400 hover:text-slate-200'
+                            ? 'bg-white text-slate-900 shadow-xs dark:bg-[#1e293b] dark:text-white'
+                            : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
                         }`}
                       >
                         <span>Semua</span>
@@ -731,11 +781,11 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                         onClick={() => setNotifTab('announcements')}
                         className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-semibold transition-all flex items-center justify-center gap-1.5 ${
                           notifTab === 'announcements'
-                            ? 'bg-[#1e293b] text-white shadow-sm'
-                            : 'text-slate-400 hover:text-slate-200'
+                            ? 'bg-white text-slate-900 shadow-xs dark:bg-[#1e293b] dark:text-white'
+                            : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
                         }`}
                       >
-                        <Megaphone className="w-3 h-3 text-amber-400" />
+                        <Megaphone className="w-3 h-3 text-amber-500 dark:text-amber-400" />
                         <span>Broadcast</span>
                         {unreadAnnouncements.length > 0 && (
                           <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-slate-950 text-[9px] font-bold">
@@ -747,11 +797,11 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                         onClick={() => setNotifTab('system')}
                         className={`flex-1 py-1.5 px-2 rounded-lg text-[11px] font-semibold transition-all flex items-center justify-center gap-1.5 ${
                           notifTab === 'system'
-                            ? 'bg-[#1e293b] text-white shadow-sm'
-                            : 'text-slate-400 hover:text-slate-200'
+                            ? 'bg-white text-slate-900 shadow-xs dark:bg-[#1e293b] dark:text-white'
+                            : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-200'
                         }`}
                       >
-                        <Bell className="w-3 h-3 text-blue-400" />
+                        <Bell className="w-3 h-3 text-blue-500 dark:text-blue-400" />
                         <span>Sistem</span>
                         {unreadNotifs.length > 0 && (
                           <span className="px-1.5 py-0.2 rounded-full bg-blue-600 text-white text-[9px] font-bold">
@@ -762,7 +812,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                     </div>
 
                     {/* Notification List Container */}
-                    <div className="max-h-80 overflow-y-auto divide-y divide-[#1e293b] p-1.5 space-y-1">
+                    <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 dark:divide-[#1e293b] p-1.5 space-y-1">
                       {/* Tab 1: All or Announcements View */}
                       {(notifTab === 'all' || notifTab === 'announcements') &&
                         relevantAnnouncements.slice(0, 5).map(ann => {
@@ -777,35 +827,35 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                               }}
                               className={`p-2.5 rounded-xl transition-all cursor-pointer text-xs relative ${
                                 isRead
-                                  ? 'bg-[#131b2e]/60 opacity-75 hover:opacity-100 hover:bg-[#162035]'
-                                  : 'bg-amber-950/20 border border-amber-500/30 hover:border-amber-500/50'
+                                  ? 'bg-slate-50 dark:bg-[#131b2e]/60 opacity-80 hover:opacity-100 hover:bg-slate-100 dark:hover:bg-[#162035] border border-slate-200/60 dark:border-transparent'
+                                  : 'bg-amber-50/80 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-500/30 hover:border-amber-300 dark:hover:border-amber-500/50'
                               }`}
                             >
                               <div className="flex items-start justify-between gap-1.5 mb-1">
                                 <div className="flex items-center space-x-1.5 truncate">
                                   {ann.priority === 'Mendesak' ? (
-                                    <span className="px-1.5 py-0.2 rounded bg-red-500/20 text-red-400 border border-red-500/30 text-[9px] font-bold flex items-center gap-0.5 shrink-0">
-                                      <Flame className="w-2.5 h-2.5 text-red-400" />
+                                    <span className="px-1.5 py-0.2 rounded bg-red-500/10 dark:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/30 text-[9px] font-bold flex items-center gap-0.5 shrink-0">
+                                      <Flame className="w-2.5 h-2.5 text-red-500 dark:text-red-400" />
                                       MENDESAK
                                     </span>
                                   ) : ann.priority === 'Penting' ? (
-                                    <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 text-[9px] font-bold flex items-center gap-0.5 shrink-0">
-                                      <AlertTriangle className="w-2.5 h-2.5 text-amber-400" />
+                                    <span className="px-1.5 py-0.2 rounded bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 text-[9px] font-bold flex items-center gap-0.5 shrink-0">
+                                      <AlertTriangle className="w-2.5 h-2.5 text-amber-500 dark:text-amber-400" />
                                       PENTING
                                     </span>
                                   ) : (
-                                    <span className="px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30 text-[9px] font-bold shrink-0">
+                                    <span className="px-1.5 py-0.2 rounded bg-blue-500/10 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 text-[9px] font-bold shrink-0">
                                       PENGUMUMAN
                                     </span>
                                   )}
-                                  <span className="font-semibold text-slate-200 truncate">{ann.title}</span>
+                                  <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">{ann.title}</span>
                                 </div>
                                 <div className="flex items-center space-x-1 shrink-0">
-                                  {ann.isPinned && <Pin className="w-3 h-3 text-amber-400 shrink-0" />}
-                                  {!isRead && <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0 animate-pulse" />}
+                                  {ann.isPinned && <Pin className="w-3 h-3 text-amber-500 dark:text-amber-400 shrink-0" />}
+                                  {!isRead && <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0 animate-pulse" />}
                                 </div>
                               </div>
-                              <p className="text-slate-400 text-[11px] leading-tight line-clamp-2 mb-1.5">
+                              <p className="text-slate-600 dark:text-slate-400 text-[11px] leading-tight line-clamp-2 mb-1.5">
                                 {ann.content}
                               </p>
                               <div className="flex items-center justify-between text-[10px] text-slate-500">
@@ -830,21 +880,21 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                             }}
                             className={`p-2.5 rounded-xl transition-all cursor-pointer text-xs ${
                               n.isRead
-                                ? 'bg-[#131b2e]/40 opacity-70 hover:opacity-100 hover:bg-[#162035]'
-                                : 'bg-blue-950/25 border border-blue-500/30 hover:border-blue-500/50'
+                                ? 'bg-slate-50 dark:bg-[#131b2e]/40 opacity-80 hover:opacity-100 hover:bg-slate-100 dark:hover:bg-[#162035] border border-slate-200/60 dark:border-transparent'
+                                : 'bg-blue-50/80 dark:bg-blue-950/25 border border-blue-200 dark:border-blue-500/30 hover:border-blue-300 dark:hover:border-blue-500/50'
                             }`}
                           >
                             <div className="flex items-center justify-between mb-0.5">
                               <div className="flex items-center space-x-1.5 truncate">
-                                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />
-                                <span className="font-semibold text-slate-200 truncate">{n.title}</span>
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />
+                                <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">{n.title}</span>
                               </div>
                               <div className="flex items-center space-x-1.5 shrink-0 ml-1">
                                 <span className="text-[10px] text-slate-500">{n.createdAt}</span>
-                                {!n.isRead && <span className="w-1.5 h-1.5 rounded-full bg-blue-400 shrink-0" />}
+                                {!n.isRead && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 shrink-0" />}
                               </div>
                             </div>
-                            <p className="text-slate-400 text-[11px] leading-tight">{n.message}</p>
+                            <p className="text-slate-600 dark:text-slate-400 text-[11px] leading-tight">{n.message}</p>
                           </div>
                         ))}
 
@@ -853,20 +903,20 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                         (notifTab === 'system' && notifications.length === 0) ||
                         (notifTab === 'all' && relevantAnnouncements.length === 0 && notifications.length === 0)) && (
                         <div className="py-8 text-center text-slate-500 text-xs">
-                          <Megaphone className="w-6 h-6 mx-auto mb-2 text-slate-600 opacity-50" />
+                          <Megaphone className="w-6 h-6 mx-auto mb-2 text-slate-400 opacity-50" />
                           <span>Tidak ada pesan atau notifikasi baru</span>
                         </div>
                       )}
                     </div>
 
                     {/* Footer Actions */}
-                    <div className="p-2 border-t border-[#1e293b] bg-[#131b2e] flex items-center justify-between gap-2">
+                    <div className="p-2 border-t border-slate-200 dark:border-[#1e293b] bg-slate-50 dark:bg-[#131b2e] flex items-center justify-between gap-2">
                       <button
                         onClick={() => {
                           setIsNotifOpen(false);
                           setIsAnnouncementListOpen(true);
                         }}
-                        className="text-[11px] font-semibold text-amber-400 hover:text-amber-300 flex items-center gap-1 transition-colors px-2 py-1 rounded hover:bg-amber-500/10"
+                        className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 flex items-center gap-1 transition-colors px-2 py-1 rounded hover:bg-amber-500/10"
                       >
                         <Megaphone className="w-3.5 h-3.5" />
                         <span>Pusat Broadcast</span>
@@ -877,7 +927,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                           setIsNotifOpen(false);
                           handleNavClick('announcements');
                         }}
-                        className="text-[11px] font-semibold text-blue-400 hover:text-blue-300 flex items-center gap-1 transition-colors px-2 py-1 rounded hover:bg-blue-500/10"
+                        className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 flex items-center gap-1 transition-colors px-2 py-1 rounded hover:bg-blue-500/10"
                       >
                         <span>Kelola Pengumuman</span>
                         <ExternalLink className="w-3 h-3" />
@@ -893,7 +943,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
               <div className="relative">
                 <button
                   onClick={() => setIsProfileModalOpen(!isProfileModalOpen)}
-                  className="flex items-center space-x-2.5 px-2.5 py-1.5 rounded-xl bg-[#131b2e] border border-[#1e293b] hover:border-slate-600 transition-colors shadow-sm"
+                  className="flex items-center space-x-2.5 px-2.5 py-1.5 rounded-xl bg-slate-100/80 dark:bg-[#131b2e] border border-slate-200 dark:border-[#1e293b] hover:border-blue-400 dark:hover:border-slate-600 transition-colors shadow-xs"
                   title="Profil Pengguna"
                 >
                   {currentUser.photoURL ? (
@@ -909,10 +959,10 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                     </div>
                   )}
                   <div className="text-left hidden sm:block">
-                    <div className="text-xs font-bold text-white truncate max-w-[120px] leading-tight">
+                    <div className="text-xs font-bold text-slate-800 dark:text-white truncate max-w-[120px] leading-tight">
                       {currentUser.displayName ? currentUser.displayName.split(' ')[0] : 'Puput'}
                     </div>
-                    <div className="text-[10px] text-slate-400 leading-tight">
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight font-medium">
                       {currentUser.role === 'super_admin'
                         ? 'Super Admin'
                         : currentUser.role === 'waka_kesiswaan'
@@ -1019,130 +1069,178 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
         </header>
 
         {/* Workspace Content Body */}
-        <main className="flex-1 overflow-y-auto bg-[#080c16] light:bg-[#f1f5f9] p-4 sm:p-6 custom-scrollbar transition-colors duration-200">
-          <div className="max-w-7xl mx-auto space-y-6">
-            {children}
+        <main
+          ref={mainScrollRef}
+          className="relative flex-1 overflow-y-auto bg-[#080c16] light:bg-[#f1f5f9] p-4 sm:p-6 custom-scrollbar transition-colors duration-200"
+        >
+          {/* Subtle Top Loading / Transition Accent Glow Bar */}
+          <div className="sticky -top-4 sm:-top-6 -mx-4 sm:-mx-6 -mt-4 sm:-mt-6 z-10 pointer-events-none h-0.5 overflow-hidden">
+            <motion.div
+              key={activeTab}
+              initial={{ scaleX: 0, opacity: 1, originX: 0 }}
+              animate={{ scaleX: [0, 1, 1], opacity: [1, 1, 0] }}
+              transition={{ duration: 0.35, ease: 'easeOut' }}
+              className="h-full bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-400 shadow-[0_0_8px_rgba(59,130,246,0.6)]"
+            />
           </div>
+
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, y: 10, filter: 'blur(2px)' }}
+              animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+              exit={{ opacity: 0, y: -6, filter: 'blur(1px)' }}
+              transition={{
+                duration: 0.22,
+                ease: [0.22, 1, 0.36, 1],
+              }}
+              className="max-w-7xl mx-auto space-y-6"
+            >
+              {children}
+            </motion.div>
+          </AnimatePresence>
         </main>
       </div>
 
       {/* Mobile Drawer */}
-      {isMobileMenuOpen && (
-        <div className="lg:hidden fixed inset-0 z-50 flex">
-          <div
-            className="fixed inset-0 bg-black/80 backdrop-blur-xs"
-            onClick={() => setIsMobileMenuOpen(false)}
-          />
-          <div className="relative w-4/5 max-w-xs bg-[#0a0f1d] light:bg-white border-r border-[#1e293b] light:border-slate-200 h-full p-4 overflow-y-auto flex flex-col shadow-2xl z-10 justify-between">
-            <div>
-              <div className="flex items-center justify-between pb-3 border-b border-[#1e293b] light:border-slate-200">
-                <div className="flex items-center space-x-2.5">
-                  {schoolSetting?.logoRightUrl || schoolSetting?.logoUrl ? (
-                    <img
-                      src={schoolSetting.logoRightUrl || schoolSetting.logoUrl}
-                      alt="Logo Sekolah"
-                      className="w-8 h-8 object-contain rounded-lg p-0.5 bg-white/10 light:bg-slate-100 shrink-0 border border-slate-200 dark:border-transparent"
-                      referrerPolicy="no-referrer"
-                    />
-                  ) : (
-                    <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center font-bold text-xs text-white">
-                      M
+      <AnimatePresence>
+        {isMobileMenuOpen && (
+          <div className="lg:hidden fixed inset-0 z-50 flex">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.2 }}
+              className="fixed inset-0 bg-black/80 backdrop-blur-xs"
+              onClick={() => setIsMobileMenuOpen(false)}
+            />
+            <motion.div
+              initial={{ x: '-100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+              className="relative w-4/5 max-w-xs bg-[#0a0f1d] light:bg-white border-r border-[#1e293b] light:border-slate-200 h-full p-4 overflow-y-auto flex flex-col shadow-2xl z-10 justify-between"
+            >
+              <div>
+                <div className="flex items-center justify-between pb-3 border-b border-[#1e293b] light:border-slate-200">
+                  <div className="flex items-center space-x-2.5">
+                    {schoolSetting?.logoRightUrl || schoolSetting?.logoUrl ? (
+                      <img
+                        src={schoolSetting.logoRightUrl || schoolSetting.logoUrl}
+                        alt="Logo Sekolah"
+                        className="w-8 h-8 object-contain rounded-lg p-0.5 bg-white/10 light:bg-slate-100 shrink-0 border border-slate-200 dark:border-transparent"
+                        referrerPolicy="no-referrer"
+                      />
+                    ) : (
+                      <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center font-bold text-xs text-white">
+                        M
+                      </div>
+                    )}
+                    <div>
+                      <div className="font-extrabold text-xs text-slate-900 dark:text-white uppercase tracking-tight">MAN 2 SERAM</div>
+                      <div className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wide">BAGIAN TIMUR</div>
                     </div>
-                  )}
-                  <div>
-                    <div className="font-extrabold text-xs text-slate-900 dark:text-white uppercase tracking-tight">MAN 2 SERAM</div>
-                    <div className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wide">BAGIAN TIMUR</div>
+                  </div>
+                  <button
+                    onClick={() => setIsMobileMenuOpen(false)}
+                    className="p-1.5 rounded-lg bg-[#131b2e] light:bg-slate-100 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Mobile Quick Theme Switcher */}
+                <div className="py-3 px-1 flex items-center justify-between border-b border-[#1e293b] light:border-slate-200">
+                  <span className="text-xs font-extrabold text-slate-800 dark:text-slate-300 tracking-wide">TEMA & MODE</span>
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={toggleMode}
+                      className="p-2 rounded-xl bg-slate-100 dark:bg-[#131b2e] border border-slate-300 dark:border-[#1e293b] text-amber-500 dark:text-amber-400 hover:bg-slate-200 dark:hover:bg-[#1a253d] transition-all shadow-xs"
+                      title="Ganti Mode Gelap / Terang"
+                    >
+                      {resolvedMode === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4 text-indigo-600" />}
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsMobileMenuOpen(false);
+                        setIsThemeModalOpen(true);
+                      }}
+                      className="p-2 rounded-xl bg-slate-100 dark:bg-[#131b2e] border border-slate-300 dark:border-[#1e293b] text-blue-600 dark:text-blue-400 hover:bg-slate-200 dark:hover:bg-[#1a253d] transition-all shadow-xs"
+                      title="Buka Pusat Tema"
+                    >
+                      <Palette className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
+
+                <div className="py-3 space-y-4">
+                  {navSections.map(sec => (
+                    <div key={sec.title} className="space-y-1">
+                      <div className="px-2 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                        {sec.title}
+                      </div>
+                      <div className="space-y-0.5">
+                        {sec.items.map(item => {
+                          const Icon = item.icon;
+                          const isActive = activeTab === item.id;
+                          return (
+                            <motion.button
+                              key={`${sec.title}-${item.id}`}
+                              onClick={() => handleNavClick(item.id)}
+                              whileTap={{ scale: 0.98 }}
+                              className={`relative w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-colors duration-150 ${
+                                isActive
+                                  ? 'text-white font-bold'
+                                  : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#131c2e]'
+                              }`}
+                            >
+                              {isActive && (
+                                <motion.div
+                                  layoutId="activeMobileNavIndicator"
+                                  className="absolute inset-0 bg-blue-600 rounded-xl shadow-md z-0"
+                                  transition={{ type: 'spring', stiffness: 450, damping: 35 }}
+                                />
+                              )}
+                              <div className="relative z-10 flex items-center space-x-2.5 truncate">
+                                <Icon className={`w-4 h-4 shrink-0 transition-colors duration-150 ${isActive ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`} />
+                                <span className="truncate">{item.label}</span>
+                              </div>
+                              {item.tag && (
+                                <span
+                                  className={`relative z-10 text-[9px] font-bold font-mono px-1.5 py-0.5 rounded-md border tracking-wider uppercase transition-colors duration-150 ${getNavTagClass(
+                                    item.tag,
+                                    isActive
+                                  )}`}
+                                >
+                                  {item.tag}
+                                </span>
+                              )}
+                            </motion.button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Logout Mobile */}
+              <div className="pt-3 border-t border-[#1e293b] light:border-slate-200">
                 <button
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="p-1.5 rounded-lg bg-[#131b2e] light:bg-slate-100 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
+                  onClick={() => {
+                    logout();
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="w-full py-2 px-3 rounded-xl bg-red-950/40 light:bg-red-50 border border-red-500/30 light:border-red-200 text-red-300 light:text-red-700 text-xs font-bold flex items-center justify-center space-x-2"
                 >
-                  <X className="w-4 h-4" />
+                  <LogOut className="w-4 h-4" />
+                  <span>KELUAR</span>
                 </button>
               </div>
-
-              {/* Mobile Quick Theme Switcher */}
-              <div className="py-3 px-1 flex items-center justify-between border-b border-[#1e293b] light:border-slate-200">
-                <span className="text-xs font-extrabold text-slate-800 dark:text-slate-300 tracking-wide">TEMA & MODE</span>
-                <div className="flex items-center space-x-2">
-                  <button
-                    onClick={toggleMode}
-                    className="p-2 rounded-xl bg-slate-100 dark:bg-[#131b2e] border border-slate-300 dark:border-[#1e293b] text-amber-500 dark:text-amber-400 hover:bg-slate-200 dark:hover:bg-[#1a253d] transition-all shadow-xs"
-                    title="Ganti Mode Gelap / Terang"
-                  >
-                    {resolvedMode === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4 text-indigo-600" />}
-                  </button>
-                  <button
-                    onClick={() => {
-                      setIsMobileMenuOpen(false);
-                      setIsThemeModalOpen(true);
-                    }}
-                    className="p-2 rounded-xl bg-slate-100 dark:bg-[#131b2e] border border-slate-300 dark:border-[#1e293b] text-blue-600 dark:text-blue-400 hover:bg-slate-200 dark:hover:bg-[#1a253d] transition-all shadow-xs"
-                    title="Buka Pusat Tema"
-                  >
-                    <Palette className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-
-              <div className="py-3 space-y-4">
-                {navSections.map(sec => (
-                  <div key={sec.title} className="space-y-1">
-                    <div className="px-2 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                      {sec.title}
-                    </div>
-                    {sec.items.map(item => {
-                      const Icon = item.icon;
-                      const isActive = activeTab === item.id;
-                      return (
-                        <button
-                          key={`${sec.title}-${item.id}`}
-                          onClick={() => handleNavClick(item.id)}
-                          className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-colors ${
-                            isActive
-                              ? 'bg-blue-600 text-white shadow-md'
-                              : 'text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-[#131c2e]'
-                          }`}
-                        >
-                          <div className="flex items-center space-x-2.5 truncate">
-                            <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`} />
-                            <span className="truncate">{item.label}</span>
-                          </div>
-                          {item.tag && (
-                            <span
-                              className={`text-[9px] font-bold font-mono px-1.5 py-0.5 rounded-md border tracking-wider uppercase ${getNavTagClass(
-                                item.tag,
-                                isActive
-                              )}`}
-                            >
-                              {item.tag}
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Logout Mobile */}
-            <div className="pt-3 border-t border-[#1e293b] light:border-slate-200">
-              <button
-                onClick={() => {
-                  logout();
-                  setIsMobileMenuOpen(false);
-                }}
-                className="w-full py-2 px-3 rounded-xl bg-red-950/40 light:bg-red-50 border border-red-500/30 light:border-red-200 text-red-300 light:text-red-700 text-xs font-bold flex items-center justify-center space-x-2"
-              >
-                <LogOut className="w-4 h-4" />
-                <span>KELUAR</span>
-              </button>
-            </div>
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
 
       {/* Global Modals */}
       <GlobalSearch

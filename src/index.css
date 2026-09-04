@@ -167,18 +167,18 @@
   }
 
   /* ------------------------------------------------------------- */
-  /* THEME PALETTES - LIGHT MODE CSS VARIABLES                     */
+  /* THEME PALETTES - LIGHT MODE CSS VARIABLES (MAXIMUM CONTRAST)  */
   /* ------------------------------------------------------------- */
   :root.light, :root.light[data-theme="navy"], [data-mode="light"][data-theme="navy"] {
-    --bg-page: #f1f5f9;
+    --bg-page: #f4f6fb;
     --bg-header: #ffffff;
     --bg-sidebar: #ffffff;
     --bg-card: #ffffff;
-    --bg-card-hover: #f8fafc;
+    --bg-card-hover: #f1f5f9;
     --bg-card-subtle: #f8fafc;
     --border-color: #cbd5e1;
     --border-color-hover: #94a3b8;
-    --text-primary: #0f172a;
+    --text-primary: #090d16;
     --text-secondary: #1e293b;
     --text-muted: #475569;
     --accent-color: #2563eb;
@@ -192,17 +192,17 @@
   }
 
   :root.light[data-theme="emerald"], [data-mode="light"][data-theme="emerald"] {
-    --bg-page: #f0fdf4;
+    --bg-page: #f2fbf6;
     --bg-header: #ffffff;
     --bg-sidebar: #ffffff;
     --bg-card: #ffffff;
-    --bg-card-hover: #f7fee7;
-    --bg-card-subtle: #f0fdf4;
+    --bg-card-hover: #f0fdf4;
+    --bg-card-subtle: #f7fee7;
     --border-color: #a7f3d0;
     --border-color-hover: #6ee7b7;
-    --text-primary: #064e3b;
-    --text-secondary: #065f46;
-    --text-muted: #047857;
+    --text-primary: #090d16;
+    --text-secondary: #1e293b;
+    --text-muted: #334155;
     --accent-color: #059669;
     --accent-secondary: #047857;
     --accent-glow: rgba(5, 150, 105, 0.15);
@@ -214,7 +214,7 @@
   }
 
   :root.light[data-theme="indigo"], [data-mode="light"][data-theme="indigo"] {
-    --bg-page: #f5f3ff;
+    --bg-page: #f6f5ff;
     --bg-header: #ffffff;
     --bg-sidebar: #ffffff;
     --bg-card: #ffffff;
@@ -222,9 +222,9 @@
     --bg-card-subtle: #f5f3ff;
     --border-color: #ddd6fe;
     --border-color-hover: #c4b5fd;
-    --text-primary: #2e1065;
-    --text-secondary: #3b0764;
-    --text-muted: #581c87;
+    --text-primary: #090d16;
+    --text-secondary: #1e293b;
+    --text-muted: #334155;
     --accent-color: #7c3aed;
     --accent-secondary: #6366f1;
     --accent-glow: rgba(124, 58, 237, 0.15);
@@ -236,17 +236,17 @@
   }
 
   :root.light[data-theme="sunset"], [data-mode="light"][data-theme="sunset"] {
-    --bg-page: #fffbeb;
+    --bg-page: #fffdf5;
     --bg-header: #ffffff;
     --bg-sidebar: #ffffff;
     --bg-card: #ffffff;
-    --bg-card-hover: #fff7ed;
+    --bg-card-hover: #fffbeb;
     --bg-card-subtle: #fef3c7;
     --border-color: #fde68a;
     --border-color-hover: #fcd34d;
-    --text-primary: #451a03;
-    --text-secondary: #78350f;
-    --text-muted: #92400e;
+    --text-primary: #090d16;
+    --text-secondary: #1e293b;
+    --text-muted: #334155;
     --accent-color: #d97706;
     --accent-secondary: #ea580c;
     --accent-glow: rgba(217, 119, 6, 0.15);
@@ -266,7 +266,7 @@
     --bg-card-subtle: #f8fafc;
     --border-color: #cbd5e1;
     --border-color-hover: #94a3b8;
-    --text-primary: #0f172a;
+    --text-primary: #090d16;
     --text-secondary: #1e293b;
     --text-muted: #475569;
     --accent-color: #475569;
@@ -511,6 +511,17 @@ html.light,
   .bg-\[\#2e2e38\],
   .bg-\[\#32323c\],
   .bg-\[\#131b2e\],
+  .bg-\[\#131b2e\]\/95,
+  .bg-\[\#131b2e\]\/90,
+  .bg-\[\#131b2e\]\/85,
+  .bg-\[\#131b2e\]\/80,
+  .bg-\[\#131b2e\]\/75,
+  .bg-\[\#131b2e\]\/70,
+  .bg-\[\#131b2e\]\/60,
+  .bg-\[\#131b2e\]\/50,
+  .bg-\[\#131b2e\]\/40,
+  .bg-\[\#131b2e\]\/30,
+  .bg-\[\#131b2e\]\/20,
   .bg-\[\#161d2f\],
   .bg-\[\#162035\],
   .bg-\[\#0d121f\],
@@ -1033,6 +1044,38 @@ html.light,
 }
 
 /* ------------------------------------------------------------- */
+/* 2.2 DARK MODE TEXT CONTRAST & ACCESSIBILITY SAFEGUARDS        */
+/* ------------------------------------------------------------- */
+html.dark,
+[data-mode="dark"],
+:root.dark {
+  /* Prevent dark text on dark surfaces in dark mode */
+  &:not(.print-paper):not(.print-paper *) {
+    .text-slate-900:not(.bg-white *):not(.bg-slate-50 *):not(button.bg-white *),
+    .text-slate-800:not(.bg-white *):not(.bg-slate-50 *):not(button.bg-white *),
+    .text-slate-700:not(.bg-white *):not(.bg-slate-50 *):not(button.bg-white *),
+    .text-zinc-900:not(.bg-white *):not(.bg-zinc-50 *):not(button.bg-white *),
+    .text-zinc-800:not(.bg-white *):not(.bg-zinc-50 *):not(button.bg-white *),
+    .text-zinc-700:not(.bg-white *):not(.bg-zinc-50 *):not(button.bg-white *),
+    .text-gray-900:not(.bg-white *):not(.bg-gray-50 *):not(button.bg-white *),
+    .text-gray-800:not(.bg-white *):not(.bg-gray-50 *):not(button.bg-white *),
+    .text-gray-700:not(.bg-white *):not(.bg-gray-50 *):not(button.bg-white *) {
+      color: #e2e8f0 !important;
+    }
+
+    /* Boost readable contrast of labels and muted text in dark mode */
+    label:not(.text-white):not([class*="text-emerald-"]):not([class*="text-indigo-"]):not([class*="text-amber-"]):not([class*="text-red-"]) {
+      color: #f1f5f9;
+    }
+
+    .text-zinc-400,
+    .text-slate-400 {
+      color: #94a3b8;
+    }
+  }
+}
+
+/* ------------------------------------------------------------- */
 /* 3. HIGH CONTRAST & TYPOGRAPHY SHARPNESS ENHANCEMENTS          */
 /* ------------------------------------------------------------- */
 [data-font-contrast="high"] h1,
@@ -1049,6 +1092,12 @@ html.light,
 [data-font-contrast="high"] span,
 [data-font-contrast="high"] label {
   text-rendering: geometricPrecision;
+}
+
+/* Global text anti-aliasing & sharpness enhancement */
+p, span, div, h1, h2, h3, h4, h5, h6, label, button, input, select, textarea {
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* ------------------------------------------------------------- */

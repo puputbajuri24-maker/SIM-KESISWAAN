@@ -38,7 +38,7 @@ export const recordSystemAuditLog = async (
   } catch (e) {}
 
   try {
-    await setDoc(doc(db, 'audit_logs', newLog.id), newLog);
+    setDoc(doc(db, 'audit_logs', newLog.id), newLog).catch(() => {});
   } catch (e) {}
 
   return newLog;
@@ -370,7 +370,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       try {
-        await setDoc(doc(db, 'users', newUser.uid), newUser, { merge: true });
+        setDoc(doc(db, 'users', newUser.uid), newUser, { merge: true }).catch(() => {});
       } catch (e) {}
 
       recordSystemAuditLog('CREATE_USER', 'Manajemen Pengguna', `Administrator membuat akun baru: ${newUser.displayName} (${newUser.email || newUser.nip}) [${newUser.role.toUpperCase()}]`, currentUser);
@@ -401,7 +401,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       try {
-        await setDoc(doc(db, 'users', uid), updated, { merge: true });
+        setDoc(doc(db, 'users', uid), updated, { merge: true }).catch(() => {});
       } catch (e) {}
 
       recordSystemAuditLog('UPDATE_USER', 'Manajemen Pengguna', `Administrator memperbarui akun: ${targetUserDisplayName} (ID: ${uid})`, currentUser);
@@ -425,7 +425,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       try {
-        await deleteDoc(doc(db, 'users', uid));
+        deleteDoc(doc(db, 'users', uid)).catch(() => {});
       } catch (e) {}
 
       recordSystemAuditLog('DELETE_USER', 'Manajemen Pengguna', `Administrator menghapus akun: ${targetUser?.displayName || uid} (${targetUser?.email || '-'})`, currentUser);
@@ -455,7 +455,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       try {
-        await setDoc(doc(db, 'users', uid), { password: newPassword, updatedAt: new Date().toISOString() }, { merge: true });
+        setDoc(doc(db, 'users', uid), { password: newPassword, updatedAt: new Date().toISOString() }, { merge: true }).catch(() => {});
       } catch (e) {}
 
       recordSystemAuditLog('RESET_PASSWORD', 'Keamanan Akun', `Administrator mereset kata sandi akun: ${targetUser?.displayName || uid}`, currentUser);

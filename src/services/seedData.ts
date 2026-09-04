@@ -44,11 +44,11 @@ export const INITIAL_SCHOOL_SETTING: SchoolSetting = {
   npsn: '60728491',
   address: 'Jl. Lintas Seram, Kec. Bula, Kab. Seram Bagian Timur, Maluku',
   postalCode: '97554',
-  principalName: 'Drs. H. M. Nur Latarissa, M.Pd.I.',
-  principalNip: '19700412 199803 1 003',
-  wakaName: '',
-  wakaNip: '',
-  wakaKesiswaanName: '',
+  principalName: 'Zakaria, S. Pd.I., M. Pd',
+  principalNip: '197808042003121008',
+  wakaName: 'Puput Eka Bajuri, S. Pd., M. Or',
+  wakaNip: '198810052020121003',
+  wakaKesiswaanName: 'Puput Eka Bajuri, S. Pd., M. Or',
   phone: '(0915) 21189',
   email: 'man2sbt@kemenag.go.id',
   website: 'https://man2serambagiantimur.sch.id',
@@ -695,10 +695,10 @@ export const INITIAL_HANDBOOK_META: SchoolHandbookMeta = {
   thresholdSp2: 50, // SP 2 & Panggilan Orang Tua
   thresholdSp3: 75, // SP 3 & Skorsing Edukatif
   thresholdDrop: 100, // Konferensi Pleno Kasus & Pengembalian ke Orang Tua
-  signedBy: 'Drs. H. M. Nur Latarissa, M.Pd.I.',
-  signedNip: '19700412 199803 1 003',
-  wakaName: 'Abdul Malik Kelian, S.Pd.I.',
-  wakaNip: '19820515 200901 1 012',
+  signedBy: 'Zakaria, S. Pd.I., M. Pd',
+  signedNip: '197808042003121008',
+  wakaName: 'Puput Eka Bajuri, S. Pd., M. Or',
+  wakaNip: '198810052020121003',
   issuedPlace: 'Bula',
   issuedDate: '2026-07-15',
   lastUpdated: new Date().toISOString()

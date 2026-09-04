@@ -50,12 +50,14 @@ import { UserProfile, UserRole, SchoolSetting } from '../types';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { AuditLogsPanel } from '../components/cpanel/AuditLogsPanel';
+import { AcademicYearManagementModal } from '../components/common/AcademicYearManagementModal';
 
 export const CPanelPage: React.FC = () => {
   const { allUsers, isSuperAdmin, addUser, updateUser, deleteUser, resetUserPassword, loginWithUser, syncUsersFromTeachers } = useAuth();
   const {
     schoolSetting,
     updateSchoolSetting,
+    academicYears,
     activeAcademicYear,
     activeSemester,
     setActiveAcademicYear,
@@ -85,25 +87,26 @@ export const CPanelPage: React.FC = () => {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [isClearDataModalOpen, setIsClearDataModalOpen] = useState(false);
+  const [isAcademicYearModalOpen, setIsAcademicYearModalOpen] = useState(false);
   const [selectedUserForAction, setSelectedUserForAction] = useState<UserProfile | null>(null);
 
   // School Setting form state for Master Control
   const [schoolFormData, setSchoolFormData] = useState<SchoolSetting>({
     id: schoolSetting?.id || 'main_school',
-    name: schoolSetting?.name || 'MADRASAH ALIYAH NEGERI TELADAN',
+    name: schoolSetting?.name || 'MAN 2 SERAM BAGIAN TIMUR',
     centralInstitution: schoolSetting?.centralInstitution || 'KEMENTERIAN AGAMA REPUBLIK INDONESIA',
-    regionalInstitution: schoolSetting?.regionalInstitution || 'KANTOR WILAYAH KEMENTERIAN AGAMA PROVINSI',
-    npsn: schoolSetting?.npsn || '20108890',
-    address: schoolSetting?.address || 'Jl. Pendidikan Islami No. 45, Kompleks Madrasah Terpadu',
-    postalCode: schoolSetting?.postalCode || '16911',
-    principalName: schoolSetting?.principalName || 'Drs. H. Ahmad Fauzi, M.Pd.I.',
-    principalNip: schoolSetting?.principalNip || '19680512 199403 1 002',
-    wakaName: schoolSetting?.wakaName || schoolSetting?.wakaKesiswaanName || 'Drs. Muhammad Hidayat, M.Pd.',
-    wakaNip: schoolSetting?.wakaNip || '19750815 200212 1 003',
-    wakaKesiswaanName: schoolSetting?.wakaKesiswaanName || schoolSetting?.wakaName || 'Drs. Muhammad Hidayat, M.Pd.',
-    phone: schoolSetting?.phone || '(021) 8765432 / 0812-3456-7890',
-    email: schoolSetting?.email || 'kesiswaan@madrasah.sch.id',
-    website: schoolSetting?.website || 'https://kesiswaan.madrasah.sch.id',
+    regionalInstitution: schoolSetting?.regionalInstitution || 'KANTOR KEMENTERIAN AGAMA KABUPATEN SERAM BAGIAN TIMUR',
+    npsn: schoolSetting?.npsn || '60728491',
+    address: schoolSetting?.address || 'Jl. Lintas Seram, Kec. Bula, Kab. Seram Bagian Timur, Maluku',
+    postalCode: schoolSetting?.postalCode || '97554',
+    principalName: schoolSetting?.principalName || 'Zakaria, S. Pd.I., M. Pd',
+    principalNip: schoolSetting?.principalNip || '197808042003121008',
+    wakaName: schoolSetting?.wakaName || schoolSetting?.wakaKesiswaanName || 'Puput Eka Bajuri, S. Pd., M. Or',
+    wakaNip: schoolSetting?.wakaNip || '198810052020121003',
+    wakaKesiswaanName: schoolSetting?.wakaKesiswaanName || schoolSetting?.wakaName || 'Puput Eka Bajuri, S. Pd., M. Or',
+    phone: schoolSetting?.phone || '(0915) 21189',
+    email: schoolSetting?.email || 'man2sbt@kemenag.go.id',
+    website: schoolSetting?.website || 'https://man2serambagiantimur.sch.id',
     logoUrl: schoolSetting?.logoUrl || '',
     logoLeftUrl: schoolSetting?.logoLeftUrl || '',
     logoRightUrl: schoolSetting?.logoRightUrl || '',
@@ -1110,15 +1113,33 @@ export const CPanelPage: React.FC = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="block text-zinc-200 font-bold">Tahun Pelajaran Aktif (Sistem)</label>
+                <div className="flex items-center justify-between">
+                  <label className="block text-zinc-200 font-bold">Tahun Pelajaran Aktif (Sistem)</label>
+                  <button
+                    type="button"
+                    onClick={() => setIsAcademicYearModalOpen(true)}
+                    className="text-[11px] font-bold text-emerald-400 hover:text-emerald-300 underline flex items-center gap-1"
+                  >
+                    <span>+ Kelola / Tambah Tahun Ajaran</span>
+                  </button>
+                </div>
                 <select
                   value={schoolFormData.currentAcademicYear || activeAcademicYear}
                   onChange={e => setSchoolFormData({ ...schoolFormData, currentAcademicYear: e.target.value })}
-                  className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-white focus:outline-none focus:border-emerald-500"
+                  className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-white focus:outline-none focus:border-emerald-500 font-bold"
                 >
-                  <option value="2026/2027">2026/2027 (Berjalan)</option>
-                  <option value="2025/2026">2025/2026</option>
-                  <option value="2024/2025">2024/2025</option>
+                  {academicYears && academicYears.length > 0 ? (
+                    academicYears.map(ay => {
+                      const yearVal = ay.year || ay.name || '';
+                      return (
+                        <option key={ay.id} value={yearVal}>
+                          {yearVal} {yearVal === activeAcademicYear ? '(Berjalan/Aktif)' : ''}
+                        </option>
+                      );
+                    })
+                  ) : (
+                    <option value="2026/2027">2026/2027 (Berjalan)</option>
+                  )}
                 </select>
               </div>
 
@@ -1825,6 +1846,12 @@ export const CPanelPage: React.FC = () => {
         message="Apakah Anda yakin ingin mengosongkan seluruh data operasional bawaan (siswa, absensi, pelanggaran, konseling BK, OSIM, prestasi)? Tindakan ini berguna agar aplikasi siap menerima berkas unggahan data resmi sekolah."
         confirmLabel="Ya, Kosongkan Data Bawaan"
         variant="danger"
+      />
+
+      {/* ACADEMIC YEAR MANAGEMENT MODAL */}
+      <AcademicYearManagementModal
+        isOpen={isAcademicYearModalOpen}
+        onClose={() => setIsAcademicYearModalOpen(false)}
       />
 
     </div>

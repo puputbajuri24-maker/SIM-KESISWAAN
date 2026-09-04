@@ -51,10 +51,11 @@ export type SchoolInfo = SchoolSetting;
 export interface AcademicYear {
   id: string;
   year: string; // e.g. "2026/2027"
-  semester: 'Ganjil' | 'Genap';
+  name?: string; // alias e.g. "2026/2027"
+  semester?: 'Ganjil' | 'Genap';
   isActive: boolean;
-  startDate: string;
-  endDate: string;
+  startDate?: string;
+  endDate?: string;
 }
 
 export interface SchoolClass {

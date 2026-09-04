@@ -77,7 +77,7 @@ import {
   clearAllFirebaseOperationalData
 } from '../services/seedData';
 import { db } from '../services/firebase';
-import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc, addDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc, addDoc, writeBatch } from 'firebase/firestore';
 import { useAuth } from './AuthContext';
 import { findMatchingClass, resolveStudentClass, isStudentInClass } from '../utils/classResolver';
 
@@ -90,6 +90,9 @@ interface SchoolContextType {
   activeAcademicYear: string;
   activeSemester: 'Ganjil' | 'Genap';
   setActiveAcademicYear: (year: string, semester?: 'Ganjil' | 'Genap') => void;
+  addAcademicYear: (data: Omit<AcademicYear, 'id'> | AcademicYear) => Promise<void>;
+  updateAcademicYear: (id: string, data: Partial<AcademicYear>) => Promise<void>;
+  deleteAcademicYear: (id: string) => Promise<void>;
   classes: SchoolClass[];
   teachers: Teacher[];
   students: Student[];
@@ -302,12 +305,56 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // States initialized with clean defaults and synced with localStorage / Firestore
   const [schoolSetting, setSchoolSetting] = useState<SchoolSetting>(() => {
     const saved = localStorage.getItem('sim_school_setting');
-    return saved ? JSON.parse(saved) : INITIAL_SCHOOL_SETTING;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.principalName === 'Drs. H. M. Nur Latarissa, M.Pd.I.' || !parsed.principalName) {
+          parsed.principalName = 'Zakaria, S. Pd.I., M. Pd';
+          parsed.principalNip = '197808042003121008';
+        }
+        if (parsed.wakaName === 'Abdul Malik Kelian, S.Pd.I.' || !parsed.wakaName || !parsed.wakaKesiswaanName) {
+          parsed.wakaName = 'Puput Eka Bajuri, S. Pd., M. Or';
+          parsed.wakaKesiswaanName = 'Puput Eka Bajuri, S. Pd., M. Or';
+          parsed.wakaNip = '198810052020121003';
+        }
+        return parsed;
+      } catch (e) {}
+    }
+    return INITIAL_SCHOOL_SETTING;
   });
 
-  const [academicYears, setAcademicYears] = useState<AcademicYear[]>(INITIAL_ACADEMIC_YEARS);
-  const [activeAcademicYear, setActiveAcademicYearState] = useState<string>('2026/2027');
-  const [activeSemester, setActiveSemesterState] = useState<'Ganjil' | 'Genap'>('Ganjil');
+  const [academicYears, setAcademicYears] = useState<AcademicYear[]>(() => {
+    const saved = localStorage.getItem('sim_academic_years');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {}
+    }
+    return INITIAL_ACADEMIC_YEARS;
+  });
+
+  const [activeAcademicYear, setActiveAcademicYearState] = useState<string>(() => {
+    const saved = localStorage.getItem('sim_school_setting');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.currentAcademicYear) return parsed.currentAcademicYear;
+      } catch (e) {}
+    }
+    return '2026/2027';
+  });
+
+  const [activeSemester, setActiveSemesterState] = useState<'Ganjil' | 'Genap'>(() => {
+    const saved = localStorage.getItem('sim_school_setting');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.currentSemester) return parsed.currentSemester;
+      } catch (e) {}
+    }
+    return 'Ganjil';
+  });
 
   const [classes, setClasses] = useState<SchoolClass[]>(() => {
     const saved = localStorage.getItem('sim_classes');
@@ -653,7 +700,17 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (parsed && parsed.decreeNumber) return parsed;
+        if (parsed && parsed.decreeNumber) {
+          if (parsed.signedBy === 'Drs. H. M. Nur Latarissa, M.Pd.I.' || !parsed.signedBy) {
+            parsed.signedBy = 'Zakaria, S. Pd.I., M. Pd';
+            parsed.signedNip = '197808042003121008';
+          }
+          if (parsed.wakaName === 'Abdul Malik Kelian, S.Pd.I.' || !parsed.wakaName) {
+            parsed.wakaName = 'Puput Eka Bajuri, S. Pd., M. Or';
+            parsed.wakaNip = '198810052020121003';
+          }
+          return parsed;
+        }
       } catch (e) {}
     }
     return INITIAL_HANDBOOK_META;
@@ -684,6 +741,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // Persistence to local state
   useEffect(() => {
     localStorage.setItem('sim_school_setting', JSON.stringify(schoolSetting));
+    localStorage.setItem('sim_academic_years', JSON.stringify(academicYears));
     localStorage.setItem('sim_classes', JSON.stringify(classes));
     localStorage.setItem('sim_teachers', JSON.stringify(teachers));
     localStorage.setItem('sim_students', JSON.stringify(students));
@@ -714,6 +772,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     localStorage.setItem('sim_audit_logs', JSON.stringify(auditLogs));
   }, [
     schoolSetting,
+    academicYears,
     classes,
     teachers,
     students,
@@ -1121,7 +1180,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
-  const logAction = async (action: string, module: string, details: string) => {
+  const logAction = (action: string, module: string, details: string) => {
     const newLog: AuditLogItem = {
       id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       userId: currentUser?.uid || 'system',
@@ -1147,23 +1206,29 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       } catch (e) {}
       return next;
     });
-    try {
-      await setDoc(doc(db, 'audit_logs', newLog.id), newLog);
-    } catch (e) {
-      // Local fallback
-    }
+    // Non-blocking write to Firestore
+    setDoc(doc(db, 'audit_logs', newLog.id), newLog).catch(() => {});
   };
 
   const clearAuditLogs = async () => {
     setAuditLogs([]);
-    localStorage.removeItem('sim_audit_logs');
     try {
-      const snap = await getDocs(collection(db, 'audit_logs'));
-      for (const d of snap.docs) {
-        await deleteDoc(d.ref);
-      }
+      localStorage.removeItem('sim_audit_logs');
     } catch (e) {}
-    await logAction('CLEAR_LOGS', 'Audit Log & Keamanan', 'Administrator mengosongkan seluruh riwayat log aktivitas aplikasi');
+    // Non-blocking batch clear in background
+    (async () => {
+      try {
+        const snap = await getDocs(collection(db, 'audit_logs'));
+        if (!snap.empty) {
+          const batch = writeBatch(db);
+          snap.docs.forEach(d => batch.delete(d.ref));
+          await batch.commit();
+        }
+      } catch (e) {
+        console.warn('Batch clear audit logs note:', e);
+      }
+    })();
+    logAction('CLEAR_LOGS', 'Audit Log & Keamanan', 'Administrator mengosongkan seluruh riwayat log aktivitas aplikasi');
   };
 
   const refreshAuditLogs = async () => {
@@ -1193,7 +1258,125 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setActiveAcademicYearState(year);
     setActiveSemesterState(semester);
     setSchoolSetting(prev => ({ ...prev, currentAcademicYear: year, currentSemester: semester }));
+    // Update active status in academicYears array
+    setAcademicYears(prev => {
+      const updated = prev.map(ay => ({
+        ...ay,
+        isActive: ay.name === year
+      }));
+      try {
+        localStorage.setItem('sim_academic_years', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
     logAction('CHANGE_ACADEMIC_YEAR', 'Tahun Ajaran', `Mengubah periode aktif ke ${year} (${semester})`);
+  };
+
+  const addAcademicYear = async (data: Omit<AcademicYear, 'id'> | AcademicYear) => {
+    const newId = 'id' in data && data.id ? data.id : `ay_${Date.now()}`;
+    const yearString = (('year' in data && data.year) ? data.year : (data.name || '2026/2027')).trim();
+    const newYear: AcademicYear = {
+      id: newId,
+      year: yearString,
+      name: yearString,
+      isActive: data.isActive || false,
+      startDate: data.startDate || `${yearString.split('/')[0] || '2026'}-07-01`,
+      endDate: data.endDate || `${yearString.split('/')[1] || '2027'}-06-30`,
+    };
+
+    setAcademicYears(prev => {
+      let nextList = [...prev];
+      if (newYear.isActive) {
+        nextList = nextList.map(item => ({ ...item, isActive: false }));
+        setActiveAcademicYearState(newYear.year);
+        setSchoolSetting(s => ({ ...s, currentAcademicYear: newYear.year }));
+      }
+      nextList.push(newYear);
+      try {
+        localStorage.setItem('sim_academic_years', JSON.stringify(nextList));
+      } catch (e) {}
+      return nextList;
+    });
+
+    try {
+      setDoc(doc(db, 'academic_years', newYear.id), newYear);
+    } catch (e) {
+      console.warn('Firestore addAcademicYear notice:', e);
+    }
+    logAction('ADD_ACADEMIC_YEAR', 'Tahun Ajaran', `Menambahkan tahun pelajaran baru: ${newYear.year}`);
+  };
+
+  const updateAcademicYear = async (id: string, data: Partial<AcademicYear>) => {
+    let targetName = '';
+    let shouldActivate = false;
+
+    setAcademicYears(prev => {
+      const nextList = prev.map(item => {
+        if (item.id === id) {
+          const yearVal = data.year || data.name || item.year || item.name || '';
+          const updated: AcademicYear = {
+            ...item,
+            ...data,
+            year: yearVal,
+            name: yearVal
+          };
+          targetName = updated.year;
+          if (data.isActive) shouldActivate = true;
+          return updated;
+        }
+        if (data.isActive) {
+          return { ...item, isActive: false };
+        }
+        return item;
+      });
+
+      if (shouldActivate && targetName) {
+        setActiveAcademicYearState(targetName);
+        setSchoolSetting(s => ({ ...s, currentAcademicYear: targetName }));
+      }
+
+      try {
+        localStorage.setItem('sim_academic_years', JSON.stringify(nextList));
+      } catch (e) {}
+      return nextList;
+    });
+
+    try {
+      setDoc(doc(db, 'academic_years', id), data, { merge: true });
+    } catch (e) {
+      console.warn('Firestore updateAcademicYear notice:', e);
+    }
+    logAction('UPDATE_ACADEMIC_YEAR', 'Tahun Ajaran', `Memperbarui data tahun pelajaran ID: ${id}`);
+  };
+
+  const deleteAcademicYear = async (id: string) => {
+    const target = academicYears.find(a => a.id === id);
+    if (!target) return;
+
+    if (academicYears.length <= 1) {
+      throw new Error('Minimal harus ada 1 tahun ajaran terdaftar.');
+    }
+
+    setAcademicYears(prev => {
+      const nextList = prev.filter(item => item.id !== id);
+      // If deleted year was active, activate the first available one
+      if (target.isActive && nextList.length > 0) {
+        nextList[0].isActive = true;
+        setActiveAcademicYearState(nextList[0].name);
+        setSchoolSetting(s => ({ ...s, currentAcademicYear: nextList[0].name }));
+      }
+      try {
+        localStorage.setItem('sim_academic_years', JSON.stringify(nextList));
+      } catch (e) {}
+      return nextList;
+    });
+
+    try {
+      deleteDoc(doc(db, 'academic_years', id));
+    } catch (e) {
+      console.warn('Firestore deleteAcademicYear notice:', e);
+    }
+    logAction('DELETE_ACADEMIC_YEAR', 'Tahun Ajaran', `Menghapus tahun pelajaran: ${target.name}`);
   };
 
   const updateSchoolSetting = async (data: Partial<SchoolSetting>) => {
@@ -1208,11 +1391,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setSchoolSetting(updated);
     try {
       localStorage.setItem('sim_school_setting', JSON.stringify(updated));
-      await setDoc(doc(db, 'schools', targetId), updated, { merge: true });
+      setDoc(doc(db, 'schools', targetId), updated, { merge: true });
     } catch (e) {
       console.warn('Firestore update school notice (saved locally):', e);
     }
-    await logAction('UPDATE_SCHOOL_INFO', 'Pengaturan Sekolah', `Memperbarui profil dan identitas sekolah: ${updated.name}`);
+    logAction('UPDATE_SCHOOL_INFO', 'Pengaturan Sekolah', `Memperbarui profil dan identitas sekolah: ${updated.name}`);
   };
 
   // Student Operations
@@ -1230,7 +1413,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setStudents(prev => sortStudentsAlphabetically([newStudent, ...prev]));
     try {
-      await setDoc(doc(db, 'students', newStudent.id), newStudent);
+      setDoc(doc(db, 'students', newStudent.id), newStudent);
     } catch (e) {}
     logAction('CREATE_STUDENT', 'Data Siswa', `Menambahkan data siswa baru: ${newStudent.fullName} (${newStudent.nis})`);
   };
@@ -1247,7 +1430,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setStudents(prev => sortStudentsAlphabetically(prev.map(s => s.id === id ? { ...s, ...finalData, updatedAt: new Date().toISOString() } : s)));
     try {
-      await updateDoc(doc(db, 'students', id), finalData);
+      updateDoc(doc(db, 'students', id), finalData);
     } catch (e) {}
     logAction('UPDATE_STUDENT', 'Data Siswa', `Memperbarui data siswa ID: ${id}`);
   };
@@ -1256,7 +1439,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const target = students.find(s => s.id === id);
     setStudents(prev => prev.filter(s => s.id !== id));
     try {
-      await deleteDoc(doc(db, 'students', id));
+      deleteDoc(doc(db, 'students', id));
     } catch (e) {}
     logAction('DELETE_STUDENT', 'Data Siswa', `Menghapus data siswa: ${target?.fullName || id}`);
   };
@@ -1330,13 +1513,20 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setStudents([]);
     try {
       localStorage.setItem('sim_students', JSON.stringify([]));
-      const snap = await getDocs(collection(db, 'students'));
-      const promises = snap.docs.map(d => deleteDoc(doc(db, 'students', d.id)));
-      await Promise.allSettled(promises);
-    } catch (e) {
-      console.warn('Firestore clear students note:', e);
-    }
-    await logAction('CLEAR_STUDENTS', 'Data Siswa', 'Mengosongkan seluruh data siswa master');
+    } catch (e) {}
+    (async () => {
+      try {
+        const snap = await getDocs(collection(db, 'students'));
+        if (!snap.empty) {
+          const batch = writeBatch(db);
+          snap.docs.forEach(d => batch.delete(d.ref));
+          await batch.commit();
+        }
+      } catch (e) {
+        console.warn('Firestore clear students note:', e);
+      }
+    })();
+    logAction('CLEAR_STUDENTS', 'Data Siswa', 'Mengosongkan seluruh data siswa master');
   };
 
   const importStudentsBulk = async (
@@ -1465,7 +1655,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return merged;
     });
     try {
-      await setDoc(doc(db, 'classes', newClass.id), newClass);
+      setDoc(doc(db, 'classes', newClass.id), newClass);
     } catch (e) {}
 
     // Resiliently link existing students matching this class name
@@ -1503,7 +1693,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return merged;
     });
     try {
-      await updateDoc(doc(db, 'classes', id), data);
+      updateDoc(doc(db, 'classes', id), data);
     } catch (e) {}
 
     // If class name changed, update students belonging to this class
@@ -1540,7 +1730,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return merged;
     });
     try {
-      await deleteDoc(doc(db, 'classes', id));
+      deleteDoc(doc(db, 'classes', id));
     } catch (e) {}
     logAction('DELETE_CLASS', 'Data Rombel', `Menghapus rombel kelas: ${target?.name || id}`);
   };
@@ -1580,7 +1770,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
 
     try {
-      await updateDoc(doc(db, 'classes', classId), { homeroomTeacher: teacherName });
+      updateDoc(doc(db, 'classes', classId), { homeroomTeacher: teacherName });
     } catch (e) {}
 
     // If teacher exists, ensure teacher role or notes updated
@@ -1601,13 +1791,20 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setClasses([]);
     try {
       localStorage.setItem('sim_classes', JSON.stringify([]));
-      const snap = await getDocs(collection(db, 'classes'));
-      const promises = snap.docs.map(d => deleteDoc(doc(db, 'classes', d.id)));
-      await Promise.allSettled(promises);
-    } catch (e) {
-      console.warn('Firestore clear classes note:', e);
-    }
-    await logAction('CLEAR_CLASSES', 'Data Rombel', 'Mengosongkan seluruh data rombel kelas');
+    } catch (e) {}
+    (async () => {
+      try {
+        const snap = await getDocs(collection(db, 'classes'));
+        if (!snap.empty) {
+          const batch = writeBatch(db);
+          snap.docs.forEach(d => batch.delete(d.ref));
+          await batch.commit();
+        }
+      } catch (e) {
+        console.warn('Firestore clear classes note:', e);
+      }
+    })();
+    logAction('CLEAR_CLASSES', 'Data Rombel', 'Mengosongkan seluruh data rombel kelas');
   };
 
   const importClassesBulk = async (
@@ -1663,7 +1860,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return merged;
     });
     try {
-      await setDoc(doc(db, 'teachers', newT.id), newT);
+      setDoc(doc(db, 'teachers', newT.id), newT);
     } catch (e) {}
 
     // Auto-sync to Ekstrakurikuler & Intrakurikuler (OSIM, Wali Kelas, Activities, Settings)
@@ -1702,7 +1899,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return merged;
     });
     try {
-      await updateDoc(doc(db, 'teachers', id), data);
+      updateDoc(doc(db, 'teachers', id), data);
     } catch (e) {}
 
     if (updatedTeacher) {
@@ -1734,7 +1931,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return merged;
     });
     try {
-      await deleteDoc(doc(db, 'teachers', id));
+      deleteDoc(doc(db, 'teachers', id));
     } catch (e) {}
 
     // Auto-update any extracurricular that had this teacher as coach
@@ -1825,13 +2022,20 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setTeachers([]);
     try {
       localStorage.setItem('sim_teachers', JSON.stringify([]));
-      const snap = await getDocs(collection(db, 'teachers'));
-      const promises = snap.docs.map(d => deleteDoc(doc(db, 'teachers', d.id)));
-      await Promise.allSettled(promises);
-    } catch (e) {
-      console.warn('Firestore clear teachers note:', e);
-    }
-    await logAction('CLEAR_TEACHERS', 'Dewan Guru', 'Mengosongkan seluruh data guru master');
+    } catch (e) {}
+    (async () => {
+      try {
+        const snap = await getDocs(collection(db, 'teachers'));
+        if (!snap.empty) {
+          const batch = writeBatch(db);
+          snap.docs.forEach(d => batch.delete(d.ref));
+          await batch.commit();
+        }
+      } catch (e) {
+        console.warn('Firestore clear teachers note:', e);
+      }
+    })();
+    logAction('CLEAR_TEACHERS', 'Dewan Guru', 'Mengosongkan seluruh data guru master');
   };
 
   const importTeachersBulk = async (
@@ -2167,7 +2371,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }));
     }
 
-    await logAction(
+    logAction(
       'CPANEL_SYNC_USER',
       'cPanel Kesiswaan',
       `Sinkronisasi data akun ${user.displayName} (${roleLabel}) ke dewan guru, ekskul, dan modul terkait.`
@@ -2184,7 +2388,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return ekskul;
       }));
     }
-    await logAction(
+    logAction(
       'CPANEL_DELETE_SYNC',
       'cPanel Kesiswaan',
       `Sinkronisasi penghapusan akun ${user?.displayName || uid} pada seluruh modul.`
@@ -2215,7 +2419,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return merged;
     });
     try {
-      await setDoc(doc(db, 'extracurriculars', newEkskul.id), newEkskul);
+      setDoc(doc(db, 'extracurriculars', newEkskul.id), newEkskul);
     } catch (e) {}
 
     // Reverse sync: assign this ekskul to the matching teacher in teachers state
@@ -2257,7 +2461,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return updated;
     });
     try {
-      await updateDoc(doc(db, 'extracurriculars', id), data);
+      updateDoc(doc(db, 'extracurriculars', id), data);
     } catch (e) {}
 
     // Reverse sync coach assignments to teachers list
@@ -2309,7 +2513,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return filtered;
     });
     try {
-      await deleteDoc(doc(db, 'extracurriculars', id));
+      deleteDoc(doc(db, 'extracurriculars', id));
     } catch (e) {}
 
     if (target) {
@@ -2352,7 +2556,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return e;
     }));
     try {
-      await setDoc(doc(db, 'extracurricular_members', newMember.id), newMember);
+      setDoc(doc(db, 'extracurricular_members', newMember.id), newMember);
     } catch (e) {}
     logAction('ADD_MEMBER', 'Anggota Ekstrakurikuler', `Menambahkan anggota: ${data.studentName} ke ${data.extracurricularName || data.extracurricularId}`);
   };
@@ -2369,7 +2573,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }));
     }
     try {
-      await deleteDoc(doc(db, 'extracurricular_members', id));
+      deleteDoc(doc(db, 'extracurricular_members', id));
     } catch (e) {}
     logAction('REMOVE_MEMBER', 'Anggota Ekstrakurikuler', `Menghapus anggota: ${target?.studentName || id}`);
   };
@@ -2377,7 +2581,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateMember = async (id: string, data: Partial<ExtracurricularMember>) => {
     setMembers(prev => prev.map(m => m.id === id ? { ...m, ...data } : m));
     try {
-      await updateDoc(doc(db, 'extracurricular_members', id), data);
+      updateDoc(doc(db, 'extracurricular_members', id), data);
     } catch (e) {}
   };
 
@@ -2385,7 +2589,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setMembers(prev => prev.map(m => m.id === id ? { ...m, status } : m));
     try {
       localStorage.setItem('sim_members', JSON.stringify(members.map(m => m.id === id ? { ...m, status } : m)));
-      await updateDoc(doc(db, 'extracurricular_members', id), { status });
+      updateDoc(doc(db, 'extracurricular_members', id), { status });
     } catch (e) {}
   };
 
@@ -2489,7 +2693,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setSchedules(prev => [newEvent, ...prev]);
     try {
-      await setDoc(doc(db, 'schedules', newEvent.id), newEvent);
+      setDoc(doc(db, 'schedules', newEvent.id), newEvent);
     } catch (e) {}
     logAction('CREATE_SCHEDULE', 'Jadwal', `Membuat jadwal kegiatan: ${newEvent.title} pada ${newEvent.date}`);
     return { success: true };
@@ -2498,7 +2702,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateSchedule = async (id: string, data: Partial<ScheduleEvent>) => {
     setSchedules(prev => prev.map(s => s.id === id ? { ...s, ...data } : s));
     try {
-      await updateDoc(doc(db, 'schedules', id), data);
+      updateDoc(doc(db, 'schedules', id), data);
     } catch (e) {}
     return { success: true };
   };
@@ -2506,7 +2710,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const deleteSchedule = async (id: string) => {
     setSchedules(prev => prev.filter(s => s.id !== id));
     try {
-      await deleteDoc(doc(db, 'schedules', id));
+      deleteDoc(doc(db, 'schedules', id));
     } catch (e) {}
   };
 
@@ -2519,7 +2723,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setAttendance(prev => [newSession, ...prev]);
     try {
-      await setDoc(doc(db, 'attendance', newSession.id), newSession);
+      setDoc(doc(db, 'attendance', newSession.id), newSession);
     } catch (e) {}
     logAction('SUBMIT_ATTENDANCE', 'Presensi', `Menyimpan presensi ${data.extracurricularName} tanggal ${data.date} (Hadir: ${data.presentCount}/${data.totalMembers})`);
   };
@@ -2537,7 +2741,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setActivities(prev => [newAct, ...prev]);
     try {
-      await setDoc(doc(db, 'activities', newAct.id), newAct);
+      setDoc(doc(db, 'activities', newAct.id), newAct);
     } catch (e) {}
     logAction('CREATE_ACTIVITY', 'Kegiatan Siswa', `Mendaftarkan agenda kegiatan: ${newAct.title}`);
   };
@@ -2545,7 +2749,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateActivity = async (id: string, data: Partial<SchoolActivity>) => {
     setActivities(prev => prev.map(a => a.id === id ? { ...a, ...data } : a));
     try {
-      await updateDoc(doc(db, 'activities', id), data);
+      updateDoc(doc(db, 'activities', id), data);
     } catch (e) {}
     logAction('UPDATE_ACTIVITY', 'Kegiatan Siswa', `Memperbarui status/data kegiatan ID: ${id}`);
   };
@@ -2553,7 +2757,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const deleteActivity = async (id: string) => {
     setActivities(prev => prev.filter(a => a.id !== id));
     try {
-      await deleteDoc(doc(db, 'activities', id));
+      deleteDoc(doc(db, 'activities', id));
     } catch (e) {}
   };
 
@@ -2566,7 +2770,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setActivityReports(prev => [newRep, ...prev]);
     try {
-      await setDoc(doc(db, 'activity_reports', newRep.id), newRep);
+      setDoc(doc(db, 'activity_reports', newRep.id), newRep);
     } catch (e) {}
     logAction('CREATE_REPORT', 'Laporan Kegiatan', `Mengajukan laporan kegiatan: ${newRep.activityTitle}`);
   };
@@ -2574,14 +2778,14 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateReport = async (id: string, data: Partial<ActivityReport>) => {
     setActivityReports(prev => prev.map(r => r.id === id ? { ...r, ...data } : r));
     try {
-      await updateDoc(doc(db, 'activity_reports', id), data);
+      updateDoc(doc(db, 'activity_reports', id), data);
     } catch (e) {}
   };
 
   const deleteActivityReport = async (id: string) => {
     setActivityReports(prev => prev.filter(r => r.id !== id));
     try {
-      await deleteDoc(doc(db, 'activity_reports', id));
+      deleteDoc(doc(db, 'activity_reports', id));
     } catch (e) {}
   };
 
@@ -2599,7 +2803,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return r;
     }));
     try {
-      await updateDoc(doc(db, 'activity_reports', id), {
+      updateDoc(doc(db, 'activity_reports', id), {
         status,
         feedback,
         approvedBy: currentUser?.displayName || 'Waka Kesiswaan',
@@ -2625,7 +2829,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return s;
     }));
     try {
-      await setDoc(doc(db, 'violations', newViol.id), newViol);
+      setDoc(doc(db, 'violations', newViol.id), newViol);
     } catch (e) {}
     logAction('RECORD_VIOLATION', 'Pelanggaran Siswa', `Mencatat pelanggaran siswa: ${data.studentName} (+${data.points} poin)`);
   };
@@ -2633,14 +2837,14 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateViolation = async (id: string, data: Partial<StudentViolation>) => {
     setViolations(prev => prev.map(v => v.id === id ? { ...v, ...data } : v));
     try {
-      await updateDoc(doc(db, 'violations', id), data);
+      updateDoc(doc(db, 'violations', id), data);
     } catch (e) {}
   };
 
   const deleteViolation = async (id: string) => {
     setViolations(prev => prev.filter(v => v.id !== id));
     try {
-      await deleteDoc(doc(db, 'violations', id));
+      deleteDoc(doc(db, 'violations', id));
     } catch (e) {}
   };
 
@@ -2653,7 +2857,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setCounseling(prev => [newCs, ...prev]);
     try {
-      await setDoc(doc(db, 'counseling', newCs.id), newCs);
+      setDoc(doc(db, 'counseling', newCs.id), newCs);
     } catch (e) {}
     logAction('RECORD_COUNSELING', 'Pembinaan & BK', `Mencatat sesi pembinaan siswa: ${data.studentName}`);
   };
@@ -2661,14 +2865,14 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateCounseling = async (id: string, data: Partial<StudentCounseling>) => {
     setCounseling(prev => prev.map(c => c.id === id ? { ...c, ...data } : c));
     try {
-      await updateDoc(doc(db, 'counseling', id), data);
+      updateDoc(doc(db, 'counseling', id), data);
     } catch (e) {}
   };
 
   const deleteCounselingSession = async (id: string) => {
     setCounseling(prev => prev.filter(c => c.id !== id));
     try {
-      await deleteDoc(doc(db, 'counseling', id));
+      deleteDoc(doc(db, 'counseling', id));
     } catch (e) {}
   };
 
@@ -2681,7 +2885,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setHomeVisits(prev => [newHv, ...prev]);
     try {
-      await setDoc(doc(db, 'home_visits', newHv.id), newHv);
+      setDoc(doc(db, 'home_visits', newHv.id), newHv);
     } catch (e) {}
     logAction('RECORD_HOME_VISIT', 'Bimbingan Konseling', `Mencatat kunjungan rumah siswa: ${data.studentName}`);
   };
@@ -2689,14 +2893,14 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateHomeVisit = async (id: string, data: Partial<HomeVisitRecord>) => {
     setHomeVisits(prev => prev.map(h => h.id === id ? { ...h, ...data } : h));
     try {
-      await updateDoc(doc(db, 'home_visits', id), data);
+      updateDoc(doc(db, 'home_visits', id), data);
     } catch (e) {}
   };
 
   const deleteHomeVisit = async (id: string) => {
     setHomeVisits(prev => prev.filter(h => h.id !== id));
     try {
-      await deleteDoc(doc(db, 'home_visits', id));
+      deleteDoc(doc(db, 'home_visits', id));
     } catch (e) {}
   };
 
@@ -2709,7 +2913,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setParentCallLetters(prev => [newLetter, ...prev]);
     try {
-      await setDoc(doc(db, 'parent_call_letters', newLetter.id), newLetter);
+      setDoc(doc(db, 'parent_call_letters', newLetter.id), newLetter);
     } catch (e) {}
     logAction('ISSUE_PARENT_CALL_LETTER', 'Bimbingan Konseling', `Menerbitkan surat panggilan orang tua No: ${data.letterNumber} untuk siswa ${data.studentName}`);
   };
@@ -2717,14 +2921,14 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateParentCallLetter = async (id: string, data: Partial<ParentCallLetter>) => {
     setParentCallLetters(prev => prev.map(l => l.id === id ? { ...l, ...data } : l));
     try {
-      await updateDoc(doc(db, 'parent_call_letters', id), data);
+      updateDoc(doc(db, 'parent_call_letters', id), data);
     } catch (e) {}
   };
 
   const deleteParentCallLetter = async (id: string) => {
     setParentCallLetters(prev => prev.filter(l => l.id !== id));
     try {
-      await deleteDoc(doc(db, 'parent_call_letters', id));
+      deleteDoc(doc(db, 'parent_call_letters', id));
     } catch (e) {}
   };
 
@@ -2737,7 +2941,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setCareerGuidances(prev => [newCg, ...prev]);
     try {
-      await setDoc(doc(db, 'career_guidances', newCg.id), newCg);
+      setDoc(doc(db, 'career_guidances', newCg.id), newCg);
     } catch (e) {}
     logAction('RECORD_CAREER_GUIDANCE', 'Bimbingan Karir', `Mencatat asesmen peminatan karir siswa: ${data.studentName} (${data.careerInterest})`);
   };
@@ -2745,14 +2949,14 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateCareerGuidance = async (id: string, data: Partial<CareerGuidanceRecord>) => {
     setCareerGuidances(prev => prev.map(c => c.id === id ? { ...c, ...data } : c));
     try {
-      await updateDoc(doc(db, 'career_guidances', id), data);
+      updateDoc(doc(db, 'career_guidances', id), data);
     } catch (e) {}
   };
 
   const deleteCareerGuidance = async (id: string) => {
     setCareerGuidances(prev => prev.filter(c => c.id !== id));
     try {
-      await deleteDoc(doc(db, 'career_guidances', id));
+      deleteDoc(doc(db, 'career_guidances', id));
     } catch (e) {}
   };
 
@@ -2772,7 +2976,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return s;
     }));
     try {
-      await setDoc(doc(db, 'achievements', newAch.id), newAch);
+      setDoc(doc(db, 'achievements', newAch.id), newAch);
     } catch (e) {}
     logAction('RECORD_ACHIEVEMENT', 'Prestasi Siswa', `Mencatat prestasi: ${data.title} oleh ${data.studentName}`);
   };
@@ -2780,14 +2984,14 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateAchievement = async (id: string, data: Partial<StudentAchievement>) => {
     setAchievements(prev => prev.map(a => a.id === id ? { ...a, ...data } : a));
     try {
-      await updateDoc(doc(db, 'achievements', id), data);
+      updateDoc(doc(db, 'achievements', id), data);
     } catch (e) {}
   };
 
   const deleteAchievement = async (id: string, _arg2?: any, _arg3?: any) => {
     setAchievements(prev => prev.filter(a => a.id !== id));
     try {
-      await deleteDoc(doc(db, 'achievements', id));
+      deleteDoc(doc(db, 'achievements', id));
     } catch (e) {}
   };
 
@@ -2800,7 +3004,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setPermissions(prev => [newPerm, ...prev]);
     try {
-      await setDoc(doc(db, 'permissions', newPerm.id), newPerm);
+      setDoc(doc(db, 'permissions', newPerm.id), newPerm);
     } catch (e) {}
     logAction('RECORD_PERMISSION', 'Perizinan Siswa', `Mengajukan perizinan siswa: ${data.studentName} (${data.type})`);
   };
@@ -2808,21 +3012,21 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updatePermission = async (id: string, data: Partial<StudentPermission>) => {
     setPermissions(prev => prev.map(p => p.id === id ? { ...p, ...data } : p));
     try {
-      await updateDoc(doc(db, 'permissions', id), data);
+      updateDoc(doc(db, 'permissions', id), data);
     } catch (e) {}
   };
 
   const deletePermission = async (id: string) => {
     setPermissions(prev => prev.filter(p => p.id !== id));
     try {
-      await deleteDoc(doc(db, 'permissions', id));
+      deleteDoc(doc(db, 'permissions', id));
     } catch (e) {}
   };
 
   const updatePermissionStatus = async (id: string, status: 'Menunggu' | 'Disetujui' | 'Ditolak' | 'Selesai') => {
     setPermissions(prev => prev.map(p => p.id === id ? { ...p, status, approvedBy: currentUser?.displayName } : p));
     try {
-      await updateDoc(doc(db, 'permissions', id), { status, approvedBy: currentUser?.displayName });
+      updateDoc(doc(db, 'permissions', id), { status, approvedBy: currentUser?.displayName });
     } catch (e) {}
   };
 
@@ -2835,7 +3039,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setNeedsRequests(prev => [newNeed, ...prev]);
     try {
-      await setDoc(doc(db, 'needs_requests', newNeed.id), newNeed);
+      setDoc(doc(db, 'needs_requests', newNeed.id), newNeed);
     } catch (e) {}
     logAction('SUBMIT_NEEDS_REQUEST', 'Kebutuhan Ekstrakurikuler', `Mengajukan kebutuhan: ${data.itemName} (${data.extracurricularName})`);
   };
@@ -2843,7 +3047,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const reviewNeedsRequest = async (id: string, status: 'Disetujui' | 'Ditolak' | 'Revisi', adminNotes?: string, approvedBudget?: number) => {
     setNeedsRequests(prev => prev.map(n => n.id === id ? { ...n, status, adminNotes, approvedBudget: approvedBudget ?? n.approvedBudget } : n));
     try {
-      await updateDoc(doc(db, 'needs_requests', id), { status, adminNotes, approvedBudget });
+      updateDoc(doc(db, 'needs_requests', id), { status, adminNotes, approvedBudget });
     } catch (e) {}
     logAction('REVIEW_NEEDS_REQUEST', 'Kebutuhan Ekstrakurikuler', `Verifikasi kebutuhan ID ${id} menjadi [${status}]`);
   };
@@ -2851,7 +3055,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const deleteNeedsRequest = async (id: string) => {
     setNeedsRequests(prev => prev.filter(n => n.id !== id));
     try {
-      await deleteDoc(doc(db, 'needs_requests', id));
+      deleteDoc(doc(db, 'needs_requests', id));
     } catch (e) {}
     logAction('DELETE_NEEDS_REQUEST', 'Kebutuhan Ekstrakurikuler', `Menghapus pengajuan kebutuhan ID ${id}`);
   };
@@ -2867,7 +3071,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setAnnouncements(prev => [newAnn, ...prev]);
     try {
-      await setDoc(doc(db, 'announcements', newAnn.id), newAnn);
+      setDoc(doc(db, 'announcements', newAnn.id), newAnn);
     } catch (e) {}
     logAction('CREATE_ANNOUNCEMENT', 'Pengumuman', `Membuat pengumuman: ${newAnn.title} (${newAnn.targetRole})`);
   };
@@ -2876,7 +3080,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const updated = { ...data, updatedAt: new Date().toISOString().split('T')[0] };
     setAnnouncements(prev => prev.map(a => a.id === id ? { ...a, ...updated } : a));
     try {
-      await setDoc(doc(db, 'announcements', id), updated, { merge: true });
+      setDoc(doc(db, 'announcements', id), updated, { merge: true });
     } catch (e) {}
     logAction('UPDATE_ANNOUNCEMENT', 'Pengumuman', `Memperbarui pengumuman ID ${id}`);
   };
@@ -2885,7 +3089,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const target = announcements.find(a => a.id === id);
     setAnnouncements(prev => prev.filter(a => a.id !== id));
     try {
-      await deleteDoc(doc(db, 'announcements', id));
+      deleteDoc(doc(db, 'announcements', id));
     } catch (e) {}
     logAction('DELETE_ANNOUNCEMENT', 'Pengumuman', `Menghapus pengumuman: ${target?.title || id}`);
   };
@@ -2919,7 +3123,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     try {
       const targetDoc = doc(db, 'announcements', id);
-      await setDoc(targetDoc, {
+      setDoc(targetDoc, {
         readByUsers: { [userKey]: nowIso }
       }, { merge: true });
     } catch (e) {}
@@ -2940,7 +3144,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     for (const annId of ids) {
       try {
-        await setDoc(doc(db, 'announcements', annId), {
+        setDoc(doc(db, 'announcements', annId), {
           readByUsers: { [userKey]: nowIso }
         }, { merge: true });
       } catch (e) {}
@@ -2969,7 +3173,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setOsimMembers(prev => [newMember, ...prev]);
     try {
-      await setDoc(doc(db, 'osim_members', newMember.id), newMember);
+      setDoc(doc(db, 'osim_members', newMember.id), newMember);
     } catch (e) {}
     logAction('ADD_OSIM_MEMBER', 'Intrakurikuler & OSIM', `Menambahkan pengurus OSIM: ${newMember.fullName} (${newMember.position})`);
   };
@@ -2977,7 +3181,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateOsimMember = async (id: string, data: Partial<OsimMember>) => {
     setOsimMembers(prev => prev.map(m => m.id === id ? { ...m, ...data } : m));
     try {
-      await updateDoc(doc(db, 'osim_members', id), data);
+      updateDoc(doc(db, 'osim_members', id), data);
     } catch (e) {}
     logAction('UPDATE_OSIM_MEMBER', 'Intrakurikuler & OSIM', `Memperbarui data pengurus OSIM ID ${id}`);
   };
@@ -2985,7 +3189,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const deleteOsimMember = async (id: string) => {
     setOsimMembers(prev => prev.filter(m => m.id !== id));
     try {
-      await deleteDoc(doc(db, 'osim_members', id));
+      deleteDoc(doc(db, 'osim_members', id));
     } catch (e) {}
     logAction('DELETE_OSIM_MEMBER', 'Intrakurikuler & OSIM', `Menghapus data pengurus OSIM ID ${id}`);
   };
@@ -2999,7 +3203,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setOsimPrograms(prev => [newProg, ...prev]);
     try {
-      await setDoc(doc(db, 'osim_programs', newProg.id), newProg);
+      setDoc(doc(db, 'osim_programs', newProg.id), newProg);
     } catch (e) {}
     logAction('ADD_OSIM_PROGRAM', 'Intrakurikuler & OSIM', `Membuat program kerja OSIM: ${newProg.title}`);
   };
@@ -3007,7 +3211,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateOsimProgram = async (id: string, data: Partial<OsimWorkProgram>) => {
     setOsimPrograms(prev => prev.map(p => p.id === id ? { ...p, ...data } : p));
     try {
-      await updateDoc(doc(db, 'osim_programs', id), data);
+      updateDoc(doc(db, 'osim_programs', id), data);
     } catch (e) {}
     logAction('UPDATE_OSIM_PROGRAM', 'Intrakurikuler & OSIM', `Memperbarui program kerja OSIM: ${data.title || id}`);
   };
@@ -3015,7 +3219,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const deleteOsimProgram = async (id: string) => {
     setOsimPrograms(prev => prev.filter(p => p.id !== id));
     try {
-      await deleteDoc(doc(db, 'osim_programs', id));
+      deleteDoc(doc(db, 'osim_programs', id));
     } catch (e) {}
     logAction('DELETE_OSIM_PROGRAM', 'Intrakurikuler & OSIM', `Menghapus program kerja OSIM ID ${id}`);
   };
@@ -3029,7 +3233,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setOsimAspirations(prev => [newAsp, ...prev]);
     try {
-      await setDoc(doc(db, 'osim_aspirations', newAsp.id), newAsp);
+      setDoc(doc(db, 'osim_aspirations', newAsp.id), newAsp);
     } catch (e) {}
     logAction('ADD_OSIM_ASPIRATION', 'Intrakurikuler & OSIM', `Mengirim aspirasi siswa: ${newAsp.title}`);
   };
@@ -3037,7 +3241,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateOsimAspiration = async (id: string, data: Partial<OsimAspiration>) => {
     setOsimAspirations(prev => prev.map(a => a.id === id ? { ...a, ...data } : a));
     try {
-      await updateDoc(doc(db, 'osim_aspirations', id), data);
+      updateDoc(doc(db, 'osim_aspirations', id), data);
     } catch (e) {}
     logAction('UPDATE_OSIM_ASPIRATION', 'Intrakurikuler & OSIM', `Memperbarui respon aspirasi ID ${id}`);
   };
@@ -3045,7 +3249,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const deleteOsimAspiration = async (id: string) => {
     setOsimAspirations(prev => prev.filter(a => a.id !== id));
     try {
-      await deleteDoc(doc(db, 'osim_aspirations', id));
+      deleteDoc(doc(db, 'osim_aspirations', id));
     } catch (e) {}
     logAction('DELETE_OSIM_ASPIRATION', 'Intrakurikuler & OSIM', `Menghapus aspirasi siswa ID ${id}`);
   };
@@ -3059,7 +3263,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setOsimMeetings(prev => [newMeet, ...prev]);
     try {
-      await setDoc(doc(db, 'osim_meetings', newMeet.id), newMeet);
+      setDoc(doc(db, 'osim_meetings', newMeet.id), newMeet);
     } catch (e) {}
     logAction('ADD_OSIM_MEETING', 'Intrakurikuler & OSIM', `Mencatat notulensi rapat OSIM: ${newMeet.title}`);
   };
@@ -3067,7 +3271,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateOsimMeeting = async (id: string, data: Partial<OsimMeeting>) => {
     setOsimMeetings(prev => prev.map(m => m.id === id ? { ...m, ...data } : m));
     try {
-      await updateDoc(doc(db, 'osim_meetings', id), data);
+      updateDoc(doc(db, 'osim_meetings', id), data);
     } catch (e) {}
     logAction('UPDATE_OSIM_MEETING', 'Intrakurikuler & OSIM', `Memperbarui notulensi rapat OSIM: ${data.title || id}`);
   };
@@ -3075,7 +3279,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const deleteOsimMeeting = async (id: string) => {
     setOsimMeetings(prev => prev.filter(m => m.id !== id));
     try {
-      await deleteDoc(doc(db, 'osim_meetings', id));
+      deleteDoc(doc(db, 'osim_meetings', id));
     } catch (e) {}
     logAction('DELETE_OSIM_MEETING', 'Intrakurikuler & OSIM', `Menghapus notulensi rapat OSIM ID ${id}`);
   };
@@ -3092,7 +3296,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setOsimDepartments(next);
     try {
       localStorage.setItem('sim_osim_departments', JSON.stringify(next));
-      await setDoc(doc(db, 'osim_departments', newDept.id), newDept);
+      setDoc(doc(db, 'osim_departments', newDept.id), newDept);
     } catch (e) {}
     logAction('ADD_OSIM_DEPARTMENT', 'Intrakurikuler & OSIM', `Menambahkan bidang/sekbid baru: ${newDept.name}`);
   };
@@ -3106,7 +3310,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setOsimDepartments(next);
     try {
       localStorage.setItem('sim_osim_departments', JSON.stringify(next));
-      await updateDoc(doc(db, 'osim_departments', id), { ...data, updatedAt: new Date().toISOString() });
+      updateDoc(doc(db, 'osim_departments', id), { ...data, updatedAt: new Date().toISOString() });
     } catch (e) {}
 
     // Cascade rename to members & proker if name changed
@@ -3134,7 +3338,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setOsimDepartments(next);
     try {
       localStorage.setItem('sim_osim_departments', JSON.stringify(next));
-      await deleteDoc(doc(db, 'osim_departments', id));
+      deleteDoc(doc(db, 'osim_departments', id));
     } catch (e) {}
 
     // Reassign any members and proker in deleted department to first available or BPH
@@ -3158,7 +3362,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     try {
       localStorage.setItem('sim_osim_departments', JSON.stringify(INITIAL_OSIM_DEPARTMENTS));
       for (const d of INITIAL_OSIM_DEPARTMENTS) {
-        await setDoc(doc(db, 'osim_departments', d.id), d);
+        setDoc(doc(db, 'osim_departments', d.id), d);
       }
     } catch (e) {}
     logAction('RESET_OSIM_DEPARTMENTS', 'Intrakurikuler & OSIM', 'Mereset struktur bidang kabinet OSIM ke 8 Sekbid standar');
@@ -3177,7 +3381,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setCashAccounts(prev => [newAcc, ...prev]);
     try {
-      await setDoc(doc(db, 'cash_accounts', newAcc.id), newAcc);
+      setDoc(doc(db, 'cash_accounts', newAcc.id), newAcc);
     } catch (e) {}
     logAction('ADD_CASH_ACCOUNT', 'Neraca Kas', `Membuat akun kas baru: ${newAcc.name} (${newAcc.code})`);
   };
@@ -3185,7 +3389,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateCashAccount = async (id: string, data: Partial<CashAccount>) => {
     setCashAccounts(prev => prev.map(a => a.id === id ? { ...a, ...data, updatedAt: new Date().toISOString() } : a));
     try {
-      await updateDoc(doc(db, 'cash_accounts', id), { ...data, updatedAt: new Date().toISOString() });
+      updateDoc(doc(db, 'cash_accounts', id), { ...data, updatedAt: new Date().toISOString() });
     } catch (e) {}
     logAction('UPDATE_CASH_ACCOUNT', 'Neraca Kas', `Memperbarui akun kas: ${data.name || id}`);
   };
@@ -3196,7 +3400,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // Also remove associated transactions
     setCashTransactions(prev => prev.filter(t => t.accountId !== id));
     try {
-      await deleteDoc(doc(db, 'cash_accounts', id));
+      deleteDoc(doc(db, 'cash_accounts', id));
     } catch (e) {}
     logAction('DELETE_CASH_ACCOUNT', 'Neraca Kas', `Menghapus akun kas: ${target?.name || id}`);
   };
@@ -3214,7 +3418,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     setCashAccounts(prev => prev.map(a => a.id === accountId ? updatedAcc : a));
     try {
-      await setDoc(doc(db, 'cash_accounts', accountId), updatedAcc, { merge: true });
+      setDoc(doc(db, 'cash_accounts', accountId), updatedAcc, { merge: true });
     } catch (e) {}
 
     // Update users' cash manager flags in users collection / localStorage
@@ -3260,7 +3464,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     setCashTransactions(prev => [newTrx, ...prev]);
     try {
-      await setDoc(doc(db, 'cash_transactions', newTrx.id), newTrx);
+      setDoc(doc(db, 'cash_transactions', newTrx.id), newTrx);
     } catch (e) {}
     logAction(
       data.type === 'MASUK' ? 'CASH_INFLOW' : 'CASH_OUTFLOW',
@@ -3272,7 +3476,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateCashTransaction = async (id: string, data: Partial<CashTransaction>) => {
     setCashTransactions(prev => prev.map(t => t.id === id ? { ...t, ...data, updatedAt: new Date().toISOString() } : t));
     try {
-      await updateDoc(doc(db, 'cash_transactions', id), { ...data, updatedAt: new Date().toISOString() });
+      updateDoc(doc(db, 'cash_transactions', id), { ...data, updatedAt: new Date().toISOString() });
     } catch (e) {}
     logAction('UPDATE_CASH_TRANSACTION', 'Neraca Kas', `Memperbarui transaksi kas ID ${id}`);
   };
@@ -3281,7 +3485,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const target = cashTransactions.find(t => t.id === id);
     setCashTransactions(prev => prev.filter(t => t.id !== id));
     try {
-      await deleteDoc(doc(db, 'cash_transactions', id));
+      deleteDoc(doc(db, 'cash_transactions', id));
     } catch (e) {}
     logAction('DELETE_CASH_TRANSACTION', 'Neraca Kas', `Menghapus transaksi kas: ${target?.title || id} (Rp ${target?.amount.toLocaleString('id-ID') || 0})`);
   };
@@ -3299,7 +3503,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setSchoolRules(prev => [...prev, newRule]);
     try {
-      await setDoc(doc(db, 'school_rules', newRule.id), newRule);
+      setDoc(doc(db, 'school_rules', newRule.id), newRule);
     } catch (e) {}
     logAction('ADD_SCHOOL_RULE', 'Buku Tata Tertib', `Menambahkan pasal tata tertib: ${newRule.articleNumber} - ${newRule.title}`);
   };
@@ -3312,7 +3516,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setSchoolRules(prev => prev.map(r => r.id === id ? { ...r, ...updatedData } : r));
     try {
-      await updateDoc(doc(db, 'school_rules', id), updatedData);
+      updateDoc(doc(db, 'school_rules', id), updatedData);
     } catch (e) {}
     logAction('UPDATE_SCHOOL_RULE', 'Buku Tata Tertib', `Memperbarui aturan tata tertib: ${data.articleNumber || ''} ${data.title || id}`);
   };
@@ -3321,7 +3525,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const target = schoolRules.find(r => r.id === id);
     setSchoolRules(prev => prev.filter(r => r.id !== id));
     try {
-      await deleteDoc(doc(db, 'school_rules', id));
+      deleteDoc(doc(db, 'school_rules', id));
     } catch (e) {}
     logAction('DELETE_SCHOOL_RULE', 'Buku Tata Tertib', `Menghapus pasal aturan: ${target?.articleNumber || ''} ${target?.title || id}`);
   };
@@ -3331,9 +3535,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setHandbookMeta(INITIAL_HANDBOOK_META);
     try {
       for (const r of INITIAL_SCHOOL_RULES) {
-        await setDoc(doc(db, 'school_rules', r.id), r);
+        setDoc(doc(db, 'school_rules', r.id), r);
       }
-      await setDoc(doc(db, 'settings', 'handbook_meta'), INITIAL_HANDBOOK_META);
+      setDoc(doc(db, 'settings', 'handbook_meta'), INITIAL_HANDBOOK_META);
     } catch (e) {}
     logAction('RESET_SCHOOL_RULES', 'Buku Tata Tertib', 'Mereset pasal aturan tata tertib ke standar baku nasional');
   };
@@ -3346,7 +3550,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setHandbookMeta(updated);
     try {
-      await setDoc(doc(db, 'settings', 'handbook_meta'), updated);
+      setDoc(doc(db, 'settings', 'handbook_meta'), updated);
     } catch (e) {}
     logAction('UPDATE_HANDBOOK_META', 'Buku Tata Tertib', `Memperbarui SK & Ambang Poin Tata Tertib (${updated.decreeNumber})`);
   };
@@ -3362,6 +3566,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         activeAcademicYear,
         activeSemester,
         setActiveAcademicYear,
+        addAcademicYear,
+        updateAcademicYear,
+        deleteAcademicYear,
         classes,
         teachers,
         students,

@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   Wallet,
   ArrowDownLeft,
@@ -784,12 +785,19 @@ export const CashLedgerPage: React.FC = () => {
       <div className="flex items-center space-x-2 border-b border-zinc-800">
         <button
           onClick={() => setActiveTab('buku_kas')}
-          className={`px-4 py-2.5 text-xs font-medium border-b-2 transition-colors flex items-center space-x-2 ${
+          className={`relative px-4 py-2.5 text-xs font-medium transition-colors flex items-center space-x-2 ${
             activeTab === 'buku_kas'
-              ? 'border-emerald-500 text-emerald-400 font-semibold'
-              : 'border-transparent text-zinc-400 hover:text-zinc-200'
+              ? 'text-emerald-400 font-semibold'
+              : 'text-zinc-400 hover:text-zinc-200'
           }`}
         >
+          {activeTab === 'buku_kas' && (
+            <motion.div
+              layoutId="activeCashLedgerTab"
+              className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-500"
+              transition={{ type: 'spring', stiffness: 450, damping: 35 }}
+            />
+          )}
           <FileText className="w-3.5 h-3.5" />
           <span>Buku Jurnal Mutasi Kas</span>
           <span className="px-1.5 py-0.2 rounded-full bg-zinc-800 text-[10px] font-mono text-zinc-300">
@@ -799,12 +807,19 @@ export const CashLedgerPage: React.FC = () => {
 
         <button
           onClick={() => setActiveTab('daftar_akun')}
-          className={`px-4 py-2.5 text-xs font-medium border-b-2 transition-colors flex items-center space-x-2 ${
+          className={`relative px-4 py-2.5 text-xs font-medium transition-colors flex items-center space-x-2 ${
             activeTab === 'daftar_akun'
-              ? 'border-emerald-500 text-emerald-400 font-semibold'
-              : 'border-transparent text-zinc-400 hover:text-zinc-200'
+              ? 'text-emerald-400 font-semibold'
+              : 'text-zinc-400 hover:text-zinc-200'
           }`}
         >
+          {activeTab === 'daftar_akun' && (
+            <motion.div
+              layoutId="activeCashLedgerTab"
+              className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-500"
+              transition={{ type: 'spring', stiffness: 450, damping: 35 }}
+            />
+          )}
           <Layers className="w-3.5 h-3.5" />
           <span>Daftar Akun Kas & Delegasi Amanah</span>
           <span className="px-1.5 py-0.2 rounded-full bg-zinc-800 text-[10px] font-mono text-zinc-300">
@@ -814,20 +829,35 @@ export const CashLedgerPage: React.FC = () => {
 
         <button
           onClick={() => setActiveTab('rekap_laporan')}
-          className={`px-4 py-2.5 text-xs font-medium border-b-2 transition-colors flex items-center space-x-2 ${
+          className={`relative px-4 py-2.5 text-xs font-medium transition-colors flex items-center space-x-2 ${
             activeTab === 'rekap_laporan'
-              ? 'border-emerald-500 text-emerald-400 font-semibold'
-              : 'border-transparent text-zinc-400 hover:text-zinc-200'
+              ? 'text-emerald-400 font-semibold'
+              : 'text-zinc-400 hover:text-zinc-200'
           }`}
         >
+          {activeTab === 'rekap_laporan' && (
+            <motion.div
+              layoutId="activeCashLedgerTab"
+              className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-500"
+              transition={{ type: 'spring', stiffness: 450, damping: 35 }}
+            />
+          )}
           <Scale className="w-3.5 h-3.5" />
           <span>Neraca Rekapitulasi Keuangan</span>
         </button>
       </div>
 
       {/* 4. Tab Contents */}
-      {activeTab === 'buku_kas' && (
-        <div className="space-y-4">
+      <AnimatePresence mode="wait">
+        {activeTab === 'buku_kas' && (
+          <motion.div
+            key="buku_kas"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+            className="space-y-4"
+          >
           <div className="p-3.5 rounded-xl bg-zinc-900 border border-zinc-800 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
             <div className="relative sm:col-span-2">
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 transform -translate-y-1/2 text-zinc-400" />
@@ -908,11 +938,18 @@ export const CashLedgerPage: React.FC = () => {
               emptySubtitle="Catatan penerimaan dan pengeluaran uang kas akan tercantum di sini secara transparan."
             />
           </div>
-        </div>
+        </motion.div>
       )}
 
       {activeTab === 'daftar_akun' && (
-        <div className="space-y-4">
+        <motion.div
+          key="daftar_akun"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.18, ease: 'easeOut' }}
+          className="space-y-4"
+        >
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-bold text-zinc-200 uppercase tracking-wider font-mono">
               Buku Akun Kas & Delegasi Amanah ({cashAccounts.length} Akun)
@@ -1055,11 +1092,18 @@ export const CashLedgerPage: React.FC = () => {
               );
             })}
           </div>
-        </div>
+        </motion.div>
       )}
 
       {activeTab === 'rekap_laporan' && (
-        <div className="space-y-6">
+        <motion.div
+          key="rekap_laporan"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.18, ease: 'easeOut' }}
+          className="space-y-6"
+        >
           <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-zinc-800 pb-3">
               <div>
@@ -1143,8 +1187,9 @@ export const CashLedgerPage: React.FC = () => {
               </table>
             </div>
           </div>
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
       {/* 5. MODAL: CATAT TRANSAKSI KAS MASUK / KELUAR */}
       <Modal

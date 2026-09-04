@@ -27,6 +27,7 @@ import { UserRole, SchoolSetting } from '../types';
 import { LogoUploader } from '../components/common/LogoUploader';
 import { SchoolLetterhead } from '../components/common/SchoolLetterhead';
 import { ClassManagementModal } from '../components/common/ClassManagementModal';
+import { AcademicYearManagementModal } from '../components/common/AcademicYearManagementModal';
 import { TimezoneSettingsCard } from '../components/common/TimezoneSettingsCard';
 import { ThemeSettingsCard } from '../components/common/ThemeSettingsCard';
 
@@ -74,6 +75,7 @@ export const SettingsPage: React.FC = () => {
   const {
     schoolInfo,
     updateSchoolInfo,
+    academicYears,
     activeAcademicYear,
     activeSemester,
     setActiveAcademicYear,
@@ -123,6 +125,7 @@ export const SettingsPage: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
   const [isClassModalOpen, setIsClassModalOpen] = useState(false);
+  const [isAcademicYearModalOpen, setIsAcademicYearModalOpen] = useState(false);
   const [seedSuccess, setSeedSuccess] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -733,18 +736,35 @@ export const SettingsPage: React.FC = () => {
           </div>
 
           <div>
-            <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Tahun Ajaran Aktif *
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block font-semibold text-slate-700 dark:text-slate-300">
+                Tahun Ajaran Aktif *
+              </label>
+              <button
+                type="button"
+                onClick={() => setIsAcademicYearModalOpen(true)}
+                className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 hover:underline flex items-center gap-1"
+              >
+                <span>+ Kelola / Tambah Tahun Ajaran</span>
+              </button>
+            </div>
             <select
               value={selectedYear}
               onChange={e => setSelectedYear(e.target.value)}
               className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-indigo-600 dark:text-indigo-400"
             >
-              <option value="2024/2025">2024/2025</option>
-              <option value="2025/2026">2025/2026</option>
-              <option value="2026/2027">2026/2027</option>
-              <option value="2027/2028">2027/2028</option>
+              {academicYears && academicYears.length > 0 ? (
+                academicYears.map(ay => {
+                  const yearVal = ay.year || ay.name || '';
+                  return (
+                    <option key={ay.id} value={yearVal}>
+                      {yearVal} {yearVal === activeAcademicYear ? '(Aktif Sistem)' : ''}
+                    </option>
+                  );
+                })
+              ) : (
+                <option value="2026/2027">2026/2027</option>
+              )}
             </select>
           </div>
 
@@ -944,6 +964,12 @@ export const SettingsPage: React.FC = () => {
       <ClassManagementModal
         isOpen={isClassModalOpen}
         onClose={() => setIsClassModalOpen(false)}
+      />
+
+      {/* Academic Year Management Modal */}
+      <AcademicYearManagementModal
+        isOpen={isAcademicYearModalOpen}
+        onClose={() => setIsAcademicYearModalOpen(false)}
       />
     </div>
   );

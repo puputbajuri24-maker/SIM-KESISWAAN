@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   ClipboardCheck,
   Calendar,
@@ -352,32 +353,58 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ initialSchedule 
           <div className="bg-slate-100 dark:bg-slate-800 p-1 rounded-xl flex items-center gap-1 text-xs font-bold">
             <button
               onClick={() => setActiveTab('input')}
-              className={`px-3.5 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
-                activeTab === 'input' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-900'
+              className={`relative px-3.5 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
+                activeTab === 'input' ? 'text-white font-semibold' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              <ClipboardCheck className="w-4 h-4" />
-              <span>Input Presensi Sesi</span>
+              {activeTab === 'input' && (
+                <motion.div
+                  layoutId="activeAttendanceTabIndicator"
+                  className="absolute inset-0 bg-indigo-600 rounded-lg shadow-xs z-0"
+                  transition={{ type: 'spring', stiffness: 450, damping: 35 }}
+                />
+              )}
+              <span className="relative z-10 flex items-center gap-1.5">
+                <ClipboardCheck className="w-4 h-4" />
+                <span>Input Presensi Sesi</span>
+              </span>
             </button>
             <button
               onClick={() => setActiveTab('history')}
-              className={`px-3.5 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
-                activeTab === 'history' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-500 hover:text-slate-900'
+              className={`relative px-3.5 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
+                activeTab === 'history' ? 'text-white font-semibold' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              <FileSpreadsheet className="w-4 h-4" />
-              <span>Riwayat Rekap ({attendance.length})</span>
+              {activeTab === 'history' && (
+                <motion.div
+                  layoutId="activeAttendanceTabIndicator"
+                  className="absolute inset-0 bg-indigo-600 rounded-lg shadow-xs z-0"
+                  transition={{ type: 'spring', stiffness: 450, damping: 35 }}
+                />
+              )}
+              <span className="relative z-10 flex items-center gap-1.5">
+                <FileSpreadsheet className="w-4 h-4" />
+                <span>Riwayat Rekap ({attendance.length})</span>
+              </span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* =========================================================================
-          TAB 1: LIVE PRESENSI INPUT
-      ========================================================================= */}
-      {activeTab === 'input' && (
-        <div className="space-y-6 animate-in fade-in duration-150">
-          {/* Sesi Configuration Card */}
+      <AnimatePresence mode="wait">
+        {/* =========================================================================
+            TAB 1: LIVE PRESENSI INPUT
+        ========================================================================= */}
+        {activeTab === 'input' && (
+          <motion.div
+            key="input"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.18, ease: 'easeOut' }}
+            className="space-y-6"
+          >
+            {/* Sesi Configuration Card */}
           <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-5 shadow-sm space-y-4">
             <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100 flex items-center gap-2">
               <Compass className="w-4 h-4 text-indigo-500" />
@@ -580,14 +607,21 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ initialSchedule 
               </div>
             )}
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* =========================================================================
           TAB 2: RIWAYAT REKAPITULASI
       ========================================================================= */}
       {activeTab === 'history' && (
-        <div className="space-y-4 animate-in fade-in duration-150">
+        <motion.div
+          key="history"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.18, ease: 'easeOut' }}
+          className="space-y-4"
+        >
           <DataTable
             id="attendance-history-table"
             data={attendance}
@@ -597,8 +631,9 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ initialSchedule 
             emptyTitle="Belum Ada Rekap Presensi"
             emptySubtitle="Sesi presensi yang Anda simpan akan tersimpan dan dapat dicetak di sini."
           />
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
       {/* Detail Modal for Past Attendance Record */}
       {selectedRecord && (

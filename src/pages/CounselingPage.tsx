@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   HeartHandshake,
   Plus,
@@ -971,62 +972,107 @@ export const CounselingPage: React.FC = () => {
       <div className="flex items-center space-x-1 border-b border-[#27272a] pb-1 overflow-x-auto font-mono text-[11px]">
         <button
           onClick={() => setActiveTab('counseling')}
-          className={`px-3 py-1.5 rounded flex items-center space-x-2 transition-all ${
+          className={`relative px-3 py-1.5 rounded flex items-center space-x-2 transition-all ${
             activeTab === 'counseling'
-              ? 'bg-pink-600/20 text-pink-400 border border-pink-500/40 font-bold'
+              ? 'text-pink-400 font-bold'
               : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#161618]'
           }`}
         >
-          <HeartHandshake className="w-3.5 h-3.5" />
-          <span>SESI_KONSELING ({counseling.length})</span>
+          {activeTab === 'counseling' && (
+            <motion.div
+              layoutId="activeCounselingTabIndicator"
+              className="absolute inset-0 bg-pink-600/20 border border-pink-500/40 rounded z-0"
+              transition={{ type: 'spring', stiffness: 450, damping: 35 }}
+            />
+          )}
+          <span className="relative z-10 flex items-center space-x-2">
+            <HeartHandshake className="w-3.5 h-3.5" />
+            <span>SESI_KONSELING ({counseling.length})</span>
+          </span>
         </button>
 
         <button
           onClick={() => setActiveTab('home_visit')}
-          className={`px-3 py-1.5 rounded flex items-center space-x-2 transition-all ${
+          className={`relative px-3 py-1.5 rounded flex items-center space-x-2 transition-all ${
             activeTab === 'home_visit'
-              ? 'bg-purple-600/20 text-purple-400 border border-purple-500/40 font-bold'
+              ? 'text-purple-400 font-bold'
               : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#161618]'
           }`}
         >
-          <Home className="w-3.5 h-3.5" />
-          <span>KUNJUNGAN_RUMAH ({homeVisits.length})</span>
+          {activeTab === 'home_visit' && (
+            <motion.div
+              layoutId="activeCounselingTabIndicator"
+              className="absolute inset-0 bg-purple-600/20 border border-purple-500/40 rounded z-0"
+              transition={{ type: 'spring', stiffness: 450, damping: 35 }}
+            />
+          )}
+          <span className="relative z-10 flex items-center space-x-2">
+            <Home className="w-3.5 h-3.5" />
+            <span>KUNJUNGAN_RUMAH ({homeVisits.length})</span>
+          </span>
         </button>
 
         <button
           onClick={() => setActiveTab('parent_call')}
-          className={`px-3 py-1.5 rounded flex items-center space-x-2 transition-all ${
+          className={`relative px-3 py-1.5 rounded flex items-center space-x-2 transition-all ${
             activeTab === 'parent_call'
-              ? 'bg-blue-600/20 text-blue-400 border border-blue-500/40 font-bold'
+              ? 'text-blue-400 font-bold'
               : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#161618]'
           }`}
         >
-          <Mail className="w-3.5 h-3.5" />
-          <span>PANGGILAN_ORTU ({parentCallLetters.length})</span>
+          {activeTab === 'parent_call' && (
+            <motion.div
+              layoutId="activeCounselingTabIndicator"
+              className="absolute inset-0 bg-blue-600/20 border border-blue-500/40 rounded z-0"
+              transition={{ type: 'spring', stiffness: 450, damping: 35 }}
+            />
+          )}
+          <span className="relative z-10 flex items-center space-x-2">
+            <Mail className="w-3.5 h-3.5" />
+            <span>PANGGILAN_ORTU ({parentCallLetters.length})</span>
+          </span>
         </button>
 
         <button
           onClick={() => setActiveTab('career')}
-          className={`px-3 py-1.5 rounded flex items-center space-x-2 transition-all ${
+          className={`relative px-3 py-1.5 rounded flex items-center space-x-2 transition-all ${
             activeTab === 'career'
-              ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/40 font-bold'
+              ? 'text-emerald-400 font-bold'
               : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#161618]'
           }`}
         >
-          <Compass className="w-3.5 h-3.5" />
-          <span>KARIR_&_PEMINATAN ({careerGuidances.length})</span>
+          {activeTab === 'career' && (
+            <motion.div
+              layoutId="activeCounselingTabIndicator"
+              className="absolute inset-0 bg-emerald-600/20 border border-emerald-500/40 rounded z-0"
+              transition={{ type: 'spring', stiffness: 450, damping: 35 }}
+            />
+          )}
+          <span className="relative z-10 flex items-center space-x-2">
+            <Compass className="w-3.5 h-3.5" />
+            <span>KARIR_&_PEMINATAN ({careerGuidances.length})</span>
+          </span>
         </button>
 
         <button
           onClick={() => setActiveTab('analytics')}
-          className={`px-3 py-1.5 rounded flex items-center space-x-2 transition-all ${
+          className={`relative px-3 py-1.5 rounded flex items-center space-x-2 transition-all ${
             activeTab === 'analytics'
-              ? 'bg-amber-600/20 text-amber-400 border border-amber-500/40 font-bold'
+              ? 'text-amber-400 font-bold'
               : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#161618]'
           }`}
         >
-          <FileText className="w-3.5 h-3.5" />
-          <span>REKAP_&_LAPORAN_BK</span>
+          {activeTab === 'analytics' && (
+            <motion.div
+              layoutId="activeCounselingTabIndicator"
+              className="absolute inset-0 bg-amber-600/20 border border-amber-500/40 rounded z-0"
+              transition={{ type: 'spring', stiffness: 450, damping: 35 }}
+            />
+          )}
+          <span className="relative z-10 flex items-center space-x-2">
+            <FileText className="w-3.5 h-3.5" />
+            <span>REKAP_&_LAPORAN_BK</span>
+          </span>
         </button>
       </div>
 
@@ -1047,8 +1093,16 @@ export const CounselingPage: React.FC = () => {
       {/* ========================================================= */}
       {/* TAB 1: SESI KONSELING */}
       {/* ========================================================= */}
+      <AnimatePresence mode="wait">
       {activeTab === 'counseling' && (
-        <div className="space-y-3">
+        <motion.div
+          key="counseling"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.18, ease: 'easeOut' }}
+          className="space-y-3"
+        >
           {/* Quick Filter Bar */}
           <div className="p-2.5 bg-[#0d0d0f] border border-[#27272a] rounded flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap items-center gap-2 font-mono text-[10px]">
@@ -1109,14 +1163,21 @@ export const CounselingPage: React.FC = () => {
             searchableKeys={['studentName', 'topic', 'counselorName', 'solution', 'serviceField']}
             onRowClick={c => setDetailCounseling(c)}
           />
-        </div>
+        </motion.div>
       )}
 
       {/* ========================================================= */}
       {/* TAB 2: KUNJUNGAN RUMAH (HOME VISIT) */}
       {/* ========================================================= */}
       {activeTab === 'home_visit' && (
-        <div className="space-y-3">
+        <motion.div
+          key="home_visit"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.18, ease: 'easeOut' }}
+          className="space-y-3"
+        >
           <div className="p-2.5 bg-[#0d0d0f] border border-[#27272a] rounded flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2 font-mono text-[10px]">
               <span className="text-zinc-500">STATUS_KUNJUNGAN:</span>
@@ -1161,14 +1222,21 @@ export const CounselingPage: React.FC = () => {
             searchableKeys={['studentName', 'purpose', 'address', 'findings', 'visitedPerson']}
             onRowClick={h => setDetailHomeVisit(h)}
           />
-        </div>
+        </motion.div>
       )}
 
       {/* ========================================================= */}
       {/* TAB 3: SURAT PANGGILAN ORANG TUA (SP) */}
       {/* ========================================================= */}
       {activeTab === 'parent_call' && (
-        <div className="space-y-3">
+        <motion.div
+          key="parent_call"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.18, ease: 'easeOut' }}
+          className="space-y-3"
+        >
           <div className="p-2.5 bg-[#0d0d0f] border border-[#27272a] rounded flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2 font-mono text-[10px]">
               <span className="text-zinc-500">STATUS_PANGGILAN:</span>
@@ -1213,14 +1281,21 @@ export const CounselingPage: React.FC = () => {
             searchableKeys={['letterNumber', 'studentName', 'parentName', 'reason']}
             onRowClick={p => setDetailParentCall(p)}
           />
-        </div>
+        </motion.div>
       )}
 
       {/* ========================================================= */}
       {/* TAB 4: KARIR & PEMINATAN */}
       {/* ========================================================= */}
       {activeTab === 'career' && (
-        <div className="space-y-3">
+        <motion.div
+          key="career"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.18, ease: 'easeOut' }}
+          className="space-y-3"
+        >
           <div className="p-2.5 bg-[#0d0d0f] border border-[#27272a] rounded flex flex-wrap items-center justify-between gap-2">
             <div className="text-zinc-400 text-xs flex items-center gap-2">
               <GraduationCap className="w-4 h-4 text-emerald-400" />
@@ -1251,14 +1326,21 @@ export const CounselingPage: React.FC = () => {
             searchableKeys={['studentName', 'careerInterest', 'targetInstitution', 'counselorRecommendation']}
             onRowClick={c => setDetailCareer(c)}
           />
-        </div>
+        </motion.div>
       )}
 
       {/* ========================================================= */}
       {/* TAB 5: REKAPITULASI & LAPORAN BK */}
       {/* ========================================================= */}
       {activeTab === 'analytics' && (
-        <div className="space-y-3">
+        <motion.div
+          key="analytics"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.18, ease: 'easeOut' }}
+          className="space-y-3"
+        >
           {/* Summary Matrix Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
             <div className="p-3 rounded bg-[#0d0d0f] border border-[#27272a]">
@@ -1349,8 +1431,9 @@ export const CounselingPage: React.FC = () => {
               </div>
             </div>
           </div>
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
       {/* ========================================================= */}
       {/* MODAL 1: FORM SESI KONSELING */}

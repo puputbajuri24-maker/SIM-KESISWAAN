@@ -108,10 +108,10 @@ export const TataTertibPage: React.FC = () => {
 
   // Dynamic Print Customization State (Tempat, Tanggal, Penandatangan Waka & Mengetahui Kepala)
   const defaultCity = schoolSetting.address ? schoolSetting.address.split(',').pop()?.trim() || 'Bula' : 'Bula';
-  const defaultWaka = schoolSetting.wakaKesiswaanName || schoolSetting.wakaName || 'Abdul Malik Kelian, S.Pd.I.';
-  const defaultWakaNip = schoolSetting.wakaNip || '19820515 200901 1 012';
-  const defaultPrincipal = schoolSetting.principalName || 'Drs. H. M. Nur Latarissa, M.Pd.I.';
-  const defaultPrincipalNip = schoolSetting.principalNip || '19700412 199803 1 003';
+  const defaultWaka = schoolSetting.wakaKesiswaanName || schoolSetting.wakaName || 'Puput Eka Bajuri, S. Pd., M. Or';
+  const defaultWakaNip = schoolSetting.wakaNip || '198810052020121003';
+  const defaultPrincipal = schoolSetting.principalName || 'Zakaria, S. Pd.I., M. Pd';
+  const defaultPrincipalNip = schoolSetting.principalNip || '197808042003121008';
 
   const [printCustomSettings, setPrintCustomSettings] = useState({
     issuedPlace: handbookMeta.issuedPlace || defaultCity,
@@ -1678,7 +1678,7 @@ export const TataTertibPage: React.FC = () => {
                   type="text"
                   value={metaFormData.wakaName || ''}
                   onChange={e => setMetaFormData({ ...metaFormData, wakaName: e.target.value })}
-                  placeholder="Abdul Malik Kelian, S.Pd.I."
+                  placeholder="Puput Eka Bajuri, S. Pd., M. Or"
                   className="w-full p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-white"
                 />
               </div>
@@ -1690,7 +1690,7 @@ export const TataTertibPage: React.FC = () => {
                   type="text"
                   value={metaFormData.wakaNip || ''}
                   onChange={e => setMetaFormData({ ...metaFormData, wakaNip: e.target.value })}
-                  placeholder="19820515 200901 1 012"
+                  placeholder="198810052020121003"
                   className="w-full p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-white font-mono"
                 />
               </div>
@@ -1711,7 +1711,7 @@ export const TataTertibPage: React.FC = () => {
                   type="text"
                   value={metaFormData.signedBy}
                   onChange={e => setMetaFormData({ ...metaFormData, signedBy: e.target.value })}
-                  placeholder="Drs. H. M. Nur Latarissa, M.Pd.I."
+                  placeholder="Zakaria, S. Pd.I., M. Pd"
                   className="w-full p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-white"
                 />
               </div>
@@ -1723,7 +1723,7 @@ export const TataTertibPage: React.FC = () => {
                   type="text"
                   value={metaFormData.signedNip || ''}
                   onChange={e => setMetaFormData({ ...metaFormData, signedNip: e.target.value })}
-                  placeholder="19700412 199803 1 003"
+                  placeholder="197808042003121008"
                   className="w-full p-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-white font-mono"
                 />
               </div>
@@ -1914,7 +1914,7 @@ export const TataTertibPage: React.FC = () => {
                       type="text"
                       value={printCustomSettings.wakaName}
                       onChange={e => setPrintCustomSettings({ ...printCustomSettings, wakaName: e.target.value })}
-                      placeholder="Abdul Malik Kelian, S.Pd.I."
+                      placeholder="Puput Eka Bajuri, S. Pd., M. Or"
                       className="w-full p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white text-xs"
                     />
                   </div>
@@ -1927,7 +1927,7 @@ export const TataTertibPage: React.FC = () => {
                       type="text"
                       value={printCustomSettings.wakaNip}
                       onChange={e => setPrintCustomSettings({ ...printCustomSettings, wakaNip: e.target.value })}
-                      placeholder="19820515 200901 1 012"
+                      placeholder="198810052020121003"
                       className="w-full p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white font-mono text-xs"
                     />
                   </div>
@@ -1942,7 +1942,7 @@ export const TataTertibPage: React.FC = () => {
                       type="text"
                       value={printCustomSettings.signedBy}
                       onChange={e => setPrintCustomSettings({ ...printCustomSettings, signedBy: e.target.value })}
-                      placeholder="Drs. H. M. Nur Latarissa, M.Pd.I."
+                      placeholder="Zakaria, S. Pd.I., M. Pd"
                       className="w-full p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white text-xs"
                     />
                   </div>
@@ -1955,7 +1955,7 @@ export const TataTertibPage: React.FC = () => {
                       type="text"
                       value={printCustomSettings.signedNip}
                       onChange={e => setPrintCustomSettings({ ...printCustomSettings, signedNip: e.target.value })}
-                      placeholder="19700412 199803 1 003"
+                      placeholder="197808042003121008"
                       className="w-full p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white font-mono text-xs"
                     />
                   </div>

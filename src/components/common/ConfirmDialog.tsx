@@ -66,14 +66,15 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           </button>
           <button
             type="button"
-            onClick={async () => {
-              try {
-                await onConfirm();
-              } catch (err) {
-                console.error('Error on confirm action:', err);
-              } finally {
-                onClose();
-              }
+            onClick={() => {
+              onClose();
+              Promise.resolve().then(async () => {
+                try {
+                  await onConfirm();
+                } catch (err) {
+                  console.error('Error on confirm action:', err);
+                }
+              });
             }}
             disabled={isLoading}
             className={`px-4 py-1.5 text-xs font-bold rounded-xl transition-all ${btnColor} disabled:opacity-50`}
