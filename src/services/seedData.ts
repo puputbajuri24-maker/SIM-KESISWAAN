@@ -249,9 +249,7 @@ export const PURGED_DEMO_UIDS = [
   'role_active_guru_bk',
   'role_active_pembina_osim',
   'role_active_pembina_ekskul',
-  'role_active_waka_kesiswaan',
-  'user_pitria_lawenusa',
-  'teacher_pitria_lawenusa'
+  'role_active_waka_kesiswaan'
 ];
 
 export const PURGED_DEMO_TEACHER_IDS = [
@@ -290,11 +288,7 @@ export const PURGED_DEMO_EMAILS = [
   'pembina.paskibra@man2sbt.sch.id',
   'pembina.pmr@man2sbt.sch.id',
   'pembina.pks@man2sbt.sch.id',
-  'pembina.futsal@man2sbt.sch.id',
-  'pitria.lawenusa@sekolah.sch.id',
-  'pitria.lawenusa@man2sbt.sch.id',
-  'pitria@sekolah.sch.id',
-  'pitria@man2sbt.sch.id'
+  'pembina.futsal@man2sbt.sch.id'
 ];
 
 // =========================================================================
@@ -693,9 +687,7 @@ export const PURGED_DEMO_NAMES = [
   'fatimah azzahra',
   'hasan basri',
   'ilham pratama',
-  'abdul malik',
-  'pitria lawenusa',
-  'lawenusa'
+  'abdul malik'
 ];
 
 export function isBlacklistedDemoName(name?: string): boolean {
@@ -766,28 +758,13 @@ export async function clearAllFirebaseOperationalData(): Promise<{ success: bool
       const teacherBatch = writeBatch(db);
       teachersSnap.forEach(docSnap => {
         const data = docSnap.data();
-        if (isBlacklistedDemoName(data.name)) {
+        if (isBlacklistedDemoName(data.name || (data as any).fullName)) {
           teacherBatch.delete(docSnap.ref);
         }
       });
       await teacherBatch.commit();
     } catch (teacherErr) {
       console.warn('Note cleaning demo teachers:', teacherErr);
-    }
-
-    // Clean classes homeroom teacher if matches Pitria Lawenusa
-    try {
-      const classesSnap = await getDocs(collection(db, 'classes'));
-      const classBatch = writeBatch(db);
-      classesSnap.forEach(docSnap => {
-        const data = docSnap.data();
-        if (data.homeroomTeacher && (data.homeroomTeacher.toLowerCase().includes('pitria') || data.homeroomTeacher.toLowerCase().includes('lawenusa'))) {
-          classBatch.update(docSnap.ref, { homeroomTeacher: '' });
-        }
-      });
-      await classBatch.commit();
-    } catch (classErr) {
-      console.warn('Note cleaning classes homeroom teacher:', classErr);
     }
 
     return { success: true, message: 'Seluruh data operasional & akun demo di Firestore berhasil dibersihkan.' };

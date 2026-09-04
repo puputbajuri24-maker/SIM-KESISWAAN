@@ -374,16 +374,40 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   });
 
   const [teachers, setTeachers] = useState<Teacher[]>(() => {
+    const defaultPitria: Teacher = {
+      id: 'teacher_pitria_lawenusa',
+      nip: '199005122020122008',
+      fullName: 'Pitria Lawenusa, S. Pd',
+      role: 'Guru BK',
+      subject: 'Bimbingan Konseling (BK)',
+      phone: '081234567890',
+      email: 'pitria.lawenusa@madrasah.sch.id',
+      assignedExtracurriculars: [],
+      isActive: true
+    };
+
     const saved = localStorage.getItem('sim_teachers');
     if (saved) {
       try {
         const parsed: Teacher[] = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          return parsed.filter(t => !isBlacklistedDemoName(t.fullName || (t as any).name));
+          const filtered = parsed.filter(t => !isBlacklistedDemoName(t.fullName || (t as any).name));
+          const hasPitria = filtered.some(t =>
+            (t.fullName || '').toLowerCase().includes('pitria') ||
+            (t.fullName || '').toLowerCase().includes('lawenusa')
+          );
+          if (!hasPitria) {
+            filtered.unshift(defaultPitria);
+          }
+          return filtered;
         }
       } catch (e) {}
     }
-    return (INITIAL_TEACHERS || []).filter(t => !isBlacklistedDemoName(t.fullName || (t as any).name));
+    const fromInitial = (INITIAL_TEACHERS || []).filter(t => !isBlacklistedDemoName(t.fullName || (t as any).name));
+    if (!fromInitial.some(t => (t.fullName || '').toLowerCase().includes('pitria') || (t.fullName || '').toLowerCase().includes('lawenusa'))) {
+      fromInitial.unshift(defaultPitria);
+    }
+    return fromInitial;
   });
   
   const [students, setStudents] = useState<Student[]>(() => {
@@ -928,7 +952,34 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               loadedTeachers.push({ id: docSnap.id, ...data });
             }
           });
+
+          const hasPitria = loadedTeachers.some(t =>
+            (t.fullName || '').toLowerCase().includes('pitria') ||
+            (t.fullName || '').toLowerCase().includes('lawenusa')
+          );
+          if (!hasPitria) {
+            const pitriaTeacher: Teacher = {
+              id: 'teacher_pitria_lawenusa',
+              nip: '199005122020122008',
+              fullName: 'Pitria Lawenusa, S. Pd',
+              role: 'Guru BK',
+              subject: 'Bimbingan Konseling (BK)',
+              phone: '081234567890',
+              email: 'pitria.lawenusa@madrasah.sch.id',
+              assignedExtracurriculars: [],
+              isActive: true
+            };
+            loadedTeachers.unshift(pitriaTeacher);
+            setDoc(doc(db, 'teachers', pitriaTeacher.id), pitriaTeacher).catch(() => {});
+            if (syncUsersFromTeachers) {
+              syncUsersFromTeachers([pitriaTeacher]);
+            }
+          }
+
           setTeachers(loadedTeachers);
+          try {
+            localStorage.setItem('sim_teachers', JSON.stringify(loadedTeachers));
+          } catch (e) {}
 
           // Extracurriculars Sync
           const ekskulSnap = await getDocs(collection(db, 'extracurriculars'));
@@ -1967,8 +2018,10 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return merged;
     });
     try {
-      setDoc(doc(db, 'teachers', newT.id), newT);
-    } catch (e) {}
+      await setDoc(doc(db, 'teachers', newT.id), newT);
+    } catch (e) {
+      console.warn('Firestore add teacher notice:', e);
+    }
 
     // Auto-sync to Ekstrakurikuler & Intrakurikuler (OSIM, Wali Kelas, Activities, Settings)
     try {
@@ -2006,8 +2059,10 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return merged;
     });
     try {
-      updateDoc(doc(db, 'teachers', id), data);
-    } catch (e) {}
+      await updateDoc(doc(db, 'teachers', id), data);
+    } catch (e) {
+      console.warn('Firestore update teacher notice:', e);
+    }
 
     if (updatedTeacher) {
       // Auto-sync to Ekstrakurikuler & Intrakurikuler
@@ -2038,8 +2093,10 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return merged;
     });
     try {
-      deleteDoc(doc(db, 'teachers', id));
-    } catch (e) {}
+      await deleteDoc(doc(db, 'teachers', id));
+    } catch (e) {
+      console.warn('Firestore delete teacher notice:', e);
+    }
 
     // Auto-update any extracurricular that had this teacher as coach
     if (target) {
