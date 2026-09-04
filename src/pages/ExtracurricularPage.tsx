@@ -16,7 +16,9 @@ import {
   Zap,
   CheckCircle2,
   FileSpreadsheet,
-  Award
+  Award,
+  Palette,
+  Check
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -30,6 +32,7 @@ import {
   ExtracurricularPreset,
   findMatchingTeacherForEkskul
 } from '../utils/extracurricularPresets';
+import { EKSKUL_COLOR_THEMES, getEkskulTheme } from '../utils/ekskulColors';
 
 interface ExtracurricularPageProps {
   onNavigateToMembers?: (ekskulId: string) => void;
@@ -164,6 +167,7 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
     setFormData({
       name: defaultPreset?.name || 'Pramuka (Gugus Depan)',
       category: defaultPreset?.category || 'Kepemimpinan',
+      color: 'emerald',
       description: defaultPreset?.description || '',
       coachId: defaultTeacher?.id || '',
       coachName: defaultTeacher?.fullName || '',
@@ -186,7 +190,10 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
     e?.stopPropagation();
     setSelectedEkskul(ekskul);
     setActiveTemplateFeedback(null);
-    setFormData(ekskul);
+    setFormData({
+      ...ekskul,
+      color: ekskul.color || getEkskulTheme(undefined, ekskul.id || ekskul.name).id
+    });
     setIsFormOpen(true);
   };
 
@@ -215,6 +222,7 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
         await addExtracurricular({
           name: formData.name!,
           category: formData.category as ExtracurricularCategory,
+          color: formData.color || getEkskulTheme(undefined, formData.name).id,
           description: formData.description || '',
           coachId: formData.coachId || 'user_coach',
           coachName: formData.coachName || 'Pembina Terpilih',
@@ -321,112 +329,146 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
         ))}
       </div>
 
-      {/* Grid of Extracurricular Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredEkskul.map(ekskul => {
-          const currentMembersCount = members.filter(m => m.extracurricularId === ekskul.id && m.status === 'Aktif').length;
-          const quotaPercent = Math.min(100, Math.round((currentMembersCount / (ekskul.quota || 40)) * 100));
-
-          return (
-            <div
-              key={ekskul.id}
-              onClick={() => handleOpenDetail(ekskul)}
-              className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col cursor-pointer group"
+      {/* Grid of Extracurricular Cards or Empty State */}
+      {filteredEkskul.length === 0 ? (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-12 text-center shadow-xs">
+          <div className="w-16 h-16 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-100 dark:border-indigo-900 flex items-center justify-center mx-auto mb-4 text-indigo-600 dark:text-indigo-400 shadow-xs">
+            <Compass className="w-8 h-8" />
+          </div>
+          <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
+            Belum Ada Data Ekstrakurikuler
+          </h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
+            {selectedCategory === 'all'
+              ? 'Data ekstrakurikuler bawaan telah dibersihkan. Anda dapat menambahkan klub ekstrakurikuler baru secara manual atau memilih template preset yang tersedia.'
+              : `Tidak ada ekstrakurikuler dalam kategori "${selectedCategory}". Silakan pilih kategori lain atau tambahkan kegiatan baru.`}
+          </p>
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+            <button
+              onClick={handleOpenAdd}
+              className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/20 flex items-center gap-2 transition-all"
             >
-              {/* Card Header with Category Pill & Status */}
-              <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-start justify-between gap-2 bg-gradient-to-br from-slate-50 to-white dark:from-slate-800/40 dark:to-slate-900">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-100 dark:border-indigo-900 flex items-center justify-center font-extrabold text-lg text-indigo-600 dark:text-indigo-400 shrink-0 shadow-xs">
-                    {ekskul.name.charAt(0)}
+              <Plus className="w-4 h-4" />
+              <span>+ Tambah Ekstrakurikuler</span>
+            </button>
+            {selectedCategory !== 'all' && (
+              <button
+                onClick={() => setSelectedCategory('all')}
+                className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold transition-colors"
+              >
+                Lihat Semua Kategori
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredEkskul.map((ekskul, idx) => {
+            const theme = getEkskulTheme(ekskul.color, ekskul.id || ekskul.name, idx);
+            const currentMembersCount = members.filter(m => m.extracurricularId === ekskul.id && m.status === 'Aktif').length;
+            const quotaPercent = Math.min(100, Math.round((currentMembersCount / (ekskul.quota || 40)) * 100));
+
+            return (
+              <div
+                key={ekskul.id}
+                onClick={() => handleOpenDetail(ekskul)}
+                className={`bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col cursor-pointer group border-t-4 ${theme.topBorder}`}
+              >
+                {/* Card Header with Category Pill & Status */}
+                <div className={`p-5 border-b border-slate-100 dark:border-slate-800 flex items-start justify-between gap-2 bg-gradient-to-br ${theme.headerGradient}`}>
+                  <div className="flex items-center gap-3">
+                    <div className={`w-12 h-12 rounded-2xl ${theme.avatarBg} ${theme.avatarText} border ${theme.avatarBorder} flex items-center justify-center font-extrabold text-lg shrink-0 shadow-xs`}>
+                      {ekskul.name.charAt(0)}
+                    </div>
+                    <div>
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${theme.badgeClass}`}>
+                        {ekskul.category}
+                      </span>
+                      <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 group-hover:opacity-85 transition-opacity mt-1">
+                        {ekskul.name}
+                      </h3>
+                    </div>
                   </div>
+                  <StatusBadge status={ekskul.status} />
+                </div>
+
+                {/* Card Body */}
+                <div className="p-5 flex-1 space-y-4 text-xs">
+                  <p className="text-slate-600 dark:text-slate-400 line-clamp-2 leading-relaxed">
+                    {ekskul.description}
+                  </p>
+
+                  <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
+                      <span className="text-slate-400 font-medium">Pembina:</span>
+                      <span className="font-bold">{ekskul.coachName}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
+                      <span className="text-slate-400 font-medium">Jadwal:</span>
+                      <span className="font-semibold">{ekskul.day}, {ekskul.startTime} - {ekskul.endTime}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
+                      <span className="text-slate-400 font-medium">Lokasi:</span>
+                      <span className="font-semibold truncate max-w-[150px]">{ekskul.location}</span>
+                    </div>
+                  </div>
+
+                  {/* Quota Progress */}
                   <div>
-                    <span className="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-[10px] font-bold text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                      {ekskul.category}
-                    </span>
-                    <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors mt-1">
-                      {ekskul.name}
-                    </h3>
-                  </div>
-                </div>
-                <StatusBadge status={ekskul.status} />
-              </div>
-
-              {/* Card Body */}
-              <div className="p-5 flex-1 space-y-4 text-xs">
-                <p className="text-slate-600 dark:text-slate-400 line-clamp-2 leading-relaxed">
-                  {ekskul.description}
-                </p>
-
-                <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 space-y-2">
-                  <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
-                    <span className="text-slate-400 font-medium">Pembina:</span>
-                    <span className="font-bold">{ekskul.coachName}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
-                    <span className="text-slate-400 font-medium">Jadwal:</span>
-                    <span className="font-semibold">{ekskul.day}, {ekskul.startTime} - {ekskul.endTime}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
-                    <span className="text-slate-400 font-medium">Lokasi:</span>
-                    <span className="font-semibold truncate max-w-[150px]">{ekskul.location}</span>
+                    <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 mb-1">
+                      <span>Anggota Terdaftar</span>
+                      <span>{currentMembersCount} / {ekskul.quota} Siswa ({quotaPercent}%)</span>
+                    </div>
+                    <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-300 ${
+                          quotaPercent >= 90 ? 'bg-rose-500' : theme.progressBar
+                        }`}
+                        style={{ width: `${quotaPercent}%` }}
+                      />
+                    </div>
                   </div>
                 </div>
 
-                {/* Quota Progress */}
-                <div>
-                  <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 mb-1">
-                    <span>Anggota Terdaftar</span>
-                    <span>{currentMembersCount} / {ekskul.quota} Siswa ({quotaPercent}%)</span>
-                  </div>
-                  <div className="w-full h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all duration-300 ${
-                        quotaPercent >= 90 ? 'bg-rose-500' : quotaPercent >= 50 ? 'bg-indigo-600' : 'bg-emerald-500'
-                      }`}
-                      style={{ width: `${quotaPercent}%` }}
-                    />
-                  </div>
-                </div>
-              </div>
+                {/* Card Footer */}
+                <div className="p-4 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/50 flex items-center justify-between gap-2" onClick={e => e.stopPropagation()}>
+                  <button
+                    onClick={() => onNavigateToMembers && onNavigateToMembers(ekskul.id)}
+                    className={`text-xs font-bold ${theme.actionText} hover:underline flex items-center gap-1.5`}
+                  >
+                    <Users className="w-4 h-4" />
+                    <span>Kelola Anggota ({currentMembersCount})</span>
+                  </button>
 
-              {/* Card Footer */}
-              <div className="p-4 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/50 flex items-center justify-between gap-2" onClick={e => e.stopPropagation()}>
-                <button
-                  onClick={() => onNavigateToMembers && onNavigateToMembers(ekskul.id)}
-                  className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
-                >
-                  <Users className="w-4 h-4" />
-                  <span>Kelola Anggota ({currentMembersCount})</span>
-                </button>
-
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => handleOpenDetail(ekskul)}
-                    className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-950/60 dark:hover:bg-indigo-900 dark:text-indigo-400 transition-colors"
-                    title="Lihat Detail Profil & Anggota"
-                  >
-                    <Eye className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={e => handleOpenEdit(ekskul, e)}
-                    className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:hover:bg-amber-900 dark:text-amber-400 transition-colors"
-                    title="Edit Ekskul"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={e => handleOpenDelete(ekskul, e)}
-                    className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-400 transition-colors"
-                    title="Hapus Ekskul"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => handleOpenDetail(ekskul)}
+                      className={`p-1.5 rounded-lg ${theme.bgLight} ${theme.bgDark} ${theme.textLight} ${theme.textDark} hover:opacity-80 transition-opacity`}
+                      title="Lihat Detail Profil & Anggota"
+                    >
+                      <Eye className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={e => handleOpenEdit(ekskul, e)}
+                      className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:hover:bg-amber-900 dark:text-amber-400 transition-colors"
+                      title="Edit Ekskul & Warna"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={e => handleOpenDelete(ekskul, e)}
+                      className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-400 transition-colors"
+                      title="Hapus Ekskul"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Form Modal (Add / Edit) */}
       <Modal
@@ -622,6 +664,49 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
             </div>
           </div>
 
+          {/* Color Accent Picker */}
+          <div className="space-y-2 p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/80 dark:border-slate-800">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <label className="flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-slate-200">
+                <Palette className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                <span>Warna Tema Ekstrakurikuler</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full border flex items-center gap-1.5 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700">
+                  <span className={`w-2.5 h-2.5 rounded-full ${getEkskulTheme(formData.color, formData.name || 'new').swatchBg}`} />
+                  <span className={getEkskulTheme(formData.color, formData.name || 'new').textLight}>
+                    {getEkskulTheme(formData.color, formData.name || 'new').name}
+                  </span>
+                </span>
+              </div>
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+              Pilih warna khas agar kartu dan badge kegiatan ini berbeda dan mudah dibedakan oleh siswa dan guru.
+            </p>
+            <div className="grid grid-cols-5 sm:grid-cols-10 gap-2 pt-1">
+              {EKSKUL_COLOR_THEMES.map(theme => {
+                const isSelected = (formData.color || getEkskulTheme(undefined, formData.name || 'new').id) === theme.id;
+                return (
+                  <button
+                    key={theme.id}
+                    type="button"
+                    onClick={() => setFormData({ ...formData, color: theme.id })}
+                    title={theme.name}
+                    className={`h-9 rounded-xl flex items-center justify-center transition-all relative ${theme.swatchBg} ${
+                      isSelected
+                        ? 'ring-2 ring-offset-2 ring-indigo-500 scale-105 shadow-md'
+                        : 'hover:scale-105 opacity-85 hover:opacity-100'
+                    }`}
+                  >
+                    {isSelected && (
+                      <Check className="w-4 h-4 text-white drop-shadow-md stroke-[3]" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <div>
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
               Deskripsi Singkat
@@ -769,59 +854,62 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
       </Modal>
 
       {/* Detail Modal */}
-      {selectedEkskul && (
-        <Modal
-          isOpen={isDetailOpen}
-          onClose={() => setIsDetailOpen(false)}
-          title={`Profil Ekstrakurikuler: ${selectedEkskul.name}`}
-          subtitle={`Kategori: ${selectedEkskul.category} | Pembina: ${selectedEkskul.coachName}`}
-          maxWidth="2xl"
-          footer={
-            <div className="flex items-center justify-between w-full">
-              <button
-                onClick={() => {
-                  setIsDetailOpen(false);
-                  if (onNavigateToMembers) onNavigateToMembers(selectedEkskul.id);
-                }}
-                className="px-4 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5"
-              >
-                <Users className="w-4 h-4" />
-                <span>Lihat & Kelola Daftar Anggota</span>
-              </button>
-              <button
-                onClick={() => setIsDetailOpen(false)}
-                className="px-4 py-2 text-xs font-bold rounded-xl bg-slate-800 text-white"
-              >
-                Tutup
-              </button>
-            </div>
-          }
-        >
-          <div className="space-y-4 text-xs">
-            <div className="p-4 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-100 dark:border-indigo-900/60">
-              <p className="font-bold text-indigo-900 dark:text-indigo-200 mb-1">🎯 Target Capaian Tahun Ini:</p>
-              <p className="text-indigo-800 dark:text-indigo-300 leading-relaxed font-medium">{selectedEkskul.target}</p>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 space-y-2">
-                <p className="font-bold text-slate-500 uppercase tracking-wider">Informasi Operasional</p>
-                <p><strong>Hari & Jam:</strong> {selectedEkskul.day}, {selectedEkskul.startTime} - {selectedEkskul.endTime}</p>
-                <p><strong>Lokasi:</strong> {selectedEkskul.location}</p>
-                <p><strong>Pembina Utama:</strong> {selectedEkskul.coachName}</p>
-                <p><strong>Wakil Pembina:</strong> {selectedEkskul.assistantCoachName || '-'}</p>
-                <p><strong>Kapasitas Kuota:</strong> {selectedEkskul.quota} Siswa</p>
+      {selectedEkskul && (() => {
+        const selectedTheme = getEkskulTheme(selectedEkskul.color, selectedEkskul.id || selectedEkskul.name);
+        return (
+          <Modal
+            isOpen={isDetailOpen}
+            onClose={() => setIsDetailOpen(false)}
+            title={`Profil Ekstrakurikuler: ${selectedEkskul.name}`}
+            subtitle={`Kategori: ${selectedEkskul.category} | Pembina: ${selectedEkskul.coachName}`}
+            maxWidth="2xl"
+            footer={
+              <div className="flex items-center justify-between w-full">
+                <button
+                  onClick={() => {
+                    setIsDetailOpen(false);
+                    if (onNavigateToMembers) onNavigateToMembers(selectedEkskul.id);
+                  }}
+                  className={`px-4 py-2 text-xs font-bold rounded-xl ${selectedTheme.swatchBg} text-white flex items-center gap-1.5 shadow-sm transition-transform hover:scale-105`}
+                >
+                  <Users className="w-4 h-4" />
+                  <span>Lihat & Kelola Daftar Anggota</span>
+                </button>
+                <button
+                  onClick={() => setIsDetailOpen(false)}
+                  className="px-4 py-2 text-xs font-bold rounded-xl bg-slate-800 text-white hover:bg-slate-700 transition-colors"
+                >
+                  Tutup
+                </button>
+              </div>
+            }
+          >
+            <div className="space-y-4 text-xs">
+              <div className={`p-4 rounded-xl ${selectedTheme.bgLight} ${selectedTheme.bgDark} border ${selectedTheme.borderLight} ${selectedTheme.borderDark}`}>
+                <p className={`font-bold ${selectedTheme.textLight} ${selectedTheme.textDark} mb-1`}>🎯 Target Capaian Tahun Ini:</p>
+                <p className={`${selectedTheme.textLight} ${selectedTheme.textDark} leading-relaxed font-medium`}>{selectedEkskul.target}</p>
               </div>
 
-              <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 space-y-2">
-                <p className="font-bold text-slate-500 uppercase tracking-wider">Visi & Misi</p>
-                <p><strong>Visi:</strong> {selectedEkskul.vision}</p>
-                <p className="mt-2"><strong>Misi:</strong> {selectedEkskul.mission}</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 space-y-2">
+                  <p className="font-bold text-slate-500 uppercase tracking-wider">Informasi Operasional</p>
+                  <p><strong>Hari & Jam:</strong> {selectedEkskul.day}, {selectedEkskul.startTime} - {selectedEkskul.endTime}</p>
+                  <p><strong>Lokasi:</strong> {selectedEkskul.location}</p>
+                  <p><strong>Pembina Utama:</strong> {selectedEkskul.coachName}</p>
+                  <p><strong>Wakil Pembina:</strong> {selectedEkskul.assistantCoachName || '-'}</p>
+                  <p><strong>Kapasitas Kuota:</strong> {selectedEkskul.quota} Siswa</p>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 space-y-2">
+                  <p className="font-bold text-slate-500 uppercase tracking-wider">Visi & Misi</p>
+                  <p><strong>Visi:</strong> {selectedEkskul.vision}</p>
+                  <p className="mt-2"><strong>Misi:</strong> {selectedEkskul.mission}</p>
+                </div>
               </div>
             </div>
-          </div>
-        </Modal>
-      )}
+          </Modal>
+        );
+      })()}
 
       {/* Delete Confirmation */}
       <ConfirmDialog

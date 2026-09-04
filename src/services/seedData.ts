@@ -100,255 +100,48 @@ export const INITIAL_CLASSES: SchoolClass[] = [
   { id: 'c_xii_keagamaan', name: 'XII Keagamaan', grade: 'XII', major: 'Ilmu Keagamaan Islam (IIK)', homeroomTeacher: '', studentCount: 0 }
 ];
 
+export const DEFAULT_SUPER_ADMIN: UserProfile = {
+  uid: 'user_super_admin',
+  email: 'admin@sekolah.sch.id',
+  username: 'admin',
+  password: 'password1',
+  displayName: 'Puput Eka Bajuri, S. Pd., M. Or., Gr',
+  role: 'super_admin',
+  phone: '082298836027',
+  nip: '198810052020121003',
+  status: 'Aktif'
+};
+
 export const DEMO_USERS: UserProfile[] = [
-  {
-    uid: 'user_super_admin',
-    email: 'admin@sekolah.sch.id',
-    username: 'admin',
-    password: 'password',
-    displayName: 'Super Administrator / Proktor SIM Kesiswaan',
-    role: 'super_admin',
-    phone: '081234567890',
-    nip: '19850101 201001 1 009',
-    status: 'Aktif'
-  }
+  DEFAULT_SUPER_ADMIN
 ];
 
 export const INITIAL_TEACHERS: Teacher[] = [];
 
-export const INITIAL_EXTRACURRICULARS: Extracurricular[] = [
-  {
-    id: 'ekskul_pramuka',
-    name: 'Pramuka Gugus Depan MAN 2 SBT',
-    category: 'Kepemimpinan',
-    description: 'Pendidikan kepanduan, kedisiplinan, kemandirian, dan cinta alam tanah air.',
-    coachId: '',
-    coachName: 'Belum Ditentukan',
-    assistantCoachName: '',
-    day: 'Jumat',
-    startTime: '15:30',
-    endTime: '17:30',
-    location: 'Lapangan Utama & Sanggar Pramuka',
-    quota: 80,
-    memberCount: 0,
-    status: 'Aktif',
-    vision: 'Membentuk tunas bangsa yang berkarakter tangguh, religius, berjiwa korsa, dan berwawasan lingkungan.',
-    mission: '1. Menyelenggarakan latihan kepramukaan berjenjang. 2. Mengembangkan kemampuan survival dan leadership. 3. Melaksanakan bakti sosial masyarakat.',
-    target: 'Meraih Prestasi Lomba Tingkat Penegak Se-Kabupaten SBT & Maluku.',
-    academicYear: '2026/2027',
-    logoUrl: 'https://images.unsplash.com/photo-1526778548025-fa2f459cd5c1?w=150&auto=format&fit=crop&q=80'
-  },
-  {
-    id: 'ekskul_paskibra',
-    name: 'Paskibra Pasukan Pengibar Bendera',
-    category: 'Bela Negara',
-    description: 'Pelatihan baris-berbaris formal, formasi pengibaran bendera pusaka, fisik militer terukur, dan etika.',
-    coachId: '',
-    coachName: 'Belum Ditentukan',
-    assistantCoachName: '',
-    day: 'Sabtu',
-    startTime: '07:30',
-    endTime: '10:00',
-    location: 'Lapangan Utama',
-    quota: 40,
-    memberCount: 0,
-    status: 'Aktif',
-    vision: 'Mencetak generasi penerus bangsa yang disiplin, berjiwa patriotik, dan menjunjung kehormatan Sang Merah Putih.',
-    mission: '1. Penguasaan Peraturan Baris Berbaris baku. 2. Latihan fisik dan mental kepemimpinan.',
-    target: 'Mengirimkan minimal 2 anggota lolos seleksi Paskibraka Tingkat Kabupaten/Provinsi.',
-    academicYear: '2026/2027',
-    logoUrl: 'https://images.unsplash.com/photo-1541872703-74c5e44368f9?w=150&auto=format&fit=crop&q=80'
-  },
-  {
-    id: 'ekskul_pmr',
-    name: 'Palang Merah Remaja (PMR) Wira',
-    category: 'Sosial',
-    description: 'Pelatihan pertolongan pertama, donor darah, penanggulangan bencana, dan bakti kemanusiaan.',
-    coachId: '',
-    coachName: 'Belum Ditentukan',
-    assistantCoachName: '',
-    day: 'Rabu',
-    startTime: '15:30',
-    endTime: '17:15',
-    location: 'Ruang UKS & Aula Kesiswaan',
-    quota: 50,
-    memberCount: 0,
-    status: 'Aktif',
-    vision: 'Mewujudkan relawan muda yang sigap, tanggap bencana, dan berjiwa sosial kemanusiaan tinggi.',
-    mission: '1. Pelatihan PPGD dan sanitasi kesehatan. 2. Bakti sosial berkala.',
-    target: 'Juara Umum Jumpa Bakti Gembira (JUMBARA) PMR Kabupaten SBT.',
-    academicYear: '2026/2027',
-    logoUrl: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?w=150&auto=format&fit=crop&q=80'
-  },
-  {
-    id: 'ekskul_pks',
-    name: 'Patroli Keamanan Sekolah (PKS)',
-    category: 'Bela Negara',
-    description: 'Penegakan ketertiban, pengaturan lalu lintas penyeberangan madrasah, dan patroli kedisiplinan.',
-    coachId: '',
-    coachName: 'Belum Ditentukan',
-    assistantCoachName: '',
-    day: 'Selasa',
-    startTime: '15:30',
-    endTime: '17:00',
-    location: 'Gerbang Utama & Pos Keamanan',
-    quota: 35,
-    memberCount: 0,
-    status: 'Aktif',
-    vision: 'Mewujudkan lingkungan madrasah yang tertib, aman, kondusif, dan taat peraturan tata tertib.',
-    mission: '1. Pelatihan 12 gerakan dasar pengaturan lalu lintas. 2. Pengawalan ketertiban upacara dan gerbang madrasah.',
-    target: 'Menciptakan zero-incident ketertiban dan kedisiplinan di area madrasah.',
-    academicYear: '2026/2027',
-    logoUrl: 'https://images.unsplash.com/photo-1579208575657-c595a05383b7?w=150&auto=format&fit=crop&q=80'
-  },
-  {
-    id: 'ekskul_futsal',
-    name: 'Futsal Garuda Muda MAN 2 SBT',
-    category: 'Olahraga',
-    description: 'Pembinaan olahraga futsal, taktik passing intersep, stamina, dan liga futsal pelajar.',
-    coachId: '',
-    coachName: 'Belum Ditentukan',
-    assistantCoachName: '',
-    day: 'Sabtu',
-    startTime: '08:00',
-    endTime: '10:30',
-    location: 'Lapangan Futsal Terbuka',
-    quota: 40,
-    memberCount: 0,
-    status: 'Aktif',
-    vision: 'Menjadi tim futsal yang tangkas, disiplin, berprestasi, dan menjunjung persaudaraan.',
-    mission: '1. Latihan fisik intensif dan taktik small-sided games. 2. Uji tanding rutin antar sekolah.',
-    target: 'Juara 1 Turnamen Futsal Pelajar MAN/SMA Cup.',
-    academicYear: '2026/2027',
-    logoUrl: 'https://images.unsplash.com/photo-1574629810360-7efbbe195018?w=150&auto=format&fit=crop&q=80'
-  },
-  {
-    id: 'ekskul_basket',
-    name: 'Basket Club Patriot (Putra & Putri)',
-    category: 'Olahraga',
-    description: 'Pengembangan bakat bola basket, strategi permainan, fisik, dan sportivitas kompetisi.',
-    coachId: '',
-    coachName: 'Belum Ditentukan',
-    assistantCoachName: '',
-    day: 'Selasa',
-    startTime: '15:45',
-    endTime: '17:45',
-    location: 'Gelanggang Olahraga / Hall Basket',
-    quota: 40,
-    memberCount: 0,
-    status: 'Aktif',
-    vision: 'Menjadi tim basket pelajar unggulan yang berprestasi di tingkat regional dengan sportivitas tinggi.',
-    mission: '1. Pelatihan teknik dasar dan taktik modern. 2. Penguatan ketahanan fisik.',
-    target: 'Lolos Turnamen Antar Pelajar Se-Kabupaten Seram Bagian Timur.',
-    academicYear: '2026/2027',
-    logoUrl: 'https://images.unsplash.com/photo-1546519638-68e109498ffc?w=150&auto=format&fit=crop&q=80'
-  },
-  {
-    id: 'ekskul_bulutangkis',
-    name: 'Bulutangkis (Badminton) Club',
-    category: 'Olahraga',
-    description: 'Pelatihan footwork, smash tajam, netting, stamina, dan taktik bermain tunggal maupun ganda.',
-    coachId: '',
-    coachName: 'Belum Ditentukan',
-    assistantCoachName: '',
-    day: 'Senin',
-    startTime: '15:30',
-    endTime: '17:30',
-    location: 'Gedung Olahraga / Lapangan Indoor',
-    quota: 30,
-    memberCount: 0,
-    status: 'Aktif',
-    vision: 'Melahirkan atlet bulutangkis muda yang lincah, bermental juara, dan berprestasi tingkat daerah.',
-    mission: '1. Latihan footwork dan endurance fisik. 2. Simulasi turnamen tunggal dan ganda.',
-    target: 'Meraih medali O2SN Cabang Bulutangkis Tingkat Kabupaten SBT.',
-    academicYear: '2026/2027',
-    logoUrl: 'https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=150&auto=format&fit=crop&q=80'
-  },
-  {
-    id: 'ekskul_silat',
-    name: 'Pencak Silat Seni & Tanding',
-    category: 'Olahraga',
-    description: 'Pelestarian seni bela diri nusantara, jurus baku IPSI, teknik tanding, dan pembentukan watak kesatria.',
-    coachId: '',
-    coachName: 'Belum Ditentukan',
-    assistantCoachName: '',
-    day: 'Sabtu',
-    startTime: '08:00',
-    endTime: '10:30',
-    location: 'Aula Utama Madrasah',
-    quota: 40,
-    memberCount: 0,
-    status: 'Aktif',
-    vision: 'Mewadahi pembentukan pribadi beriman, berbudi pekerti luhur, dan berprestasi di arena silat.',
-    mission: '1. Penguasaan jurus tunggal baku dan teknik tanding. 2. Pembinaan mental spiritual pesilat santun.',
-    target: 'Meraih medali emas di Kejuaraan Pencak Silat Pelajar Se-Maluku.',
-    academicYear: '2026/2027',
-    logoUrl: 'https://images.unsplash.com/photo-1555597673-b21d5c935865?w=150&auto=format&fit=crop&q=80'
-  },
-  {
-    id: 'ekskul_tahfidz',
-    name: 'Tahfidz & Tilawatil Qur\'an',
-    category: 'Keagamaan',
-    description: 'Bimbingan menghafal Al-Qur\'an metode mutqin, perbaikan tajwid/makhorijul huruf, dan seni nagham tilawah.',
-    coachId: '',
-    coachName: 'Belum Ditentukan',
-    assistantCoachName: '',
-    day: 'Senin',
-    startTime: '15:30',
-    endTime: '17:00',
-    location: 'Masjid / Musholla Utama MAN 2 SBT',
-    quota: 60,
-    memberCount: 0,
-    status: 'Aktif',
-    vision: 'Melahirkan generasi Qur\'ani yang hafal, paham, mengamalkan, dan melantunkan Al-Qur\'an dengan indah.',
-    mission: '1. Setoran hafalan berkala terstruktur. 2. Bimbingan nagham tilawah MTQ.',
-    target: 'Mencetak wisudawan tahfidz 3-5 juz dan juara MTQ Pelajar.',
-    academicYear: '2026/2027',
-    logoUrl: 'https://images.unsplash.com/photo-1609599006353-e629aaabfeae?w=150&auto=format&fit=crop&q=80'
-  },
-  {
-    id: 'ekskul_kir',
-    name: 'Karya Ilmiah Remaja (KIR) & Sains',
-    category: 'Akademik',
-    description: 'Riset metodologi ilmiah, penulisan esai, eksperimen laboratorium IPA terpadu, dan persiapan KSM/MYRES.',
-    coachId: '',
-    coachName: 'Belum Ditentukan',
-    assistantCoachName: '',
-    day: 'Selasa',
-    startTime: '15:30',
-    endTime: '17:00',
-    location: 'Laboratorium IPA Terpadu',
-    quota: 35,
-    memberCount: 0,
-    status: 'Aktif',
-    vision: 'Melahirkan peneliti muda yang kritis, kreatif, objektif, dan solutif terhadap problematika sains.',
-    mission: '1. Bimbingan penulisan karya tulis ilmiah (KTI). 2. Partisipasi kompetisi MYRES & KSM Kemenag.',
-    target: 'Menjadi Finalis MYRES dan lolos seleksi KSM Nasional.',
-    academicYear: '2026/2027',
-    logoUrl: 'https://images.unsplash.com/photo-1532094349884-543bc11b234d?w=150&auto=format&fit=crop&q=80'
-  },
-  {
-    id: 'ekskul_robotik',
-    name: 'Robotik & Cyber Technology',
-    category: 'Teknologi',
-    description: 'Desain mikrokontroler Arduino/ESP32, pemrograman robot, IoT cerdas, dan perakitan mekanik.',
-    coachId: '',
-    coachName: 'Belum Ditentukan',
-    assistantCoachName: '',
-    day: 'Senin',
-    startTime: '15:30',
-    endTime: '17:30',
-    location: 'Laboratorium Komputer & STEM',
-    quota: 30,
-    memberCount: 0,
-    status: 'Aktif',
-    vision: 'Mencetak inovator muda bidang rekayasa teknologi cerdas berbasis nilai Islam.',
-    mission: '1. Pembelajaran dasar logika pemograman robot. 2. Proyek inovasi teknologi tepat guna.',
-    target: 'Mengikuti Olimpiade Robotik Madrasah Nasional Kemenag RI.',
-    academicYear: '2026/2027',
-    logoUrl: 'https://images.unsplash.com/photo-1485827404703-89b55fcc595e?w=150&auto=format&fit=crop&q=80'
-  }
+export const INITIAL_EXTRACURRICULARS: Extracurricular[] = [];
+
+export const PURGED_DEMO_EKSKUL_IDS = [
+  'ekskul_pramuka',
+  'ekskul_paskibra',
+  'ekskul_pmr',
+  'ekskul_pks',
+  'ekskul_futsal',
+  'ekskul_basket',
+  'ekskul_bulutangkis',
+  'ekskul_silat',
+  'ekskul_tahfidz',
+  'ekskul_kir',
+  'ekskul_robotik'
 ];
+
+export const isPurgedExtracurricular = (nameOrId: string = ''): boolean => {
+  const lower = (nameOrId || '').toLowerCase();
+  return (
+    lower.includes('fotografi') ||
+    lower.includes('sinematografi') ||
+    PURGED_DEMO_EKSKUL_IDS.includes(nameOrId)
+  );
+};
 
 // Operational Collections initialized as CLEAN EMPTY ARRAYS ready for user upload
 export const INITIAL_STUDENTS: Student[] = [];
@@ -371,221 +164,13 @@ export const INITIAL_OSIM_ASPIRATIONS: OsimAspiration[] = [];
 export const INITIAL_OSIM_MEETINGS: OsimMeeting[] = [];
 export const INITIAL_OSIM_DEPARTMENTS: OsimDepartment[] = DEFAULT_OSIM_DEPARTMENTS;
 
-export const INITIAL_ANNOUNCEMENTS: Announcement[] = [
-  {
-    id: 'ann_pembina_lpj',
-    title: 'Batas Pengumpulan Laporan Pertanggungjawaban (LPJ) Kegiatan Ekstrakurikuler',
-    content: 'Diberitahukan kepada seluruh Guru Pembina Ekstrakurikuler & OSIM bahwa pengunggahan LPJ kegiatan, presensi kehadiran anggota semester berjalan, dan rekap prestasi wajib diselesaikan sebelum akhir bulan ini melalui menu Verifikasi LPJ Kegiatan.',
-    targetRole: 'Guru Pembina',
-    publishDate: new Date().toISOString().split('T')[0],
-    expiryDate: '2026-12-31',
-    priority: 'Mendesak',
-    authorName: 'Waka Kesiswaan',
-    authorRole: 'Waka Kesiswaan',
-    isActive: true,
-    isPinned: true,
-    createdAt: new Date().toISOString().split('T')[0]
-  },
-  {
-    id: 'ann_bk_coordination',
-    title: 'Koordinasi Penanganan Siswa Akumulasi Poin Pelanggaran & Panggilan Orang Tua',
-    content: 'Mohon kepada Tim Guru Bimbingan Konseling (BK) untuk melakukan rekapitulasi data siswa dengan poin pelanggaran kedisiplinan di atas 30 poin dan segera menerbitkan Surat Panggilan Orang Tua / Home Visit terjadwal.',
-    targetRole: 'Guru BK',
-    publishDate: new Date().toISOString().split('T')[0],
-    expiryDate: '2026-12-31',
-    priority: 'Penting',
-    authorName: 'Waka Kesiswaan',
-    authorRole: 'Waka Kesiswaan',
-    isActive: true,
-    isPinned: false,
-    createdAt: new Date().toISOString().split('T')[0]
-  },
-  {
-    id: 'ann_welcome',
-    title: 'Selamat Datang di SIM-KESISWAAN Terpadu',
-    content: 'Sistem Informasi Manajemen Kesiswaan aktif melayani pencatatan data siswa, kedisiplinan & konseling BK, presensi digital ekstrakurikuler, dan kegiatan OSIM.',
-    targetRole: 'Semua',
-    publishDate: new Date().toISOString().split('T')[0],
-    expiryDate: '2026-12-31',
-    priority: 'Biasa',
-    authorName: 'Administrator Sistem',
-    authorRole: 'Super Admin',
-    isActive: true,
-    isPinned: false,
-    createdAt: new Date().toISOString().split('T')[0]
-  }
-];
+export const INITIAL_ANNOUNCEMENTS: Announcement[] = [];
 
 export const INITIAL_NOTIFICATIONS: NotificationItem[] = [];
 export const INITIAL_AUDIT_LOGS: AuditLogItem[] = [];
 
-export const INITIAL_CASH_ACCOUNTS: CashAccount[] = [
-  {
-    id: 'kas_utama_kesiswaan',
-    name: 'Kas Utama Bidang Kesiswaan',
-    code: 'KAS-KSW',
-    category: 'Kesiswaan',
-    description: 'Kas operasional kesiswaan madrasah, apresiasi kejuaraan siswa, reward prestasi, dan agenda akbar kesiswaan.',
-    assignedManagerUserIds: ['user_super_admin'],
-    assignedManagerNames: ['Super Administrator'],
-    initialBalance: 5000000,
-    academicYear: '2026/2027',
-    isActive: true,
-    color: '#3b82f6'
-  },
-  {
-    id: 'kas_osim_intrakurikuler',
-    name: 'Kas OSIM & Intrakurikuler',
-    code: 'KAS-OSIM',
-    category: 'OSIM',
-    description: 'Dana operasional kegiatan organisasi siswa intra madrasah, peringatan PHBI/PHBN, dan proker sekbid OSIM.',
-    assignedManagerUserIds: [],
-    assignedManagerNames: [],
-    initialBalance: 2500000,
-    academicYear: '2026/2027',
-    isActive: true,
-    color: '#f59e0b'
-  },
-  {
-    id: 'kas_peduli_bk',
-    name: 'Kas Peduli Siswa & Sosial BK',
-    code: 'KAS-BK',
-    category: 'BK',
-    description: 'Dana sosial santunan siswa yatim/dhuafa, bantuan darurat perlengkapan madrasah, dan konseling home visit.',
-    assignedManagerUserIds: [],
-    assignedManagerNames: [],
-    initialBalance: 1850000,
-    academicYear: '2026/2027',
-    isActive: true,
-    color: '#ec4899'
-  },
-  {
-    id: 'kas_ekskul_pramuka',
-    name: 'Kas Gugus Depan Pramuka',
-    code: 'KAS-PRA',
-    category: 'Ekstrakurikuler',
-    targetEkskulId: 'ekskul_pramuka',
-    description: 'Kas operasional latihan kepanduan, pemeliharaan tenda/sanggar, dan kontingen lomba penegak.',
-    assignedManagerUserIds: [],
-    assignedManagerNames: [],
-    initialBalance: 1200000,
-    academicYear: '2026/2027',
-    isActive: true,
-    color: '#10b981'
-  },
-  {
-    id: 'kas_ekskul_pmr',
-    name: 'Kas PMR Wira Kemanusiaan',
-    code: 'KAS-PMR',
-    category: 'Ekstrakurikuler',
-    targetEkskulId: 'ekskul_pmr',
-    description: 'Kas persediaan obat-obatan P3K, sarana UKS, latihan pertolongan pertama, dan kegiatan donor darah.',
-    assignedManagerUserIds: [],
-    assignedManagerNames: [],
-    initialBalance: 950000,
-    academicYear: '2026/2027',
-    isActive: true,
-    color: '#ef4444'
-  }
-];
-
-export const INITIAL_CASH_TRANSACTIONS: CashTransaction[] = [
-  {
-    id: 'trx_001',
-    accountId: 'kas_utama_kesiswaan',
-    accountName: 'Kas Utama Bidang Kesiswaan',
-    accountCode: 'KAS-KSW',
-    type: 'MASUK',
-    category: 'Dana BOS/BOM Kesiswaan',
-    amount: 5000000,
-    date: '2026-08-01',
-    title: 'Saldo Awal Alokasi Anggaran Kesiswaan T.A. 2026/2027',
-    description: 'Penerimaan alokasi dana operasional program pembinaan kesiswaan semester ganjil.',
-    recipientOrPayer: 'Bendahara Madrasah / DIPA Kemenag',
-    referenceNumber: 'BKM-202608-001',
-    status: 'VERIFIED',
-    recordedByUid: 'user_super_admin',
-    recordedByName: 'Super Administrator',
-    recordedByRole: 'Super Admin',
-    academicYear: '2026/2027'
-  },
-  {
-    id: 'trx_002',
-    accountId: 'kas_peduli_bk',
-    accountName: 'Kas Peduli Siswa & Sosial BK',
-    accountCode: 'KAS-BK',
-    type: 'MASUK',
-    category: 'Infaq / Shadaqah Peduli BK',
-    amount: 1850000,
-    date: '2026-08-05',
-    title: 'Infaq Jumat Berkah Guru & Karyawan Peduli Siswa',
-    description: 'Penerimaan penggalangan infaq sukarela dewan guru untuk kas peduli siswa dhuafa & yatim.',
-    recipientOrPayer: 'Koordinator Infaq Jumat Berkah',
-    referenceNumber: 'BKM-202608-002',
-    status: 'VERIFIED',
-    recordedByUid: 'user_super_admin',
-    recordedByName: 'Koordinator Guru BK',
-    recordedByRole: 'Guru BK',
-    academicYear: '2026/2027'
-  },
-  {
-    id: 'trx_003',
-    accountId: 'kas_osim_intrakurikuler',
-    accountName: 'Kas OSIM & Intrakurikuler',
-    accountCode: 'KAS-OSIM',
-    type: 'MASUK',
-    category: 'Dana Kegiatan OSIM',
-    amount: 2500000,
-    date: '2026-08-10',
-    title: 'Dana Stimulus Program Kerja OSIM 2026/2027',
-    description: 'Penyaluran dana stimulus awal kegiatan pengurus OSIM masa bakti 2026/2027.',
-    recipientOrPayer: 'Waka Kesiswaan',
-    referenceNumber: 'BKM-202608-003',
-    status: 'VERIFIED',
-    recordedByUid: 'user_super_admin',
-    recordedByName: 'Pembina OSIM',
-    recordedByRole: 'Pembina OSIM',
-    academicYear: '2026/2027'
-  },
-  {
-    id: 'trx_004',
-    accountId: 'kas_peduli_bk',
-    accountName: 'Kas Peduli Siswa & Sosial BK',
-    accountCode: 'KAS-BK',
-    type: 'KELUAR',
-    category: 'Santunan Siswa Kurang Mampu',
-    amount: 350000,
-    date: '2026-08-15',
-    title: 'Bantuan Perlengkapan Seragam & Sepatu Siswa Dhuafa (X MIA 1)',
-    description: 'Pembelian sepasang sepatu sekolah dan seragam pramuka untuk siswa pasca penelusuran home visit BK.',
-    recipientOrPayer: 'Toko Seragam Berkah Bula',
-    referenceNumber: 'BKK-202608-001',
-    status: 'VERIFIED',
-    recordedByUid: 'user_super_admin',
-    recordedByName: 'Guru BK',
-    recordedByRole: 'Guru BK',
-    academicYear: '2026/2027'
-  },
-  {
-    id: 'trx_005',
-    accountId: 'kas_utama_kesiswaan',
-    accountName: 'Kas Utama Bidang Kesiswaan',
-    accountCode: 'KAS-KSW',
-    type: 'KELUAR',
-    category: 'Hadiah / Medali / Piagam',
-    amount: 750000,
-    date: '2026-08-18',
-    title: 'Pengadaan Trophy & Piagam Apresiasi Juara Kesiswaan',
-    description: 'Pemesanan trophy kejuaraan dan sertifikat berbingkai untuk reward santri berprestasi lomba sains.',
-    recipientOrPayer: 'Percetakan & Trophy Sentosa',
-    referenceNumber: 'BKK-202608-002',
-    status: 'VERIFIED',
-    recordedByUid: 'user_super_admin',
-    recordedByName: 'Super Administrator',
-    recordedByRole: 'Super Admin',
-    academicYear: '2026/2027'
-  }
-];
+export const INITIAL_CASH_ACCOUNTS: CashAccount[] = [];
+export const INITIAL_CASH_TRANSACTIONS: CashTransaction[] = [];
 
 // Helper to seed master structure to Firebase Firestore
 export async function seedAllFirebaseData(): Promise<{ success: boolean; message: string }> {
@@ -650,7 +235,23 @@ export const PURGED_DEMO_UIDS = [
   'user_pembina_pramuka',
   'user_pembina_basket',
   'user_pembina_pmr',
-  'user_pembina_robotik'
+  'user_pembina_robotik',
+  'user_waka_puput',
+  'user_bk_nur_asiyah',
+  'user_bk_ahmad_rusdi',
+  'user_bk_siti_aminah',
+  'user_pembina_osim_fauzi',
+  'user_pembina_pramuka_rahmat',
+  'user_pembina_paskibra_syarif',
+  'user_pembina_pmr_fatimah',
+  'user_pembina_pks_hasan',
+  'user_pembina_futsal_ilham',
+  'role_active_guru_bk',
+  'role_active_pembina_osim',
+  'role_active_pembina_ekskul',
+  'role_active_waka_kesiswaan',
+  'user_pitria_lawenusa',
+  'teacher_pitria_lawenusa'
 ];
 
 export const PURGED_DEMO_TEACHER_IDS = [
@@ -679,7 +280,21 @@ export const PURGED_DEMO_EMAILS = [
   'dewi.seni@sekolah.sch.id',
   'paskibra@sekolah.sch.id',
   'english.club@sekolah.sch.id',
-  'futsal@sekolah.sch.id'
+  'futsal@sekolah.sch.id',
+  'waka@man2sbt.sch.id',
+  'nur.asiyah@man2sbt.sch.id',
+  'ahmad.rusdi@man2sbt.sch.id',
+  'siti.aminah@man2sbt.sch.id',
+  'pembina.osim@man2sbt.sch.id',
+  'pembina.pramuka@man2sbt.sch.id',
+  'pembina.paskibra@man2sbt.sch.id',
+  'pembina.pmr@man2sbt.sch.id',
+  'pembina.pks@man2sbt.sch.id',
+  'pembina.futsal@man2sbt.sch.id',
+  'pitria.lawenusa@sekolah.sch.id',
+  'pitria.lawenusa@man2sbt.sch.id',
+  'pitria@sekolah.sch.id',
+  'pitria@man2sbt.sch.id'
 ];
 
 // =========================================================================
@@ -1068,7 +683,19 @@ export const PURGED_DEMO_NAMES = [
   'dewi anggraini',
   'suryadi',
   'fitria ananda',
-  'rizky pratama'
+  'rizky pratama',
+  'nur asiyah',
+  'ahmad rusdi',
+  'siti aminah',
+  'ahmad fauzi',
+  'rahmat hidayat',
+  'syarifudin',
+  'fatimah azzahra',
+  'hasan basri',
+  'ilham pratama',
+  'abdul malik',
+  'pitria lawenusa',
+  'lawenusa'
 ];
 
 export function isBlacklistedDemoName(name?: string): boolean {
@@ -1082,6 +709,7 @@ export async function clearAllFirebaseOperationalData(): Promise<{ success: bool
   try {
     const collectionsToClear = [
       'students',
+      'extracurriculars',
       'extracurricular_members',
       'schedules',
       'attendance',
@@ -1100,7 +728,8 @@ export async function clearAllFirebaseOperationalData(): Promise<{ success: bool
       'osim_aspirations',
       'osim_meetings',
       'cash_accounts',
-      'cash_transactions'
+      'cash_transactions',
+      'announcements'
     ];
 
     for (const colName of collectionsToClear) {
@@ -1116,7 +745,52 @@ export async function clearAllFirebaseOperationalData(): Promise<{ success: bool
       }
     }
 
-    return { success: true, message: 'Seluruh data operasional di Firestore berhasil dibersihkan.' };
+    // Clean any demo users from users collection, keeping only super admin
+    try {
+      const usersSnap = await getDocs(collection(db, 'users'));
+      const userBatch = writeBatch(db);
+      usersSnap.forEach(docSnap => {
+        const data = docSnap.data();
+        if (docSnap.id !== 'user_super_admin' && (PURGED_DEMO_UIDS.includes(docSnap.id) || isBlacklistedDemoName(data.displayName))) {
+          userBatch.delete(docSnap.ref);
+        }
+      });
+      await userBatch.commit();
+    } catch (userErr) {
+      console.warn('Note cleaning demo users:', userErr);
+    }
+
+    // Clean teachers collection if any demo teacher exists
+    try {
+      const teachersSnap = await getDocs(collection(db, 'teachers'));
+      const teacherBatch = writeBatch(db);
+      teachersSnap.forEach(docSnap => {
+        const data = docSnap.data();
+        if (isBlacklistedDemoName(data.name)) {
+          teacherBatch.delete(docSnap.ref);
+        }
+      });
+      await teacherBatch.commit();
+    } catch (teacherErr) {
+      console.warn('Note cleaning demo teachers:', teacherErr);
+    }
+
+    // Clean classes homeroom teacher if matches Pitria Lawenusa
+    try {
+      const classesSnap = await getDocs(collection(db, 'classes'));
+      const classBatch = writeBatch(db);
+      classesSnap.forEach(docSnap => {
+        const data = docSnap.data();
+        if (data.homeroomTeacher && (data.homeroomTeacher.toLowerCase().includes('pitria') || data.homeroomTeacher.toLowerCase().includes('lawenusa'))) {
+          classBatch.update(docSnap.ref, { homeroomTeacher: '' });
+        }
+      });
+      await classBatch.commit();
+    } catch (classErr) {
+      console.warn('Note cleaning classes homeroom teacher:', classErr);
+    }
+
+    return { success: true, message: 'Seluruh data operasional & akun demo di Firestore berhasil dibersihkan.' };
   } catch (err: any) {
     console.error('Error clearing operational collections in Firebase:', err);
     return { success: false, message: err?.message || 'Gagal membersihkan data operasional Firestore.' };

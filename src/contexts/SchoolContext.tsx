@@ -48,6 +48,9 @@ import {
   INITIAL_STUDENTS,
   INITIAL_TEACHERS,
   INITIAL_EXTRACURRICULARS,
+  PURGED_DEMO_EKSKUL_IDS,
+  isPurgedExtracurricular,
+  isBlacklistedDemoName,
   INITIAL_MEMBERS,
   INITIAL_SCHEDULES,
   INITIAL_ATTENDANCE,
@@ -372,7 +375,15 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const [teachers, setTeachers] = useState<Teacher[]>(() => {
     const saved = localStorage.getItem('sim_teachers');
-    return saved ? JSON.parse(saved) : INITIAL_TEACHERS;
+    if (saved) {
+      try {
+        const parsed: Teacher[] = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          return parsed.filter(t => !isBlacklistedDemoName(t.fullName || (t as any).name));
+        }
+      } catch (e) {}
+    }
+    return (INITIAL_TEACHERS || []).filter(t => !isBlacklistedDemoName(t.fullName || (t as any).name));
   });
   
   const [students, setStudents] = useState<Student[]>(() => {
@@ -396,15 +407,16 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          if (parsed.length >= 11) {
-            return parsed;
-          }
-          // Merge missing standard extracurriculars from INITIAL_EXTRACURRICULARS
-          const existingIds = new Set(parsed.map((e: any) => e.id || e.name?.toLowerCase()));
-          const missing = INITIAL_EXTRACURRICULARS.filter(
-            e => !existingIds.has(e.id) && !existingIds.has(e.name?.toLowerCase())
+          // Filter out default bawaan seed extracurriculars and fotografi/sinematografi
+          const userOnly = parsed.filter(
+            (e: any) => !isPurgedExtracurricular(e.name) && !isPurgedExtracurricular(e.id)
           );
-          return [...parsed, ...missing];
+          if (userOnly.length !== parsed.length) {
+            try {
+              localStorage.setItem('sim_extracurriculars', JSON.stringify(userOnly));
+            } catch (e) {}
+          }
+          return userOnly;
         }
       } catch (e) {}
     }
@@ -416,10 +428,16 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.some((m: any) => m.id === 'm1' && m.studentNis === '24251001')) {
-          return [];
+        if (Array.isArray(parsed)) {
+          const userOnly = parsed.filter(
+            (m: any) =>
+              m.id !== 'm1' &&
+              m.studentNis !== '24251001' &&
+              !isPurgedExtracurricular(m.extracurricularId) &&
+              !isPurgedExtracurricular(m.extracurricularName || '')
+          );
+          return userOnly;
         }
-        return parsed;
       } catch (e) {}
     }
     return INITIAL_MEMBERS;
@@ -430,10 +448,15 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.some((s: any) => s.id === 'sch_1')) {
-          return [];
+        if (Array.isArray(parsed)) {
+          const userOnly = parsed.filter(
+            (s: any) =>
+              s.id !== 'sch_1' &&
+              !isPurgedExtracurricular(s.extracurricularId) &&
+              !isPurgedExtracurricular(s.title || '')
+          );
+          return userOnly;
         }
-        return parsed;
       } catch (e) {}
     }
     return INITIAL_SCHEDULES;
@@ -444,10 +467,15 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.some((a: any) => a.id === 'att_1')) {
-          return [];
+        if (Array.isArray(parsed)) {
+          const userOnly = parsed.filter(
+            (a: any) =>
+              a.id !== 'att_1' &&
+              !isPurgedExtracurricular(a.extracurricularId) &&
+              !isPurgedExtracurricular(a.extracurricularName || '')
+          );
+          return userOnly;
         }
-        return parsed;
       } catch (e) {}
     }
     return INITIAL_ATTENDANCE;
@@ -830,6 +858,31 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [classes, students.length]);
 
+  // Automatic purge of legacy default seed extracurriculars and fotografi/sinematografi from local state and Firestore
+  useEffect(() => {
+    setExtracurriculars(prev => {
+      const filtered = prev.filter(e => !isPurgedExtracurricular(e.name) && !isPurgedExtracurricular(e.id));
+      if (filtered.length !== prev.length) {
+        try {
+          localStorage.setItem('sim_extracurriculars', JSON.stringify(filtered));
+        } catch (e) {}
+        // Also delete removed documents from Firestore
+        const removed = prev.filter(e => isPurgedExtracurricular(e.name) || isPurgedExtracurricular(e.id));
+        removed.forEach(e => {
+          deleteDoc(doc(db, 'extracurriculars', e.id)).catch(() => {});
+        });
+        return filtered;
+      }
+      return prev;
+    });
+
+    try {
+      PURGED_DEMO_EKSKUL_IDS.forEach(id => {
+        deleteDoc(doc(db, 'extracurriculars', id)).catch(() => {});
+      });
+    } catch (e) {}
+  }, []);
+
   // Sync with Firestore if collections exist with timeout resilience
   const syncWithFirebase = async () => {
     setIsSyncing(true);
@@ -867,31 +920,85 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           // Teachers Sync
           const teacherSnap = await getDocs(collection(db, 'teachers'));
           const loadedTeachers: Teacher[] = [];
-          teacherSnap.forEach(doc => loadedTeachers.push({ id: doc.id, ...doc.data() } as Teacher));
+          teacherSnap.forEach(docSnap => {
+            const data = docSnap.data() as Teacher;
+            if (isBlacklistedDemoName(data.fullName || (data as any).name)) {
+              deleteDoc(doc(db, 'teachers', docSnap.id)).catch(() => {});
+            } else {
+              loadedTeachers.push({ id: docSnap.id, ...data });
+            }
+          });
           setTeachers(loadedTeachers);
 
           // Extracurriculars Sync
           const ekskulSnap = await getDocs(collection(db, 'extracurriculars'));
           const loadedEkskul: Extracurricular[] = [];
-          ekskulSnap.forEach(doc => loadedEkskul.push({ id: doc.id, ...doc.data() } as Extracurricular));
+          ekskulSnap.forEach(docSnap => {
+            const data = docSnap.data() as Extracurricular;
+            if (
+              PURGED_DEMO_EKSKUL_IDS.includes(docSnap.id) ||
+              isPurgedExtracurricular(data?.name) ||
+              isPurgedExtracurricular(docSnap.id)
+            ) {
+              deleteDoc(doc(db, 'extracurriculars', docSnap.id)).catch(() => {});
+            } else {
+              loadedEkskul.push({ id: docSnap.id, ...data });
+            }
+          });
           setExtracurriculars(loadedEkskul);
+          try {
+            localStorage.setItem('sim_extracurriculars', JSON.stringify(loadedEkskul));
+          } catch (e) {}
 
           // Members Sync
           const memberSnap = await getDocs(collection(db, 'extracurricular_members'));
           const loadedMembers: ExtracurricularMember[] = [];
-          memberSnap.forEach(doc => loadedMembers.push({ id: doc.id, ...doc.data() } as ExtracurricularMember));
+          memberSnap.forEach(docSnap => {
+            const data = docSnap.data() as ExtracurricularMember;
+            if (
+              PURGED_DEMO_EKSKUL_IDS.includes(data.extracurricularId) ||
+              isPurgedExtracurricular(data.extracurricularId) ||
+              isPurgedExtracurricular(data.extracurricularName || '')
+            ) {
+              deleteDoc(doc(db, 'extracurricular_members', docSnap.id)).catch(() => {});
+            } else {
+              loadedMembers.push({ id: docSnap.id, ...data });
+            }
+          });
           setMembers(loadedMembers);
 
           // Schedules Sync
           const schedSnap = await getDocs(collection(db, 'schedules'));
           const loadedSched: ScheduleEvent[] = [];
-          schedSnap.forEach(doc => loadedSched.push({ id: doc.id, ...doc.data() } as ScheduleEvent));
+          schedSnap.forEach(docSnap => {
+            const data = docSnap.data() as ScheduleEvent;
+            if (
+              PURGED_DEMO_EKSKUL_IDS.includes(data.extracurricularId) ||
+              isPurgedExtracurricular(data.extracurricularId) ||
+              isPurgedExtracurricular(data.title || '')
+            ) {
+              deleteDoc(doc(db, 'schedules', docSnap.id)).catch(() => {});
+            } else {
+              loadedSched.push({ id: docSnap.id, ...data });
+            }
+          });
           setSchedules(loadedSched);
 
           // Attendance Sync
           const attSnap = await getDocs(collection(db, 'attendance'));
           const loadedAtt: AttendanceSession[] = [];
-          attSnap.forEach(doc => loadedAtt.push({ id: doc.id, ...doc.data() } as AttendanceSession));
+          attSnap.forEach(docSnap => {
+            const data = docSnap.data() as AttendanceSession;
+            if (
+              PURGED_DEMO_EKSKUL_IDS.includes(data.extracurricularId) ||
+              isPurgedExtracurricular(data.extracurricularId) ||
+              isPurgedExtracurricular(data.extracurricularName || '')
+            ) {
+              deleteDoc(doc(db, 'attendance', docSnap.id)).catch(() => {});
+            } else {
+              loadedAtt.push({ id: docSnap.id, ...data });
+            }
+          });
           setAttendance(loadedAtt);
 
           // Activities Sync

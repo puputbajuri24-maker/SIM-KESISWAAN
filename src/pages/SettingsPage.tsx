@@ -269,7 +269,10 @@ export const SettingsPage: React.FC = () => {
 
   const handlePrintTestKop = () => {
     const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
+    if (!printWindow) {
+      window.print();
+      return;
+    }
 
     printWindow.document.write(`
       <!DOCTYPE html>

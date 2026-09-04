@@ -103,9 +103,13 @@ const MainContent: React.FC = () => {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, [activeTab]);
 
-  // Ensure current active tab is saved in URL hash on mount
+  // Ensure current active tab is saved in URL hash on mount, and fallback if unauthorized
   useEffect(() => {
     if (currentUser) {
+      if (!canAccessTab(activeTab)) {
+        setActiveTab('dashboard');
+        return;
+      }
       try {
         localStorage.setItem('simkesiswaan_active_tab', activeTab);
         if (window.location.hash !== `#${activeTab}`) {
@@ -113,7 +117,7 @@ const MainContent: React.FC = () => {
         }
       } catch (e) {}
     }
-  }, [currentUser, activeTab]);
+  }, [currentUser, activeTab, canAccessTab]);
 
   // If not logged in, show the official SIM Kesiswaan Login Page
   if (!currentUser) {
@@ -131,41 +135,41 @@ const MainContent: React.FC = () => {
 
   const renderRestrictedAccess = () => {
     return (
-      <div className="min-h-[400px] flex flex-col items-center justify-center p-6 text-center font-mono select-none">
+      <div className="min-h-[400px] flex flex-col items-center justify-center p-6 text-center select-none">
         <div className="w-14 h-14 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 mb-4">
           <Lock className="w-7 h-7" />
         </div>
-        <span className="text-[10px] font-bold text-red-500 tracking-widest uppercase bg-red-500/10 px-2 py-0.5 rounded border border-red-500/20 mb-2">
-          403_ACCESS_RESTRICTED / OTORISASI_TERBATAS
+        <span className="text-[10px] font-bold text-red-500 tracking-widest uppercase bg-red-500/10 px-3 py-1 rounded-full border border-red-500/20 mb-2">
+          403 Hak Akses Terbatas
         </span>
-        <h2 className="text-base font-bold text-zinc-200 mt-1">
-          Akses Modul Tidak Diizinkan
+        <h2 className="text-base font-bold text-slate-800 dark:text-zinc-200 mt-1">
+          Halaman Tidak Dapat Diakses Oleh Peran Ini
         </h2>
-        <p className="text-zinc-400 text-xs max-w-md mt-2 font-sans">
-          Peran akun Anda saat ini (<strong>{currentUser?.displayName}</strong> — <span className="text-blue-400 font-mono">{userRole.toUpperCase()}</span>) dibatasi hanya pada ruang lingkup kerja {isPembinaOsim ? 'Intrakurikuler & OSIM' : isPembinaEkskul ? 'Ekstrakurikuler Binaan' : 'tertentu'}.
+        <p className="text-slate-600 dark:text-zinc-400 text-xs max-w-md mt-2 font-sans leading-relaxed">
+          Akun Anda saat ini (<strong>{currentUser?.displayName}</strong> — <span className="text-blue-500 dark:text-blue-400 font-semibold">{userRole.toUpperCase()}</span>) hanya memiliki izin akses pada modul kerja sesuai tugas dan fungsinya.
         </p>
-        <div className="flex items-center space-x-2 mt-6">
+        <div className="flex flex-wrap items-center justify-center gap-2 mt-6">
           <button
             onClick={() => setActiveTab('dashboard')}
-            className="px-3.5 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white font-medium text-xs flex items-center space-x-2 transition-colors shadow-lg"
+            className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-2 transition-all shadow-md shadow-blue-600/20"
           >
             <ArrowLeft className="w-4 h-4" />
-            <span>KEMBALI_KE_DASHBOARD</span>
+            <span>Kembali ke Dashboard</span>
           </button>
           {isPembinaOsim && (
             <button
               onClick={() => setActiveTab('osim')}
-              className="px-3.5 py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-white font-medium text-xs transition-colors"
+              className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs transition-colors"
             >
-              MENU_OSIM →
+              Menu OSIM →
             </button>
           )}
           {isPembinaEkskul && (
             <button
               onClick={() => setActiveTab('extracurriculars')}
-              className="px-3.5 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs transition-colors"
+              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition-colors"
             >
-              MENU_EKSKUL →
+              Menu Ekstrakurikuler →
             </button>
           )}
         </div>

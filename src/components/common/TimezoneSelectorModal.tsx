@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Clock,
   Globe,
@@ -37,7 +38,7 @@ export const TimezoneSelectorModal: React.FC<TimezoneSelectorModalProps> = ({ is
   const [customIana, setCustomIana] = useState('');
   const [showCustomInput, setShowCustomInput] = useState(false);
 
-  if (!isOpen) return null;
+  if (!isOpen || typeof document === 'undefined') return null;
 
   // Format a live time for any timezone value
   const getLiveTimeForTz = (tz: string) => {
@@ -73,42 +74,47 @@ export const TimezoneSelectorModal: React.FC<TimezoneSelectorModalProps> = ({ is
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] overflow-y-auto font-sans">
       <div
-        className="w-full max-w-xl bg-[#111114] border border-[#27272a] rounded-2xl shadow-2xl overflow-hidden flex flex-col font-sans max-h-[90vh]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="p-4 sm:p-5 border-b border-[#27272a] flex items-center justify-between bg-gradient-to-r from-[#16161a] to-[#121215]">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400">
-              <Clock className="w-5 h-5 animate-pulse" />
-            </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <h3 className="text-base font-bold text-zinc-100">
-                  Sinkronisasi & Pilihan Zona Waktu
-                </h3>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/15 text-blue-300 border border-blue-500/30 uppercase">
-                  {timezoneAbbr}
-                </span>
+        className="fixed inset-0 bg-black/80 backdrop-blur-sm transition-opacity"
+        onClick={onClose}
+      />
+      <div className="min-h-full flex items-center justify-center p-3 sm:p-4 text-center pointer-events-none">
+        <div
+          className="w-full max-w-xl bg-[#111114] border border-[#27272a] rounded-2xl shadow-2xl overflow-hidden flex flex-col font-sans max-h-[90vh] pointer-events-auto my-6 text-left"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className="p-4 sm:p-5 border-b border-[#27272a] flex items-center justify-between bg-gradient-to-r from-[#16161a] to-[#121215]">
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400">
+                <Clock className="w-5 h-5 animate-pulse" />
               </div>
-              <p className="text-xs text-zinc-400 mt-0.5">
-                Pilih waktu otomatis sesuai perangkat atau tentukan zona waktu aplikasi
-              </p>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <h3 className="text-base font-bold text-zinc-100">
+                    Sinkronisasi & Pilihan Zona Waktu
+                  </h3>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/15 text-blue-300 border border-blue-500/30 uppercase">
+                    {timezoneAbbr}
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-400 mt-0.5">
+                  Pilih waktu otomatis sesuai perangkat atau tentukan zona waktu aplikasi
+                </p>
+              </div>
             </div>
+            <button
+              onClick={onClose}
+              className="p-2 rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-[#202025] transition-colors"
+            >
+              <X className="w-5 h-5" />
+            </button>
           </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-xl text-zinc-400 hover:text-zinc-100 hover:bg-[#202025] transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
 
-        {/* Content Body */}
-        <div className="p-4 sm:p-5 space-y-4 overflow-y-auto max-h-[calc(90vh-140px)]">
+          {/* Content Body */}
+          <div className="p-4 sm:p-5 space-y-4 overflow-y-auto max-h-[calc(90vh-140px)]">
           {/* Current Active Live Telemetry Card */}
           <div className="p-4 rounded-xl bg-gradient-to-br from-[#181820] to-[#121216] border border-blue-500/30 relative overflow-hidden">
             <div className="absolute top-0 right-0 w-48 h-48 bg-blue-500/5 rounded-full blur-2xl pointer-events-none" />
@@ -316,5 +322,7 @@ export const TimezoneSelectorModal: React.FC<TimezoneSelectorModalProps> = ({ is
         </div>
       </div>
     </div>
-  );
+  </div>,
+  document.body
+);
 };

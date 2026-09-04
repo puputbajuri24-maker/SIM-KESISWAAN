@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Server,
   Users,
@@ -41,7 +41,10 @@ import {
   X,
   History,
   Megaphone,
-  Wallet
+  Wallet,
+  LogIn,
+  Compass,
+  Shield
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSchool } from '../contexts/SchoolContext';
@@ -53,7 +56,7 @@ import { AuditLogsPanel } from '../components/cpanel/AuditLogsPanel';
 import { AcademicYearManagementModal } from '../components/common/AcademicYearManagementModal';
 
 export const CPanelPage: React.FC = () => {
-  const { allUsers, isSuperAdmin, addUser, updateUser, deleteUser, resetUserPassword, loginWithUser, syncUsersFromTeachers } = useAuth();
+  const { allUsers, currentUser, isSuperAdmin, addUser, updateUser, deleteUser, resetUserPassword, loginWithUser, loginWithDemoRole, syncUsersFromTeachers } = useAuth();
   const {
     schoolSetting,
     updateSchoolSetting,
@@ -78,6 +81,24 @@ export const CPanelPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [showPasswordMap, setShowPasswordMap] = useState<Record<string, boolean>>({});
+
+  // Quick Role Testing state & users groupings
+  const bkUsers = useMemo(() => allUsers.filter(u => u.role === 'guru_bk'), [allUsers]);
+  const pembinaEkskulUsers = useMemo(() => allUsers.filter(u => u.role === 'pembina_ekskul' || u.role === 'pembina'), [allUsers]);
+  const pembinaOsimUsers = useMemo(() => allUsers.filter(u => u.role === 'pembina_osim'), [allUsers]);
+  const wakaUsers = useMemo(() => allUsers.filter(u => u.role === 'waka_kesiswaan'), [allUsers]);
+  const adminUsers = useMemo(() => allUsers.filter(u => u.role === 'super_admin'), [allUsers]);
+
+  const [selectedBkUserId, setSelectedBkUserId] = useState<string>('');
+  const [selectedPembinaUserId, setSelectedPembinaUserId] = useState<string>('');
+
+  const getPembinaEkskulName = (u: UserProfile) => {
+    if (!u.extracurricularIds || u.extracurricularIds.length === 0) return 'Ekstrakurikuler';
+    const names = u.extracurricularIds
+      .map(id => extracurriculars.find(e => e.id === id)?.name)
+      .filter(Boolean);
+    return names.length > 0 ? names.join(', ') : 'Ekstrakurikuler';
+  };
 
   // Modal states
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -440,7 +461,10 @@ export const CPanelPage: React.FC = () => {
 
   const handlePrintAccountSlip = (u: UserProfile) => {
     const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
+    if (!printWindow) {
+      window.print();
+      return;
+    }
 
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -502,7 +526,10 @@ export const CPanelPage: React.FC = () => {
 
   const handlePrintAllSlips = () => {
     const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
+    if (!printWindow) {
+      window.print();
+      return;
+    }
 
     const cardsHtml = allUsers.map(u => `
       <div class="card">
@@ -803,6 +830,239 @@ export const CPanelPage: React.FC = () => {
             </div>
           )}
 
+          {/* FITUR PENGUJIAN PERAN CEPAT (KHUSUS ADMIN) */}
+          <div className="bg-[#151518] border-2 border-emerald-500/30 rounded-2xl p-4 sm:p-5 shadow-xl space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#27272a] pb-3.5">
+              <div className="flex items-center space-x-3">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+                  <ShieldCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <h3 className="text-sm sm:text-base font-bold text-white tracking-tight">
+                      Fitur Pengujian Peran Cepat (Simulasi Tampilan Hak Akses)
+                    </h3>
+                    <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      KHUSUS ADMIN
+                    </span>
+                  </div>
+                  <p className="text-[11px] sm:text-xs text-zinc-300 mt-0.5">
+                    Akses uji coba antarmuka dan wewenang untuk setiap peran. Karena terdapat lebih dari 1 Guru BK dan Pembina Ekstra, pilih akun spesifik yang ingin disimulasikan di bawah.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Grid 4 Kartu Utama */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
+              {/* Card 1: Admin & Waka */}
+              <div className="p-3.5 rounded-xl bg-[#1c1c20] border border-[#2e2e34] flex flex-col justify-between space-y-3">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <div className="p-1.5 rounded-lg bg-blue-500/20 text-blue-400">
+                        <Crown className="w-4 h-4" />
+                      </div>
+                      <span className="text-xs font-bold text-white">Administrator & Waka</span>
+                    </div>
+                    {currentUser?.role === 'super_admin' && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 font-semibold">
+                        Aktif
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-zinc-400 mt-1.5 leading-relaxed">
+                    Pengelola madrasah, kesiswaan & cPanel kontrol pusat.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (adminUsers[0]) loginWithUser(adminUsers[0]);
+                    }}
+                    className="w-full py-1.5 px-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center justify-center space-x-1.5 transition-colors"
+                  >
+                    <Crown className="w-3.5 h-3.5 text-amber-300" />
+                    <span>Mode Administrator</span>
+                  </button>
+                  {wakaUsers.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (wakaUsers[0]) loginWithUser(wakaUsers[0]);
+                      }}
+                      className="w-full py-1.5 px-2.5 rounded-lg bg-blue-900/40 hover:bg-blue-900/60 border border-blue-700/40 text-blue-200 font-bold text-xs flex items-center justify-center space-x-1.5 transition-colors"
+                    >
+                      <Shield className="w-3.5 h-3.5 text-blue-400" />
+                      <span>Mode Waka Kesiswaan</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Card 2: Guru BK (Dengan Pilihan Guru BK) */}
+              <div className="p-3.5 rounded-xl bg-[#1c1c20] border border-purple-500/30 flex flex-col justify-between space-y-3">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <div className="p-1.5 rounded-lg bg-purple-500/20 text-purple-400">
+                        <HeartHandshake className="w-4 h-4" />
+                      </div>
+                      <span className="text-xs font-bold text-white">Guru BK ({bkUsers.length} Guru)</span>
+                    </div>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 font-mono font-bold">
+                      {bkUsers.length} Akun
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-zinc-400 mt-1.5 leading-relaxed">
+                    Akses catatan konseling, pelanggaran, home visit & pemanggilan wali.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-purple-300 flex items-center justify-between">
+                      <span>Pilih Akun Guru BK:</span>
+                    </label>
+                    <select
+                      value={selectedBkUserId || (bkUsers[0]?.uid || '')}
+                      onChange={e => setSelectedBkUserId(e.target.value)}
+                      className="w-full text-xs p-1.5 rounded-lg bg-[#151518] border border-purple-500/40 text-purple-100 focus:outline-none focus:border-purple-400 font-medium"
+                    >
+                      {bkUsers.map(u => (
+                        <option key={u.uid} value={u.uid}>
+                          {u.displayName} ({u.counselorSpecialization || 'BK'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                    <button
+                    type="button"
+                    onClick={() => {
+                      const target = bkUsers.find(u => u.uid === (selectedBkUserId || bkUsers[0]?.uid)) || bkUsers[0];
+                      if (target) {
+                        loginWithUser(target);
+                      } else {
+                        loginWithDemoRole('guru_bk');
+                      }
+                    }}
+                    className="w-full py-1.5 px-2.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center justify-center space-x-1.5 transition-colors shadow-sm shadow-purple-900/30"
+                  >
+                    <HeartHandshake className="w-3.5 h-3.5 text-purple-200" />
+                    <span>Uji Tampilan Sebagai Guru BK</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Card 3: Pembina OSIM */}
+              <div className="p-3.5 rounded-xl bg-[#1c1c20] border border-amber-500/30 flex flex-col justify-between space-y-3">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-400">
+                        <Users className="w-4 h-4" />
+                      </div>
+                      <span className="text-xs font-bold text-white">Pembina OSIM</span>
+                    </div>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-semibold">
+                      OSIM
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-zinc-400 mt-1.5 leading-relaxed">
+                    Pengawasan kesiswaan, kepengurusan OSIM, program kerja & kas.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="p-2 rounded-lg bg-[#151518] border border-[#2e2e34]">
+                    <div className="text-[10px] text-zinc-400">Akun Pembina:</div>
+                    <div className="text-xs font-bold text-amber-300 truncate">
+                      {pembinaOsimUsers[0]?.displayName || 'Belum Ada Akun (Simulasi)'}
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (pembinaOsimUsers[0]) {
+                        loginWithUser(pembinaOsimUsers[0]);
+                      } else {
+                        loginWithDemoRole('pembina_osim');
+                      }
+                    }}
+                    className="w-full py-1.5 px-2.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center justify-center space-x-1.5 transition-colors shadow-sm shadow-amber-900/30"
+                  >
+                    <Users className="w-3.5 h-3.5 text-amber-200" />
+                    <span>Uji Tampilan Pembina OSIM</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Card 4: Guru Pembina Ekstrakurikuler (Dengan Pilihan Pembina) */}
+              <div className="p-3.5 rounded-xl bg-[#1c1c20] border border-emerald-500/30 flex flex-col justify-between space-y-3">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <div className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400">
+                        <Compass className="w-4 h-4" />
+                      </div>
+                      <span className="text-xs font-bold text-white">Pembina Ekstra ({pembinaEkskulUsers.length} Pembina)</span>
+                    </div>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-mono font-bold">
+                      {pembinaEkskulUsers.length} Akun
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-zinc-400 mt-1.5 leading-relaxed">
+                    Kelola absensi ekskul, anggota binaan, jurnal latihan & nilai semester.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-emerald-300 flex items-center justify-between">
+                      <span>Pilih Guru Pembina Ekstra:</span>
+                    </label>
+                    <select
+                      value={selectedPembinaUserId || (pembinaEkskulUsers[0]?.uid || '')}
+                      onChange={e => setSelectedPembinaUserId(e.target.value)}
+                      disabled={pembinaEkskulUsers.length === 0}
+                      className="w-full text-xs p-1.5 rounded-lg bg-[#151518] border border-emerald-500/40 text-emerald-100 focus:outline-none focus:border-emerald-400 font-medium disabled:opacity-50"
+                    >
+                      {pembinaEkskulUsers.length === 0 ? (
+                        <option value="">Belum ada akun pembina ekstra</option>
+                      ) : (
+                        pembinaEkskulUsers.map(u => (
+                          <option key={u.uid} value={u.uid}>
+                            {u.displayName} ({getPembinaEkskulName(u)})
+                          </option>
+                        ))
+                      )}
+                    </select>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = pembinaEkskulUsers.find(u => u.uid === (selectedPembinaUserId || pembinaEkskulUsers[0]?.uid)) || pembinaEkskulUsers[0];
+                      if (target) {
+                        loginWithUser(target);
+                      } else {
+                        loginWithDemoRole('pembina_ekskul');
+                      }
+                    }}
+                    className="w-full py-1.5 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center space-x-1.5 transition-colors shadow-sm shadow-emerald-900/30"
+                  >
+                    <Compass className="w-3.5 h-3.5 text-emerald-200" />
+                    <span>Uji Tampilan Sebagai Pembina</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Filter Bar */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#151518] p-3 rounded-xl border border-[#27272a]">
             <div className="relative flex-1 max-w-md">
@@ -944,6 +1204,15 @@ export const CPanelPage: React.FC = () => {
 
                         <td className="py-3 px-4 text-right">
                           <div className="flex items-center justify-end space-x-1">
+                            <button
+                              onClick={() => {
+                                loginWithUser(u);
+                              }}
+                              title={`Masuk & Uji Tampilan Sebagai ${u.displayName} (${u.role.toUpperCase()})`}
+                              className="p-1.5 rounded bg-[#222226] hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 transition-colors"
+                            >
+                              <LogIn className="w-3.5 h-3.5" />
+                            </button>
                             <button
                               onClick={() => handleOpenDetailModal(u)}
                               title="Lihat Detail Akun"

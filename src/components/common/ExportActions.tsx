@@ -179,7 +179,10 @@ export const ExportActions: React.FC<ExportActionsProps> = ({
 
   const handlePrintHTML = () => {
     const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
+    if (!printWindow) {
+      window.print();
+      return;
+    }
 
     const leftLogo = schoolInfo?.logoLeftUrl || schoolInfo?.logoUrl;
     const rightLogo = schoolInfo?.logoRightUrl;

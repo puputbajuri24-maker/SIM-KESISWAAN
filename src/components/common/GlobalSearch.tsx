@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { Search, User, Trophy, ShieldAlert, Activity, Calendar, ArrowRight, X } from 'lucide-react';
 import { useSchool } from '../../contexts/SchoolContext';
 
@@ -55,7 +56,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onN
     };
   }, [query, students, extracurriculars, activities, violations, achievements]);
 
-  if (!isOpen) return null;
+  if (!isOpen || typeof document === 'undefined') return null;
 
   const hasAnyResult =
     results &&
@@ -65,12 +66,12 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onN
       results.violations.length > 0 ||
       results.achievements.length > 0);
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-y-auto font-sans">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] overflow-y-auto font-sans">
       <div className="fixed inset-0 bg-black/80 backdrop-blur-xs transition-opacity" onClick={onClose} />
-      <div className="min-h-full flex items-start justify-center p-3 sm:p-4 pt-12 sm:pt-16 text-center">
+      <div className="min-h-full flex items-start justify-center p-3 sm:p-4 pt-12 sm:pt-16 text-center pointer-events-none">
         <div
-          className="w-full max-w-2xl bg-[#0d0d0f] rounded border border-[#27272a] shadow-2xl text-left overflow-hidden transform transition-all"
+          className="w-full max-w-2xl bg-[#0d0d0f] rounded border border-[#27272a] shadow-2xl text-left overflow-hidden transform transition-all pointer-events-auto"
           onClick={e => e.stopPropagation()}
         >
           {/* Search Header */}
@@ -267,6 +268,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onN
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

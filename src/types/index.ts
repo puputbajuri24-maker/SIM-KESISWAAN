@@ -140,6 +140,7 @@ export interface Extracurricular {
   mission: string;
   target: string;
   academicYear: string;
+  color?: string;
 }
 
 export interface ExtracurricularMember {

@@ -223,8 +223,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(true);
     let target = allUsers.find(u => customUid ? u.uid === customUid : u.role === role);
     if (!target) {
-      target = DEMO_USERS.find(u => customUid ? u.uid === customUid : u.role === role) || DEMO_USERS[0];
+      target = DEMO_USERS.find(u => customUid ? u.uid === customUid : u.role === role);
     }
+    
+    if (!target) {
+      // If no dedicated account exists for this role yet, switch active session temporarily for UI simulation
+      // without polluting allUsers or localStorage with fake accounts
+      const simRoleName = role === 'super_admin' ? 'Administrator' :
+                          role === 'waka_kesiswaan' ? 'Waka Kesiswaan' :
+                          role === 'guru_bk' ? 'Guru BK' :
+                          role === 'pembina_osim' ? 'Pembina OSIM' :
+                          role === 'pembina_ekskul' || role === 'pembina' ? 'Pembina Ekstrakurikuler' : role;
+      const simUser: UserProfile = {
+        uid: `sim_${role}`,
+        displayName: `Mode Uji Tampilan (${simRoleName})`,
+        email: `${role}@sekolah.sch.id`,
+        username: role,
+        role: role,
+        status: 'Aktif',
+        lastLogin: new Date().toISOString()
+      };
+      setCurrentUser(simUser);
+      recordSystemAuditLog('LOGIN_ROLE', 'Autentikasi & Akun', `Uji coba simulasi tampilan peran: ${role.toUpperCase()}`, simUser);
+      setIsLoading(false);
+      return;
+    }
+
     const updatedUser = { ...target, lastLogin: new Date().toISOString() };
     setCurrentUser(updatedUser);
     setAllUsers(prev => prev.map(u => u.uid === updatedUser.uid ? updatedUser : u));

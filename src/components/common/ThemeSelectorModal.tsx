@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { useTheme, THEME_PALETTES, ThemeMode, ThemePalette, FontSize, FontContrast, FontFamily } from '../../contexts/ThemeContext';
 import { Sun, Moon, Monitor, Palette, Sparkles, Check, CheckCircle2, Type, Contrast, RotateCcw, X, Eye } from 'lucide-react';
 
@@ -23,18 +24,20 @@ export const ThemeSelectorModal: React.FC<ThemeSelectorModalProps> = ({ isOpen, 
     resetTheme
   } = useTheme();
 
-  if (!isOpen) return null;
+  if (!isOpen || typeof document === 'undefined') return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] overflow-y-auto font-sans">
       {/* Backdrop */}
       <div
-        className="fixed inset-0 bg-black/80 backdrop-blur-xs transition-opacity animate-in fade-in"
+        className="fixed inset-0 bg-black/80 backdrop-blur-xs transition-opacity animate-in fade-in cursor-pointer"
         onClick={onClose}
       />
 
-      {/* Modal Container */}
-      <div className="relative w-full max-w-xl rounded-2xl bg-[#101726] light:bg-white border border-[#1e293b] light:border-slate-300 shadow-2xl overflow-hidden z-10 font-sans text-xs flex flex-col max-h-[90vh]">
+      {/* Modal Alignment Container */}
+      <div className="min-h-full flex items-center justify-center p-3 sm:p-4 text-center pointer-events-none">
+        {/* Modal Container */}
+        <div className="relative w-full max-w-xl rounded-2xl bg-[#101726] light:bg-white border border-[#1e293b] light:border-slate-300 shadow-2xl overflow-hidden z-10 font-sans text-xs flex flex-col max-h-[90vh] pointer-events-auto my-6 text-left">
         {/* Header */}
         <div className="p-4 bg-[#131b2e] light:bg-slate-100 border-b border-[#1e293b] light:border-slate-300 flex items-center justify-between">
           <div className="flex items-center space-x-2.5">
@@ -299,5 +302,7 @@ export const ThemeSelectorModal: React.FC<ThemeSelectorModalProps> = ({ isOpen, 
         </div>
       </div>
     </div>
-  );
+  </div>,
+  document.body
+);
 };

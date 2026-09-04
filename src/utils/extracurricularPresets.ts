@@ -322,17 +322,17 @@ export const EXTRACURRICULAR_PRESETS: ExtracurricularPreset[] = [
   },
   {
     id: 'multimedia',
-    name: 'Fotografi, Sinematografi & Desain Grafis',
+    name: 'Multimedia',
     category: 'Teknologi',
-    description: 'Teknik fotografi DSLR/Mirrorless, videografi, pembuatan film pendek, editing video, dan desain grafis Photoshop/Canva.',
+    description: 'Pengembangan kemampuan multimedia, penyiaran podcast, produksi konten visual kreatif, editing audio video, dan desain grafis.',
     defaultDay: 'Jumat',
     defaultStartTime: '15:30',
     defaultEndTime: '17:30',
     defaultLocation: 'Studio Multimedia & Podcast',
     defaultQuota: 35,
-    vision: 'Mencetak kreator konten visual yang estetis, profesional, dan mampu memproduksi karya film inspiratif.',
-    mission: '1. Penguasaan segitiga eksposur & komposisi visual. 2. Produksi film pendek edukatif. 3. Dokumentasi resmi kegiatan sekolah.',
-    target: 'Juara Festival Film Pendek Pelajar dan Lomba Desain Poster Nasional.'
+    vision: 'Mencetak insan kreatif bidang multimedia yang cakap, berestetika, profesional, dan berakhlak mulia.',
+    mission: '1. Penguasaan alat produksi audio-visual dan studio. 2. Produksi konten siaran podcast dan liputan. 3. Dokumentasi resmi kegiatan sekolah.',
+    target: 'Mengelola Studio Podcast & Media Digital Kreatif Madrasah secara produktif.'
   },
 
   // 6. Seni & Budaya

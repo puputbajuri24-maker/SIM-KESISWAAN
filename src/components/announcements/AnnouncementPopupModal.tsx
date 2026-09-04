@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Megaphone,
   AlertTriangle,
@@ -38,7 +39,7 @@ export const AnnouncementPopupModal: React.FC<AnnouncementPopupModalProps> = ({
   const { schoolSetting } = useSchool();
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  if (!isOpen || !announcements || announcements.length === 0) {
+  if (!isOpen || !announcements || announcements.length === 0 || typeof document === 'undefined') {
     return null;
   }
 
@@ -89,10 +90,18 @@ export const AnnouncementPopupModal: React.FC<AnnouncementPopupModalProps> = ({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md overflow-y-auto animate-in fade-in duration-200">
-      <div className="relative w-full max-w-xl bg-[#111114] border border-[#2d2d34] rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] overflow-hidden font-sans my-6">
-        {/* Top Decorative Header Accent */}
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] overflow-y-auto font-sans">
+      <div
+        className="fixed inset-0 bg-black/85 backdrop-blur-md transition-opacity"
+        onClick={onClose}
+      />
+      <div className="min-h-full flex items-center justify-center p-3 sm:p-4 text-center pointer-events-none">
+        <div
+          className="relative w-full max-w-xl bg-[#111114] border border-[#2d2d34] rounded-2xl shadow-[0_0_50px_rgba(0,0,0,0.8)] overflow-hidden font-sans my-6 pointer-events-auto text-left"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Top Decorative Header Accent */}
         <div
           className={`h-1.5 w-full ${
             currentAnn.priority === 'Mendesak'
@@ -262,5 +271,7 @@ export const AnnouncementPopupModal: React.FC<AnnouncementPopupModalProps> = ({
         </div>
       </div>
     </div>
-  );
+  </div>,
+  document.body
+);
 };

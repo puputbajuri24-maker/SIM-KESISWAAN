@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Megaphone,
   AlertTriangle,
@@ -229,11 +230,21 @@ export const AnnouncementModal: React.FC<AnnouncementModalProps> = ({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
-      <div className="relative w-full max-w-2xl bg-[#111114] border border-[#27272a] rounded-2xl shadow-2xl overflow-hidden font-sans my-8">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[#27272a] bg-[#16161a]">
+  if (!isOpen || typeof document === 'undefined') return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] overflow-y-auto font-sans">
+      <div
+        className="fixed inset-0 bg-black/80 backdrop-blur-sm transition-opacity"
+        onClick={onClose}
+      />
+      <div className="min-h-full flex items-center justify-center p-3 sm:p-4 text-center pointer-events-none">
+        <div
+          className="relative w-full max-w-2xl bg-[#111114] border border-[#27272a] rounded-2xl shadow-2xl overflow-hidden font-sans my-8 pointer-events-auto text-left"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between px-5 py-4 border-b border-[#27272a] bg-[#16161a]">
           <div className="flex items-center space-x-3">
             <div className="w-9 h-9 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400">
               <Megaphone className="w-5 h-5" />
@@ -662,5 +673,7 @@ export const AnnouncementModal: React.FC<AnnouncementModalProps> = ({
         </form>
       </div>
     </div>
-  );
+  </div>,
+  document.body
+);
 };
