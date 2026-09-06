@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   GraduationCap,
   Plus,
@@ -86,6 +86,37 @@ export const TeachersPage: React.FC = () => {
     isCashManager: false,
     cashManagerTitle: 'Bendahara Kesiswaan'
   });
+
+  // Automatically open teacher detail if selected from Global Search
+  useEffect(() => {
+    const handleSearchSelect = (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        category: string;
+        id: string;
+        rawId: string;
+        title: string;
+      }>;
+      const detail = customEvent.detail;
+      if (!detail) return;
+
+      if (detail.category === 'teachers') {
+        const targetTeacher = teachers.find(
+          t =>
+            t.id === detail.rawId ||
+            t.id === detail.id ||
+            t.nip === detail.rawId ||
+            (t.fullName && t.fullName.toLowerCase().trim() === detail.title.toLowerCase().trim())
+        );
+        if (targetTeacher) {
+          setSelectedTeacher(targetTeacher);
+          setIsDetailOpen(true);
+        }
+      }
+    };
+
+    window.addEventListener('app:search-select', handleSearchSelect);
+    return () => window.removeEventListener('app:search-select', handleSearchSelect);
+  }, [teachers]);
 
   const handleOpenAdd = () => {
     setSelectedTeacher(null);

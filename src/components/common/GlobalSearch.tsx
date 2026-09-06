@@ -1,7 +1,36 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Search, User, Trophy, ShieldAlert, Activity, Calendar, ArrowRight, X } from 'lucide-react';
+import {
+  Search,
+  User,
+  Users,
+  GraduationCap,
+  Trophy,
+  ShieldAlert,
+  Calendar,
+  ArrowRight,
+  X,
+  HeartHandshake,
+  FileSpreadsheet,
+  FileText,
+  ClipboardCheck,
+  BookOpenCheck,
+  Settings,
+  Shield,
+  UserCog,
+  Megaphone,
+  Compass,
+  Wallet,
+  FileCheck,
+  LayoutDashboard,
+  Crown,
+  CornerDownLeft,
+  Sparkles,
+  Command,
+  Clock
+} from 'lucide-react';
 import { useSchool } from '../../contexts/SchoolContext';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface GlobalSearchProps {
   isOpen: boolean;
@@ -9,262 +38,744 @@ interface GlobalSearchProps {
   onNavigate: (tabId: string, extraId?: string) => void;
 }
 
+type SearchCategory =
+  | 'all'
+  | 'students'
+  | 'teachers'
+  | 'ekskul'
+  | 'activities'
+  | 'counseling'
+  | 'violations'
+  | 'achievements'
+  | 'navigation';
+
+interface SearchResultItem {
+  id: string;
+  category: SearchCategory;
+  categoryLabel: string;
+  title: string;
+  subtitle: string;
+  metadata?: string;
+  tabId: string;
+  icon: React.ComponentType<{ className?: string }>;
+  colorScheme: {
+    bg: string;
+    text: string;
+    border: string;
+    badgeBg: string;
+    badgeText: string;
+  };
+}
+
 export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onNavigate }) => {
   const [query, setQuery] = useState('');
-  const { students, extracurriculars, activities, violations, achievements } = useSchool();
+  const [activeCategory, setActiveCategory] = useState<SearchCategory>('all');
+  const [selectedIndex, setSelectedIndex] = useState(0);
 
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  const {
+    students,
+    teachers,
+    extracurriculars,
+    activities,
+    violations,
+    achievements,
+    counseling,
+    classes
+  } = useSchool();
+
+  const { canAccessTab } = useAuth();
+
+  // Detect platform for keyboard shortcut display
+  const isMac = useMemo(() => {
+    if (typeof navigator === 'undefined') return false;
+    return /Mac|iPod|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+  }, []);
+
+  // Reset state on open
   useEffect(() => {
+    if (isOpen) {
+      setQuery('');
+      setActiveCategory('all');
+      setSelectedIndex(0);
+      const timer = setTimeout(() => {
+        inputRef.current?.focus();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen]);
+
+  // System navigation items
+  const navigationItems = useMemo(() => {
+    const rawPages = [
+      { id: 'dashboard', label: 'Command Center / Dashboard', keywords: 'dashboard beranda statistik ikhtisar ringkasan kesiswaan home', icon: LayoutDashboard },
+      { id: 'announcements', label: 'Pusat Pengumuman & Broadcast', keywords: 'pengumuman warta siaran notifikasi informasi surat edaran', icon: Megaphone },
+      { id: 'students', label: 'Data Siswa & Rombel', keywords: 'siswa murid santri rombel kelas nis nisn biodata peserta didik', icon: Users },
+      { id: 'teachers', label: 'Dewan Guru & Manajemen', keywords: 'guru ustadz pembina wali kelas pendidik staf nip dewan guru bimbingan', icon: UserCog },
+      { id: 'osim', label: 'Pengurus & Proker OSIM', keywords: 'osim osis pengurus organisasi siswa proker rapat program kerja', icon: Crown },
+      { id: 'extracurriculars', label: 'Manajemen Ekstrakurikuler', keywords: 'ekskul ekstra klub kegiatan minat bakat pramuka paskibra pmr', icon: Compass },
+      { id: 'members', label: 'Daftar Anggota Ekstrakurikuler', keywords: 'anggota member siswa ekstra peserta ekskul daftar nama', icon: Users },
+      { id: 'schedules', label: 'Jadwal & Kalender Kegiatan', keywords: 'jadwal kalender agenda waktu hari jam pelaksanaan', icon: Calendar },
+      { id: 'attendance', label: 'Presensi Digital & Absensi', keywords: 'presensi absen absensi kehadiran rekap sakit izin alfa', icon: ClipboardCheck },
+      { id: 'activities', label: 'Aktivitas Harian Kesiswaan', keywords: 'aktivitas kegiatan agenda event harian foto dokumentasi', icon: FileSpreadsheet },
+      { id: 'reports', label: 'Laporan & Notula Kegiatan', keywords: 'laporan report notula lpj berkas administrasi rekap', icon: FileText },
+      { id: 'rules', label: 'Buku Tata Tertib Siswa', keywords: 'tata tertib tatib peraturan aturan pasal sanksi poin buku saku', icon: BookOpenCheck },
+      { id: 'violations', label: 'Pelanggaran & Disiplin Siswa', keywords: 'pelanggaran disiplin poin pelanggaran kasus sp surat peringatan hukum', icon: ShieldAlert },
+      { id: 'counseling', label: 'Bimbingan Konseling (BK)', keywords: 'bk bimbingan konseling konselor guru bk home visit panggilan wali karir', icon: HeartHandshake },
+      { id: 'achievements', label: 'Prestasi & Penghargaan Siswa', keywords: 'prestasi juara penghargaan lomba piala medali sertifikat piagam', icon: Trophy },
+      { id: 'permissions', label: 'Dispensasi & Surat Izin', keywords: 'izin dispensasi surat izin meninggalkan madrasah sakit perizinan', icon: FileCheck },
+      { id: 'cash', label: 'Neraca Kas & Keuangan Kesiswaan', keywords: 'kas uang keuangan saldo pemasukan pengeluaran bendahara kuitansi buku kas', icon: Wallet },
+      { id: 'settings', label: 'Konfigurasi Sistem Madrasah', keywords: 'pengaturan setting konfigurasi madrasah logo kop surat info sekolah', icon: Settings },
+      { id: 'cpanel', label: 'cPanel & Akses Akun Pengguna', keywords: 'cpanel akun user login password hak akses role perizinan pengguna', icon: Shield },
+      { id: 'profile', label: 'Profil Saya & Pengaturan Akun', keywords: 'profil akun saya ganti password email info pengguna', icon: User }
+    ];
+
+    return rawPages.filter(p => canAccessTab(p.id));
+  }, [canAccessTab]);
+
+  // Compute all matching items
+  const allResults = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const list: SearchResultItem[] = [];
+
+    // 1. Navigation Pages
+    navigationItems.forEach(nav => {
+      const matchLabel = nav.label.toLowerCase().includes(q);
+      const matchKeywords = nav.keywords.toLowerCase().includes(q);
+      if (!q || matchLabel || matchKeywords) {
+        list.push({
+          id: `nav_${nav.id}`,
+          category: 'navigation',
+          categoryLabel: 'Menu Halaman',
+          title: nav.label,
+          subtitle: `Buka halaman ${nav.label.split('/')[0].trim()}`,
+          metadata: 'Navigasi Cepat',
+          tabId: nav.id,
+          icon: nav.icon,
+          colorScheme: {
+            bg: 'bg-blue-50 dark:bg-blue-950/40',
+            text: 'text-blue-600 dark:text-blue-400',
+            border: 'border-blue-200 dark:border-blue-800/60',
+            badgeBg: 'bg-blue-100 dark:bg-blue-900/50',
+            badgeText: 'text-blue-700 dark:text-blue-300'
+          }
+        });
+      }
+    });
+
+    if (!q) {
+      // If empty query, show top navigation items and popular recommendations
+      return list.slice(0, 8);
+    }
+
+    // 2. Teachers / Dewan Guru & Pembina
+    (teachers || []).forEach(t => {
+      const matchName = (t.fullName || '').toLowerCase().includes(q);
+      const matchNip = (t.nip || '').toLowerCase().includes(q);
+      const matchRole = (t.role || '').toLowerCase().includes(q);
+      const matchSubject = (t.subject || '').toLowerCase().includes(q);
+      const matchPhone = (t.phone || '').toLowerCase().includes(q);
+      const matchEmail = (t.email || '').toLowerCase().includes(q);
+
+      if (matchName || matchNip || matchRole || matchSubject || matchPhone || matchEmail) {
+        list.push({
+          id: `teacher_${t.id}`,
+          category: 'teachers',
+          categoryLabel: 'Dewan Guru',
+          title: t.fullName,
+          subtitle: `${t.role || 'Guru'} • ${t.subject || 'Mata Pelajaran'}`,
+          metadata: `NIP: ${t.nip || '-'} ${t.phone ? `• WA: ${t.phone}` : ''}`,
+          tabId: 'teachers',
+          icon: GraduationCap,
+          colorScheme: {
+            bg: 'bg-purple-50 dark:bg-purple-950/40',
+            text: 'text-purple-600 dark:text-purple-400',
+            border: 'border-purple-200 dark:border-purple-800/60',
+            badgeBg: 'bg-purple-100 dark:bg-purple-900/50',
+            badgeText: 'text-purple-700 dark:text-purple-300'
+          }
+        });
+      }
+    });
+
+    // 3. Students / Siswa
+    (students || []).forEach(s => {
+      const matchName = (s.fullName || '').toLowerCase().includes(q);
+      const matchNis = (s.nis || '').toLowerCase().includes(q);
+      const matchNisn = (s.nisn || '').toLowerCase().includes(q);
+      const matchClass = (s.className || '').toLowerCase().includes(q);
+      const matchPhone = (s.phone || '').toLowerCase().includes(q);
+
+      if (matchName || matchNis || matchNisn || matchClass || matchPhone) {
+        list.push({
+          id: `student_${s.id}`,
+          category: 'students',
+          categoryLabel: 'Siswa',
+          title: s.fullName,
+          subtitle: `Kelas: ${s.className || '-'} • NIS: ${s.nis || '-'}`,
+          metadata: `Status: ${s.status || 'Aktif'} ${s.nisn ? `• NISN: ${s.nisn}` : ''}`,
+          tabId: 'students',
+          icon: User,
+          colorScheme: {
+            bg: 'bg-emerald-50 dark:bg-emerald-950/40',
+            text: 'text-emerald-600 dark:text-emerald-400',
+            border: 'border-emerald-200 dark:border-emerald-800/60',
+            badgeBg: 'bg-emerald-100 dark:bg-emerald-900/50',
+            badgeText: 'text-emerald-700 dark:text-emerald-300'
+          }
+        });
+      }
+    });
+
+    // 4. Extracurriculars
+    (extracurriculars || []).forEach(e => {
+      const matchName = (e.name || '').toLowerCase().includes(q);
+      const matchCoach = (e.coachName || '').toLowerCase().includes(q);
+      const matchCategory = (e.category || '').toLowerCase().includes(q);
+      const matchDay = (e.day || '').toLowerCase().includes(q);
+      const matchLoc = (e.location || '').toLowerCase().includes(q);
+
+      if (matchName || matchCoach || matchCategory || matchDay || matchLoc) {
+        list.push({
+          id: `ekskul_${e.id}`,
+          category: 'ekskul',
+          categoryLabel: 'Ekstrakurikuler',
+          title: e.name,
+          subtitle: `Kategori: ${e.category} • Pembina: ${e.coachName || '-'}`,
+          metadata: `Jadwal: ${e.day || '-'} ${e.startTime || ''} ${e.location ? `(${e.location})` : ''}`,
+          tabId: 'extracurriculars',
+          icon: Compass,
+          colorScheme: {
+            bg: 'bg-amber-50 dark:bg-amber-950/40',
+            text: 'text-amber-600 dark:text-amber-400',
+            border: 'border-amber-200 dark:border-amber-800/60',
+            badgeBg: 'bg-amber-100 dark:bg-amber-900/50',
+            badgeText: 'text-amber-700 dark:text-amber-300'
+          }
+        });
+      }
+    });
+
+    // 5. Activities / Kegiatan
+    (activities || []).forEach(a => {
+      const matchTitle = (a.title || '').toLowerCase().includes(q);
+      const matchLocation = (a.location || '').toLowerCase().includes(q);
+      const matchDesc = (a.description || '').toLowerCase().includes(q);
+      const matchDate = (a.date || '').toLowerCase().includes(q);
+
+      if (matchTitle || matchLocation || matchDesc || matchDate) {
+        list.push({
+          id: `activity_${a.id}`,
+          category: 'activities',
+          categoryLabel: 'Kegiatan',
+          title: a.title,
+          subtitle: `Tanggal: ${a.date} • Lokasi: ${a.location || '-'}`,
+          metadata: `Status: ${a.status || 'Terjadwal'} • ${a.description ? a.description.slice(0, 50) + '...' : ''}`,
+          tabId: 'activities',
+          icon: Calendar,
+          colorScheme: {
+            bg: 'bg-cyan-50 dark:bg-cyan-950/40',
+            text: 'text-cyan-600 dark:text-cyan-400',
+            border: 'border-cyan-200 dark:border-cyan-800/60',
+            badgeBg: 'bg-cyan-100 dark:bg-cyan-900/50',
+            badgeText: 'text-cyan-700 dark:text-cyan-300'
+          }
+        });
+      }
+    });
+
+    // 6. Counseling / Layanan BK
+    (counseling || []).forEach(c => {
+      const matchStudent = (c.studentName || '').toLowerCase().includes(q);
+      const matchCounselor = (c.counselorName || '').toLowerCase().includes(q);
+      const matchTopic = (c.topic || '').toLowerCase().includes(q);
+      const matchType = (c.counselingType || '').toLowerCase().includes(q);
+
+      if (matchStudent || matchCounselor || matchTopic || matchType) {
+        list.push({
+          id: `counseling_${c.id}`,
+          category: 'counseling',
+          categoryLabel: 'Layanan BK',
+          title: `Konseling: ${c.studentName} (${c.studentClass})`,
+          subtitle: `Konselor: ${c.counselorName} • Layanan: ${c.counselingType || 'Individu'}`,
+          metadata: `Topik: ${c.topic || '-'} • Tanggal: ${c.date}`,
+          tabId: 'counseling',
+          icon: HeartHandshake,
+          colorScheme: {
+            bg: 'bg-teal-50 dark:bg-teal-950/40',
+            text: 'text-teal-600 dark:text-teal-400',
+            border: 'border-teal-200 dark:border-teal-800/60',
+            badgeBg: 'bg-teal-100 dark:bg-teal-900/50',
+            badgeText: 'text-teal-700 dark:text-teal-300'
+          }
+        });
+      }
+    });
+
+    // 7. Violations / Pelanggaran
+    (violations || []).forEach(v => {
+      const matchStudent = (v.studentName || '').toLowerCase().includes(q);
+      const matchClass = (v.studentClass || '').toLowerCase().includes(q);
+      const matchType = (v.violationType || '').toLowerCase().includes(q);
+      const matchCategory = (v.category || '').toLowerCase().includes(q);
+
+      if (matchStudent || matchClass || matchType || matchCategory) {
+        list.push({
+          id: `violation_${v.id}`,
+          category: 'violations',
+          categoryLabel: 'Pelanggaran',
+          title: `${v.studentName} (${v.studentClass})`,
+          subtitle: `${v.violationType} • +${v.points} Poin`,
+          metadata: `Kategori: ${v.category} • Tanggal: ${v.date}`,
+          tabId: 'violations',
+          icon: ShieldAlert,
+          colorScheme: {
+            bg: 'bg-rose-50 dark:bg-rose-950/40',
+            text: 'text-rose-600 dark:text-rose-400',
+            border: 'border-rose-200 dark:border-rose-800/60',
+            badgeBg: 'bg-rose-100 dark:bg-rose-900/50',
+            badgeText: 'text-rose-700 dark:text-rose-300'
+          }
+        });
+      }
+    });
+
+    // 8. Achievements / Prestasi
+    (achievements || []).forEach(ach => {
+      const matchTitle = (ach.title || '').toLowerCase().includes(q);
+      const matchStudent = (ach.studentName || '').toLowerCase().includes(q);
+      const matchRank = (ach.rank || '').toLowerCase().includes(q);
+      const matchLevel = (ach.level || '').toLowerCase().includes(q);
+
+      if (matchTitle || matchStudent || matchRank || matchLevel) {
+        list.push({
+          id: `ach_${ach.id}`,
+          category: 'achievements',
+          categoryLabel: 'Prestasi',
+          title: ach.title,
+          subtitle: `Peraih: ${ach.studentName} (${ach.studentClass})`,
+          metadata: `Peringkat: ${ach.rank} • Tingkat: ${ach.level} • ${ach.date}`,
+          tabId: 'achievements',
+          icon: Trophy,
+          colorScheme: {
+            bg: 'bg-orange-50 dark:bg-orange-950/40',
+            text: 'text-orange-600 dark:text-orange-400',
+            border: 'border-orange-200 dark:border-orange-800/60',
+            badgeBg: 'bg-orange-100 dark:bg-orange-900/50',
+            badgeText: 'text-orange-700 dark:text-orange-300'
+          }
+        });
+      }
+    });
+
+    // 9. Classes / Rombel
+    (classes || []).forEach(c => {
+      const matchName = (c.name || '').toLowerCase().includes(q);
+      const matchTeacher = (c.homeroomTeacher || '').toLowerCase().includes(q);
+      if (matchName || matchTeacher) {
+        list.push({
+          id: `class_${c.id}`,
+          category: 'students',
+          categoryLabel: 'Kelas & Rombel',
+          title: `Rombel: ${c.name}`,
+          subtitle: `Wali Kelas: ${c.homeroomTeacher || 'Belum Ditentukan'}`,
+          metadata: `Tingkat: ${c.grade} • Jurusan: ${c.major || 'Umum'}`,
+          tabId: 'students',
+          icon: Users,
+          colorScheme: {
+            bg: 'bg-emerald-50 dark:bg-emerald-950/40',
+            text: 'text-emerald-600 dark:text-emerald-400',
+            border: 'border-emerald-200 dark:border-emerald-800/60',
+            badgeBg: 'bg-emerald-100 dark:bg-emerald-900/50',
+            badgeText: 'text-emerald-700 dark:text-emerald-300'
+          }
+        });
+      }
+    });
+
+    return list;
+  }, [query, navigationItems, teachers, students, extracurriculars, activities, counseling, violations, achievements, classes]);
+
+  // Filtered by selected category chip
+  const filteredResults = useMemo(() => {
+    if (activeCategory === 'all') return allResults;
+    return allResults.filter(item => item.category === activeCategory);
+  }, [allResults, activeCategory]);
+
+  // Result counts per category
+  const categoryCounts = useMemo(() => {
+    const counts: Record<string, number> = {
+      all: allResults.length,
+      students: 0,
+      teachers: 0,
+      ekskul: 0,
+      activities: 0,
+      counseling: 0,
+      violations: 0,
+      achievements: 0,
+      navigation: 0
+    };
+
+    allResults.forEach(item => {
+      if (counts[item.category] !== undefined) {
+        counts[item.category]++;
+      }
+    });
+
+    return counts;
+  }, [allResults]);
+
+  // Keep selected index within bounds
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [query, activeCategory]);
+
+  // Scroll active item into view
+  useEffect(() => {
+    if (listRef.current) {
+      const activeEl = listRef.current.querySelector(`[data-index="${selectedIndex}"]`);
+      if (activeEl) {
+        activeEl.scrollIntoView({ block: 'nearest' });
+      }
+    }
+  }, [selectedIndex]);
+
+  // Keyboard navigation
+  useEffect(() => {
+    if (!isOpen) return;
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
         onClose();
+        return;
+      }
+
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedIndex(prev => (prev < filteredResults.length - 1 ? prev + 1 : 0));
+        return;
+      }
+
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedIndex(prev => (prev > 0 ? prev - 1 : Math.max(0, filteredResults.length - 1)));
+        return;
+      }
+
+      if (e.key === 'Enter') {
+        if (filteredResults.length > 0 && filteredResults[selectedIndex]) {
+          e.preventDefault();
+          const target = filteredResults[selectedIndex];
+          handleSelectItem(target);
+        }
       }
     };
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, filteredResults, selectedIndex, onNavigate, onClose]);
 
-  const results = useMemo(() => {
-    if (!query.trim() || query.length < 2) return null;
-    const q = query.toLowerCase();
-
-    const matchedStudents = students
-      .filter(s => s.fullName.toLowerCase().includes(q) || s.nis.includes(q) || s.className.toLowerCase().includes(q))
-      .slice(0, 5);
-
-    const matchedEkskul = extracurriculars
-      .filter(e => e.name.toLowerCase().includes(q) || e.coachName.toLowerCase().includes(q) || e.category.toLowerCase().includes(q))
-      .slice(0, 4);
-
-    const matchedActivities = activities
-      .filter(a => a.title.toLowerCase().includes(q) || a.location.toLowerCase().includes(q))
-      .slice(0, 4);
-
-    const matchedViolations = violations
-      .filter(v => v.studentName.toLowerCase().includes(q) || v.violationType.toLowerCase().includes(q))
-      .slice(0, 4);
-
-    const matchedAchievements = achievements
-      .filter(a => a.studentName.toLowerCase().includes(q) || a.title.toLowerCase().includes(q))
-      .slice(0, 4);
-
-    return {
-      students: matchedStudents,
-      ekskul: matchedEkskul,
-      activities: matchedActivities,
-      violations: matchedViolations,
-      achievements: matchedAchievements
-    };
-  }, [query, students, extracurriculars, activities, violations, achievements]);
+  const handleSelectItem = (item: SearchResultItem) => {
+    const rawId = item.id.replace(/^[a-z]+_/, '');
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('app:search-select', {
+          detail: {
+            category: item.category,
+            id: item.id,
+            rawId,
+            title: item.title,
+            tabId: item.tabId
+          }
+        })
+      );
+    }
+    onNavigate(item.tabId, rawId);
+    onClose();
+  };
 
   if (!isOpen || typeof document === 'undefined') return null;
 
-  const hasAnyResult =
-    results &&
-    (results.students.length > 0 ||
-      results.ekskul.length > 0 ||
-      results.activities.length > 0 ||
-      results.violations.length > 0 ||
-      results.achievements.length > 0);
+  const categoriesList: { key: SearchCategory; label: string; count: number }[] = [
+    { key: 'all', label: 'Semua', count: categoryCounts.all },
+    { key: 'navigation', label: 'Menu', count: categoryCounts.navigation },
+    { key: 'students', label: 'Siswa', count: categoryCounts.students },
+    { key: 'teachers', label: 'Dewan Guru', count: categoryCounts.teachers },
+    { key: 'ekskul', label: 'Ekstrakurikuler', count: categoryCounts.ekskul },
+    { key: 'activities', label: 'Kegiatan', count: categoryCounts.activities },
+    { key: 'counseling', label: 'Layanan BK', count: categoryCounts.counseling },
+    { key: 'violations', label: 'Pelanggaran', count: categoryCounts.violations },
+    { key: 'achievements', label: 'Prestasi', count: categoryCounts.achievements }
+  ];
 
   return createPortal(
-    <div className="fixed inset-0 z-[9999] overflow-y-auto font-sans">
-      <div className="fixed inset-0 bg-black/80 backdrop-blur-xs transition-opacity" onClick={onClose} />
-      <div className="min-h-full flex items-start justify-center p-3 sm:p-4 pt-12 sm:pt-16 text-center pointer-events-none">
+    <div className="fixed inset-0 z-[99999] overflow-y-auto font-sans">
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-black/80 backdrop-blur-xs transition-opacity cursor-pointer pointer-events-auto"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+
+      {/* Alignment container strictly ABOVE backdrop */}
+      <div className="relative z-10 min-h-full flex items-start justify-center p-3 sm:p-4 pt-6 sm:pt-12 text-left pointer-events-none">
         <div
-          className="w-full max-w-2xl bg-[#0d0d0f] rounded border border-[#27272a] shadow-2xl text-left overflow-hidden transform transition-all pointer-events-auto"
+          className="relative z-20 w-full max-w-2xl bg-white dark:bg-[#0e1526] rounded-2xl border border-slate-200 dark:border-slate-700/80 shadow-2xl text-slate-900 dark:text-slate-100 overflow-hidden transform transition-all pointer-events-auto flex flex-col max-h-[85vh]"
           onClick={e => e.stopPropagation()}
         >
-          {/* Search Header */}
-          <div className="p-3 border-b border-[#27272a] bg-[#121215] flex items-center gap-2.5">
-            <Search className="w-4 h-4 text-blue-400 shrink-0" />
-            <input
-              type="text"
-              autoFocus
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              placeholder="SEARCH_QUERY: Nama Siswa, NIS, Ekstrakurikuler, Kegiatan..."
-              className="w-full text-xs bg-transparent border-0 focus:outline-none focus:ring-0 text-zinc-200 placeholder-zinc-500 font-mono"
-            />
-            {query && (
-              <button onClick={() => setQuery('')} className="p-1 text-zinc-500 hover:text-zinc-300">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-            <kbd className="hidden sm:inline-block px-1.5 py-0.2 text-[9px] font-mono text-zinc-500 bg-[#161618] rounded border border-[#27272a]">
-              ESC
-            </kbd>
+          {/* Header & Integrated Search Input Box */}
+          <div className="p-3 sm:p-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/90 dark:bg-[#0a101d] flex items-center gap-2.5">
+            <div className="flex-1 flex items-center gap-2.5 px-3.5 py-2.5 bg-white dark:bg-[#151c2e] border border-slate-300 dark:border-slate-700/80 rounded-xl shadow-2xs focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20 transition-all">
+              <Search className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+              <input
+                ref={inputRef}
+                type="text"
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder="Cari siswa, dewan guru, ekstrakurikuler, kegiatan..."
+                className="search-input w-full text-sm sm:text-base bg-transparent border-0 focus:outline-none focus:ring-0 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-400 font-medium"
+              />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuery('');
+                    inputRef.current?.focus();
+                  }}
+                  className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-md hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors"
+                  title="Hapus kata kunci"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3 py-2 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-xl border border-slate-200 dark:border-slate-700 transition-colors shrink-0 flex items-center gap-1.5"
+              title="Tutup (Esc)"
+            >
+              <X className="w-4 h-4" />
+              <span className="hidden sm:inline">Tutup</span>
+            </button>
+          </div>
+
+          {/* Filter Chips Bar */}
+          <div className="px-3 sm:px-4 py-2 border-b border-slate-100 dark:border-slate-800/70 bg-white dark:bg-[#0b1120] flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+            {categoriesList
+              .filter(cat => cat.key === 'all' || cat.count > 0 || !query.trim())
+              .map(cat => {
+                const isActive = activeCategory === cat.key;
+                return (
+                  <button
+                    key={cat.key}
+                    onClick={() => setActiveCategory(cat.key)}
+                    className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shrink-0 ${
+                      isActive
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'bg-slate-100 dark:bg-slate-800/70 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700/80 hover:text-slate-900 dark:hover:text-slate-200'
+                    }`}
+                  >
+                    <span>{cat.label}</span>
+                    {query.trim() && cat.count > 0 && (
+                      <span
+                        className={`px-1.5 py-0.2 text-[10px] rounded-full font-bold ${
+                          isActive
+                            ? 'bg-white/25 text-white'
+                            : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                        }`}
+                      >
+                        {cat.count}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
           </div>
 
           {/* Results List */}
-          <div className="max-h-[60vh] overflow-y-auto p-3 space-y-3 text-xs">
+          <div ref={listRef} className="flex-1 overflow-y-auto p-2 sm:p-3 space-y-1 text-xs divide-y divide-slate-100/60 dark:divide-slate-800/40">
+            {/* Empty Query State: Fast Suggestions */}
             {!query.trim() && (
-              <div className="py-6 text-center text-zinc-500 font-mono text-[11px]">
-                <p className="text-zinc-400 font-bold uppercase tracking-wider">COMMAND_INDEX / SEARCH</p>
-                <p className="text-[10px] text-zinc-600 mt-1">Ketikkan minimal 2 karakter pencarian.</p>
-              </div>
-            )}
+              <div className="p-3">
+                <div className="flex items-center justify-between mb-2.5">
+                  <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-blue-500" />
+                    Pintasan Menu Cepat
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    {isMac ? '⌘K' : 'Ctrl+K'}
+                  </span>
+                </div>
 
-            {query.trim() && !hasAnyResult && (
-              <div className="py-6 text-center text-zinc-500 font-mono text-[11px]">
-                <p className="text-zinc-400 font-bold">NO_MATCHING_RECORDS</p>
-                <p className="text-[10px] text-zinc-600 mt-0.5">Tidak ada entitas yang sesuai kata kunci.</p>
-              </div>
-            )}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                  {navigationItems.slice(0, 8).map((nav, idx) => {
+                    const Icon = nav.icon;
+                    return (
+                      <button
+                        key={nav.id}
+                        data-index={idx}
+                        onClick={() => {
+                          onNavigate(nav.id);
+                          onClose();
+                        }}
+                        className={`w-full text-left p-2.5 rounded-xl border transition-all flex items-center justify-between group ${
+                          selectedIndex === idx
+                            ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700 text-blue-900 dark:text-blue-100 shadow-xs'
+                            : 'bg-slate-50/70 dark:bg-slate-850/40 border-slate-200/70 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700 hover:bg-blue-50/50 dark:hover:bg-blue-950/30'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 truncate">
+                          <div className="w-7 h-7 rounded-lg bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+                            <Icon className="w-4 h-4" />
+                          </div>
+                          <div className="truncate">
+                            <p className="font-bold text-slate-800 dark:text-slate-200 text-xs group-hover:text-blue-600 dark:group-hover:text-blue-400 truncate">
+                              {nav.label.split('/')[0].trim()}
+                            </p>
+                            <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                              Buka modul kerja
+                            </p>
+                          </div>
+                        </div>
+                        <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                      </button>
+                    );
+                  })}
+                </div>
 
-            {/* Students */}
-            {results && results.students.length > 0 && (
-              <div>
-                <p className="text-[9px] font-mono font-bold text-zinc-500 uppercase tracking-widest mb-1.5 flex items-center gap-1">
-                  <User className="w-3 h-3 text-blue-400" /> SISWA ({results.students.length})
-                </p>
-                <div className="space-y-0.5">
-                  {results.students.map(s => (
-                    <button
-                      key={s.id}
-                      onClick={() => {
-                        onNavigate('students');
-                        onClose();
-                      }}
-                      className="w-full text-left p-2 rounded hover:bg-[#161618] border border-transparent hover:border-[#27272a] flex items-center justify-between group transition-colors"
-                    >
-                      <div>
-                        <p className="font-semibold text-zinc-200 group-hover:text-blue-400 text-xs">
-                          {s.fullName}
-                        </p>
-                        <p className="text-[10px] font-mono text-zinc-500">
-                          NIS: {s.nis} | Kelas: {s.className} | Status: {s.status}
-                        </p>
-                      </div>
-                      <ArrowRight className="w-3.5 h-3.5 text-zinc-600 group-hover:text-blue-400 group-hover:translate-x-0.5 transition-transform" />
-                    </button>
-                  ))}
+                <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                  <span>💡 Ketikkan kata kunci untuk mencari Siswa, Guru BK/Pembina, Ekstrakurikuler, atau Kegiatan.</span>
                 </div>
               </div>
             )}
 
-            {/* Extracurriculars */}
-            {results && results.ekskul.length > 0 && (
-              <div>
-                <p className="text-[9px] font-mono font-bold text-zinc-500 uppercase tracking-widest mb-1.5 flex items-center gap-1">
-                  <Activity className="w-3 h-3 text-emerald-400" /> EKSTRAKURIKULER ({results.ekskul.length})
-                </p>
-                <div className="space-y-0.5">
-                  {results.ekskul.map(e => (
-                    <button
-                      key={e.id}
-                      onClick={() => {
-                        onNavigate('extracurriculars');
-                        onClose();
-                      }}
-                      className="w-full text-left p-2 rounded hover:bg-[#161618] border border-transparent hover:border-[#27272a] flex items-center justify-between group transition-colors"
-                    >
-                      <div>
-                        <p className="font-semibold text-zinc-200 group-hover:text-emerald-400 text-xs">
-                          {e.name}
-                        </p>
-                        <p className="text-[10px] font-mono text-zinc-500">
-                          Kategori: {e.category} | Pembina: {e.coachName} | {e.day} {e.startTime}
-                        </p>
-                      </div>
-                      <ArrowRight className="w-3.5 h-3.5 text-zinc-600 group-hover:text-emerald-400 group-hover:translate-x-0.5 transition-transform" />
-                    </button>
-                  ))}
+            {/* Query Has No Results */}
+            {query.trim() && filteredResults.length === 0 && (
+              <div className="py-12 px-4 text-center">
+                <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400 mx-auto mb-3">
+                  <Search className="w-6 h-6" />
                 </div>
+                <p className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                  Tidak Ditemukan Data untuk "{query}"
+                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-sm mx-auto leading-relaxed">
+                  Coba periksa ejaan nama, gunakan NIS/NIP, atau cari kategori umum seperti <em>siswa</em>, <em>guru</em>, <em>bk</em>, <em>ekskul</em>, atau <em>jadwal</em>.
+                </p>
               </div>
             )}
 
-            {/* Activities */}
-            {results && results.activities.length > 0 && (
-              <div>
-                <p className="text-[9px] font-mono font-bold text-zinc-500 uppercase tracking-widest mb-1.5 flex items-center gap-1">
-                  <Calendar className="w-3 h-3 text-cyan-400" /> KEGIATAN ({results.activities.length})
-                </p>
-                <div className="space-y-0.5">
-                  {results.activities.map(a => (
-                    <button
-                      key={a.id}
-                      onClick={() => {
-                        onNavigate('activities');
-                        onClose();
-                      }}
-                      className="w-full text-left p-2 rounded hover:bg-[#161618] border border-transparent hover:border-[#27272a] flex items-center justify-between group transition-colors"
-                    >
-                      <div>
-                        <p className="font-semibold text-zinc-200 group-hover:text-cyan-400 text-xs">
-                          {a.title}
-                        </p>
-                        <p className="text-[10px] font-mono text-zinc-500">
-                          Tanggal: {a.date} | Lokasi: {a.location} | Status: {a.status}
-                        </p>
-                      </div>
-                      <ArrowRight className="w-3.5 h-3.5 text-zinc-600 group-hover:text-cyan-400 group-hover:translate-x-0.5 transition-transform" />
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+            {/* Results rendering */}
+            {query.trim() && filteredResults.length > 0 && (
+              <div className="space-y-1">
+                {filteredResults.map((item, idx) => {
+                  const Icon = item.icon;
+                  const isSelected = selectedIndex === idx;
 
-            {/* Violations */}
-            {results && results.violations.length > 0 && (
-              <div>
-                <p className="text-[9px] font-mono font-bold text-zinc-500 uppercase tracking-widest mb-1.5 flex items-center gap-1">
-                  <ShieldAlert className="w-3 h-3 text-red-400" /> PELANGGARAN ({results.violations.length})
-                </p>
-                <div className="space-y-0.5">
-                  {results.violations.map(v => (
+                  return (
                     <button
-                      key={v.id}
-                      onClick={() => {
-                        onNavigate('violations');
-                        onClose();
-                      }}
-                      className="w-full text-left p-2 rounded hover:bg-[#161618] border border-transparent hover:border-[#27272a] flex items-center justify-between group transition-colors"
+                      key={item.id}
+                      data-index={idx}
+                      onClick={() => handleSelectItem(item)}
+                      onMouseEnter={() => setSelectedIndex(idx)}
+                      className={`w-full text-left p-2.5 sm:p-3 rounded-xl border transition-all flex items-center justify-between group ${
+                        isSelected
+                          ? 'bg-blue-50 dark:bg-blue-950/50 border-blue-400 dark:border-blue-600 shadow-xs'
+                          : 'bg-transparent border-transparent hover:bg-slate-100/70 dark:hover:bg-slate-800/60 hover:border-slate-200 dark:hover:border-slate-700/60'
+                      }`}
                     >
-                      <div>
-                        <p className="font-semibold text-zinc-200 group-hover:text-red-400 text-xs">
-                          {v.studentName} ({v.studentClass})
-                        </p>
-                        <p className="text-[10px] font-mono text-zinc-500">
-                          {v.violationType} | +{v.points} Poin | {v.category}
-                        </p>
-                      </div>
-                      <ArrowRight className="w-3.5 h-3.5 text-zinc-600 group-hover:text-red-400 group-hover:translate-x-0.5 transition-transform" />
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+                      <div className="flex items-start gap-3 min-w-0 flex-1">
+                        {/* Category Icon */}
+                        <div
+                          className={`w-9 h-9 rounded-xl ${item.colorScheme.bg} border ${item.colorScheme.border} flex items-center justify-center ${item.colorScheme.text} shrink-0 mt-0.5`}
+                        >
+                          <Icon className="w-4 h-4" />
+                        </div>
 
-            {/* Achievements */}
-            {results && results.achievements.length > 0 && (
-              <div>
-                <p className="text-[9px] font-mono font-bold text-zinc-500 uppercase tracking-widest mb-1.5 flex items-center gap-1">
-                  <Trophy className="w-3 h-3 text-orange-400" /> PRESTASI ({results.achievements.length})
-                </p>
-                <div className="space-y-0.5">
-                  {results.achievements.map(ach => (
-                    <button
-                      key={ach.id}
-                      onClick={() => {
-                        onNavigate('achievements');
-                        onClose();
-                      }}
-                      className="w-full text-left p-2 rounded hover:bg-[#161618] border border-transparent hover:border-[#27272a] flex items-center justify-between group transition-colors"
-                    >
-                      <div>
-                        <p className="font-semibold text-zinc-200 group-hover:text-orange-400 text-xs">
-                          {ach.title}
-                        </p>
-                        <p className="text-[10px] font-mono text-zinc-500">
-                          Oleh: {ach.studentName} ({ach.studentClass}) | {ach.rank} ({ach.level})
-                        </p>
+                        {/* Text Information */}
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <span
+                              className={`px-1.5 py-0.5 text-[9px] font-bold uppercase rounded-md tracking-wider ${item.colorScheme.badgeBg} ${item.colorScheme.badgeText}`}
+                            >
+                              {item.categoryLabel}
+                            </span>
+                            <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 truncate">
+                              {item.title}
+                            </span>
+                          </div>
+
+                          <p className="text-xs text-slate-600 dark:text-slate-300 truncate">
+                            {item.subtitle}
+                          </p>
+
+                          {item.metadata && (
+                            <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono mt-0.5 truncate">
+                              {item.metadata}
+                            </p>
+                          )}
+                        </div>
                       </div>
-                      <ArrowRight className="w-3.5 h-3.5 text-zinc-600 group-hover:text-orange-400 group-hover:translate-x-0.5 transition-transform" />
+
+                      {/* Right Navigation Hint */}
+                      <div className="flex items-center gap-1.5 ml-3 shrink-0">
+                        {isSelected && (
+                          <span className="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono font-semibold bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-200 rounded">
+                            Tekan ↵
+                          </span>
+                        )}
+                        <div className="w-6 h-6 rounded-lg flex items-center justify-center text-slate-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 group-hover:translate-x-0.5 transition-transform">
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </div>
+                      </div>
                     </button>
-                  ))}
-                </div>
+                  );
+                })}
               </div>
             )}
+          </div>
+
+          {/* Footer with Keyboard Hints & Count */}
+          <div className="px-3.5 sm:px-4 py-2.5 border-t border-slate-100 dark:border-slate-800/80 bg-slate-50/80 dark:bg-[#0f172a]/70 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+            <div className="flex items-center gap-3">
+              <span className="flex items-center gap-1">
+                <kbd className="px-1.5 py-0.5 font-mono text-[9px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded">
+                  ↑
+                </kbd>
+                <kbd className="px-1.5 py-0.5 font-mono text-[9px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded">
+                  ↓
+                </kbd>
+                <span className="hidden sm:inline">Navigasi</span>
+              </span>
+
+              <span className="flex items-center gap-1">
+                <kbd className="px-1.5 py-0.5 font-mono text-[9px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded">
+                  ↵
+                </kbd>
+                <span className="hidden sm:inline">Buka</span>
+              </span>
+
+              <span className="flex items-center gap-1">
+                <kbd className="px-1.5 py-0.5 font-mono text-[9px] bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded">
+                  ESC
+                </kbd>
+                <span className="hidden sm:inline">Tutup</span>
+              </span>
+            </div>
+
+            <div className="font-semibold text-slate-600 dark:text-slate-400">
+              {query.trim() ? (
+                <span>
+                  {filteredResults.length} hasil ditemukan
+                </span>
+              ) : (
+                <span>Ketik pencarian cepat</span>
+              )}
+            </div>
           </div>
         </div>
       </div>

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Users,
   Plus,
@@ -139,6 +139,37 @@ export const StudentsPage: React.FC = () => {
     address: '',
     status: 'Aktif'
   });
+
+  // Automatically open student profile if navigated from Global Search
+  useEffect(() => {
+    const handleSearchSelect = (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        category: string;
+        id: string;
+        rawId: string;
+        title: string;
+      }>;
+      const detail = customEvent.detail;
+      if (!detail) return;
+
+      if (detail.category === 'students') {
+        const targetStudent = students.find(
+          s =>
+            s.id === detail.rawId ||
+            s.id === detail.id ||
+            s.nis === detail.rawId ||
+            (s.fullName && s.fullName.toLowerCase().trim() === detail.title.toLowerCase().trim())
+        );
+        if (targetStudent) {
+          setSelectedStudent(targetStudent);
+          setIsDetailOpen(true);
+        }
+      }
+    };
+
+    window.addEventListener('app:search-select', handleSearchSelect);
+    return () => window.removeEventListener('app:search-select', handleSearchSelect);
+  }, [students]);
 
   // Student count map per class (Accurately resolves by class ID & Name)
   const studentCountsByClassId = useMemo(() => {

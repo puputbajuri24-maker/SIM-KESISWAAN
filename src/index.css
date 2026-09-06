@@ -912,7 +912,7 @@ html.light,
   }
 
   /* Form Controls: Inputs, Textarea, Selects */
-  input:not([type="checkbox"]):not([type="radio"]),
+  input:not([type="checkbox"]):not([type="radio"]):not(.search-input):not(.bg-transparent),
   select,
   textarea {
     background-color: #ffffff !important;
@@ -920,12 +920,12 @@ html.light,
     border-color: var(--border-color) !important;
   }
 
-  input::placeholder,
+  input:not(.search-input):not(.bg-transparent)::placeholder,
   textarea::placeholder {
     color: #94a3b8 !important;
   }
 
-  input:focus,
+  input:not(.search-input):not(.bg-transparent):focus,
   select:focus,
   textarea:focus {
     border-color: var(--accent-color) !important;
@@ -1098,6 +1098,30 @@ html.dark,
 p, span, div, h1, h2, h3, h4, h5, h6, label, button, input, select, textarea {
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Global Search & Command Palette Input Isolation */
+.search-input {
+  background-color: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  appearance: none !important;
+  -webkit-appearance: none !important;
+}
+
+:is(html.dark, [data-mode="dark"], :root.dark) .search-input {
+  color: #f8fafc !important;
+}
+:is(html.dark, [data-mode="dark"], :root.dark) .search-input::placeholder {
+  color: #94a3b8 !important;
+}
+
+:is(html.light, [data-mode="light"], :root.light) .search-input {
+  color: #0f172a !important;
+}
+:is(html.light, [data-mode="light"], :root.light) .search-input::placeholder {
+  color: #64748b !important;
 }
 
 /* ------------------------------------------------------------- */
