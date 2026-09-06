@@ -70,6 +70,8 @@ interface AuthContextType {
   loginWithUser: (user: UserProfile) => void;
   loginWithDemoRole: (role: UserRole, customUid?: string) => void;
   switchRole: (role: UserRole) => void;
+  isSimulatedFromAdmin: boolean;
+  returnToAdminSession: () => void;
   logout: () => Promise<void>;
   updateProfileState: (updated: Partial<UserProfile>) => void;
   // cPanel User Management methods
@@ -165,6 +167,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
+  // Track if current session is an admin simulating another role (Uji Coba Tampilan Peran oleh Admin)
+  const [adminImpersonator, setAdminImpersonator] = useState<UserProfile | null>(() => {
+    try {
+      const saved = sessionStorage.getItem('sim_admin_impersonator');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.role === 'super_admin') {
+          return parsed;
+        }
+      }
+    } catch {}
+    return null;
+  });
+
+  const isSimulatedFromAdmin = Boolean(adminImpersonator && adminImpersonator.role === 'super_admin');
+
   useEffect(() => {
     if (currentUser) {
       localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(currentUser));
@@ -212,6 +230,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loginWithUser = (user: UserProfile) => {
     setIsLoading(true);
+    // Jika Administrator saat ini sedang membuka uji tampilan peran lain, simpan sesi aslinya
+    if (currentUser?.role === 'super_admin' && user.role !== 'super_admin') {
+      setAdminImpersonator(currentUser);
+      try {
+        sessionStorage.setItem('sim_admin_impersonator', JSON.stringify(currentUser));
+      } catch {}
+    }
     const updatedUser = { ...user, lastLogin: new Date().toISOString() };
     setCurrentUser(updatedUser);
     setAllUsers(prev => prev.map(u => u.uid === user.uid ? updatedUser : u));
@@ -220,7 +245,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const loginWithDemoRole = (role: UserRole, customUid?: string) => {
+    // Pembatasan Ketat: Tiadakan fitur kembali ke administrator untuk semua guru pembina dan guru BK, kecuali admin
+    const isRestrictedRole = currentUser && ['guru_bk', 'pembina', 'pembina_ekskul', 'pembina_osim'].includes(currentUser.role);
+    if (role === 'super_admin' && isRestrictedRole && !isSimulatedFromAdmin) {
+      console.warn('Akses ditolak: Fitur kembali ke Administrator dinonaktifkan untuk peran Guru Pembina dan Guru BK.');
+      return;
+    }
+
     setIsLoading(true);
+
+    // Jika Super Admin beralih ke peran lain untuk simulasi, simpan sesi admin
+    if (currentUser?.role === 'super_admin' && role !== 'super_admin') {
+      setAdminImpersonator(currentUser);
+      try {
+        sessionStorage.setItem('sim_admin_impersonator', JSON.stringify(currentUser));
+      } catch {}
+    }
+
+    // Jika kembali ke Administrator dari sesi simulasi admin yang sah
+    if (role === 'super_admin' && adminImpersonator) {
+      const restoredAdmin = { ...adminImpersonator, lastLogin: new Date().toISOString() };
+      setCurrentUser(restoredAdmin);
+      setAdminImpersonator(null);
+      try {
+        sessionStorage.removeItem('sim_admin_impersonator');
+      } catch {}
+      recordSystemAuditLog('LOGIN_ROLE', 'Autentikasi & Akun', `Admin kembali ke sesi Administrator dari mode simulasi peran`, restoredAdmin);
+      setIsLoading(false);
+      return;
+    }
+
     let target = allUsers.find(u => customUid ? u.uid === customUid : u.role === role);
     if (!target) {
       target = DEMO_USERS.find(u => customUid ? u.uid === customUid : u.role === role);
@@ -254,6 +308,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setAllUsers(prev => prev.map(u => u.uid === updatedUser.uid ? updatedUser : u));
     recordSystemAuditLog('LOGIN_ROLE', 'Autentikasi & Akun', `Masuk menggunakan peran: ${role.toUpperCase()} (${updatedUser.displayName})`, updatedUser);
     setIsLoading(false);
+  };
+
+  const returnToAdminSession = () => {
+    if (!isSimulatedFromAdmin && currentUser?.role !== 'super_admin') {
+      console.warn('Akses ditolak: Hanya sesi simulasi admin yang dapat kembali ke administrator.');
+      return;
+    }
+    const targetAdmin = adminImpersonator || allUsers.find(u => u.role === 'super_admin') || DEMO_USERS[0];
+    const restored = { ...targetAdmin, lastLogin: new Date().toISOString() };
+    setCurrentUser(restored);
+    setAdminImpersonator(null);
+    try {
+      sessionStorage.removeItem('sim_admin_impersonator');
+    } catch {}
+    recordSystemAuditLog('ADMIN_RETURN', 'Autentikasi & Akun', `Kembali ke sesi Administrator dari mode pengujian peran`, restored);
   };
 
   const loginWithIdentifier = async (identifier: string, pass: string): Promise<{ success: boolean; error?: string }> => {
@@ -311,6 +380,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Check password: user.password or default fallback '123456' / 'password'
       const userPassword = foundUser.password || 'password';
       if (cleanPass === userPassword || cleanPass === 'password' || cleanPass === '123456') {
+        // Direct login clears any temporary simulation session
+        setAdminImpersonator(null);
+        try {
+          sessionStorage.removeItem('sim_admin_impersonator');
+        } catch {}
         const updated = { ...foundUser, lastLogin: new Date().toISOString() };
         setCurrentUser(updated);
         setAllUsers(prev => prev.map(u => u.uid === foundUser.uid ? updated : u));
@@ -356,6 +430,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (e) {
       console.warn(e);
     }
+    setAdminImpersonator(null);
+    try {
+      sessionStorage.removeItem('sim_admin_impersonator');
+    } catch {}
     setCurrentUser(null);
     localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
   };
@@ -716,6 +794,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loginWithUser,
         loginWithDemoRole,
         switchRole: loginWithDemoRole,
+        isSimulatedFromAdmin,
+        returnToAdminSession,
         logout,
         updateProfileState,
         addUser,

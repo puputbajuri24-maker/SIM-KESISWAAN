@@ -57,6 +57,7 @@ interface SearchResultItem {
   subtitle: string;
   metadata?: string;
   tabId: string;
+  entityId?: string;
   icon: React.ComponentType<{ className?: string }>;
   colorScheme: {
     bg: string;
@@ -165,11 +166,6 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onN
       }
     });
 
-    if (!q) {
-      // If empty query, show top navigation items and popular recommendations
-      return list.slice(0, 8);
-    }
-
     // 2. Teachers / Dewan Guru & Pembina
     (teachers || []).forEach(t => {
       const matchName = (t.fullName || '').toLowerCase().includes(q);
@@ -179,9 +175,10 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onN
       const matchPhone = (t.phone || '').toLowerCase().includes(q);
       const matchEmail = (t.email || '').toLowerCase().includes(q);
 
-      if (matchName || matchNip || matchRole || matchSubject || matchPhone || matchEmail) {
+      if (!q || matchName || matchNip || matchRole || matchSubject || matchPhone || matchEmail) {
         list.push({
           id: `teacher_${t.id}`,
+          entityId: t.id,
           category: 'teachers',
           categoryLabel: 'Dewan Guru',
           title: t.fullName,
@@ -208,9 +205,10 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onN
       const matchClass = (s.className || '').toLowerCase().includes(q);
       const matchPhone = (s.phone || '').toLowerCase().includes(q);
 
-      if (matchName || matchNis || matchNisn || matchClass || matchPhone) {
+      if (!q || matchName || matchNis || matchNisn || matchClass || matchPhone) {
         list.push({
           id: `student_${s.id}`,
+          entityId: s.id,
           category: 'students',
           categoryLabel: 'Siswa',
           title: s.fullName,
@@ -237,9 +235,10 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onN
       const matchDay = (e.day || '').toLowerCase().includes(q);
       const matchLoc = (e.location || '').toLowerCase().includes(q);
 
-      if (matchName || matchCoach || matchCategory || matchDay || matchLoc) {
+      if (!q || matchName || matchCoach || matchCategory || matchDay || matchLoc) {
         list.push({
           id: `ekskul_${e.id}`,
+          entityId: e.id,
           category: 'ekskul',
           categoryLabel: 'Ekstrakurikuler',
           title: e.name,
@@ -265,9 +264,10 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onN
       const matchDesc = (a.description || '').toLowerCase().includes(q);
       const matchDate = (a.date || '').toLowerCase().includes(q);
 
-      if (matchTitle || matchLocation || matchDesc || matchDate) {
+      if (!q || matchTitle || matchLocation || matchDesc || matchDate) {
         list.push({
           id: `activity_${a.id}`,
+          entityId: a.id,
           category: 'activities',
           categoryLabel: 'Kegiatan',
           title: a.title,
@@ -293,9 +293,10 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onN
       const matchTopic = (c.topic || '').toLowerCase().includes(q);
       const matchType = (c.counselingType || '').toLowerCase().includes(q);
 
-      if (matchStudent || matchCounselor || matchTopic || matchType) {
+      if (!q || matchStudent || matchCounselor || matchTopic || matchType) {
         list.push({
           id: `counseling_${c.id}`,
+          entityId: c.id,
           category: 'counseling',
           categoryLabel: 'Layanan BK',
           title: `Konseling: ${c.studentName} (${c.studentClass})`,
@@ -321,9 +322,10 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onN
       const matchType = (v.violationType || '').toLowerCase().includes(q);
       const matchCategory = (v.category || '').toLowerCase().includes(q);
 
-      if (matchStudent || matchClass || matchType || matchCategory) {
+      if (!q || matchStudent || matchClass || matchType || matchCategory) {
         list.push({
           id: `violation_${v.id}`,
+          entityId: v.id,
           category: 'violations',
           categoryLabel: 'Pelanggaran',
           title: `${v.studentName} (${v.studentClass})`,
@@ -349,9 +351,10 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onN
       const matchRank = (ach.rank || '').toLowerCase().includes(q);
       const matchLevel = (ach.level || '').toLowerCase().includes(q);
 
-      if (matchTitle || matchStudent || matchRank || matchLevel) {
+      if (!q || matchTitle || matchStudent || matchRank || matchLevel) {
         list.push({
           id: `ach_${ach.id}`,
+          entityId: ach.id,
           category: 'achievements',
           categoryLabel: 'Prestasi',
           title: ach.title,
@@ -374,9 +377,10 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onN
     (classes || []).forEach(c => {
       const matchName = (c.name || '').toLowerCase().includes(q);
       const matchTeacher = (c.homeroomTeacher || '').toLowerCase().includes(q);
-      if (matchName || matchTeacher) {
+      if (!q || matchName || matchTeacher) {
         list.push({
           id: `class_${c.id}`,
+          entityId: c.id,
           category: 'students',
           categoryLabel: 'Kelas & Rombel',
           title: `Rombel: ${c.name}`,
@@ -400,32 +404,61 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onN
 
   // Filtered by selected category chip
   const filteredResults = useMemo(() => {
-    if (activeCategory === 'all') return allResults;
+    if (activeCategory === 'all') {
+      if (!query.trim()) {
+        return allResults.filter(item => item.category === 'navigation').slice(0, 8);
+      }
+      return allResults;
+    }
     return allResults.filter(item => item.category === activeCategory);
-  }, [allResults, activeCategory]);
+  }, [allResults, activeCategory, query]);
 
   // Result counts per category
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = {
-      all: allResults.length,
-      students: 0,
-      teachers: 0,
-      ekskul: 0,
-      activities: 0,
-      counseling: 0,
-      violations: 0,
-      achievements: 0,
-      navigation: 0
+      all: 0,
+      students: (students || []).length,
+      teachers: (teachers || []).length,
+      ekskul: (extracurriculars || []).length,
+      activities: (activities || []).length,
+      counseling: (counseling || []).length,
+      violations: (violations || []).length,
+      achievements: (achievements || []).length,
+      navigation: navigationItems.length
     };
 
-    allResults.forEach(item => {
-      if (counts[item.category] !== undefined) {
-        counts[item.category]++;
-      }
-    });
+    if (query.trim()) {
+      const searchCounts: Record<string, number> = {
+        all: allResults.length,
+        students: 0,
+        teachers: 0,
+        ekskul: 0,
+        activities: 0,
+        counseling: 0,
+        violations: 0,
+        achievements: 0,
+        navigation: 0
+      };
+      allResults.forEach(item => {
+        if (searchCounts[item.category] !== undefined) {
+          searchCounts[item.category]++;
+        }
+      });
+      return searchCounts;
+    }
+
+    counts.all =
+      counts.navigation +
+      counts.students +
+      counts.teachers +
+      counts.ekskul +
+      counts.activities +
+      counts.counseling +
+      counts.violations +
+      counts.achievements;
 
     return counts;
-  }, [allResults]);
+  }, [allResults, query, students, teachers, extracurriculars, activities, counseling, violations, achievements, navigationItems]);
 
   // Keep selected index within bounds
   useEffect(() => {
@@ -479,18 +512,25 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onN
   }, [isOpen, filteredResults, selectedIndex, onNavigate, onClose]);
 
   const handleSelectItem = (item: SearchResultItem) => {
-    const rawId = item.id.replace(/^[a-z]+_/, '');
+    const rawId = item.entityId || item.id.replace(/^[a-z]+_/, '');
+    const detail = {
+      category: item.category,
+      id: item.id,
+      rawId,
+      entityId: item.entityId || rawId,
+      title: item.title,
+      tabId: item.tabId
+    };
+
+    try {
+      sessionStorage.setItem('pending_search_select', JSON.stringify(detail));
+    } catch (e) {
+      console.warn('Could not set pending_search_select in sessionStorage', e);
+    }
+
     if (typeof window !== 'undefined') {
       window.dispatchEvent(
-        new CustomEvent('app:search-select', {
-          detail: {
-            category: item.category,
-            id: item.id,
-            rawId,
-            title: item.title,
-            tabId: item.tabId
-          }
-        })
+        new CustomEvent('app:search-select', { detail })
       );
     }
     onNavigate(item.tabId, rawId);
@@ -581,7 +621,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onN
                     }`}
                   >
                     <span>{cat.label}</span>
-                    {query.trim() && cat.count > 0 && (
+                    {cat.count > 0 && (
                       <span
                         className={`px-1.5 py-0.2 text-[10px] rounded-full font-bold ${
                           isActive
@@ -599,56 +639,120 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onN
 
           {/* Results List */}
           <div ref={listRef} className="flex-1 overflow-y-auto p-2 sm:p-3 space-y-1 text-xs divide-y divide-slate-100/60 dark:divide-slate-800/40">
-            {/* Empty Query State: Fast Suggestions */}
-            {!query.trim() && (
-              <div className="p-3">
-                <div className="flex items-center justify-between mb-2.5">
-                  <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-blue-500" />
-                    Pintasan Menu Cepat
-                  </span>
-                  <span className="text-[10px] text-slate-400 font-mono">
-                    {isMac ? '⌘K' : 'Ctrl+K'}
-                  </span>
+            {/* Empty Query State on 'all': Fast Suggestions & Quick Student Access */}
+            {!query.trim() && activeCategory === 'all' && (
+              <div className="p-3 space-y-4">
+                <div>
+                  <div className="flex items-center justify-between mb-2.5">
+                    <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-blue-500" />
+                      Pintasan Menu Cepat
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono">
+                      {isMac ? '⌘K' : 'Ctrl+K'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                    {navigationItems.slice(0, 6).map((nav, idx) => {
+                      const Icon = nav.icon;
+                      return (
+                        <button
+                          key={nav.id}
+                          data-index={idx}
+                          onClick={() => {
+                            onNavigate(nav.id);
+                            onClose();
+                          }}
+                          className={`w-full text-left p-2.5 rounded-xl border transition-all flex items-center justify-between group ${
+                            selectedIndex === idx
+                              ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700 text-blue-900 dark:text-blue-100 shadow-xs'
+                              : 'bg-slate-50/70 dark:bg-slate-850/40 border-slate-200/70 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700 hover:bg-blue-50/50 dark:hover:bg-blue-950/30'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 truncate">
+                            <div className="w-7 h-7 rounded-lg bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+                              <Icon className="w-4 h-4" />
+                            </div>
+                            <div className="truncate">
+                              <p className="font-bold text-slate-800 dark:text-slate-200 text-xs group-hover:text-blue-600 dark:group-hover:text-blue-400 truncate">
+                                {nav.label.split('/')[0].trim()}
+                              </p>
+                              <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                                Buka modul kerja
+                              </p>
+                            </div>
+                          </div>
+                          <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                  {navigationItems.slice(0, 8).map((nav, idx) => {
-                    const Icon = nav.icon;
-                    return (
+                {/* Quick Student Access under 'all' */}
+                {students && students.length > 0 && (
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                        <Users className="w-3.5 h-3.5 text-emerald-500" />
+                        Akses Cepat Siswa ({students.length} Siswa Terdaftar)
+                      </span>
                       <button
-                        key={nav.id}
-                        data-index={idx}
-                        onClick={() => {
-                          onNavigate(nav.id);
-                          onClose();
-                        }}
-                        className={`w-full text-left p-2.5 rounded-xl border transition-all flex items-center justify-between group ${
-                          selectedIndex === idx
-                            ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-300 dark:border-blue-700 text-blue-900 dark:text-blue-100 shadow-xs'
-                            : 'bg-slate-50/70 dark:bg-slate-850/40 border-slate-200/70 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700 hover:bg-blue-50/50 dark:hover:bg-blue-950/30'
-                        }`}
+                        type="button"
+                        onClick={() => setActiveCategory('students')}
+                        className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline"
                       >
-                        <div className="flex items-center gap-2.5 truncate">
-                          <div className="w-7 h-7 rounded-lg bg-blue-100 dark:bg-blue-900/50 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
-                            <Icon className="w-4 h-4" />
-                          </div>
-                          <div className="truncate">
-                            <p className="font-bold text-slate-800 dark:text-slate-200 text-xs group-hover:text-blue-600 dark:group-hover:text-blue-400 truncate">
-                              {nav.label.split('/')[0].trim()}
-                            </p>
-                            <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
-                              Buka modul kerja
-                            </p>
-                          </div>
-                        </div>
-                        <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                        Lihat Semua Siswa →
                       </button>
-                    );
-                  })}
-                </div>
+                    </div>
 
-                <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                      {students.slice(0, 6).map(s => (
+                        <button
+                          key={s.id}
+                          onClick={() =>
+                            handleSelectItem({
+                              id: `student_${s.id}`,
+                              entityId: s.id,
+                              category: 'students',
+                              categoryLabel: 'Siswa',
+                              title: s.fullName,
+                              subtitle: `Kelas: ${s.className || '-'} • NIS: ${s.nis || '-'}`,
+                              tabId: 'students',
+                              icon: User,
+                              colorScheme: {
+                                bg: 'bg-emerald-50 dark:bg-emerald-950/40',
+                                text: 'text-emerald-600 dark:text-emerald-400',
+                                border: 'border-emerald-200 dark:border-emerald-800/60',
+                                badgeBg: 'bg-emerald-100 dark:bg-emerald-900/50',
+                                badgeText: 'text-emerald-700 dark:text-emerald-300'
+                              }
+                            })
+                          }
+                          className="w-full text-left p-2.5 rounded-xl border border-slate-200/70 dark:border-slate-800 bg-white dark:bg-slate-900/60 hover:border-emerald-300 dark:hover:border-emerald-700 hover:bg-emerald-50/40 dark:hover:bg-emerald-950/30 transition-all flex items-center justify-between group"
+                        >
+                          <div className="flex items-center gap-2.5 truncate">
+                            <div className="w-7 h-7 rounded-lg bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 flex items-center justify-center font-bold text-[11px] shrink-0">
+                              {(s.fullName || 'S').slice(0, 2).toUpperCase()}
+                            </div>
+                            <div className="truncate">
+                              <p className="font-bold text-slate-800 dark:text-slate-200 text-xs group-hover:text-emerald-600 dark:group-hover:text-emerald-400 truncate">
+                                {s.fullName}
+                              </p>
+                              <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                                {s.className || 'Kelas -'} • NIS: {s.nis || '-'}
+                              </p>
+                            </div>
+                          </div>
+                          <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition-transform shrink-0" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
                   <span>💡 Ketikkan kata kunci untuk mencari Siswa, Guru BK/Pembina, Ekstrakurikuler, atau Kegiatan.</span>
                 </div>
               </div>
@@ -670,8 +774,16 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onN
             )}
 
             {/* Results rendering */}
-            {query.trim() && filteredResults.length > 0 && (
+            {(query.trim() || activeCategory !== 'all') && filteredResults.length > 0 && (
               <div className="space-y-1">
+                {!query.trim() && (
+                  <div className="px-2 py-1.5 text-[11px] font-bold text-slate-500 dark:text-slate-400 flex items-center justify-between">
+                    <span>
+                      Daftar {categoriesList.find(c => c.key === activeCategory)?.label} ({filteredResults.length})
+                    </span>
+                    <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">Klik untuk membuka detail</span>
+                  </div>
+                )}
                 {filteredResults.map((item, idx) => {
                   const Icon = item.icon;
                   const isSelected = selectedIndex === idx;

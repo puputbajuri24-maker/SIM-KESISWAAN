@@ -65,6 +65,11 @@ import { AnnouncementListModal } from '../announcements/AnnouncementListModal';
 import { TimezoneSelectorModal } from '../common/TimezoneSelectorModal';
 import { ThemeSelectorModal } from '../common/ThemeSelectorModal';
 import { UserRole } from '../../types';
+import {
+  getTeacherInitials,
+  isGuruBKOrPembinaRole,
+  getInitialsColorTheme
+} from '../../utils/initials';
 
 export type NavTab =
   | 'dashboard'
@@ -95,7 +100,7 @@ export interface AppLayoutProps {
 }
 
 export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, children }) => {
-  const { currentUser, allUsers, userRole, isWakaOrAdmin, isWaka, isSuperAdmin, isGuruBK, isPembinaOsim, isPembinaEkskul, isPembina, logout, loginWithDemoRole, loginWithUser } = useAuth();
+  const { currentUser, allUsers, userRole, isWakaOrAdmin, isWaka, isSuperAdmin, isGuruBK, isPembinaOsim, isPembinaEkskul, isPembina, isSimulatedFromAdmin, returnToAdminSession, logout, loginWithDemoRole, loginWithUser } = useAuth();
   const { schoolSetting, activeAcademicYear, activeSemester, notifications, markNotificationAsRead, markAllNotificationsAsRead, isSyncing, extracurriculars, announcements, markAnnouncementAsRead, markAllAnnouncementsAsReadForUser } = useSchool();
   const { timezoneMode, resolvedTimezone, timezoneAbbr, utcOffsetString, formattedTime, formattedDate } = useAppTimezone();
 
@@ -970,7 +975,14 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                   className="flex items-center space-x-2.5 px-2.5 py-1.5 rounded-xl bg-slate-100/80 dark:bg-[#131b2e] border border-slate-200 dark:border-[#1e293b] hover:border-blue-400 dark:hover:border-slate-600 transition-colors shadow-xs"
                   title="Profil Pengguna"
                 >
-                  {currentUser.photoURL ? (
+                  {isGuruBKOrPembinaRole(currentUser.role) ? (
+                    <div
+                      className={`w-7 h-7 rounded-lg bg-gradient-to-br ${getInitialsColorTheme(currentUser.role).bgGradient} flex items-center justify-center font-black font-mono text-[10px] text-white shadow-xs border ${getInitialsColorTheme(currentUser.role).borderColor}`}
+                      title={`Inisial: ${getTeacherInitials(currentUser.displayName)}`}
+                    >
+                      {getTeacherInitials(currentUser.displayName)}
+                    </div>
+                  ) : currentUser.photoURL ? (
                     <img
                       src={currentUser.photoURL}
                       alt={currentUser.displayName}
@@ -978,8 +990,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                       className="w-7 h-7 rounded-full object-cover border border-blue-500/40"
                     />
                   ) : (
-                    <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center font-bold text-xs text-white shadow-inner">
-                      {currentUser.displayName ? currentUser.displayName.charAt(0).toUpperCase() : 'P'}
+                    <div className="w-7 h-7 rounded-full bg-blue-600 flex items-center justify-center font-bold font-mono text-[11px] text-white shadow-inner">
+                      {getTeacherInitials(currentUser.displayName)}
                     </div>
                   )}
                   <div className="text-left hidden sm:block">
@@ -1007,7 +1019,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                       {/* User Header Profile */}
                       <div className="p-3 bg-slate-50 dark:bg-[#131b2e] border border-slate-200 dark:border-[#1e293b] rounded-xl mb-3">
                         <div className="flex items-center space-x-3">
-                          {currentUser.photoURL ? (
+                          {isGuruBKOrPembinaRole(currentUser.role) ? (
+                            <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${getInitialsColorTheme(currentUser.role).bgGradient} flex flex-col items-center justify-center font-black font-mono text-sm text-white shadow-md shrink-0 border-2 ${getInitialsColorTheme(currentUser.role).borderColor}`}>
+                              <span>{getTeacherInitials(currentUser.displayName)}</span>
+                              <span className="text-[7px] uppercase font-bold text-white/75 tracking-wider">Inisial</span>
+                            </div>
+                          ) : currentUser.photoURL ? (
                             <img
                               src={currentUser.photoURL}
                               alt={currentUser.displayName}
@@ -1016,7 +1033,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                             />
                           ) : (
                             <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center font-bold text-base text-white shadow-md shrink-0">
-                              {currentUser.displayName ? currentUser.displayName.charAt(0).toUpperCase() : 'P'}
+                              {getTeacherInitials(currentUser.displayName)}
                             </div>
                           )}
                           <div className="flex-1 min-w-0">
@@ -1191,6 +1208,25 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                         </div>
                       )}
 
+                      {/* Tombol Kembali ke Administrator - KHUSUS Admin yang sedang uji coba simulasi peran */}
+                      {isSimulatedFromAdmin && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            returnToAdminSession();
+                            setIsProfileModalOpen(false);
+                            setActiveTab('dashboard');
+                          }}
+                          className="w-full mb-2 py-2 px-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center justify-between transition-colors shadow-sm shadow-amber-600/20"
+                        >
+                          <div className="flex items-center space-x-2">
+                            <Crown className="w-4 h-4 text-amber-200" />
+                            <span>Kembali ke Sesi Administrator</span>
+                          </div>
+                          <span>→</span>
+                        </button>
+                      )}
+
                       {/* Button: Pengaturan Profil Saya */}
                       <button
                         onClick={() => {
@@ -1253,25 +1289,25 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
               }}
               className="max-w-7xl mx-auto space-y-6"
             >
-              {/* Role Simulation / Active Role Indicator */}
-              {!isSuperAdmin && currentUser && (
-                <div className="p-3 rounded-2xl bg-blue-50/80 dark:bg-blue-950/20 border border-blue-200/80 dark:border-blue-900/40 flex flex-wrap items-center justify-between gap-3 text-xs">
-                  <div className="flex items-center gap-2.5 text-blue-900 dark:text-blue-200">
-                    <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse shrink-0" />
+              {/* Role Simulation Indicator - KHUSUS jika sesi simulasi diinisiasi oleh Admin. Untuk semua Guru Pembina & Guru BK, fitur ini ditiadakan */}
+              {isSimulatedFromAdmin && currentUser && (
+                <div className="p-3 rounded-2xl bg-amber-50/90 dark:bg-amber-950/30 border border-amber-200/90 dark:border-amber-900/50 flex flex-wrap items-center justify-between gap-3 text-xs shadow-xs">
+                  <div className="flex items-center gap-2.5 text-amber-900 dark:text-amber-200">
+                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
                     <span>
-                      Mode Peran Aktif: <strong>{currentUser.displayName}</strong> ({currentUser.role.toUpperCase()})
+                      Mode Uji Tampilan Admin: Menguji peran <strong>{currentUser.displayName}</strong> ({currentUser.role.toUpperCase()})
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={() => {
-                        loginWithDemoRole('super_admin');
+                        returnToAdminSession();
                         setActiveTab('dashboard');
                       }}
-                      className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-xs shadow-blue-600/20"
+                      className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-xs shadow-amber-600/20"
                     >
-                      <Crown className="w-3.5 h-3.5 text-amber-300" />
+                      <Crown className="w-3.5 h-3.5 text-amber-200" />
                       <span>Kembali ke Administrator</span>
                     </button>
                   </div>

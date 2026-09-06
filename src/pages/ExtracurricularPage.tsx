@@ -33,6 +33,7 @@ import {
   findMatchingTeacherForEkskul
 } from '../utils/extracurricularPresets';
 import { EKSKUL_COLOR_THEMES, getEkskulTheme } from '../utils/ekskulColors';
+import { getTeacherInitials } from '../utils/initials';
 
 interface ExtracurricularPageProps {
   onNavigateToMembers?: (ekskulId: string) => void;
@@ -401,7 +402,12 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
                   <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 space-y-2">
                     <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
                       <span className="text-slate-400 font-medium">Pembina:</span>
-                      <span className="font-bold">{ekskul.coachName}</span>
+                      <div className="flex items-center gap-1.5 font-bold">
+                        <span className="w-5 h-5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[10px] font-mono font-black flex items-center justify-center shrink-0">
+                          {getTeacherInitials(ekskul.coachName)}
+                        </span>
+                        <span>{ekskul.coachName}</span>
+                      </div>
                     </div>
                     <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
                       <span className="text-slate-400 font-medium">Jadwal:</span>
@@ -895,7 +901,13 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
                   <p className="font-bold text-slate-500 uppercase tracking-wider">Informasi Operasional</p>
                   <p><strong>Hari & Jam:</strong> {selectedEkskul.day}, {selectedEkskul.startTime} - {selectedEkskul.endTime}</p>
                   <p><strong>Lokasi:</strong> {selectedEkskul.location}</p>
-                  <p><strong>Pembina Utama:</strong> {selectedEkskul.coachName}</p>
+                  <div className="flex items-center gap-2">
+                    <strong>Pembina Utama:</strong>
+                    <span className="w-5 h-5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[10px] font-mono font-black flex items-center justify-center shrink-0">
+                      {getTeacherInitials(selectedEkskul.coachName)}
+                    </span>
+                    <span>{selectedEkskul.coachName}</span>
+                  </div>
                   <p><strong>Wakil Pembina:</strong> {selectedEkskul.assistantCoachName || '-'}</p>
                   <p><strong>Kapasitas Kuota:</strong> {selectedEkskul.quota} Siswa</p>
                 </div>

@@ -38,6 +38,11 @@ import {
   parseTeacherRows,
   ParsedImportTeacher
 } from '../utils/teacherTemplate';
+import {
+  getTeacherInitials,
+  isGuruBKOrPembinaRole,
+  getInitialsColorTheme
+} from '../utils/initials';
 
 export const TeachersPage: React.FC = () => {
   const { isWakaOrAdmin } = useAuth();
@@ -87,30 +92,55 @@ export const TeachersPage: React.FC = () => {
     cashManagerTitle: 'Bendahara Kesiswaan'
   });
 
-  // Automatically open teacher detail if selected from Global Search
+  // Automatically open teacher detail if selected from Global Search or pending selection
   useEffect(() => {
-    const handleSearchSelect = (event: Event) => {
-      const customEvent = event as CustomEvent<{
-        category: string;
-        id: string;
-        rawId: string;
-        title: string;
-      }>;
-      const detail = customEvent.detail;
+    const processTeacherTarget = (detail: any) => {
       if (!detail) return;
-
-      if (detail.category === 'teachers') {
+      if (detail.category === 'teachers' || !detail.category || detail.tabId === 'teachers') {
+        const targetId = detail.entityId || detail.rawId || detail.id;
         const targetTeacher = teachers.find(
           t =>
+            t.id === targetId ||
             t.id === detail.rawId ||
             t.id === detail.id ||
+            t.nip === targetId ||
             t.nip === detail.rawId ||
-            (t.fullName && t.fullName.toLowerCase().trim() === detail.title.toLowerCase().trim())
+            (detail.title && t.fullName && t.fullName.toLowerCase().trim() === detail.title.toLowerCase().trim())
         );
         if (targetTeacher) {
           setSelectedTeacher(targetTeacher);
           setIsDetailOpen(true);
         }
+      }
+    };
+
+    try {
+      const pendingStr = sessionStorage.getItem('pending_search_select');
+      if (pendingStr) {
+        const pending = JSON.parse(pendingStr);
+        if (pending && (pending.category === 'teachers' || pending.tabId === 'teachers')) {
+          sessionStorage.removeItem('pending_search_select');
+          setTimeout(() => {
+            processTeacherTarget(pending);
+          }, 50);
+        }
+      }
+    } catch (e) {
+      console.warn('Error reading pending_search_select in TeachersPage', e);
+    }
+
+    const handleSearchSelect = (event: Event) => {
+      const customEvent = event as CustomEvent<{
+        category: string;
+        id: string;
+        rawId: string;
+        entityId?: string;
+        title: string;
+        tabId?: string;
+      }>;
+      const detail = customEvent.detail;
+      if (detail) {
+        processTeacherTarget(detail);
       }
     };
 
@@ -347,26 +377,39 @@ export const TeachersPage: React.FC = () => {
       header: 'Nama Guru / Pembina',
       accessorKey: 'fullName',
       sortable: true,
-      cell: t => (
-        <div className="flex items-center gap-3">
-          {(t.photoUrl || t.photoURL) ? (
-            <img
-              src={t.photoUrl || t.photoURL}
-              alt={t.fullName}
-              referrerPolicy="no-referrer"
-              className="w-8 h-8 rounded-full object-cover border border-indigo-400 dark:border-indigo-600 shrink-0"
-            />
-          ) : (
-            <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-bold flex items-center justify-center text-xs shrink-0">
-              {t.fullName.charAt(0)}
+      cell: t => {
+        const isBKOrPembina = isGuruBKOrPembinaRole(t.role);
+        const teacherInitials = getTeacherInitials(t.fullName);
+        const theme = getInitialsColorTheme(t.role);
+
+        return (
+          <div className="flex items-center gap-3">
+            {isBKOrPembina ? (
+              <div
+                className={`w-8 h-8 rounded-lg bg-gradient-to-br ${theme.bgGradient} text-white font-black font-mono flex items-center justify-center text-[11px] shrink-0 shadow-xs border ${theme.borderColor}`}
+                title={`Inisial Guru: ${teacherInitials}`}
+              >
+                {teacherInitials}
+              </div>
+            ) : (t.photoUrl || t.photoURL) ? (
+              <img
+                src={t.photoUrl || t.photoURL}
+                alt={t.fullName}
+                referrerPolicy="no-referrer"
+                className="w-8 h-8 rounded-full object-cover border border-indigo-400 dark:border-indigo-600 shrink-0"
+              />
+            ) : (
+              <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-bold font-mono flex items-center justify-center text-[11px] shrink-0 border border-indigo-200 dark:border-indigo-800">
+                {teacherInitials}
+              </div>
+            )}
+            <div>
+              <p className="font-bold text-slate-900 dark:text-slate-100">{t.fullName}</p>
+              <p className="text-[11px] text-slate-400">NIP: {t.nip}</p>
             </div>
-          )}
-          <div>
-            <p className="font-bold text-slate-900 dark:text-slate-100">{t.fullName}</p>
-            <p className="text-[11px] text-slate-400">NIP: {t.nip}</p>
           </div>
-        </div>
-      )
+        );
+      }
     },
     {
       header: 'Jabatan / Peran',
@@ -1125,18 +1168,33 @@ export const TeachersPage: React.FC = () => {
         >
           <div className="space-y-3 text-xs">
             <div className="flex items-center gap-3 p-3 rounded-xl bg-slate-100 dark:bg-slate-800">
-              {(selectedTeacher.photoUrl || selectedTeacher.photoURL) ? (
-                <img
-                  src={selectedTeacher.photoUrl || selectedTeacher.photoURL}
-                  alt={selectedTeacher.fullName}
-                  referrerPolicy="no-referrer"
-                  className="w-14 h-14 rounded-xl object-cover border-2 border-indigo-500 shrink-0 shadow-md"
-                />
-              ) : (
-                <div className="w-12 h-12 rounded-xl bg-indigo-600 text-white font-bold text-lg flex items-center justify-center shrink-0">
-                  {selectedTeacher.fullName.charAt(0)}
-                </div>
-              )}
+              {(() => {
+                const isBKOrPembina = isGuruBKOrPembinaRole(selectedTeacher.role);
+                const teacherInitials = getTeacherInitials(selectedTeacher.fullName);
+                const theme = getInitialsColorTheme(selectedTeacher.role);
+
+                if (isBKOrPembina) {
+                  return (
+                    <div className={`w-14 h-14 rounded-2xl bg-gradient-to-br ${theme.bgGradient} text-white font-black font-mono text-xl flex flex-col items-center justify-center shrink-0 shadow-md border-2 ${theme.borderColor}`}>
+                      <span>{teacherInitials}</span>
+                      <span className="text-[7px] font-mono uppercase tracking-widest text-white/80">Inisial</span>
+                    </div>
+                  );
+                }
+
+                return (selectedTeacher.photoUrl || selectedTeacher.photoURL) ? (
+                  <img
+                    src={selectedTeacher.photoUrl || selectedTeacher.photoURL}
+                    alt={selectedTeacher.fullName}
+                    referrerPolicy="no-referrer"
+                    className="w-14 h-14 rounded-xl object-cover border-2 border-indigo-500 shrink-0 shadow-md"
+                  />
+                ) : (
+                  <div className="w-12 h-12 rounded-xl bg-indigo-600 text-white font-bold font-mono text-lg flex items-center justify-center shrink-0">
+                    {teacherInitials}
+                  </div>
+                );
+              })()}
               <div>
                 <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100">{selectedTeacher.fullName}</h4>
                 <p className="text-slate-500 dark:text-slate-400 font-mono text-[11px]">NIP: {selectedTeacher.nip}</p>

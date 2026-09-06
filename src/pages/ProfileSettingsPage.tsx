@@ -24,6 +24,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { useSchool } from '../contexts/SchoolContext';
 import { TimezoneSettingsCard } from '../components/common/TimezoneSettingsCard';
 import { UserRole } from '../types';
+import {
+  getTeacherInitials,
+  isGuruBKOrPembinaRole,
+  getInitialsColorTheme
+} from '../utils/initials';
 
 export const ProfileSettingsPage: React.FC = () => {
   const { currentUser, updateUser } = useAuth();
@@ -55,7 +60,12 @@ export const ProfileSettingsPage: React.FC = () => {
       setDisplayName(currentUser.displayName || '');
       setPhone(currentUser.phone || '');
       setNip(currentUser.nip || '');
-      setPhotoURL(currentUser.photoURL || (currentUser as any).photoUrl || '');
+      // For Guru BK and Pembina, photo is omitted and replaced with 2-letter initials
+      if (isGuruBKOrPembinaRole(currentUser.role)) {
+        setPhotoURL('');
+      } else {
+        setPhotoURL(currentUser.photoURL || (currentUser as any).photoUrl || '');
+      }
       setFileError(null);
     }
   }, [currentUser]);
@@ -110,6 +120,10 @@ export const ProfileSettingsPage: React.FC = () => {
 
   const badgeInfo = getRoleBadgeInfo(currentUser?.role);
   const RoleIcon = badgeInfo.icon;
+
+  const isGuruBKOrPembina = isGuruBKOrPembinaRole(currentUser?.role);
+  const teacherInitials = getTeacherInitials(displayName || currentUser?.displayName);
+  const colorTheme = getInitialsColorTheme(currentUser?.role);
 
   // File validation and conversion (Strictly JPG, JPEG, PNG and Max 500 KB)
   const MAX_FILE_SIZE_BYTES = 500 * 1024; // 500 KB = 512,000 bytes
@@ -204,7 +218,8 @@ export const ProfileSettingsPage: React.FC = () => {
         displayName: displayName.trim(),
         phone: phone.trim(),
         nip: nip.trim(),
-        photoURL: photoURL || undefined
+        // For Guru BK and Pembina, photo upload is disabled and replaced with 2-letter initials
+        photoURL: isGuruBKOrPembina ? '' : (photoURL || undefined)
       };
 
       // 1. Update user profile in AuthContext (persisted to localStorage & Firebase Auth / users collection)
@@ -229,10 +244,16 @@ export const ProfileSettingsPage: React.FC = () => {
       await logAction(
         'UPDATE_USER_PROFILE',
         'Pengaturan Profil',
-        `${currentUser.displayName} (${badgeInfo.label}) memperbarui profil: Nama="${displayName}", WA="${phone}", NIP="${nip}", Foto=${photoURL ? 'Diperbarui' : 'Dikosongkan'}`
+        `${currentUser.displayName} (${badgeInfo.label}) memperbarui profil: Nama="${displayName}", WA="${phone}", NIP="${nip}", ${
+          isGuruBKOrPembina ? `Inisial="${teacherInitials}"` : `Foto=${photoURL ? 'Diperbarui' : 'Dikosongkan'}`
+        }`
       );
 
-      setSaveSuccessMsg('Profil Anda berhasil diperbarui! Perubahan nama, nomor WhatsApp, NIP/NUPTK, dan foto profil telah otomatis tersinkronisasi ke Administrator Super.');
+      setSaveSuccessMsg(
+        isGuruBKOrPembina
+          ? `Profil berhasil diperbarui! Nama, nomor WhatsApp, NIP, serta inisial resmi (${teacherInitials}) telah otomatis tersinkronisasi ke sistem.`
+          : 'Profil Anda berhasil diperbarui! Perubahan nama, nomor WhatsApp, NIP/NUPTK, dan foto profil telah otomatis tersinkronisasi ke Administrator Super.'
+      );
       
       // Auto-hide success message after 5 seconds
       setTimeout(() => {
@@ -285,7 +306,9 @@ export const ProfileSettingsPage: React.FC = () => {
             <span>SINKRONISASI OTOMATIS AKTIF (SUPER ADMIN SYNC: CONNECTED)</span>
           </div>
           <span className="text-zinc-300 text-[10px] font-medium">
-            Format Foto: JPG, JPEG, PNG (Maksimal 500 KB)
+            {isGuruBKOrPembina
+              ? `Standar Identitas: 2 Huruf Inisial Otomatis (${teacherInitials})`
+              : 'Format Foto: JPG, JPEG, PNG (Maksimal 500 KB)'}
           </span>
         </div>
       </div>
@@ -315,95 +338,149 @@ export const ProfileSettingsPage: React.FC = () => {
       {/* Main Profile Form */}
       <form onSubmit={handleFormSubmit} className="space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-          {/* Left Column: Photo Upload Section (JPG, JPEG, PNG <= 500 KB) */}
+          {/* Left Column: Avatar Section (2-Letter Initials for Guru BK & Pembina, or Photo for Admin) */}
           <div className="md:col-span-5 bg-[#151518] border border-[#27272a] rounded-xl p-5 space-y-4 flex flex-col items-center text-center">
-            <div className="w-full flex items-center justify-between pb-3 border-b border-[#27272a]">
-              <span className="text-xs font-bold text-zinc-100 uppercase tracking-wider flex items-center space-x-1.5 font-mono">
-                <Camera className="w-4 h-4 text-emerald-400" />
-                <span>Foto Profil</span>
-              </span>
-              <span className="px-2 py-0.5 rounded text-[9px] font-mono bg-zinc-800 text-zinc-200 border border-zinc-600 font-semibold">
-                MAKS. 500 KB
-              </span>
-            </div>
+            {isGuruBKOrPembina ? (
+              /* Guru BK / Pembina Profile: 2-Letter Initials Identity (No Photo Upload) */
+              <>
+                <div className="w-full flex items-center justify-between pb-3 border-b border-[#27272a]">
+                  <span className="text-xs font-bold text-zinc-100 uppercase tracking-wider flex items-center space-x-1.5 font-mono">
+                    <Sparkles className="w-4 h-4 text-purple-400" />
+                    <span>Inisial Profil Guru</span>
+                  </span>
+                  <span className="px-2 py-0.5 rounded text-[9px] font-mono bg-purple-500/20 text-purple-300 border border-purple-500/40 font-bold">
+                    2 HURUF INISIAL
+                  </span>
+                </div>
 
-            {/* Avatar Preview */}
-            <div className="relative group my-2">
-              <div className="w-36 h-36 rounded-2xl bg-[#1c1c20] border-2 border-[#323238] overflow-hidden flex items-center justify-center shadow-xl relative transition-all">
-                {photoURL ? (
-                  <img
-                    src={photoURL}
-                    alt={displayName || 'Foto Profil'}
-                    referrerPolicy="no-referrer"
-                    className="w-full h-full object-cover"
+                {/* 2-Letter Initials Card */}
+                <div className="relative group my-2">
+                  <div
+                    className={`w-36 h-36 rounded-2xl bg-gradient-to-br ${colorTheme.bgGradient} border-2 ${colorTheme.borderColor} flex flex-col items-center justify-center shadow-2xl relative select-none transition-transform group-hover:scale-105`}
+                  >
+                    <span className="text-5xl font-black font-mono tracking-wider text-white drop-shadow-md">
+                      {teacherInitials}
+                    </span>
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-white/80 mt-1">
+                      Inisial Resmi
+                    </span>
+                  </div>
+                </div>
+
+                {/* Institutional Note Replacing Drag & Drop Upload Zone */}
+                <div className="w-full p-4 rounded-xl border border-[#27272a] bg-[#141417] text-left space-y-2.5">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="text-xs font-bold text-zinc-100 font-mono">
+                      STANDAR KESERAGAMAN IDENTITAS
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-zinc-300 leading-relaxed">
+                    Untuk profil <strong>Guru BK</strong> dan <strong>Pembina</strong>, fitur upload foto profil ditiadakan dan digantikan otomatis dengan <strong>2 huruf inisial nama</strong> ({teacherInitials}).
+                  </p>
+                  <div className="p-2.5 rounded-lg bg-[#1a1a1f] border border-[#2a2a30] flex items-center justify-between text-[11px] font-mono">
+                    <span className="text-zinc-400">Inisial Guru Terdaftar:</span>
+                    <span className="font-black text-white px-2.5 py-0.5 rounded bg-white/10 border border-white/20 text-xs">
+                      {teacherInitials}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-zinc-400 leading-relaxed italic">
+                    *Inisial otomatis dihitung dari Nama Lengkap dan langsung tersinkronisasi ke seluruh modul SIM Kesiswaan.
+                  </p>
+                </div>
+              </>
+            ) : (
+              /* Non-BK/Pembina (Super Admin / Waka): Standard Photo Upload */
+              <>
+                <div className="w-full flex items-center justify-between pb-3 border-b border-[#27272a]">
+                  <span className="text-xs font-bold text-zinc-100 uppercase tracking-wider flex items-center space-x-1.5 font-mono">
+                    <Camera className="w-4 h-4 text-emerald-400" />
+                    <span>Foto Profil</span>
+                  </span>
+                  <span className="px-2 py-0.5 rounded text-[9px] font-mono bg-zinc-800 text-zinc-200 border border-zinc-600 font-semibold">
+                    MAKS. 500 KB
+                  </span>
+                </div>
+
+                {/* Avatar Preview */}
+                <div className="relative group my-2">
+                  <div className="w-36 h-36 rounded-2xl bg-[#1c1c20] border-2 border-[#323238] overflow-hidden flex items-center justify-center shadow-xl relative transition-all">
+                    {photoURL ? (
+                      <img
+                        src={photoURL}
+                        alt={displayName || 'Foto Profil'}
+                        referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center p-3 text-zinc-400">
+                        <User className="w-16 h-16 text-zinc-400 mb-1" />
+                        <span className="text-[10px] font-mono uppercase tracking-wider font-semibold">Belum Ada Foto</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Quick action overlay if photo exists */}
+                  {photoURL && (
+                    <button
+                      type="button"
+                      onClick={handleRemovePhoto}
+                      className="absolute -top-2 -right-2 p-1.5 rounded-full bg-red-600 hover:bg-red-500 text-white shadow-lg transition-transform hover:scale-110"
+                      title="Hapus foto saat ini"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Drag & Drop Upload Zone */}
+                <div
+                  onDrop={handleDrop}
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onClick={() => fileInputRef.current?.click()}
+                  className={`w-full p-4 rounded-xl border-2 border-dashed transition-all cursor-pointer flex flex-col items-center justify-center text-xs ${
+                    isDragOver
+                      ? 'border-emerald-500 bg-emerald-950/20 text-emerald-300'
+                      : 'border-[#37373f] hover:border-emerald-500/50 bg-[#19191d] text-zinc-300 hover:text-white'
+                  }`}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                    onChange={handleFileChange}
+                    className="hidden"
                   />
-                ) : (
-                  <div className="flex flex-col items-center justify-center p-3 text-zinc-400">
-                    <User className="w-16 h-16 text-zinc-400 mb-1" />
-                    <span className="text-[10px] font-mono uppercase tracking-wider font-semibold">Belum Ada Foto</span>
+                  <Upload className="w-5 h-5 text-emerald-400 mb-1.5" />
+                  <span className="font-semibold text-zinc-100">
+                    Pilih atau Tarik Foto ke Sini
+                  </span>
+                  <span className="text-[11px] text-zinc-300 mt-1">
+                    Format: <strong className="text-zinc-100">JPG, JPEG, PNG</strong>
+                  </span>
+                  <span className="text-[10px] text-emerald-400 font-mono mt-0.5 font-bold">
+                    Batas Ukuran: Maksimal 500 KB
+                  </span>
+                </div>
+
+                {/* File info badge if uploaded */}
+                {photoFileSizeKb && (
+                  <div className="w-full bg-[#1c1c20] p-2.5 rounded-lg border border-[#2e2e34] text-[11px] font-mono flex items-center justify-between text-zinc-200">
+                    <span className="truncate max-w-[170px]" title={photoFileName}>
+                      {photoFileName || 'Foto Profil Terpilih'}
+                    </span>
+                    <span className={`font-bold ${photoFileSizeKb > 500 ? 'text-red-400' : 'text-emerald-400'}`}>
+                      {photoFileSizeKb} KB
+                    </span>
                   </div>
                 )}
-              </div>
 
-              {/* Quick action overlay if photo exists */}
-              {photoURL && (
-                <button
-                  type="button"
-                  onClick={handleRemovePhoto}
-                  className="absolute -top-2 -right-2 p-1.5 rounded-full bg-red-600 hover:bg-red-500 text-white shadow-lg transition-transform hover:scale-110"
-                  title="Hapus foto saat ini"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-
-            {/* Drag & Drop Upload Zone */}
-            <div
-              onDrop={handleDrop}
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onClick={() => fileInputRef.current?.click()}
-              className={`w-full p-4 rounded-xl border-2 border-dashed transition-all cursor-pointer flex flex-col items-center justify-center text-xs ${
-                isDragOver
-                  ? 'border-emerald-500 bg-emerald-950/20 text-emerald-300'
-                  : 'border-[#37373f] hover:border-emerald-500/50 bg-[#19191d] text-zinc-300 hover:text-white'
-              }`}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".jpg,.jpeg,.png,image/jpeg,image/png"
-                onChange={handleFileChange}
-                className="hidden"
-              />
-              <Upload className="w-5 h-5 text-emerald-400 mb-1.5" />
-              <span className="font-semibold text-zinc-100">
-                Pilih atau Tarik Foto ke Sini
-              </span>
-              <span className="text-[11px] text-zinc-300 mt-1">
-                Format: <strong className="text-zinc-100">JPG, JPEG, PNG</strong>
-              </span>
-              <span className="text-[10px] text-emerald-400 font-mono mt-0.5 font-bold">
-                Batas Ukuran: Maksimal 500 KB
-              </span>
-            </div>
-
-            {/* File info badge if uploaded */}
-            {photoFileSizeKb && (
-              <div className="w-full bg-[#1c1c20] p-2.5 rounded-lg border border-[#2e2e34] text-[11px] font-mono flex items-center justify-between text-zinc-200">
-                <span className="truncate max-w-[170px]" title={photoFileName}>
-                  {photoFileName || 'Foto Profil Terpilih'}
-                </span>
-                <span className={`font-bold ${photoFileSizeKb > 500 ? 'text-red-400' : 'text-emerald-400'}`}>
-                  {photoFileSizeKb} KB
-                </span>
-              </div>
+                <p className="text-[11px] text-zinc-300 text-left leading-relaxed">
+                  Foto akan ditampilkan pada Header, Dewan Guru, cPanel Master Super Admin, dan Kartu Tanda Anggota/Pembina.
+                </p>
+              </>
             )}
-
-            <p className="text-[11px] text-zinc-300 text-left leading-relaxed">
-              Foto akan ditampilkan pada Header, Dewan Guru, cPanel Master Super Admin, dan Kartu Tanda Anggota/Pembina.
-            </p>
           </div>
 
           {/* Right Column: Required Profile Fields (Nama, WhatsApp, NIP/NUPTK) */}

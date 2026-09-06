@@ -186,8 +186,8 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
       if (!studentSearchQuery) return true;
       const q = studentSearchQuery.toLowerCase();
       return (
-        s.fullName.toLowerCase().includes(q) ||
-        s.nis.includes(q) ||
+        (s.fullName || '').toLowerCase().includes(q) ||
+        (s.nis || '').toLowerCase().includes(q) ||
         (s.className && s.className.toLowerCase().includes(q))
       );
     });

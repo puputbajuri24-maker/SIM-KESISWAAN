@@ -54,6 +54,11 @@ import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { AuditLogsPanel } from '../components/cpanel/AuditLogsPanel';
 import { AcademicYearManagementModal } from '../components/common/AcademicYearManagementModal';
+import {
+  getTeacherInitials,
+  isGuruBKOrPembinaRole,
+  getInitialsColorTheme
+} from '../utils/initials';
 
 export const CPanelPage: React.FC = () => {
   const { allUsers, currentUser, isSuperAdmin, addUser, updateUser, deleteUser, resetUserPassword, loginWithUser, loginWithDemoRole, syncUsersFromTeachers } = useAuth();
@@ -1115,18 +1120,35 @@ export const CPanelPage: React.FC = () => {
                       <tr key={u.uid} className="hover:bg-[#1a1a1f] transition-colors">
                         <td className="py-3 px-4">
                           <div className="flex items-center space-x-3">
-                            {u.photoURL ? (
-                              <img
-                                src={u.photoURL}
-                                alt={u.displayName}
-                                referrerPolicy="no-referrer"
-                                className="w-8 h-8 rounded-lg object-cover border border-emerald-500/40 shrink-0"
-                              />
-                            ) : (
-                              <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-950/80 border border-emerald-300 dark:border-emerald-700/60 flex items-center justify-center font-bold text-xs text-emerald-800 dark:text-emerald-300 font-mono shrink-0">
-                                {u.displayName ? u.displayName.charAt(0).toUpperCase() : 'U'}
-                              </div>
-                            )}
+                            {(() => {
+                              const isBKOrPembina = isGuruBKOrPembinaRole(u.role);
+                              const teacherInitials = getTeacherInitials(u.displayName);
+                              const theme = getInitialsColorTheme(u.role);
+
+                              if (isBKOrPembina) {
+                                return (
+                                  <div
+                                    className={`w-8 h-8 rounded-lg bg-gradient-to-br ${theme.bgGradient} text-white flex items-center justify-center font-black text-xs font-mono shrink-0 border ${theme.borderColor} shadow-xs`}
+                                    title={`Inisial: ${teacherInitials}`}
+                                  >
+                                    {teacherInitials}
+                                  </div>
+                                );
+                              }
+
+                              return u.photoURL ? (
+                                <img
+                                  src={u.photoURL}
+                                  alt={u.displayName}
+                                  referrerPolicy="no-referrer"
+                                  className="w-8 h-8 rounded-lg object-cover border border-emerald-500/40 shrink-0"
+                                />
+                              ) : (
+                                <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-950/80 border border-emerald-300 dark:border-emerald-700/60 flex items-center justify-center font-bold text-xs text-emerald-800 dark:text-emerald-300 font-mono shrink-0">
+                                  {teacherInitials}
+                                </div>
+                              );
+                            })()}
                             <div>
                               <div className="font-bold text-zinc-100">{u.displayName}</div>
                               <div className="text-[11px] text-zinc-300 font-mono">{u.email}</div>
@@ -2008,18 +2030,33 @@ export const CPanelPage: React.FC = () => {
         {selectedUserForAction && (
           <div className="space-y-4">
             <div className="flex items-center space-x-3 p-3.5 rounded-xl bg-[#18181c] border border-[#27272a]">
-              {selectedUserForAction.photoURL ? (
-                <img
-                  src={selectedUserForAction.photoURL}
-                  alt={selectedUserForAction.displayName}
-                  referrerPolicy="no-referrer"
-                  className="w-14 h-14 rounded-xl object-cover border-2 border-emerald-500/50 shadow-md shrink-0"
-                />
-              ) : (
-                <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 via-blue-600 to-indigo-700 flex items-center justify-center font-mono font-black text-lg text-white shadow-md shrink-0">
-                  {selectedUserForAction.displayName ? selectedUserForAction.displayName.charAt(0).toUpperCase() : 'U'}
-                </div>
-              )}
+              {(() => {
+                const isBKOrPembina = isGuruBKOrPembinaRole(selectedUserForAction.role);
+                const teacherInitials = getTeacherInitials(selectedUserForAction.displayName);
+                const theme = getInitialsColorTheme(selectedUserForAction.role);
+
+                if (isBKOrPembina) {
+                  return (
+                    <div className={`w-14 h-14 rounded-xl bg-gradient-to-br ${theme.bgGradient} flex flex-col items-center justify-center font-black font-mono text-base text-white shadow-md shrink-0 border-2 ${theme.borderColor}`}>
+                      <span>{teacherInitials}</span>
+                      <span className="text-[7px] uppercase font-bold text-white/75 tracking-wider">Inisial</span>
+                    </div>
+                  );
+                }
+
+                return selectedUserForAction.photoURL ? (
+                  <img
+                    src={selectedUserForAction.photoURL}
+                    alt={selectedUserForAction.displayName}
+                    referrerPolicy="no-referrer"
+                    className="w-14 h-14 rounded-xl object-cover border-2 border-emerald-500/50 shadow-md shrink-0"
+                  />
+                ) : (
+                  <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-emerald-500 via-blue-600 to-indigo-700 flex items-center justify-center font-mono font-black text-lg text-white shadow-md shrink-0">
+                    {teacherInitials}
+                  </div>
+                );
+              })()}
               <div className="flex-1 min-w-0">
                 <h4 className="text-sm font-bold text-white truncate">{selectedUserForAction.displayName}</h4>
                 <p className="text-xs text-zinc-300 font-mono">{selectedUserForAction.email}</p>

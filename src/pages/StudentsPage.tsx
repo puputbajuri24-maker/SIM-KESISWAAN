@@ -140,30 +140,61 @@ export const StudentsPage: React.FC = () => {
     status: 'Aktif'
   });
 
-  // Automatically open student profile if navigated from Global Search
+  // Automatically open student profile if navigated from Global Search or pending selection
   useEffect(() => {
+    const processStudentTarget = (detail: any) => {
+      if (!detail) return;
+      if (detail.category === 'students' || !detail.category || detail.tabId === 'students') {
+        const targetId = detail.entityId || detail.rawId || detail.id;
+        const targetStudent = students.find(
+          s =>
+            s.id === targetId ||
+            s.id === detail.rawId ||
+            s.id === detail.id ||
+            s.nis === targetId ||
+            s.nis === detail.rawId ||
+            (detail.title && s.fullName && s.fullName.toLowerCase().trim() === detail.title.toLowerCase().trim())
+        );
+        if (targetStudent) {
+          // Reset table filters so the selected student isn't masked out
+          setSelectedClass('all');
+          setSelectedStatus('all');
+          setSelectedGender('all');
+          setSelectedStudent(targetStudent);
+          setIsDetailOpen(true);
+        }
+      }
+    };
+
+    // 1. Check pending target from sessionStorage on mount / student list updates
+    try {
+      const pendingStr = sessionStorage.getItem('pending_search_select');
+      if (pendingStr) {
+        const pending = JSON.parse(pendingStr);
+        if (pending && (pending.category === 'students' || pending.tabId === 'students')) {
+          sessionStorage.removeItem('pending_search_select');
+          setTimeout(() => {
+            processStudentTarget(pending);
+          }, 50);
+        }
+      }
+    } catch (e) {
+      console.warn('Error reading pending_search_select', e);
+    }
+
+    // 2. Event listener for real-time selection when StudentsPage is already mounted
     const handleSearchSelect = (event: Event) => {
       const customEvent = event as CustomEvent<{
         category: string;
         id: string;
         rawId: string;
+        entityId?: string;
         title: string;
+        tabId?: string;
       }>;
       const detail = customEvent.detail;
-      if (!detail) return;
-
-      if (detail.category === 'students') {
-        const targetStudent = students.find(
-          s =>
-            s.id === detail.rawId ||
-            s.id === detail.id ||
-            s.nis === detail.rawId ||
-            (s.fullName && s.fullName.toLowerCase().trim() === detail.title.toLowerCase().trim())
-        );
-        if (targetStudent) {
-          setSelectedStudent(targetStudent);
-          setIsDetailOpen(true);
-        }
+      if (detail) {
+        processStudentTarget(detail);
       }
     };
 

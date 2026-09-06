@@ -51,6 +51,7 @@ import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { ExportActions } from '../components/common/ExportActions';
 import { StatusBadge } from '../components/common/Badge';
+import { getTeacherInitials } from '../utils/initials';
 
 export const OsimPage: React.FC = () => {
   const { isWakaOrAdmin, isPembinaOsim, currentUser } = useAuth();
@@ -1141,13 +1142,25 @@ export const OsimPage: React.FC = () => {
                 <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
                   PEMBINA RESMI OSIM (HAK AKSES PENUH)
                 </span>
-                <h4 className="font-bold text-xs text-zinc-100 mt-2">
-                  {schoolSetting?.pembinaOsim || teachers.find(t => t.role?.toLowerCase().includes('osim'))?.fullName || 'Belum Ditetapkan'}
-                </h4>
-                <p className="text-[10px] text-zinc-400 font-mono mt-0.5">
-                  NIP: {schoolSetting?.pembinaOsimNip || teachers.find(t => t.role?.toLowerCase().includes('osim'))?.nip || '-'}
-                </p>
-                <p className="text-[10px] text-indigo-400 mt-1">Pembina Harian Organisasi Siswa</p>
+                {(() => {
+                  const pembinaName = schoolSetting?.pembinaOsim || teachers.find(t => t.role?.toLowerCase().includes('osim'))?.fullName || 'Belum Ditetapkan';
+                  const initials = getTeacherInitials(pembinaName);
+
+                  return (
+                    <div className="flex items-center gap-2.5 mt-2">
+                      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 border border-indigo-400 text-white font-black font-mono text-xs flex items-center justify-center shrink-0 shadow-xs">
+                        {initials}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h4 className="font-bold text-xs text-zinc-100 truncate">{pembinaName}</h4>
+                        <p className="text-[10px] text-zinc-400 font-mono">
+                          NIP: {schoolSetting?.pembinaOsimNip || teachers.find(t => t.role?.toLowerCase().includes('osim'))?.nip || '-'}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })()}
+                <p className="text-[10px] text-indigo-400 mt-2">Pembina Harian Organisasi Siswa</p>
               </div>
             </div>
           </div>
