@@ -112,8 +112,110 @@ export const DEFAULT_SUPER_ADMIN: UserProfile = {
   status: 'Aktif'
 };
 
+export const generateDefaultOsimAccounts = (departments: OsimDepartment[] = DEFAULT_OSIM_DEPARTMENTS): UserProfile[] => {
+  // MODEL A: 4 Akun Fungsional Khusus Pengurus Inti OSIM (Badan Pengurus Harian / BPH)
+  const bphDept = departments.find(d => d.id === 'dept_bph' || d.code === 'BPH');
+  const bphId = bphDept?.id || 'dept_bph';
+  const bphCode = bphDept?.code || 'BPH';
+  const bphName = bphDept?.name || 'BPH (Badan Pengurus Harian)';
+
+  const bphAccounts: UserProfile[] = [
+    {
+      uid: 'user_osim_ketua',
+      email: 'osim.ketua@madrasah.sch.id',
+      username: 'osim.ketua',
+      password: 'password',
+      displayName: 'Ketua OSIM',
+      role: 'pengurus_osim',
+      osimRole: 'ketua',
+      osimPosition: 'Ketua Umum OSIM',
+      osimDepartmentId: bphId,
+      osimDepartmentCode: bphCode,
+      osimDepartmentName: bphName,
+      status: 'Aktif',
+      createdAt: '2026-07-15T08:00:00.000Z'
+    },
+    {
+      uid: 'user_osim_wakil',
+      email: 'osim.wakil@madrasah.sch.id',
+      username: 'osim.wakil',
+      password: 'password',
+      displayName: 'Wakil Ketua OSIM',
+      role: 'pengurus_osim',
+      osimRole: 'wakil',
+      osimPosition: 'Wakil Ketua 1',
+      osimDepartmentId: bphId,
+      osimDepartmentCode: bphCode,
+      osimDepartmentName: bphName,
+      status: 'Aktif',
+      createdAt: '2026-07-15T08:00:00.000Z'
+    },
+    {
+      uid: 'user_osim_sekretaris',
+      email: 'osim.sekretaris@madrasah.sch.id',
+      username: 'osim.sekretaris',
+      password: 'password',
+      displayName: 'Sekretaris OSIM',
+      role: 'pengurus_osim',
+      osimRole: 'sekretaris',
+      osimPosition: 'Sekretaris Umum',
+      osimDepartmentId: bphId,
+      osimDepartmentCode: bphCode,
+      osimDepartmentName: bphName,
+      status: 'Aktif',
+      createdAt: '2026-07-15T08:00:00.000Z'
+    },
+    {
+      uid: 'user_osim_bendahara',
+      email: 'osim.bendahara@madrasah.sch.id',
+      username: 'osim.bendahara',
+      password: 'password',
+      displayName: 'Bendahara OSIM',
+      role: 'pengurus_osim',
+      osimRole: 'bendahara',
+      osimPosition: 'Bendahara Umum',
+      isCashManager: true,
+      cashManagerTitle: 'Bendahara OSIM',
+      cashFundScopes: ['kas_osim'],
+      osimDepartmentId: bphId,
+      osimDepartmentCode: bphCode,
+      osimDepartmentName: bphName,
+      status: 'Aktif',
+      createdAt: '2026-07-15T08:00:00.000Z'
+    }
+  ];
+
+  // Akun Fungsional Seksi Bidang (Sekbid 1 s.d. 8)
+  const sekbidDepts = departments.filter(d => d.id !== 'dept_bph' && d.code !== 'BPH');
+  const sekbidAccounts: UserProfile[] = sekbidDepts.map((dept, idx) => {
+    const cleanCode = (dept.code || `sekbid${idx + 1}`).toLowerCase().replace(/[^a-z0-9]/g, '');
+    const username = `osim.${cleanCode}`;
+
+    return {
+      uid: `user_osim_${dept.id}`,
+      email: `${username}@madrasah.sch.id`,
+      username,
+      password: 'password',
+      displayName: `Pengurus OSIM - ${dept.name.split(':')[0].trim()}`,
+      role: 'pengurus_osim',
+      osimRole: 'sekbid',
+      osimPosition: `Ketua ${dept.code}`,
+      osimDepartmentId: dept.id,
+      osimDepartmentCode: dept.code,
+      osimDepartmentName: dept.name,
+      status: 'Aktif',
+      createdAt: '2026-07-15T08:00:00.000Z'
+    };
+  });
+
+  return [...bphAccounts, ...sekbidAccounts];
+};
+
+export const DEFAULT_OSIM_ACCOUNTS: UserProfile[] = generateDefaultOsimAccounts(DEFAULT_OSIM_DEPARTMENTS);
+
 export const DEMO_USERS: UserProfile[] = [
-  DEFAULT_SUPER_ADMIN
+  DEFAULT_SUPER_ADMIN,
+  ...DEFAULT_OSIM_ACCOUNTS
 ];
 
 export const INITIAL_TEACHERS: Teacher[] = [];

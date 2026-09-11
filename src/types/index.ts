@@ -1,4 +1,6 @@
-export type UserRole = 'super_admin' | 'waka_kesiswaan' | 'guru_bk' | 'pembina_osim' | 'pembina_ekskul' | 'pembina';
+export type UserRole = 'super_admin' | 'waka_kesiswaan' | 'guru_bk' | 'pembina_osim' | 'pembina_ekskul' | 'pembina' | 'pengurus_osim';
+
+export type OsimRoleType = 'ketua' | 'wakil' | 'sekretaris' | 'bendahara' | 'sekbid';
 
 export interface UserProfile {
   uid: string;
@@ -8,12 +10,19 @@ export interface UserProfile {
   displayName: string;
   role: UserRole;
   extracurricularIds?: string[]; // If pembina, club IDs they manage
+  osimDepartmentId?: string; // ID of department/sekbid managed by this account, e.g. 'dept_sekbid_1' or 'dept_bph'
+  osimDepartmentCode?: string; // e.g. 'SEKBID-1' or 'BPH'
+  osimDepartmentName?: string; // e.g. 'Sekbid 1: Keimanan, Ketaqwaan & Moderasi Beragama'
+  osimRole?: OsimRoleType; // Model A: 'ketua' | 'wakil' | 'sekretaris' | 'bendahara' | 'sekbid'
+  osimPosition?: string; // e.g. "Ketua Umum OSIM", "Wakil Ketua 1", "Sekretaris Umum", "Bendahara Umum"
+  studentNis?: string; // NIS siswa koordinator yang ditugaskan
+  studentClass?: string; // Kelas siswa penanggung jawab
   phone?: string;
   photoURL?: string;
   nip?: string;
   counselorSpecialization?: string; // e.g. "Bimbingan Karir & Psikologi Remaja"
   isCashManager?: boolean; // Delegasi Hak Kelola Kas / Bendahara Amanah
-  cashFundScopes?: string[]; // Daftar ID akun kas yang diamanahkan, e.g. ['all'] or ['kas_utama_kesiswaan', 'kas_bk']
+  cashFundScopes?: string[]; // Daftar ID akun kas yang diamanahkan, e.g. ['all'] or ['kas_utama_kesiswaan', 'kas_bk', 'kas_osim']
   cashManagerTitle?: string; // Jabatan amanah kas, e.g. "Bendahara Kesiswaan", "Bendahara OSIM", "Bendahara BK"
   status?: 'Aktif' | 'Nonaktif';
   lastLogin?: string;
@@ -709,7 +718,16 @@ export interface OsimMember {
   createdAt?: string;
 }
 
-export type OsimProgramStatus = 'Draft' | 'Diajukan' | 'Disetujui' | 'Berlangsung' | 'Selesai' | 'Dibatalkan';
+export type OsimProgramStatus =
+  | 'Draft'
+  | 'Diajukan'
+  | 'Revisi'
+  | 'Disetujui'
+  | 'Berlangsung'
+  | 'Menunggu Verifikasi LPJ'
+  | 'Selesai & Sah'
+  | 'Selesai'
+  | 'Dibatalkan';
 
 export interface OsimWorkProgram {
   id: string;
@@ -728,6 +746,19 @@ export interface OsimWorkProgram {
   status: OsimProgramStatus;
   description: string;
   documentationUrls?: string[];
+  photos?: string[]; // Foto dokumentasi kegiatan (base64 atau URL)
+  lpjNotes?: string; // Catatan ringkasan evaluasi & hasil pelaksanaan dari siswa bidang
+  lpjFileUrl?: string; // Tautan dokumen LPJ / Google Drive laporan kegiatan
+  lpjSubmittedAt?: string; // Tanggal siswa mengirim draft LPJ ke pembina
+  guidanceNotes?: string; // Catatan bimbingan & arahan pembina OSIM
+  guidanceDate?: string; // Tanggal catatan bimbingan atau persetujuan
+  verifiedBy?: string; // Pembina OSIM / Waka yang memverifikasi / memberikan bimbingan
+  finalApprovedAt?: string; // Tanggal pengesahan akhir & penguncian arsip
+  finalApprovedBy?: string; // Pembina OSIM / Waka / Admin App yang mengesahkan akhir
+  isArchivedForYearEndReport?: boolean; // Apakah otomatis terakumulasi dalam rekap tahunan kesiswaan untuk laporan kepala madrasah
+  vetoedBy?: string; // Nama otoritas pembina / waka / admin app yang memberlakukan hak veto
+  vetoedAt?: string; // Waktu hak veto dieksekusi
+  vetoReason?: string; // Alasan tertulis penggunaan hak veto kesiswaan
   academicYear: string;
   createdAt?: string;
 }

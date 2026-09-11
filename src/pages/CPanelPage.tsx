@@ -603,6 +603,8 @@ export const CPanelPage: React.FC = () => {
         return { label: 'GURU BK', color: 'bg-purple-500/10 text-purple-400 border-purple-500/30' };
       case 'pembina_osim':
         return { label: 'PEMBINA OSIM', color: 'bg-amber-500/10 text-amber-400 border-amber-500/30' };
+      case 'pengurus_osim':
+        return { label: 'PENGURUS OSIM (BIDANG)', color: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' };
       case 'pembina_ekskul':
       case 'pembina':
         return { label: 'PEMBINA EKSKUL', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' };
@@ -1093,6 +1095,7 @@ export const CPanelPage: React.FC = () => {
                 <option value="waka_kesiswaan">Waka Kesiswaan</option>
                 <option value="guru_bk">Guru Bimbingan Konseling (BK)</option>
                 <option value="pembina_osim">Pembina OSIM</option>
+                <option value="pengurus_osim">Pengurus OSIM (Bidang / BPH)</option>
                 <option value="pembina_ekskul">Pembina Ekstrakurikuler</option>
               </select>
             </div>
@@ -1796,6 +1799,7 @@ export const CPanelPage: React.FC = () => {
               >
                 <option value="guru_bk">Guru BK (Bimbingan Konseling)</option>
                 <option value="pembina_osim">Pembina OSIM</option>
+                <option value="pengurus_osim">Pengurus OSIM (Siswa Bidang / BPH)</option>
                 <option value="pembina_ekskul">Pembina Ekstrakurikuler</option>
                 <option value="waka_kesiswaan">Waka Kesiswaan</option>
               </select>

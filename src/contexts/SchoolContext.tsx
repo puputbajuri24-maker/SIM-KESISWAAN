@@ -274,6 +274,7 @@ interface SchoolContextType {
   markAllAnnouncementsAsReadForUser: (ids: string[], uid?: string) => Promise<void>;
   markNotificationAsRead: (id: string) => void;
   markAllNotificationsAsRead: () => void;
+  addNotification: (item: Omit<NotificationItem, 'id' | 'createdAt' | 'isRead'>) => void;
 
   // cPanel Cross-Module Synchronization
   syncUserFromCPanel: (user: UserProfile, oldUser?: UserProfile) => Promise<void>;
@@ -3324,6 +3325,19 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
   };
 
+  const addNotification = (item: Omit<NotificationItem, 'id' | 'createdAt' | 'isRead'>) => {
+    const newNotif: NotificationItem = {
+      id: `notif_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      ...item,
+      isRead: false,
+      createdAt: new Date().toISOString().split('T')[0]
+    };
+    setNotifications(prev => [newNotif, ...prev]);
+    try {
+      setDoc(doc(db, 'notifications', newNotif.id), newNotif);
+    } catch (e) {}
+  };
+
   // ==========================================
   // OSIM & INTRAKURIKULER HANDLERS
   // ==========================================
@@ -3869,6 +3883,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         markAllAnnouncementsAsReadForUser,
         markNotificationAsRead,
         markAllNotificationsAsRead,
+        addNotification,
         syncUserFromCPanel,
         syncDeleteUserFromCPanel,
         syncAllCPanelUsers,

@@ -63,6 +63,18 @@ interface AuthContextType {
   isPembinaOsim: boolean;
   isPembinaEkskul: boolean;
   isPembina: boolean;
+  isPengurusOsim: boolean;
+  // Model A: Akun Fungsional Pengurus Inti OSIM (BPH)
+  isOsimKetua: boolean;
+  isOsimWakil: boolean;
+  isOsimSekretaris: boolean;
+  isOsimBendahara: boolean;
+  isOsimBph: boolean;
+  // Supervisi & Hak Veto Wewenang: Pembina OSIM, Waka Kesiswaan & Admin App
+  isSupervisoryVetoAuthorized: boolean;
+  osimDepartmentId?: string;
+  osimDepartmentCode?: string;
+  osimDepartmentName?: string;
   canAccessTab: (tabId: string) => boolean;
   isLoading: boolean;
   loginWithEmail: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
@@ -246,9 +258,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const loginWithDemoRole = (role: UserRole, customUid?: string) => {
     // Pembatasan Ketat: Tiadakan fitur kembali ke administrator untuk semua guru pembina dan guru BK, kecuali admin
-    const isRestrictedRole = currentUser && ['guru_bk', 'pembina', 'pembina_ekskul', 'pembina_osim'].includes(currentUser.role);
+    const isRestrictedRole = currentUser && ['guru_bk', 'pembina', 'pembina_ekskul', 'pembina_osim', 'pengurus_osim'].includes(currentUser.role);
     if (role === 'super_admin' && isRestrictedRole && !isSimulatedFromAdmin) {
-      console.warn('Akses ditolak: Fitur kembali ke Administrator dinonaktifkan untuk peran Guru Pembina dan Guru BK.');
+      console.warn('Akses ditolak: Fitur kembali ke Administrator dinonaktifkan untuk peran Guru Pembina, Guru BK, dan Pengurus OSIM.');
       return;
     }
 
@@ -336,12 +348,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const emailPrefixMatch = u.email && u.email.toLowerCase().split('@')[0] === cleanId;
       const nipMatch = u.nip && u.nip.replace(/[^0-9a-zA-Z]/g, '').toLowerCase() === cleanId.replace(/[^0-9a-zA-Z]/g, '');
       const usernameMatch = u.username && u.username.toLowerCase() === cleanId;
+      // OSIM department functional account matching (e.g. osim.ketua, osim.wakil, osim.sekretaris, osim.bendahara, osim.sekbid1, or shorthand)
+      const osimMatch = u.role === 'pengurus_osim' && (
+        (u.username && u.username.toLowerCase() === cleanId) ||
+        (u.username && u.username.toLowerCase() === `osim.${cleanId.replace(/[^a-z0-9]/g, '')}`) ||
+        (cleanId === 'ketua' && (u.osimRole === 'ketua' || u.username === 'osim.ketua')) ||
+        (cleanId === 'wakil' && (u.osimRole === 'wakil' || u.username === 'osim.wakil')) ||
+        (cleanId === 'sekretaris' && (u.osimRole === 'sekretaris' || u.username === 'osim.sekretaris')) ||
+        (cleanId === 'bendahara' && (u.osimRole === 'bendahara' || u.username === 'osim.bendahara')) ||
+        (cleanId === 'bph' && (u.osimDepartmentCode === 'BPH' || u.osimDepartmentId === 'dept_bph')) ||
+        (cleanId.replace(/[^a-z0-9]/g, '') === (u.osimDepartmentCode || '').toLowerCase().replace(/[^a-z0-9]/g, ''))
+      );
       const roleMatch = (cleanId === 'admin' && (u.role === 'super_admin' || u.role === 'waka_kesiswaan')) ||
                         (cleanId === 'waka' && u.role === 'waka_kesiswaan') ||
                         (cleanId === 'bk' && u.role === 'guru_bk') ||
                         (cleanId === 'osim' && u.role === 'pembina_osim') ||
                         (cleanId === 'pembina' && (u.role === 'pembina_ekskul' || u.role === 'pembina'));
-      return emailMatch || emailPrefixMatch || nipMatch || usernameMatch || roleMatch;
+      return emailMatch || emailPrefixMatch || nipMatch || usernameMatch || osimMatch || roleMatch;
     });
 
     // If not found in users, check if it's a registered student by NIS
@@ -702,6 +725,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const isPembinaOsim = role === 'pembina_osim';
   const isPembinaEkskul = role === 'pembina_ekskul' || role === 'pembina';
   const isPembina = isPembinaEkskul || isPembinaOsim;
+  const isPengurusOsim = role === 'pengurus_osim';
+
+  // Model A: Akun Fungsional Pengurus Inti OSIM (BPH)
+  const osimRole = currentUser?.osimRole;
+  const isOsimKetua = isPengurusOsim && (osimRole === 'ketua' || currentUser?.username === 'osim.ketua');
+  const isOsimWakil = isPengurusOsim && (osimRole === 'wakil' || currentUser?.username === 'osim.wakil');
+  const isOsimSekretaris = isPengurusOsim && (osimRole === 'sekretaris' || currentUser?.username === 'osim.sekretaris');
+  const isOsimBendahara = isPengurusOsim && (osimRole === 'bendahara' || currentUser?.username === 'osim.bendahara');
+  const isOsimBph = isPengurusOsim && (
+    isOsimKetua ||
+    isOsimWakil ||
+    isOsimSekretaris ||
+    isOsimBendahara ||
+    currentUser?.osimDepartmentCode === 'BPH' ||
+    currentUser?.osimDepartmentId === 'dept_bph'
+  );
+
+  // Supervisi & Hak Veto Wewenang: Pembina OSIM, Waka Kesiswaan & Admin App
+  // Sesuai permintaan: "Supervisi & hak veto selain pembina osim & waka kesiswaan tambahkan admin app juga"
+  const isSupervisoryVetoAuthorized = isSuperAdmin || isWaka || isPembinaOsim;
 
   const canAccessTab = (tabId: string): boolean => {
     // Profile, Announcements Center, and Buku Tata Tertib Siswa are accessible by all authenticated users
@@ -771,6 +814,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return allowedEkskulTabs.includes(tabId);
     }
 
+    // Pengurus OSIM (Akun Fungsional Bidang/Departemen Siswa dan Pengurus Inti Model A)
+    // Diberikan akses ke Dashboard OSIM, Pengurus & Proker OSIM, Pengumuman, Tatib, serta Kas (jika Bendahara)
+    if (isPengurusOsim) {
+      const allowedPengurusTabs = ['dashboard', 'osim', 'announcements', 'rules', 'tatib', 'profile'];
+      if (currentUser?.isCashManager || isOsimBendahara) {
+        allowedPengurusTabs.push('cash', 'cash_ledger');
+      }
+      return allowedPengurusTabs.includes(tabId);
+    }
+
     return false;
   };
 
@@ -787,6 +840,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isPembinaOsim,
         isPembinaEkskul,
         isPembina,
+        isPengurusOsim,
+        isOsimKetua,
+        isOsimWakil,
+        isOsimSekretaris,
+        isOsimBendahara,
+        isOsimBph,
+        isSupervisoryVetoAuthorized,
+        osimDepartmentId: currentUser?.osimDepartmentId,
+        osimDepartmentCode: currentUser?.osimDepartmentCode,
+        osimDepartmentName: currentUser?.osimDepartmentName,
         canAccessTab,
         isLoading,
         loginWithEmail,

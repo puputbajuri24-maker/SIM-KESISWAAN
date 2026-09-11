@@ -12,7 +12,8 @@ import {
   HelpCircle,
   X,
   CheckCircle2,
-  Building2
+  Building2,
+  Crown
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSchool } from '../contexts/SchoolContext';
@@ -362,9 +363,12 @@ export const LoginPage: React.FC = () => {
                       autoComplete="username"
                       value={identifier}
                       onChange={e => setIdentifier(e.target.value)}
-                      placeholder="Masukkan username, NIS atau NIP"
+                      placeholder="Username / Akun OSIM / NIP / NIS"
                       className="w-full pl-10 pr-3.5 py-2.5 text-xs rounded-xl bg-slate-50 border border-slate-200 text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0a4829] focus:ring-2 focus:ring-[#0a4829]/20 transition-all font-medium"
                     />
+                  </div>
+                  <div className="flex items-center justify-between mt-1 text-[10px] text-slate-400 font-medium">
+                    <span>Format OSIM: <strong className="text-emerald-700">osim.sekbid1</strong> s/d <strong className="text-emerald-700">osim.sekbid8</strong> / <strong className="text-emerald-700">osim.bph</strong></span>
                   </div>
                 </div>
 
@@ -496,6 +500,16 @@ export const LoginPage: React.FC = () => {
                   <li>Sebutkan <strong>Nama Lengkap</strong> dan <strong>NIP / NIS</strong> terdaftar Anda.</li>
                   <li>Admin akan mereset kata sandi akun Anda ke default (<code>password</code>).</li>
                 </ul>
+              </div>
+
+              <div className="p-3 bg-cyan-50 border border-cyan-100 rounded-xl space-y-1.5">
+                <div className="flex items-center gap-2 text-cyan-900 font-bold">
+                  <Crown className="w-4 h-4 text-cyan-700 shrink-0" />
+                  <span>Akun Pengurus Bidang OSIM (Siswa):</span>
+                </div>
+                <p className="text-[11px] text-cyan-800 leading-relaxed">
+                  Siswa pengurus dapat langsung masuk menggunakan akun fungsional bidang (contoh: <code>osim.bph</code>, <code>osim.sekbid1</code> s/d <code>osim.sekbid8</code>) dengan password default: <code>password</code>.
+                </p>
               </div>
             </div>
 

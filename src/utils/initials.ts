@@ -72,8 +72,10 @@ export function isGuruBKOrPembinaRole(role?: string | null): boolean {
     normalized === 'pembina' ||
     normalized === 'pembina_osim' ||
     normalized === 'pembina_ekskul' ||
+    normalized === 'pengurus_osim' ||
     normalized.includes('bk') ||
     normalized.includes('pembina') ||
+    normalized.includes('pengurus') ||
     normalized.includes('konseling') ||
     normalized.includes('konselor')
   );
@@ -90,6 +92,16 @@ export function getInitialsColorTheme(role?: string | null): {
   label: string;
 } {
   const normalized = (role || '').toLowerCase();
+
+  if (normalized === 'pengurus_osim' || normalized.includes('pengurus')) {
+    return {
+      bgGradient: 'from-cyan-600 via-teal-600 to-sky-800',
+      badgeBg: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30',
+      textColor: 'text-cyan-300',
+      borderColor: 'border-cyan-500/40',
+      label: 'Pengurus Bidang OSIM'
+    };
+  }
 
   if (normalized.includes('bk') || normalized.includes('konsel')) {
     return {

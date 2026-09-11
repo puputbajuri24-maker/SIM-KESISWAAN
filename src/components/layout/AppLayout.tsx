@@ -100,7 +100,7 @@ export interface AppLayoutProps {
 }
 
 export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, children }) => {
-  const { currentUser, allUsers, userRole, isWakaOrAdmin, isWaka, isSuperAdmin, isGuruBK, isPembinaOsim, isPembinaEkskul, isPembina, isSimulatedFromAdmin, returnToAdminSession, logout, loginWithDemoRole, loginWithUser } = useAuth();
+  const { currentUser, allUsers, userRole, isWakaOrAdmin, isWaka, isSuperAdmin, isGuruBK, isPembinaOsim, isPembinaEkskul, isPembina, isPengurusOsim, isSimulatedFromAdmin, returnToAdminSession, logout, loginWithDemoRole, loginWithUser } = useAuth();
   const { schoolSetting, activeAcademicYear, activeSemester, notifications, markNotificationAsRead, markAllNotificationsAsRead, isSyncing, extracurriculars, announcements, markAnnouncementAsRead, markAllAnnouncementsAsReadForUser } = useSchool();
   const { timezoneMode, resolvedTimezone, timezoneAbbr, utcOffsetString, formattedTime, formattedDate } = useAppTimezone();
 
@@ -275,7 +275,19 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
     setIsAnnouncementPopupOpen(false);
   };
 
-  const unreadNotifs = notifications.filter(n => !n.isRead);
+  const relevantNotifications = useMemo(() => {
+    return notifications.filter(n => {
+      if (n.userId && n.userId === currentUser?.uid) return true;
+      if (!n.targetRole) return true;
+      if (n.targetRole === 'pembina_osim' && (isPembinaOsim || isWakaOrAdmin)) return true;
+      if (n.targetRole === 'waka_kesiswaan' && isWakaOrAdmin) return true;
+      if (n.targetRole === 'pengurus_osim' && (isPengurusOsim || isPembinaOsim || isWakaOrAdmin)) return true;
+      if (n.targetRole === 'admin' && isWakaOrAdmin) return true;
+      return false;
+    });
+  }, [notifications, currentUser, isPembinaOsim, isWakaOrAdmin, isPengurusOsim]);
+
+  const unreadNotifs = relevantNotifications.filter(n => !n.isRead);
   const totalUnreadCount = unreadAnnouncements.length + unreadNotifs.length;
   const [notifTab, setNotifTab] = useState<'all' | 'announcements' | 'system'>('all');
 
@@ -466,6 +478,29 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
           title: 'PENGATURAN SISTEM',
           items: [
             { id: 'profile', label: 'Pengaturan Profil', icon: UserCog }
+          ]
+        }
+      ]
+    : isPengurusOsim
+    ? [
+        {
+          title: 'PORTAL BIDANG OSIM',
+          items: [
+            { id: 'dashboard', label: 'Beranda Kemandirian', icon: Home },
+            { id: 'osim', label: 'Proker & Mandat Bidang', icon: Crown, tag: currentUser?.osimDepartmentCode || 'BIDANG' }
+          ]
+        },
+        {
+          title: 'INFORMASI & REGULASI',
+          items: [
+            { id: 'announcements', label: 'Pusat Pengumuman', icon: Megaphone, count: unreadAnnouncements.length ? `${unreadAnnouncements.length}` : undefined },
+            { id: 'rules', label: 'Buku Tata Tertib Siswa', icon: BookOpenCheck, tag: 'TATIB' }
+          ]
+        },
+        {
+          title: 'AKUN PENGURUS',
+          items: [
+            { id: 'profile', label: 'Profil Akun Bidang', icon: UserCog }
           ]
         }
       ]
@@ -897,7 +932,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
 
                       {/* Tab 2: System Notifications */}
                       {(notifTab === 'all' || notifTab === 'system') &&
-                        notifications.map(n => (
+                        relevantNotifications.map(n => (
                           <div
                             key={`notif_${n.id}`}
                             onClick={() => {
@@ -929,8 +964,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
 
                       {/* Empty state */}
                       {((notifTab === 'announcements' && relevantAnnouncements.length === 0) ||
-                        (notifTab === 'system' && notifications.length === 0) ||
-                        (notifTab === 'all' && relevantAnnouncements.length === 0 && notifications.length === 0)) && (
+                        (notifTab === 'system' && relevantNotifications.length === 0) ||
+                        (notifTab === 'all' && relevantAnnouncements.length === 0 && relevantNotifications.length === 0)) && (
                         <div className="py-8 text-center text-slate-500 text-xs">
                           <Megaphone className="w-6 h-6 mx-auto mb-2 text-slate-400 opacity-50" />
                           <span>Tidak ada pesan atau notifikasi baru</span>
@@ -1007,6 +1042,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                         ? 'Guru BK'
                         : currentUser.role === 'pembina_osim'
                         ? 'Pembina OSIM'
+                        : currentUser.role === 'pengurus_osim'
+                        ? (currentUser.osimDepartmentCode || 'Pengurus OSIM')
                         : 'Pembina Ekskul'}
                     </div>
                   </div>
@@ -1055,6 +1092,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                                 ? 'Guru BK'
                                 : currentUser.role === 'pembina_osim'
                                 ? 'Pembina OSIM'
+                                : currentUser.role === 'pengurus_osim'
+                                ? `Pengurus OSIM (${currentUser.osimDepartmentCode || 'Bidang'})`
                                 : 'Pembina Ekstrakurikuler'}
                             </span>
                           </div>

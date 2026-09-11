@@ -16,7 +16,10 @@ import {
   HeartHandshake,
   Home,
   Mail,
-  GraduationCap
+  GraduationCap,
+  Sparkles,
+  BookOpenCheck,
+  ArrowUpRight
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSchool } from '../contexts/SchoolContext';
@@ -29,7 +32,7 @@ interface DashboardPageProps {
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpenAttendance }) => {
-  const { currentUser, isSuperAdmin, isWaka, isPembinaOsim, isPembinaEkskul, isPembina, isGuruBK } = useAuth();
+  const { currentUser, isSuperAdmin, isWaka, isPembinaOsim, isPembinaEkskul, isPembina, isGuruBK, isPengurusOsim } = useAuth();
   const {
     students,
     extracurriculars,
@@ -178,6 +181,233 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
     setSeedMsg(res.message);
     setTimeout(() => setSeedMsg(null), 5000);
   };
+
+  // ==========================================
+  // VIEW 0: PENGURUS OSIM (SISWA PENGELOLA BIDANG)
+  // ==========================================
+  if (isPengurusOsim) {
+    const isBph = currentUser?.osimDepartmentId === 'dept_bph' || currentUser?.osimDepartmentCode === 'BPH';
+    const deptCode = currentUser?.osimDepartmentCode || 'BIDANG';
+
+    // Programs matching this department (or all for BPH)
+    const deptPrograms = osimPrograms.filter(p => {
+      if (isBph) return true;
+      if (!currentUser?.osimDepartmentName) return true;
+      const deptNormalized = currentUser.osimDepartmentName.toLowerCase().trim();
+      const prokerSekbid = (p.sekbid || '').toLowerCase().trim();
+      return prokerSekbid.includes(deptNormalized) || deptNormalized.includes(prokerSekbid) || (currentUser?.osimDepartmentCode && prokerSekbid.includes(currentUser.osimDepartmentCode.toLowerCase()));
+    });
+
+    const totalDeptBudgetEst = deptPrograms.reduce((sum, p) => sum + (Number(p.budgetEstimated) || 0), 0);
+    const totalDeptBudgetReal = deptPrograms.reduce((sum, p) => sum + (Number(p.budgetRealized) || 0), 0);
+    const completedDeptProker = deptPrograms.filter(p => p.status === 'Selesai').length;
+    const activeDeptProker = deptPrograms.filter(p => p.status === 'Berlangsung' || p.status === 'Disetujui').length;
+    const draftDeptProker = deptPrograms.filter(p => p.status === 'Draft' || p.status === 'Diajukan').length;
+    const avgDeptProgress = deptPrograms.length > 0 
+      ? Math.round(deptPrograms.reduce((acc, p) => acc + (p.progressPercentage || 0), 0) / deptPrograms.length)
+      : 0;
+
+    return (
+      <div className="space-y-4 font-sans text-xs">
+        {/* Active Official Announcements Banner */}
+        <AnnouncementDashboardWidget onNavigate={onNavigate} />
+
+        {/* Top Header Learning Portal Banner */}
+        <div className="p-4 bg-gradient-to-r from-[#0c121e] via-[#10192e] to-[#0a1628] border border-cyan-500/30 rounded-xl shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-start space-x-3.5">
+            <div className="w-10 h-10 bg-cyan-500/10 border border-cyan-500/40 rounded-xl flex items-center justify-center text-cyan-400 font-mono font-bold text-sm shrink-0 shadow-inner">
+              <Crown className="w-5 h-5 text-cyan-400" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="font-mono text-[10px] font-bold text-cyan-400 uppercase tracking-widest bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">
+                  PORTAL SISWA OSIM • {deptCode}
+                </span>
+                <span className="bg-emerald-500/10 text-emerald-400 text-[10px] px-2 py-0.5 rounded border border-emerald-500/20 font-medium">
+                  {activeAcademicYear} ({activeSemester})
+                </span>
+              </div>
+              <h2 className="text-base sm:text-lg font-bold text-white mt-1">
+                {currentUser?.displayName || 'Pengurus Bidang'}
+              </h2>
+              <p className="text-zinc-400 text-xs mt-0.5 max-w-2xl">
+                {isBph 
+                  ? 'Portal koordinasi Badan Pengurus Harian untuk memantau sinergi 8 Sekbid dan tata kelola program intrakurikuler madrasah.'
+                  : 'Ruang belajar mandiri bagi siswa pengurus untuk merencanakan program kerja, mengelola anggaran, serta menyusun LPJ kegiatan.'}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 font-mono">
+            <button
+              onClick={() => onNavigate('osim')}
+              className="px-3 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-medium text-xs flex items-center space-x-1.5 transition-all shadow-[0_0_15px_rgba(6,182,212,0.3)] hover:scale-[1.02]"
+            >
+              <Plus className="w-4 h-4" />
+              <span>+ BUAT PROKER BARU</span>
+            </button>
+            <button
+              onClick={() => onNavigate('rules')}
+              className="px-3 py-2 rounded-lg bg-[#161f30] border border-cyan-500/30 hover:border-cyan-400 text-cyan-200 font-medium text-xs flex items-center space-x-1.5 transition-colors"
+            >
+              <BookOpenCheck className="w-4 h-4 text-cyan-400" />
+              <span>TATA TERTIB SISWA</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Guided Learning Banner (Edukasi Mandiri Siswa) */}
+        <div className="bg-cyan-950/20 border border-cyan-500/20 rounded-xl p-3.5 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-zinc-300">
+          <div className="flex items-center space-x-3">
+            <div className="w-8 h-8 rounded-lg bg-cyan-500/20 text-cyan-300 flex items-center justify-center shrink-0">
+              <Sparkles className="w-4 h-4 text-cyan-400" />
+            </div>
+            <div>
+              <h4 className="font-bold text-xs text-white">Panduan Kemandirian Pengurus Bidang OSIM</h4>
+              <p className="text-[11px] text-zinc-400">
+                1. Rancang program kerja di menu OSIM → 2. Ajukan ke Pembina OSIM untuk persetujuan → 3. Laksanakan kegiatan & catat LPJ secara transparan.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => onNavigate('osim')}
+            className="text-[11px] text-cyan-400 hover:text-cyan-300 underline font-medium whitespace-nowrap self-end md:self-center"
+          >
+            Buka Pengelolaan Program Kerja →
+          </button>
+        </div>
+
+        {/* Department KPIs */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <StatCard
+            id="kpi-osim-dept-proker"
+            title="TOTAL PROKER BIDANG"
+            value={deptPrograms.length}
+            icon={Crown}
+            subtitle={isBph ? 'Semua Sekbid Madrasah' : `Khusus ${deptCode}`}
+            colorTheme="cyan"
+            onClick={() => onNavigate('osim')}
+          />
+          <StatCard
+            id="kpi-osim-dept-active"
+            title="SEDANG BERJALAN / DISETUJUI"
+            value={activeDeptProker}
+            icon={ClipboardCheck}
+            subtitle={`${completedDeptProker} Telah Selesai`}
+            colorTheme="emerald"
+            onClick={() => onNavigate('osim')}
+          />
+          <StatCard
+            id="kpi-osim-dept-progress"
+            title="RATA-RATA PROGRES"
+            value={`${avgDeptProgress}%`}
+            icon={CheckCircle2}
+            subtitle={`${draftDeptProker} Masih Draft / Diajukan`}
+            colorTheme="amber"
+            onClick={() => onNavigate('osim')}
+          />
+          <StatCard
+            id="kpi-osim-dept-budget"
+            title="ESTIMASI ANGGARAN (RAB)"
+            value={`Rp ${(totalDeptBudgetEst / 1000000).toFixed(1)}Jt`}
+            icon={FileSpreadsheet}
+            subtitle={`Realisasi: Rp ${(totalDeptBudgetReal / 1000000).toFixed(1)}Jt`}
+            colorTheme="blue"
+            onClick={() => onNavigate('osim')}
+          />
+        </div>
+
+        {/* List of Prokers for this Department */}
+        <div className="bg-[#121620] border border-zinc-800 rounded-xl p-4 space-y-3 shadow-md">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <FileText className="w-4 h-4 text-cyan-400" />
+              <h3 className="font-bold text-white text-xs uppercase tracking-wide">
+                Daftar Program Kerja {isBph ? 'Semua Sekbid' : deptCode}
+              </h3>
+            </div>
+            <button
+              onClick={() => onNavigate('osim')}
+              className="text-[11px] text-cyan-400 hover:text-cyan-300 font-medium flex items-center space-x-1"
+            >
+              <span>Kelola & Isi LPJ Lengkap</span>
+              <ArrowUpRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {deptPrograms.length === 0 ? (
+            <div className="p-8 text-center rounded-lg border border-dashed border-zinc-800 bg-[#0e121a]">
+              <Crown className="w-8 h-8 text-zinc-600 mx-auto mb-2" />
+              <p className="text-zinc-400 font-medium">Belum ada program kerja yang didaftarkan untuk bidang ini.</p>
+              <p className="text-zinc-500 text-[11px] mt-1">
+                Mulailah belajar menyusun agenda kegiatan mandiri dengan menekan tombol di bawah.
+              </p>
+              <button
+                onClick={() => onNavigate('osim')}
+                className="mt-3 px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-medium text-xs inline-flex items-center space-x-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Buat Usulan Program Kerja Pertama</span>
+              </button>
+            </div>
+          ) : (
+            <div className="divide-y divide-zinc-800/80 border border-zinc-800 rounded-lg overflow-hidden">
+              {deptPrograms.map((p) => {
+                const statusBadge = 
+                  p.status === 'Disetujui' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' :
+                  p.status === 'Berlangsung' ? 'bg-blue-500/10 text-blue-400 border-blue-500/30' :
+                  p.status === 'Selesai' ? 'bg-purple-500/10 text-purple-400 border-purple-500/30' :
+                  p.status === 'Diajukan' ? 'bg-amber-500/10 text-amber-400 border-amber-500/30' :
+                  'bg-zinc-700/20 text-zinc-400 border-zinc-700';
+
+                return (
+                  <div key={p.id} className="p-3 bg-[#10141e] hover:bg-[#151b29] transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center space-x-2">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${statusBadge}`}>
+                          {p.status.toUpperCase()}
+                        </span>
+                        <span className="text-[10px] text-zinc-400 font-mono">
+                          {p.startDate}
+                        </span>
+                        {p.lpjNotes && (
+                          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                            LPJ TERSUSUN
+                          </span>
+                        )}
+                      </div>
+                      <h4 className="font-bold text-white text-xs mt-1 truncate">
+                        {p.title}
+                      </h4>
+                      <p className="text-[11px] text-zinc-400 truncate mt-0.5">
+                        PJ: {p.personInCharge || 'Pengurus'} • Lokasi: {p.location} • RAB: Rp {Number(p.budgetEstimated).toLocaleString('id-ID')}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center space-x-3 shrink-0">
+                      <div className="text-right hidden md:block">
+                        <div className="text-[10px] text-zinc-400">Progres Kegiatan</div>
+                        <div className="text-xs font-bold text-cyan-400">{p.progressPercentage}%</div>
+                      </div>
+                      <div className="w-16 bg-zinc-800 h-1.5 rounded-full overflow-hidden hidden md:block">
+                        <div className="bg-cyan-500 h-full rounded-full" style={{ width: `${p.progressPercentage}%` }} />
+                      </div>
+                      <button
+                        onClick={() => onNavigate('osim')}
+                        className="px-2.5 py-1 rounded bg-zinc-800 hover:bg-cyan-600 hover:text-white text-zinc-300 text-[11px] font-medium transition-colors"
+                      >
+                        Buka Proker
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   // ==========================================
   // VIEW 1: PEMBINA OSIM DASHBOARD
