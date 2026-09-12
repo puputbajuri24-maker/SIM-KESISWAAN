@@ -119,6 +119,17 @@ const MainContent: React.FC = () => {
     }
   }, [currentUser, activeTab, canAccessTab]);
 
+  // Clean URL hash if visiting without an active session
+  useEffect(() => {
+    if (!currentUser) {
+      if (window.location.hash) {
+        try {
+          window.history.replaceState(null, '', window.location.pathname + window.location.search);
+        } catch (e) {}
+      }
+    }
+  }, [currentUser]);
+
   // If not logged in, show the official SIM Kesiswaan Login Page
   if (!currentUser) {
     return <LoginPage />;

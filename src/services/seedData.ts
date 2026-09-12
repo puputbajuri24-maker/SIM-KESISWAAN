@@ -104,7 +104,7 @@ export const DEFAULT_SUPER_ADMIN: UserProfile = {
   uid: 'user_super_admin',
   email: 'admin@sekolah.sch.id',
   username: 'admin',
-  password: 'password1',
+  password: 'password',
   displayName: 'Puput Eka Bajuri, S. Pd., M. Or., Gr',
   role: 'super_admin',
   phone: '082298836027',

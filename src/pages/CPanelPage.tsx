@@ -115,6 +115,7 @@ export const CPanelPage: React.FC = () => {
   const [isClearDataModalOpen, setIsClearDataModalOpen] = useState(false);
   const [isAcademicYearModalOpen, setIsAcademicYearModalOpen] = useState(false);
   const [selectedUserForAction, setSelectedUserForAction] = useState<UserProfile | null>(null);
+  const [showPasswordInModal, setShowPasswordInModal] = useState(false);
 
   // School Setting form state for Master Control
   const [schoolFormData, setSchoolFormData] = useState<SchoolSetting>({
@@ -301,11 +302,13 @@ export const CPanelPage: React.FC = () => {
       isCashManager: false,
       cashManagerTitle: 'Bendahara Kesiswaan'
     });
+    setShowPasswordInModal(false);
     setIsAddModalOpen(true);
   };
 
   const handleOpenEditModal = (u: UserProfile) => {
     setSelectedUserForAction(u);
+    setShowPasswordInModal(false);
     setFormData({
       displayName: u.displayName || '',
       nip: u.nip || '',
@@ -1820,13 +1823,27 @@ export const CPanelPage: React.FC = () => {
             </div>
             <div>
               <label className="block text-zinc-200 font-bold mb-1">Password Default *</label>
-              <input
-                type="text"
-                required
-                value={formData.password}
-                onChange={e => setFormData({ ...formData, password: e.target.value })}
-                className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-white focus:outline-none focus:border-emerald-500 font-mono"
-              />
+              <div className="relative">
+                <input
+                  type={showPasswordInModal ? "text" : "password"}
+                  required
+                  value={formData.password}
+                  onChange={e => setFormData({ ...formData, password: e.target.value })}
+                  placeholder="Masukkan password akun"
+                  className="w-full px-3 py-2 pr-10 rounded-lg bg-[#1c1c20] border border-[#323238] text-white focus:outline-none focus:border-emerald-500 font-mono"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPasswordInModal(!showPasswordInModal)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white p-1"
+                  title={showPasswordInModal ? "Sembunyikan password" : "Tampilkan password"}
+                >
+                  {showPasswordInModal ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <p className="text-[11px] text-zinc-400 mt-1">
+                Password awal untuk masuk ke aplikasi. Pengguna dapat mengubahnya mandiri di menu Profil.
+              </p>
             </div>
           </div>
 
@@ -1966,14 +1983,28 @@ export const CPanelPage: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block text-zinc-200 font-bold mb-1">Password</label>
-              <input
-                type="text"
-                required
-                value={formData.password}
-                onChange={e => setFormData({ ...formData, password: e.target.value })}
-                className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-white font-mono"
-              />
+              <label className="block text-zinc-200 font-bold mb-1">Password Akun</label>
+              <div className="relative">
+                <input
+                  type={showPasswordInModal ? "text" : "password"}
+                  required
+                  value={formData.password}
+                  onChange={e => setFormData({ ...formData, password: e.target.value })}
+                  placeholder="Masukkan kata sandi baru"
+                  className="w-full px-3 py-2 pr-10 rounded-lg bg-[#1c1c20] border border-[#323238] text-white font-mono focus:outline-none focus:border-emerald-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPasswordInModal(!showPasswordInModal)}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white p-1"
+                  title={showPasswordInModal ? "Sembunyikan password" : "Tampilkan password"}
+                >
+                  {showPasswordInModal ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <p className="text-[11px] text-zinc-400 mt-1">
+                Password ini akan langsung aktif untuk login akun (menggantikan password lama / default).
+              </p>
             </div>
           </div>
 

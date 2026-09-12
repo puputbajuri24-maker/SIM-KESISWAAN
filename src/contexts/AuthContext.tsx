@@ -91,12 +91,14 @@ interface AuthContextType {
   updateUser: (uid: string, updated: Partial<UserProfile>) => Promise<{ success: boolean; error?: string }>;
   deleteUser: (uid: string) => Promise<{ success: boolean; error?: string }>;
   resetUserPassword: (uid: string, newPassword?: string) => Promise<{ success: boolean; error?: string }>;
+  changePassword: (currentPass: string, newPass: string) => Promise<{ success: boolean; error?: string }>;
   syncUsersFromTeachers: (teachersList: Teacher[], extracurricularsList?: Extracurricular[]) => Promise<number>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const LOCAL_STORAGE_USER_KEY = 'sim_kesiswaan_active_user';
+const SESSION_STORAGE_USER_KEY = 'sim_kesiswaan_session_user';
 const LOCAL_STORAGE_ALL_USERS_KEY = 'sim_kesiswaan_all_users_registry';
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -109,7 +111,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (Array.isArray(parsed) && parsed.length > 0) {
           const map = new Map<string, UserProfile>();
           DEMO_USERS.forEach(u => map.set(u.uid, u));
-          parsed.filter(u => !isPurgedUser(u)).forEach(u => map.set(u.uid, { ...map.get(u.uid), ...u }));
+          parsed.filter(u => !isPurgedUser(u)).forEach(u => {
+            const existing = map.get(u.uid);
+            const resolvedPassword = (u.password && u.password.trim()) || existing?.password || 'password';
+            map.set(u.uid, { ...existing, ...u, password: resolvedPassword });
+          });
           const res = Array.from(map.values()).filter(u => !isPurgedUser(u));
           return res.length > 0 ? res : DEMO_USERS;
         }
@@ -147,7 +153,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               const map = new Map<string, UserProfile>();
               DEMO_USERS.forEach(u => map.set(u.uid, u));
               prev.filter(u => !isPurgedUser(u)).forEach(u => map.set(u.uid, { ...map.get(u.uid), ...u }));
-              firestoreUsers.forEach(u => map.set(u.uid, { ...map.get(u.uid), ...u }));
+              firestoreUsers.forEach(u => {
+                const existing = map.get(u.uid);
+                // Preserve existing custom password if firestore user doc has empty password
+                const resolvedPassword = (u.password && u.password.trim()) || existing?.password || 'password';
+                map.set(u.uid, { ...existing, ...u, password: resolvedPassword });
+              });
               const merged = Array.from(map.values()).filter(u => !isPurgedUser(u));
               localStorage.setItem(LOCAL_STORAGE_ALL_USERS_KEY, JSON.stringify(merged));
               return merged;
@@ -161,20 +172,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchFirestoreUsers();
   }, []);
 
-  // Default to active saved user or DEMO_USERS[0] (Super Administrator)
+  // Authentication state: MUST default to null on new browser tab / opening the URL
+  // so that the Login Page is presented first, requiring manual username & password entry.
+  // Within the same active browser tab session, sessionStorage preserves the session across reloads.
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
-    const saved = localStorage.getItem(LOCAL_STORAGE_USER_KEY);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
+    // Clear legacy persistent auto-login in localStorage so users aren't auto-logged into admin
+    try {
+      localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
+    } catch {}
+
+    try {
+      const savedSession = sessionStorage.getItem(SESSION_STORAGE_USER_KEY);
+      if (savedSession) {
+        const parsed = JSON.parse(savedSession);
         if (parsed && !isPurgedUser(parsed)) {
           return parsed;
         }
-      } catch {
-        return DEMO_USERS[0];
       }
-    }
-    return DEMO_USERS[0]; // Default Super Administrator
+    } catch {}
+
+    return null; // Always require manual login when opening the app
   });
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -197,9 +214,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     if (currentUser) {
-      localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(currentUser));
+      try {
+        sessionStorage.setItem(SESSION_STORAGE_USER_KEY, JSON.stringify(currentUser));
+      } catch {}
     } else {
-      localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
+      try {
+        sessionStorage.removeItem(SESSION_STORAGE_USER_KEY);
+        localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
+      } catch {}
     }
   }, [currentUser]);
 
@@ -400,9 +422,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: false, error: 'Akun Anda dinonaktifkan oleh Administrator. Hubungi Proktor / Super Admin.' };
       }
 
-      // Check password: user.password or default fallback '123456' / 'password'
-      const userPassword = foundUser.password || 'password';
-      if (cleanPass === userPassword || cleanPass === 'password' || cleanPass === '123456') {
+      // Check password: user.password or default fallback 'password'
+      const userPassword = (foundUser.password && foundUser.password.trim()) || 'password';
+      if (cleanPass === userPassword) {
         // Direct login clears any temporary simulation session
         setAdminImpersonator(null);
         try {
@@ -417,7 +439,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } else {
         setIsLoading(false);
         recordSystemAuditLog('LOGIN_FAILED_PASSWORD', 'Keamanan Sistem', `Percobaan login gagal (Password salah) untuk: ${foundUser.displayName} (${identifier})`, foundUser);
-        return { success: false, error: 'Password yang Anda masukkan salah. Default password: password atau hubungi Admin cPanel.' };
+        return { success: false, error: 'Password yang Anda masukkan salah. Pastikan memasukkan kata sandi terbaru Anda atau hubungi Admin cPanel jika lupa kata sandi.' };
       }
     }
 
@@ -456,16 +478,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setAdminImpersonator(null);
     try {
       sessionStorage.removeItem('sim_admin_impersonator');
+      sessionStorage.removeItem(SESSION_STORAGE_USER_KEY);
+      localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
+      localStorage.removeItem('simkesiswaan_active_tab');
     } catch {}
     setCurrentUser(null);
-    localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
   };
 
   const updateProfileState = (updated: Partial<UserProfile>) => {
     if (!currentUser) return;
     const next = { ...currentUser, ...updated, updatedAt: new Date().toISOString() };
     setCurrentUser(next);
-    setAllUsers(prev => prev.map(u => u.uid === next.uid ? next : u));
+    try {
+      sessionStorage.setItem(SESSION_STORAGE_USER_KEY, JSON.stringify(next));
+    } catch {}
+    setAllUsers(prev => {
+      const nextList = prev.map(u => u.uid === next.uid ? next : u);
+      localStorage.setItem(LOCAL_STORAGE_ALL_USERS_KEY, JSON.stringify(nextList));
+      return nextList;
+    });
+    try {
+      setDoc(doc(db, 'users', next.uid), updated, { merge: true }).catch(() => {});
+    } catch (e) {}
     recordSystemAuditLog('UPDATE_SELF_PROFILE', 'Profil Akun', `Pengguna ${next.displayName} memperbarui informasi profil mandiri`, next);
   };
 
@@ -495,7 +529,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       try {
-        setDoc(doc(db, 'users', newUser.uid), newUser, { merge: true }).catch(() => {});
+        await setDoc(doc(db, 'users', newUser.uid), newUser, { merge: true });
       } catch (e) {}
 
       recordSystemAuditLog('CREATE_USER', 'Manajemen Pengguna', `Administrator membuat akun baru: ${newUser.displayName} (${newUser.email || newUser.nip}) [${newUser.role.toUpperCase()}]`, currentUser);
@@ -509,14 +543,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateUser = async (uid: string, updated: Partial<UserProfile>): Promise<{ success: boolean; error?: string }> => {
     try {
       let targetUserDisplayName = uid;
+      let mergedUser: UserProfile | undefined;
+
       setAllUsers(prev => {
         const next = prev.map(u => {
           if (u.uid === uid) {
             targetUserDisplayName = u.displayName;
             const merged = { ...u, ...updated, updatedAt: new Date().toISOString() };
-            if (currentUser?.uid === uid) {
-              setCurrentUser(merged);
-            }
+            mergedUser = merged;
             return merged;
           }
           return u;
@@ -525,9 +559,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return next;
       });
 
+      // Synchronize active session if the edited user is currently logged in
+      if (currentUser?.uid === uid && mergedUser) {
+        setCurrentUser(mergedUser);
+        try {
+          sessionStorage.setItem(SESSION_STORAGE_USER_KEY, JSON.stringify(mergedUser));
+        } catch {}
+      }
+
       try {
-        setDoc(doc(db, 'users', uid), updated, { merge: true }).catch(() => {});
-      } catch (e) {}
+        await setDoc(doc(db, 'users', uid), updated, { merge: true });
+      } catch (e) {
+        console.warn('Firestore updateUser sync note:', e);
+      }
 
       recordSystemAuditLog('UPDATE_USER', 'Manajemen Pengguna', `Administrator memperbarui akun: ${targetUserDisplayName} (ID: ${uid})`, currentUser);
 
@@ -550,7 +594,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       try {
-        deleteDoc(doc(db, 'users', uid)).catch(() => {});
+        await deleteDoc(doc(db, 'users', uid));
       } catch (e) {}
 
       recordSystemAuditLog('DELETE_USER', 'Manajemen Pengguna', `Administrator menghapus akun: ${targetUser?.displayName || uid} (${targetUser?.email || '-'})`, currentUser);
@@ -564,13 +608,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const resetUserPassword = async (uid: string, newPassword = 'password'): Promise<{ success: boolean; error?: string }> => {
     try {
       const targetUser = allUsers.find(u => u.uid === uid);
+      let updatedUserObj: UserProfile | undefined;
+
       setAllUsers(prev => {
         const next = prev.map(u => {
           if (u.uid === uid) {
             const merged = { ...u, password: newPassword, updatedAt: new Date().toISOString() };
-            if (currentUser?.uid === uid) {
-              setCurrentUser(merged);
-            }
+            updatedUserObj = merged;
             return merged;
           }
           return u;
@@ -579,15 +623,78 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return next;
       });
 
-      try {
-        setDoc(doc(db, 'users', uid), { password: newPassword, updatedAt: new Date().toISOString() }, { merge: true }).catch(() => {});
-      } catch (e) {}
+      if (currentUser?.uid === uid && updatedUserObj) {
+        setCurrentUser(updatedUserObj);
+        try {
+          sessionStorage.setItem(SESSION_STORAGE_USER_KEY, JSON.stringify(updatedUserObj));
+        } catch {}
+      }
 
-      recordSystemAuditLog('RESET_PASSWORD', 'Keamanan Akun', `Administrator mereset kata sandi akun: ${targetUser?.displayName || uid}`, currentUser);
+      try {
+        await setDoc(doc(db, 'users', uid), { password: newPassword, updatedAt: new Date().toISOString() }, { merge: true });
+      } catch (e) {
+        console.warn('Firestore resetUserPassword sync note:', e);
+      }
+
+      recordSystemAuditLog('RESET_PASSWORD', 'Keamanan Akun', `Administrator mereset kata sandi akun: ${targetUser?.displayName || uid} menjadi default (${newPassword})`, currentUser);
 
       return { success: true };
     } catch (e: any) {
       return { success: false, error: e?.message || 'Gagal mereset password akun.' };
+    }
+  };
+
+  const changePassword = async (currentPass: string, newPass: string): Promise<{ success: boolean; error?: string }> => {
+    if (!currentUser) {
+      return { success: false, error: 'Sesi akun tidak aktif.' };
+    }
+
+    const cleanCurrent = currentPass.trim();
+    const cleanNew = newPass.trim();
+
+    // Verify existing password
+    const existingPassword = (currentUser.password && currentUser.password.trim()) || 'password';
+    if (cleanCurrent !== existingPassword) {
+      return { success: false, error: 'Kata sandi saat ini yang Anda masukkan salah.' };
+    }
+
+    if (cleanNew.length < 6) {
+      return { success: false, error: 'Kata sandi baru minimal 6 karakter demi keamanan akun Anda.' };
+    }
+
+    if (cleanNew === existingPassword) {
+      return { success: false, error: 'Kata sandi baru tidak boleh sama persis dengan kata sandi saat ini.' };
+    }
+
+    try {
+      const updatedUser: UserProfile = {
+        ...currentUser,
+        password: cleanNew,
+        updatedAt: new Date().toISOString()
+      };
+
+      setCurrentUser(updatedUser);
+      try {
+        sessionStorage.setItem(SESSION_STORAGE_USER_KEY, JSON.stringify(updatedUser));
+      } catch {}
+
+      setAllUsers(prev => {
+        const next = prev.map(u => u.uid === currentUser.uid ? updatedUser : u);
+        localStorage.setItem(LOCAL_STORAGE_ALL_USERS_KEY, JSON.stringify(next));
+        return next;
+      });
+
+      try {
+        await setDoc(doc(db, 'users', currentUser.uid), { password: cleanNew, updatedAt: updatedUser.updatedAt }, { merge: true });
+      } catch (e) {
+        console.warn('Firestore changePassword sync note:', e);
+      }
+
+      recordSystemAuditLog('CHANGE_PASSWORD', 'Keamanan Akun', `Pengguna ${currentUser.displayName} (${currentUser.role.toUpperCase()}) berhasil memperbarui kata sandi akun`, updatedUser);
+
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e?.message || 'Gagal memperbarui kata sandi akun.' };
     }
   };
 
@@ -865,6 +972,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateUser,
         deleteUser,
         resetUserPassword,
+        changePassword,
         syncUsersFromTeachers
       }}
     >
