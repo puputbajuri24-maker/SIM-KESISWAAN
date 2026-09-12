@@ -416,6 +416,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     if (foundUser) {
+      // Synchronize latest credential from Firestore in real-time if Admin or Pembina updated it
+      try {
+        const userDocRef = doc(db, 'users', foundUser.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        if (userDocSnap.exists()) {
+          const freshData = userDocSnap.data() as UserProfile;
+          if (freshData.password && freshData.password.trim()) {
+            foundUser = { ...foundUser, ...freshData };
+            setAllUsers(prev => {
+              const updatedList = prev.map(u => u.uid === foundUser!.uid ? { ...u, ...freshData } : u);
+              try {
+                localStorage.setItem(LOCAL_STORAGE_ALL_USERS_KEY, JSON.stringify(updatedList));
+              } catch {}
+              return updatedList;
+            });
+          }
+        }
+      } catch (e) {}
+
       if (foundUser.status === 'Nonaktif') {
         setIsLoading(false);
         recordSystemAuditLog('LOGIN_FAILED_BLOCKED', 'Keamanan Sistem', `Percobaan login gagal untuk akun dinonaktifkan: ${foundUser.displayName} (${identifier})`, foundUser);
@@ -432,14 +451,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } catch {}
         const updated = { ...foundUser, lastLogin: new Date().toISOString() };
         setCurrentUser(updated);
-        setAllUsers(prev => prev.map(u => u.uid === foundUser.uid ? updated : u));
+        setAllUsers(prev => prev.map(u => u.uid === foundUser!.uid ? updated : u));
         recordSystemAuditLog('LOGIN_SUCCESS', 'Autentikasi & Keamanan', `Pengguna ${foundUser.displayName} (${foundUser.role.toUpperCase()}) berhasil masuk ke aplikasi`, updated);
         setIsLoading(false);
         return { success: true };
       } else {
         setIsLoading(false);
         recordSystemAuditLog('LOGIN_FAILED_PASSWORD', 'Keamanan Sistem', `Percobaan login gagal (Password salah) untuk: ${foundUser.displayName} (${identifier})`, foundUser);
-        return { success: false, error: 'Password yang Anda masukkan salah. Pastikan memasukkan kata sandi terbaru Anda atau hubungi Admin cPanel jika lupa kata sandi.' };
+        return {
+          success: false,
+          error: 'Kata sandi (password) yang Anda masukkan salah. Jika Admin App atau Pembina telah mengganti kata sandi akun Anda, kata sandi lama otomatis tidak berlaku lagi dan Anda wajib menggunakan kata sandi yang terbaru.'
+        };
       }
     }
 
@@ -647,6 +669,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const changePassword = async (currentPass: string, newPass: string): Promise<{ success: boolean; error?: string }> => {
     if (!currentUser) {
       return { success: false, error: 'Sesi akun tidak aktif.' };
+    }
+
+    if (currentUser.role === 'pengurus_osim') {
+      return {
+        success: false,
+        error: 'Akun Siswa Pengurus OSIM tidak memiliki hak untuk mengganti kata sandi secara mandiri. Seluruh akun login dikelola secara terpusat oleh Admin App dan Pembina OSIM.'
+      };
     }
 
     const cleanCurrent = currentPass.trim();
