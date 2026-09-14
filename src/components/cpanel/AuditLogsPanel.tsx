@@ -576,9 +576,9 @@ export const AuditLogsPanel: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#27272a]/60 text-xs">
-                  {paginatedLogs.map(log => (
+                  {paginatedLogs.map((log, index) => (
                     <tr
-                      key={log.id}
+                      key={log.id ? `audit-${log.id}-${index}` : `audit-idx-${index}`}
                       onClick={() => {
                         setSelectedLog(log);
                         setIsDetailModalOpen(true);

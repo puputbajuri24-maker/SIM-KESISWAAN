@@ -84,6 +84,8 @@ import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc, addDoc, writeBa
 import { useAuth } from './AuthContext';
 import { findMatchingClass, resolveStudentClass, isStudentInClass } from '../utils/classResolver';
 
+import { extractSekbidNumber, isBphMember } from '../utils/osimAccountHelper';
+
 interface SchoolContextType {
   schoolSetting: SchoolSetting;
   schoolInfo: SchoolSetting;
@@ -2426,6 +2428,116 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // cPanel Cross-Module Synchronization
   const syncUserFromCPanel = async (user: UserProfile, oldUser?: UserProfile) => {
+    // A. If this is an OSIM student account (pengurus_osim), sync to osimMembers, NOT teachers list
+    if (user.role === 'pengurus_osim') {
+      setOsimMembers(prev => {
+        const userSekbidNum = extractSekbidNumber(user.osimDepartmentCode) ||
+          extractSekbidNumber(user.osimDepartmentName) ||
+          extractSekbidNumber(user.osimPosition) ||
+          extractSekbidNumber(user.username);
+
+        const isUserBph = user.osimDepartmentCode === 'BPH' ||
+          user.osimRole === 'ketua' ||
+          user.osimRole === 'wakil' ||
+          user.osimRole === 'sekretaris' ||
+          user.osimRole === 'bendahara' ||
+          user.username === 'osim.ketua' ||
+          user.username === 'osim.wakil' ||
+          user.username === 'osim.sekretaris' ||
+          user.username === 'osim.bendahara';
+
+        const idx = prev.findIndex(m => {
+          if (m.id === user.uid) return true;
+          if (user.nip && m.studentNis && m.studentNis.trim() === user.nip.trim()) return true;
+          if (user.username && (m.loginUsername === user.username || m.username === user.username)) return true;
+
+          // If user is a Sekbid account (1..8), match only the corresponding Sekbid
+          if (userSekbidNum !== null) {
+            const memberSekbidNum = extractSekbidNumber(m.sekbid) || extractSekbidNumber(m.position);
+            if (memberSekbidNum === userSekbidNum) return true;
+          }
+
+          // If user is BPH (Ketua, Wakil, Sekretaris, Bendahara)
+          if (isUserBph) {
+            const memberIsBph = isBphMember(m);
+            if (memberIsBph) {
+              const pos = (m.position || '').toLowerCase();
+              if (user.osimRole === 'ketua' || user.username === 'osim.ketua') {
+                if (pos.includes('ketua') && !pos.includes('wakil') && !pos.includes('sekbid')) return true;
+              }
+              if (user.osimRole === 'wakil' || user.username === 'osim.wakil') {
+                if (pos.includes('wakil')) return true;
+              }
+              if (user.osimRole === 'sekretaris' || user.username === 'osim.sekretaris') {
+                if (pos.includes('sekretaris')) return true;
+              }
+              if (user.osimRole === 'bendahara' || user.username === 'osim.bendahara') {
+                if (pos.includes('bendahara')) return true;
+              }
+            }
+          }
+
+          if (oldUser?.displayName && m.fullName.toLowerCase().trim() === oldUser.displayName.toLowerCase().trim()) return true;
+          if (m.fullName.toLowerCase().trim() === user.displayName.toLowerCase().trim()) return true;
+          if (user.osimDepartmentName && m.sekbid === user.osimDepartmentName) return true;
+          return false;
+        });
+
+        const cleanName = user.displayName.replace(/\s*\(.*\)$/, '').trim() || user.displayName;
+        if (idx >= 0) {
+          const updated = [...prev];
+          const updatedMember: OsimMember = {
+            ...updated[idx],
+            fullName: cleanName,
+            studentNis: user.nip || updated[idx].studentNis,
+            phone: user.phone || updated[idx].phone,
+            email: user.email || updated[idx].email,
+            status: user.status === 'Nonaktif' ? 'Nonaktif' : 'Aktif',
+            loginUsername: user.username,
+            loginPassword: user.password,
+            username: user.username,
+            password: user.password,
+            position: (user.osimPosition as any) || updated[idx].position,
+            sekbid: (user.osimDepartmentName as any) || updated[idx].sekbid,
+            className: user.studentClass || updated[idx].className
+          };
+          updated[idx] = updatedMember;
+          try {
+            localStorage.setItem('sim_osim_members', JSON.stringify(updated));
+            setDoc(doc(db, 'osim_members', updatedMember.id), updatedMember, { merge: true });
+          } catch (e) {}
+          return updated;
+        } else {
+          // If member does not exist in osimMembers yet, create it so Pembina can view and manage it
+          const sekbidVal = user.osimDepartmentName || (userSekbidNum ? `Sekbid ${userSekbidNum}` : 'BPH (Badan Pengurus Harian)');
+          const newMember: OsimMember = {
+            id: user.uid,
+            fullName: cleanName,
+            studentNis: user.nip || '24251000',
+            className: user.studentClass || 'XI MIPA 1',
+            position: (user.osimPosition as any) || (isUserBph ? 'Pengurus BPH' : `Ketua ${user.osimDepartmentCode || 'Sekbid'}`),
+            sekbid: sekbidVal,
+            phone: user.phone || '-',
+            email: user.email,
+            status: user.status === 'Nonaktif' ? 'Nonaktif' : 'Aktif',
+            period: activeAcademicYear || '2026/2027',
+            loginUsername: user.username,
+            loginPassword: user.password,
+            username: user.username,
+            password: user.password,
+            createdAt: new Date().toISOString()
+          };
+          const updated = [...prev, newMember];
+          try {
+            localStorage.setItem('sim_osim_members', JSON.stringify(updated));
+            setDoc(doc(db, 'osim_members', newMember.id), newMember, { merge: true });
+          } catch (e) {}
+          return updated;
+        }
+      });
+      return;
+    }
+
     const roleLabel = getRoleLabelFromUserRole(user.role);
     const assignedIds = user.extracurricularIds || [];
 
@@ -2553,6 +2665,33 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return ekskul;
       }));
     }
+
+    // Sync OSIM members: remove if user was osim account
+    setOsimMembers(prev => {
+      const remaining = prev.filter(m => {
+        if (m.id === uid) return false;
+        if (user) {
+          if (m.loginUsername && user.username && m.loginUsername.toLowerCase() === user.username.toLowerCase()) return false;
+          if (m.username && user.username && m.username.toLowerCase() === user.username.toLowerCase()) return false;
+          if (m.studentNis && user.nip && m.studentNis.trim() === user.nip.trim()) return false;
+          if (user.role === 'pengurus_osim') {
+            const cleanM = m.fullName.toLowerCase().trim();
+            const cleanU = user.displayName.toLowerCase().replace(/\s*\(.*\)$/, '').trim();
+            if (cleanM === cleanU) return false;
+          }
+        }
+        return true;
+      });
+      try {
+        localStorage.setItem('sim_osim_members', JSON.stringify(remaining));
+      } catch (e) {}
+      return remaining;
+    });
+
+    try {
+      deleteDoc(doc(db, 'osim_members', uid));
+    } catch (e) {}
+
     logAction(
       'CPANEL_DELETE_SYNC',
       'cPanel Kesiswaan',

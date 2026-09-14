@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { UserProfile, UserRole, Teacher, Extracurricular, AuditLogItem } from '../types';
-import { DEMO_USERS, PURGED_DEMO_UIDS, PURGED_DEMO_EMAILS, isBlacklistedDemoName } from '../services/seedData';
+import { UserProfile, UserRole, Teacher, Extracurricular, AuditLogItem, OsimDepartment, OsimMember, OsimRoleType } from '../types';
+import { DEMO_USERS, PURGED_DEMO_UIDS, PURGED_DEMO_EMAILS, isBlacklistedDemoName, getDefaultOsimPassword } from '../services/seedData';
 import { auth, db } from '../services/firebase';
 import { doc, getDoc, getDocs, collection, setDoc, deleteDoc } from 'firebase/firestore';
 import { onAuthStateChanged, signOut as fbSignOut, signInWithEmailAndPassword } from 'firebase/auth';
@@ -93,6 +93,7 @@ interface AuthContextType {
   resetUserPassword: (uid: string, newPassword?: string) => Promise<{ success: boolean; error?: string }>;
   changePassword: (currentPass: string, newPass: string) => Promise<{ success: boolean; error?: string }>;
   syncUsersFromTeachers: (teachersList: Teacher[], extracurricularsList?: Extracurricular[]) => Promise<number>;
+  syncUsersFromOsim: (departmentsList: OsimDepartment[], membersList?: OsimMember[]) => Promise<number>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -110,13 +111,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const parsed = JSON.parse(saved) as UserProfile[];
         if (Array.isArray(parsed) && parsed.length > 0) {
           const map = new Map<string, UserProfile>();
-          DEMO_USERS.forEach(u => map.set(u.uid, u));
-          parsed.filter(u => !isPurgedUser(u)).forEach(u => {
+          DEMO_USERS.filter(u => u && u.uid).forEach(u => map.set(u.uid, u));
+          parsed.filter(u => u && u.uid && !isPurgedUser(u)).forEach(u => {
             const existing = map.get(u.uid);
-            const resolvedPassword = (u.password && u.password.trim()) || existing?.password || 'password';
+            let resolvedPassword = (u.password && u.password.trim()) || existing?.password || 'password';
+            // Upgrade legacy generic 'password' for OSIM accounts to dedicated individual sekbid passwords
+            if (u.role === 'pengurus_osim' && (!resolvedPassword || resolvedPassword === 'password')) {
+              resolvedPassword = getDefaultOsimPassword(u.osimDepartmentCode || u.osimRole || u.username);
+            }
             map.set(u.uid, { ...existing, ...u, password: resolvedPassword });
           });
-          const res = Array.from(map.values()).filter(u => !isPurgedUser(u));
+          const res = Array.from(map.values()).filter(u => u && u.uid && !isPurgedUser(u));
           return res.length > 0 ? res : DEMO_USERS;
         }
       } catch (e) {
@@ -142,8 +147,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const firestoreUsers: UserProfile[] = [];
           snap.forEach(d => {
             const data = d.data() as UserProfile;
-            if (!isPurgedUser(data)) {
-              firestoreUsers.push(data);
+            const uid = data.uid || d.id;
+            const userWithId = { ...data, uid };
+            if (!isPurgedUser(userWithId)) {
+              firestoreUsers.push(userWithId);
             } else {
               deleteDoc(d.ref).catch(() => {});
             }
@@ -151,15 +158,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (firestoreUsers.length > 0) {
             setAllUsers(prev => {
               const map = new Map<string, UserProfile>();
-              DEMO_USERS.forEach(u => map.set(u.uid, u));
-              prev.filter(u => !isPurgedUser(u)).forEach(u => map.set(u.uid, { ...map.get(u.uid), ...u }));
-              firestoreUsers.forEach(u => {
+              DEMO_USERS.filter(u => u && u.uid).forEach(u => map.set(u.uid, u));
+              prev.filter(u => u && u.uid && !isPurgedUser(u)).forEach(u => map.set(u.uid, { ...map.get(u.uid), ...u }));
+              firestoreUsers.filter(u => u && u.uid).forEach(u => {
                 const existing = map.get(u.uid);
                 // Preserve existing custom password if firestore user doc has empty password
-                const resolvedPassword = (u.password && u.password.trim()) || existing?.password || 'password';
+                let resolvedPassword = (u.password && u.password.trim()) || existing?.password || 'password';
+                if (u.role === 'pengurus_osim' && (!resolvedPassword || resolvedPassword === 'password')) {
+                  resolvedPassword = getDefaultOsimPassword(u.osimDepartmentCode || u.osimRole || u.username);
+                }
                 map.set(u.uid, { ...existing, ...u, password: resolvedPassword });
               });
-              const merged = Array.from(map.values()).filter(u => !isPurgedUser(u));
+              const merged = Array.from(map.values()).filter(u => u && u.uid && !isPurgedUser(u));
               localStorage.setItem(LOCAL_STORAGE_ALL_USERS_KEY, JSON.stringify(merged));
               return merged;
             });
@@ -582,11 +592,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       // Synchronize active session if the edited user is currently logged in
-      if (currentUser?.uid === uid && mergedUser) {
-        setCurrentUser(mergedUser);
-        try {
-          sessionStorage.setItem(SESSION_STORAGE_USER_KEY, JSON.stringify(mergedUser));
-        } catch {}
+      if ((currentUser?.uid === uid || (mergedUser && currentUser?.username && currentUser.username === mergedUser.username)) && mergedUser) {
+        if (mergedUser.status === 'Nonaktif') {
+          logout();
+        } else {
+          setCurrentUser(mergedUser);
+          try {
+            sessionStorage.setItem(SESSION_STORAGE_USER_KEY, JSON.stringify(mergedUser));
+          } catch {}
+        }
       }
 
       try {
@@ -853,6 +867,195 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return count;
   };
 
+  // Synchronize OSIM Pengurus & Sekbid accounts from OSIM Cabinet Structure into cPanel User Accounts
+  const syncUsersFromOsim = async (
+    departmentsList: OsimDepartment[],
+    membersList?: OsimMember[]
+  ): Promise<number> => {
+    if (!departmentsList || departmentsList.length === 0) return 0;
+    let count = 0;
+    const firestorePromises: Promise<any>[] = [];
+
+    setAllUsers(prev => {
+      const updatedUsers = [...prev];
+
+      // 1. Process BPH Accounts (Badan Pengurus Harian)
+      const bphMembers = membersList?.filter(m => 
+        m.sekbid === 'BPH (Badan Pengurus Harian)' || 
+        m.position.toLowerCase().includes('ketua') || 
+        m.position.toLowerCase().includes('sekretaris') || 
+        m.position.toLowerCase().includes('bendahara')
+      ) || [];
+
+      const bphRoles: Array<{ role: OsimRoleType; title: string; defaultUser: string; code: string }> = [
+        { role: 'ketua', title: 'Ketua Umum OSIM', defaultUser: 'osim.ketua', code: 'ketua' },
+        { role: 'wakil', title: 'Wakil Ketua OSIM', defaultUser: 'osim.wakil', code: 'wakil' },
+        { role: 'sekretaris', title: 'Sekretaris OSIM', defaultUser: 'osim.sekretaris', code: 'sekretaris' },
+        { role: 'bendahara', title: 'Bendahara OSIM', defaultUser: 'osim.bendahara', code: 'bendahara' }
+      ];
+
+      for (const bph of bphRoles) {
+        const matchedMember = bphMembers.find(m => {
+          const p = (m.position || '').toLowerCase();
+          if (bph.role === 'ketua') return p.includes('ketua') && !p.includes('wakil') && !p.includes('sekbid');
+          if (bph.role === 'wakil') return p.includes('wakil');
+          if (bph.role === 'sekretaris') return p.includes('sekretaris');
+          if (bph.role === 'bendahara') return p.includes('bendahara');
+          return false;
+        });
+
+        const expectedUid = `user_osim_${bph.role}`;
+        const defaultPassword = getDefaultOsimPassword(bph.code);
+        const existingIdx = updatedUsers.findIndex(u =>
+          u.uid === expectedUid ||
+          u.username === bph.defaultUser ||
+          (u.role === 'pengurus_osim' && u.osimRole === bph.role) ||
+          (matchedMember && matchedMember.studentNis && u.nip === matchedMember.studentNis)
+        );
+
+        const displayName = matchedMember ? `${matchedMember.fullName} (${bph.title})` : bph.title;
+        const studentNis = matchedMember?.studentNis;
+        const phone = matchedMember?.phone;
+
+        if (existingIdx >= 0) {
+          const existing = updatedUsers[existingIdx];
+          const currentPassword = (existing.password && existing.password !== 'password') ? existing.password : defaultPassword;
+          const merged: UserProfile = {
+            ...existing,
+            displayName,
+            nip: studentNis || existing.nip,
+            phone: phone || existing.phone,
+            username: existing.username || bph.defaultUser,
+            email: existing.email || `${bph.defaultUser}@madrasah.sch.id`,
+            password: currentPassword,
+            role: 'pengurus_osim',
+            osimRole: bph.role,
+            osimPosition: bph.title,
+            osimDepartmentId: 'dept_bph',
+            osimDepartmentCode: 'BPH',
+            osimDepartmentName: 'Badan Pengurus Harian',
+            isCashManager: bph.role === 'bendahara',
+            cashManagerTitle: bph.role === 'bendahara' ? 'Bendahara OSIM' : undefined,
+            status: matchedMember?.status === 'Demisioner' ? 'Nonaktif' : (existing.status || 'Aktif'),
+            updatedAt: new Date().toISOString()
+          };
+          updatedUsers[existingIdx] = merged;
+          firestorePromises.push(setDoc(doc(db, 'users', merged.uid), merged, { merge: true }));
+          count++;
+        } else {
+          const newUser: UserProfile = {
+            uid: expectedUid,
+            displayName,
+            username: bph.defaultUser,
+            email: `${bph.defaultUser}@madrasah.sch.id`,
+            password: defaultPassword,
+            nip: studentNis,
+            phone,
+            role: 'pengurus_osim',
+            osimRole: bph.role,
+            osimPosition: bph.title,
+            osimDepartmentId: 'dept_bph',
+            osimDepartmentCode: 'BPH',
+            osimDepartmentName: 'Badan Pengurus Harian',
+            isCashManager: bph.role === 'bendahara',
+            cashManagerTitle: bph.role === 'bendahara' ? 'Bendahara OSIM' : undefined,
+            status: 'Aktif',
+            createdAt: new Date().toISOString()
+          };
+          updatedUsers.push(newUser);
+          firestorePromises.push(setDoc(doc(db, 'users', newUser.uid), newUser, { merge: true }));
+          count++;
+        }
+      }
+
+      // 2. Process Sekbid Accounts (Sekbid 1 s.d. 8)
+      const sekbidDepts = departmentsList.filter(d => d.id !== 'dept_bph' && d.code !== 'BPH');
+      for (const dept of sekbidDepts) {
+        const cleanCode = (dept.code || 'sekbid').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const expectedUsername = `osim.${cleanCode}`;
+        const defaultPassword = getDefaultOsimPassword(dept.code || cleanCode);
+        const expectedUid = `user_osim_${dept.id}`;
+
+        const matchedMember = membersList?.find(m => 
+          m.sekbid === dept.name || 
+          (dept.code && m.sekbid.toLowerCase().includes(dept.code.toLowerCase()))
+        );
+
+        const displayName = matchedMember 
+          ? `${matchedMember.fullName} (Ketua ${dept.code})`
+          : `Pengurus OSIM - ${dept.name.split(':')[0].trim()}`;
+
+        const existingIdx = updatedUsers.findIndex(u =>
+          u.uid === expectedUid ||
+          u.username === expectedUsername ||
+          (u.role === 'pengurus_osim' && (u.osimDepartmentId === dept.id || u.osimDepartmentCode === dept.code)) ||
+          (matchedMember && matchedMember.studentNis && u.nip === matchedMember.studentNis)
+        );
+
+        if (existingIdx >= 0) {
+          const existing = updatedUsers[existingIdx];
+          const currentPassword = (existing.password && existing.password !== 'password') ? existing.password : defaultPassword;
+          const merged: UserProfile = {
+            ...existing,
+            displayName,
+            nip: matchedMember?.studentNis || existing.nip,
+            phone: matchedMember?.phone || existing.phone,
+            username: existing.username || expectedUsername,
+            email: existing.email || `${expectedUsername}@madrasah.sch.id`,
+            password: currentPassword,
+            role: 'pengurus_osim',
+            osimRole: 'sekbid',
+            osimPosition: matchedMember?.position || `Ketua ${dept.code}`,
+            osimDepartmentId: dept.id,
+            osimDepartmentCode: dept.code,
+            osimDepartmentName: dept.name,
+            status: matchedMember?.status === 'Demisioner' ? 'Nonaktif' : (existing.status || 'Aktif'),
+            updatedAt: new Date().toISOString()
+          };
+          updatedUsers[existingIdx] = merged;
+          firestorePromises.push(setDoc(doc(db, 'users', merged.uid), merged, { merge: true }));
+          count++;
+        } else {
+          const newUser: UserProfile = {
+            uid: expectedUid,
+            displayName,
+            username: expectedUsername,
+            email: `${expectedUsername}@madrasah.sch.id`,
+            password: defaultPassword,
+            nip: matchedMember?.studentNis,
+            phone: matchedMember?.phone,
+            role: 'pengurus_osim',
+            osimRole: 'sekbid',
+            osimPosition: matchedMember?.position || `Ketua ${dept.code}`,
+            osimDepartmentId: dept.id,
+            osimDepartmentCode: dept.code,
+            osimDepartmentName: dept.name,
+            status: 'Aktif',
+            createdAt: new Date().toISOString()
+          };
+          updatedUsers.push(newUser);
+          firestorePromises.push(setDoc(doc(db, 'users', newUser.uid), newUser, { merge: true }));
+          count++;
+        }
+      }
+
+      localStorage.setItem(LOCAL_STORAGE_ALL_USERS_KEY, JSON.stringify(updatedUsers));
+      return updatedUsers;
+    });
+
+    if (firestorePromises.length > 0) {
+      try {
+        await Promise.allSettled(firestorePromises);
+      } catch (e) {
+        console.warn('Firestore sync users from OSIM error:', e);
+      }
+    }
+
+    recordSystemAuditLog('SYNC_OSIM_ACCOUNTS', 'Sinkronisasi Data', `Sinkronisasi data akun login pengurus & sekbid OSIM berhasil (${count} akun)`, currentUser);
+
+    return count;
+  };
+
   const role = currentUser?.role || 'waka_kesiswaan';
   const isSuperAdmin = role === 'super_admin';
   const isWaka = role === 'waka_kesiswaan';
@@ -1002,7 +1205,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         deleteUser,
         resetUserPassword,
         changePassword,
-        syncUsersFromTeachers
+        syncUsersFromTeachers,
+        syncUsersFromOsim
       }}
     >
       {children}

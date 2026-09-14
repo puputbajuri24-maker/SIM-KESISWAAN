@@ -53,15 +53,17 @@ import { UserProfile, UserRole, SchoolSetting } from '../types';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { AuditLogsPanel } from '../components/cpanel/AuditLogsPanel';
+import { RbacMatrixPanel } from '../components/cpanel/RbacMatrixPanel';
 import { AcademicYearManagementModal } from '../components/common/AcademicYearManagementModal';
 import {
   getTeacherInitials,
   isGuruBKOrPembinaRole,
   getInitialsColorTheme
 } from '../utils/initials';
+import { getDefaultOsimPassword } from '../services/seedData';
 
 export const CPanelPage: React.FC = () => {
-  const { allUsers, currentUser, isSuperAdmin, addUser, updateUser, deleteUser, resetUserPassword, loginWithUser, loginWithDemoRole, syncUsersFromTeachers } = useAuth();
+  const { allUsers, currentUser, isSuperAdmin, addUser, updateUser, deleteUser, resetUserPassword, loginWithUser, loginWithDemoRole, syncUsersFromTeachers, syncUsersFromOsim } = useAuth();
   const {
     schoolSetting,
     updateSchoolSetting,
@@ -79,7 +81,9 @@ export const CPanelPage: React.FC = () => {
     auditLogs,
     syncUserFromCPanel,
     syncDeleteUserFromCPanel,
-    syncAllCPanelUsers
+    syncAllCPanelUsers,
+    osimDepartments,
+    osimMembers
   } = useSchool();
 
   const [activeSubTab, setActiveSubTab] = useState<'users' | 'announcements' | 'school' | 'matrix' | 'sync' | 'logs'>('users');
@@ -91,11 +95,14 @@ export const CPanelPage: React.FC = () => {
   const bkUsers = useMemo(() => allUsers.filter(u => u.role === 'guru_bk'), [allUsers]);
   const pembinaEkskulUsers = useMemo(() => allUsers.filter(u => u.role === 'pembina_ekskul' || u.role === 'pembina'), [allUsers]);
   const pembinaOsimUsers = useMemo(() => allUsers.filter(u => u.role === 'pembina_osim'), [allUsers]);
+  const osimPengurusUsers = useMemo(() => allUsers.filter(u => u.role === 'pengurus_osim'), [allUsers]);
   const wakaUsers = useMemo(() => allUsers.filter(u => u.role === 'waka_kesiswaan'), [allUsers]);
   const adminUsers = useMemo(() => allUsers.filter(u => u.role === 'super_admin'), [allUsers]);
 
   const [selectedBkUserId, setSelectedBkUserId] = useState<string>('');
   const [selectedPembinaUserId, setSelectedPembinaUserId] = useState<string>('');
+  const [selectedOsimUserId, setSelectedOsimUserId] = useState<string>('');
+  const [isSyncingOsim, setIsSyncingOsim] = useState(false);
 
   const getPembinaEkskulName = (u: UserProfile) => {
     if (!u.extracurricularIds || u.extracurricularIds.length === 0) return 'Ekstrakurikuler';
@@ -255,6 +262,20 @@ export const CPanelPage: React.FC = () => {
     );
   });
 
+  // Find OSIM departments that don't have synchronized accounts yet
+  const unregisteredOsimCount = useMemo(() => {
+    let count = 0;
+    for (const d of osimDepartments) {
+      const code = (d.code || '').toLowerCase();
+      const hasAcc = allUsers.some(u => 
+        u.role === 'pengurus_osim' && 
+        (u.osimDepartmentCode === code || u.username === code || u.osimDepartmentName === d.name)
+      );
+      if (!hasAcc) count++;
+    }
+    return count;
+  }, [osimDepartments, allUsers]);
+
   const togglePasswordVisibility = (uid: string) => {
     setShowPasswordMap(prev => ({ ...prev, [uid]: !prev[uid] }));
   };
@@ -274,6 +295,18 @@ export const CPanelPage: React.FC = () => {
       showToast('Gagal sinkronisasi data guru: ' + e?.message, 'error');
     } finally {
       setIsSyncingAll(false);
+    }
+  };
+
+  const handleSyncFromOsim = async () => {
+    setIsSyncingOsim(true);
+    try {
+      const count = await syncUsersFromOsim(osimDepartments, osimMembers);
+      showToast(`Berhasil menyinkronkan ${count} akun pengurus & sekbid OSIM ke cPanel dengan password unik per bidang!`);
+    } catch (e: any) {
+      showToast('Gagal sinkronisasi data OSIM: ' + e?.message, 'error');
+    } finally {
+      setIsSyncingOsim(false);
     }
   };
 
@@ -436,7 +469,10 @@ export const CPanelPage: React.FC = () => {
 
   const handlePromptResetPassword = (u: UserProfile) => {
     setSelectedUserForAction(u);
-    setCustomResetPassword(u.password || 'password');
+    const defaultP = u.role === 'pengurus_osim'
+      ? ((u.password && u.password !== 'password') ? u.password : getDefaultOsimPassword(u.osimDepartmentCode || u.osimRole || u.username))
+      : (u.password || 'password');
+    setCustomResetPassword(defaultP);
     setShowResetPasswordText(false);
     setIsResetModalOpen(true);
   };
@@ -447,6 +483,11 @@ export const CPanelPage: React.FC = () => {
     const passToSet = customResetPassword.trim() || 'password';
     const res = await resetUserPassword(u.uid, passToSet);
     if (res.success) {
+      if (u.role === 'pengurus_osim') {
+        try {
+          await syncUserFromCPanel({ ...u, password: passToSet }, u);
+        } catch (e) {}
+      }
       showToast(`Kata sandi akun ${u.displayName} (${u.role}) berhasil diperbarui menjadi "${passToSet}". Password lama otomatis tidak berlaku dan tergantikan!`);
     } else {
       showToast(res.error || 'Gagal mengubah password.', 'error');
@@ -845,6 +886,33 @@ export const CPanelPage: React.FC = () => {
             </div>
           )}
 
+          {/* Unsynced OSIM Accounts Alert Banner */}
+          {unregisteredOsimCount > 0 && (
+            <div className="bg-indigo-500/10 border border-indigo-500/30 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md">
+              <div className="flex items-start space-x-3">
+                <div className="p-2 rounded-lg bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 shrink-0">
+                  <Key className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-indigo-300">
+                    Sinkronisasi Data Akun Pengurus & 8 Sekbid OSIM ({unregisteredOsimCount} Bidang Perlu Sinkron)
+                  </h4>
+                  <p className="text-[11px] text-zinc-200 mt-0.5">
+                    Sinkronkan data pengurus dan seksi bidang OSIM agar masing-masing memiliki password login resmi unik per bidang (contoh: sekbid12026, ketua2026).
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={handleSyncFromOsim}
+                disabled={isSyncingOsim}
+                className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center space-x-2 transition-colors shrink-0 shadow-lg shadow-indigo-950/40 disabled:opacity-50 whitespace-nowrap"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncingOsim ? 'animate-spin' : ''}`} />
+                <span>Sinkronkan Akun OSIM</span>
+              </button>
+            </div>
+          )}
+
           {/* FITUR PENGUJIAN PERAN CEPAT (KHUSUS ADMIN) */}
           <div className="bg-[#151518] border-2 border-emerald-500/30 rounded-2xl p-4 sm:p-5 shadow-xl space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#27272a] pb-3.5">
@@ -862,14 +930,14 @@ export const CPanelPage: React.FC = () => {
                     </span>
                   </div>
                   <p className="text-[11px] sm:text-xs text-zinc-300 mt-0.5">
-                    Akses uji coba antarmuka dan wewenang untuk setiap peran. Karena terdapat lebih dari 1 Guru BK dan Pembina Ekstra, pilih akun spesifik yang ingin disimulasikan di bawah.
+                    Akses uji coba antarmuka dan wewenang untuk setiap peran. Karena terdapat lebih dari 1 Guru BK, Pembina Ekstra, dan Pengurus Sekbid OSIM, pilih akun spesifik yang ingin disimulasikan di bawah.
                   </p>
                 </div>
               </div>
             </div>
 
-            {/* Grid 4 Kartu Utama */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
+            {/* Grid 5 Kartu Utama */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3.5">
               {/* Card 1: Admin & Waka */}
               <div className="p-3.5 rounded-xl bg-[#1c1c20] border border-[#2e2e34] flex flex-col justify-between space-y-3">
                 <div>
@@ -946,8 +1014,8 @@ export const CPanelPage: React.FC = () => {
                       onChange={e => setSelectedBkUserId(e.target.value)}
                       className="w-full text-xs p-1.5 rounded-lg bg-[#151518] border border-purple-500/40 text-purple-100 focus:outline-none focus:border-purple-400 font-medium"
                     >
-                      {bkUsers.map(u => (
-                        <option key={u.uid} value={u.uid}>
+                      {bkUsers.map((u, idx) => (
+                        <option key={u.uid ? `cpanel-bk-${u.uid}-${idx}` : `cpanel-bk-idx-${idx}`} value={u.uid}>
                           {u.displayName} ({u.counselorSpecialization || 'BK'})
                         </option>
                       ))}
@@ -1049,8 +1117,8 @@ export const CPanelPage: React.FC = () => {
                       {pembinaEkskulUsers.length === 0 ? (
                         <option value="">Belum ada akun pembina ekstra</option>
                       ) : (
-                        pembinaEkskulUsers.map(u => (
-                          <option key={u.uid} value={u.uid}>
+                        pembinaEkskulUsers.map((u, idx) => (
+                          <option key={u.uid ? `cpanel-pembina-${u.uid}-${idx}` : `cpanel-pembina-idx-${idx}`} value={u.uid}>
                             {u.displayName} ({getPembinaEkskulName(u)})
                           </option>
                         ))
@@ -1072,6 +1140,66 @@ export const CPanelPage: React.FC = () => {
                   >
                     <Compass className="w-3.5 h-3.5 text-emerald-200" />
                     <span>Uji Tampilan Sebagai Pembina</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Card 5: Pengurus & Sekbid OSIM (Simulasi Akses Sekbid / BPH) */}
+              <div className="p-3.5 rounded-xl bg-[#1c1c20] border border-indigo-500/30 flex flex-col justify-between space-y-3">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <div className="p-1.5 rounded-lg bg-indigo-500/20 text-indigo-400">
+                        <Key className="w-4 h-4" />
+                      </div>
+                      <span className="text-xs font-bold text-white">Pengurus & Sekbid OSIM</span>
+                    </div>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-mono font-bold">
+                      {osimPengurusUsers.length} Akun
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-zinc-400 mt-1.5 leading-relaxed">
+                    Akses fungsional ketua umum, bendahara (buku kas), dan 8 seksi bidang OSIM.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-semibold text-indigo-300 flex items-center justify-between">
+                      <span>Pilih Akun Sekbid / BPH:</span>
+                    </label>
+                    <select
+                      value={selectedOsimUserId || (osimPengurusUsers[0]?.uid || '')}
+                      onChange={e => setSelectedOsimUserId(e.target.value)}
+                      disabled={osimPengurusUsers.length === 0}
+                      className="w-full text-xs p-1.5 rounded-lg bg-[#151518] border border-indigo-500/40 text-indigo-100 focus:outline-none focus:border-indigo-400 font-medium disabled:opacity-50"
+                    >
+                      {osimPengurusUsers.length === 0 ? (
+                        <option value="">Belum ada akun pengurus OSIM</option>
+                      ) : (
+                        osimPengurusUsers.map((u, idx) => (
+                          <option key={u.uid ? `cpanel-osim-${u.uid}-${idx}` : `cpanel-osim-idx-${idx}`} value={u.uid}>
+                            {u.displayName} ({u.osimDepartmentCode ? u.osimDepartmentCode.toUpperCase() : u.username})
+                          </option>
+                        ))
+                      )}
+                    </select>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = osimPengurusUsers.find(u => u.uid === (selectedOsimUserId || osimPengurusUsers[0]?.uid)) || osimPengurusUsers[0];
+                      if (target) {
+                        loginWithUser(target);
+                      } else {
+                        loginWithDemoRole('pengurus_osim');
+                      }
+                    }}
+                    className="w-full py-1.5 px-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center justify-center space-x-1.5 transition-colors shadow-sm shadow-indigo-900/30"
+                  >
+                    <Key className="w-3.5 h-3.5 text-indigo-200" />
+                    <span>Uji Tampilan Sekbid OSIM</span>
                   </button>
                 </div>
               </div>
@@ -1123,12 +1251,12 @@ export const CPanelPage: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#222226]">
-                  {filteredUsers.map(u => {
+                  {filteredUsers.map((u, idx) => {
                     const badge = getRoleBadge(u.role);
                     const isRevealed = showPasswordMap[u.uid];
 
                     return (
-                      <tr key={u.uid} className="hover:bg-[#1a1a1f] transition-colors">
+                      <tr key={u.uid ? `cpanel-user-${u.uid}-${idx}` : `cpanel-user-idx-${idx}`} className="hover:bg-[#1a1a1f] transition-colors">
                         <td className="py-3 px-4">
                           <div className="flex items-center space-x-3">
                             {(() => {
@@ -1431,10 +1559,10 @@ export const CPanelPage: React.FC = () => {
                   className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-white focus:outline-none focus:border-emerald-500 font-bold"
                 >
                   {academicYears && academicYears.length > 0 ? (
-                    academicYears.map(ay => {
+                    academicYears.map((ay, idx) => {
                       const yearVal = ay.year || ay.name || '';
                       return (
-                        <option key={ay.id} value={yearVal}>
+                        <option key={ay.id ? `cpanel-ay-${ay.id}-${idx}` : `cpanel-ay-idx-${idx}`} value={yearVal}>
                           {yearVal} {yearVal === activeAcademicYear ? '(Berjalan/Aktif)' : ''}
                         </option>
                       );
@@ -1516,56 +1644,26 @@ export const CPanelPage: React.FC = () => {
 
       {/* TAB 3: ROLE MATRIX */}
       {activeSubTab === 'matrix' && (
-        <div className="bg-[#151518] border border-[#27272a] rounded-xl p-5 shadow space-y-4">
-          <div>
-            <h2 className="text-sm font-bold text-white uppercase tracking-wider">
-              Matriks Hak Akses Berbasis Peran (RBAC)
-            </h2>
-            <p className="text-xs text-zinc-300 mt-0.5">
-              Setiap akun memiliki isolasi wewenang yang dijamin di tingkat routing dan konteks sistem.
-            </p>
-          </div>
-
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="border-b border-[#27272a] bg-[#1a1a1e] text-zinc-200 text-[10px] font-mono font-bold uppercase">
-                  <th className="py-2.5 px-3">Modul / Fitur Kesiswaan</th>
-                  <th className="py-2.5 px-3 text-center text-red-400">Super Admin / Proktor</th>
-                  <th className="py-2.5 px-3 text-center text-blue-400">Waka Kesiswaan</th>
-                  <th className="py-2.5 px-3 text-center text-purple-400">Guru BK</th>
-                  <th className="py-2.5 px-3 text-center text-amber-400">Pembina OSIM</th>
-                  <th className="py-2.5 px-3 text-center text-emerald-400">Pembina Ekskul</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#222226] font-mono text-[11px]">
-                {[
-                  { feature: 'Dashboard Command Center', sa: 'Full', waka: 'Full', bk: 'Khusus BK', osim: 'Khusus OSIM', ekskul: 'Khusus Ekskul' },
-                  { feature: 'cPanel & Manajemen Akun', sa: 'Full (Root)', waka: 'Tolak (403)', bk: 'Tolak (403)', osim: 'Tolak (403)', ekskul: 'Tolak (403)' },
-                  { feature: 'Pengaturan Profil & Kop Surat', sa: 'Full (Root)', waka: 'Tolak (403)', bk: 'Tolak (403)', osim: 'Tolak (403)', ekskul: 'Tolak (403)' },
-                  { feature: 'Intrakurikuler & OSIM (Sidang, Kas, LPJ)', sa: 'Full', waka: 'Full', bk: 'Tolak (403)', osim: 'Full Kelola', ekskul: 'Tolak (403)' },
-                  { feature: 'Ekstrakurikuler (Anggota & Presensi)', sa: 'Full', waka: 'Full', bk: 'Tolak (403)', osim: 'Tolak (403)', ekskul: 'Binaan Sendiri' },
-                  { feature: 'Layanan Bimbingan Konseling (Sesi BK)', sa: 'Full', waka: 'Lihat/Verifikasi', bk: 'Full Kelola', osim: 'Tolak (403)', ekskul: 'Tolak (403)' },
-                  { feature: 'Kunjungan Rumah (Home Visit)', sa: 'Full', waka: 'Lihat/Verifikasi', bk: 'Full Kelola + Cetak', osim: 'Tolak (403)', ekskul: 'Tolak (403)' },
-                  { feature: 'Surat Panggilan Orang Tua (SP 1, 2, 3)', sa: 'Full', waka: 'Lihat/Verifikasi', bk: 'Full Kelola + Cetak', osim: 'Tolak (403)', ekskul: 'Tolak (403)' },
-                  { feature: 'Bimbingan Karir & Studi Lanjut', sa: 'Full', waka: 'Lihat Rekap', bk: 'Full Kelola', osim: 'Tolak (403)', ekskul: 'Tolak (403)' },
-                  { feature: 'Pencatatan Pelanggaran Siswa', sa: 'Full', waka: 'Full', bk: 'Full (Referral BK)', osim: 'Tolak (403)', ekskul: 'Tolak (403)' },
-                  { feature: 'Data Prestasi Siswa', sa: 'Full', waka: 'Full', bk: 'Lihat', osim: 'Prestasi OSIM', ekskul: 'Prestasi Binaan' },
-                  { feature: 'Dispensasi & Surat Izin Resmi', sa: 'Full', waka: 'Verifikasi/TTD', bk: 'Buat/Lihat', osim: 'Tolak (403)', ekskul: 'Ajukan Atlet' }
-                ].map((row, idx) => (
-                  <tr key={idx} className="hover:bg-[#1a1a1f]">
-                    <td className="py-2.5 px-3 font-sans font-semibold text-zinc-100">{row.feature}</td>
-                    <td className="py-2.5 px-3 text-center text-emerald-400 font-bold">{row.sa}</td>
-                    <td className="py-2.5 px-3 text-center text-blue-400 font-bold">{row.waka}</td>
-                    <td className="py-2.5 px-3 text-center text-purple-400 font-bold">{row.bk}</td>
-                    <td className="py-2.5 px-3 text-center text-amber-400 font-bold">{row.osim}</td>
-                    <td className="py-2.5 px-3 text-center text-emerald-400 font-bold">{row.ekskul}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <RbacMatrixPanel
+          currentUser={currentUser}
+          allUsers={allUsers}
+          isSuperAdmin={isSuperAdmin}
+          onSimulateRole={(role, customUid) => {
+            if (customUid) {
+              const target = allUsers.find(u => u.uid === customUid);
+              if (target) {
+                loginWithUser(target);
+                return;
+              }
+            }
+            const fallback = allUsers.find(u => u.role === role);
+            if (fallback) {
+              loginWithUser(fallback);
+            } else {
+              loginWithDemoRole(role);
+            }
+          }}
+        />
       )}
 
       {/* TAB 3: SYNC & SERVER */}
@@ -1877,8 +1975,8 @@ export const CPanelPage: React.FC = () => {
                 }}
                 className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-white focus:outline-none focus:border-emerald-500 h-24"
               >
-                {extracurriculars.map(e => (
-                  <option key={e.id} value={e.id}>
+                {extracurriculars.map((e, idx) => (
+                  <option key={e.id ? `cpanel-ekskul-${e.id}-${idx}` : `cpanel-ekskul-idx-${idx}`} value={e.id}>
                     {e.name} ({e.category})
                   </option>
                 ))}
@@ -2135,10 +2233,10 @@ export const CPanelPage: React.FC = () => {
                 <div className="py-1">
                   <span className="text-emerald-300 font-bold block mb-1">EKSKUL BINAAN:</span>
                   <div className="flex flex-wrap gap-1">
-                    {selectedUserForAction.extracurricularIds.map(eid => {
+                    {selectedUserForAction.extracurricularIds.map((eid, idx) => {
                       const ek = extracurriculars.find(e => e.id === eid);
                       return (
-                        <span key={eid} className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-sans font-semibold">
+                        <span key={eid ? `cpanel-user-ek-${eid}-${idx}` : `cpanel-user-ek-idx-${idx}`} className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-sans font-semibold">
                           {ek ? ek.name : eid}
                         </span>
                       );
@@ -2191,10 +2289,17 @@ export const CPanelPage: React.FC = () => {
                 <span>Kata Sandi Baru</span>
                 <button
                   type="button"
-                  onClick={() => setCustomResetPassword('password')}
+                  onClick={() => {
+                    const defaultP = selectedUserForAction.role === 'pengurus_osim'
+                      ? getDefaultOsimPassword(selectedUserForAction.osimDepartmentCode || selectedUserForAction.osimRole || selectedUserForAction.username)
+                      : 'password';
+                    setCustomResetPassword(defaultP);
+                  }}
                   className="text-[11px] text-amber-400 hover:text-amber-300 underline font-mono"
                 >
-                  Gunakan default ("password")
+                  {selectedUserForAction.role === 'pengurus_osim'
+                    ? `Set Sandi Sekbid (${getDefaultOsimPassword(selectedUserForAction.osimDepartmentCode || selectedUserForAction.osimRole || selectedUserForAction.username)})`
+                    : 'Gunakan default ("password")'}
                 </button>
               </label>
               <div className="relative">

@@ -24,7 +24,9 @@ import {
   ChevronRight,
   Send,
   Building,
-  GraduationCap
+  GraduationCap,
+  Lock,
+  Shield
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -129,6 +131,8 @@ export const CounselingPage: React.FC = () => {
     solution: '',
     parentInvolved: false,
     followUpPlan: '',
+    isConfidential: false,
+    confidentialNotes: '',
     status: 'Selesai'
   });
 
@@ -215,6 +219,8 @@ export const CounselingPage: React.FC = () => {
       solution: '',
       parentInvolved: false,
       followUpPlan: '',
+      isConfidential: false,
+      confidentialNotes: '',
       status: 'Selesai'
     });
     setIsCounselingModalOpen(true);
@@ -223,7 +229,11 @@ export const CounselingPage: React.FC = () => {
   const handleOpenEditCounseling = (item: StudentCounseling, e?: React.MouseEvent) => {
     e?.stopPropagation();
     setEditingCounseling(item);
-    setCounselingForm(item);
+    setCounselingForm({
+      ...item,
+      isConfidential: Boolean(item.isConfidential),
+      confidentialNotes: item.confidentialNotes || ''
+    });
     setIsCounselingModalOpen(true);
   };
 
@@ -240,7 +250,9 @@ export const CounselingPage: React.FC = () => {
           ...counselingForm,
           studentName: student?.fullName || counselingForm.studentName,
           studentClass: student?.className || counselingForm.studentClass,
-          studentNis: student?.nis || counselingForm.studentNis
+          studentNis: student?.nis || counselingForm.studentNis,
+          isConfidential: Boolean(counselingForm.isConfidential),
+          confidentialNotes: counselingForm.confidentialNotes || ''
         });
       } else {
         await addCounseling({
@@ -258,6 +270,8 @@ export const CounselingPage: React.FC = () => {
           solution: counselingForm.solution || '',
           parentInvolved: Boolean(counselingForm.parentInvolved),
           followUpPlan: counselingForm.followUpPlan || '',
+          isConfidential: Boolean(counselingForm.isConfidential),
+          confidentialNotes: counselingForm.confidentialNotes || '',
           status: (counselingForm.status as any) || 'Selesai',
           academicYear: activeAcademicYear
         });
@@ -597,13 +611,18 @@ export const CounselingPage: React.FC = () => {
       sortable: true,
       cell: c => (
         <div>
-          <div className="flex items-center gap-1.5 mb-0.5">
+          <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
             <span className="px-1.5 py-0.2 rounded text-[10px] font-mono bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
               {c.serviceField || 'Belajar'}
             </span>
             <span className="px-1.5 py-0.2 rounded text-[10px] font-mono bg-zinc-800 text-zinc-300">
               {c.counselingType || 'Individu'}
             </span>
+            {c.isConfidential && (
+              <span className="px-1.5 py-0.2 rounded text-[10px] font-mono bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1">
+                <Lock className="w-2.5 h-2.5 text-purple-400" /> Rahasia (BK & Waka)
+              </span>
+            )}
           </div>
           <span className="font-semibold text-xs text-zinc-200">{c.topic}</span>
         </div>
@@ -1646,6 +1665,39 @@ export const CounselingPage: React.FC = () => {
               Menghadirkan Orang Tua / Wali Murid dalam Sesi Ini
             </label>
           </div>
+
+          {/* Privilege Khusus Guru BK & Waka Kesiswaan: Catatan Konseling Rahasia */}
+          <div className="p-3 rounded-lg bg-purple-950/20 border border-purple-800/40 space-y-2 mt-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Lock className="w-4 h-4 text-purple-400" />
+                <span className="text-xs font-bold text-purple-200">Catatan Konseling Rahasia (Confidential)</span>
+              </div>
+              <label className="flex items-center space-x-1.5 cursor-pointer text-[11px] text-purple-300">
+                <input
+                  type="checkbox"
+                  checked={counselingForm.isConfidential || false}
+                  onChange={e => setCounselingForm({ ...counselingForm, isConfidential: e.target.checked })}
+                  className="rounded bg-[#161618] border-purple-700 text-purple-600 focus:ring-purple-500"
+                />
+                <span>Aktifkan Catatan Rahasia</span>
+              </label>
+            </div>
+            <p className="text-[10px] text-zinc-400">
+              Sesuai kode etik BK & kebijakan RBAC SIM-Kesiswaan: Catatan rahasia hanya dapat dibaca dan diakses oleh sesama Guru BK dan Waka Kesiswaan.
+            </p>
+            {counselingForm.isConfidential && (
+              <div className="pt-1">
+                <textarea
+                  rows={3}
+                  value={counselingForm.confidentialNotes || ''}
+                  onChange={e => setCounselingForm({ ...counselingForm, confidentialNotes: e.target.value })}
+                  placeholder="Ketik catatan medis / psikologis / latar belakang keluarga yang bersifat rahasia di sini..."
+                  className="w-full px-2.5 py-1.5 rounded bg-[#161618] border border-purple-800/50 text-purple-200 placeholder:text-zinc-600 text-xs focus:outline-none focus:border-purple-500 font-mono"
+                />
+              </div>
+            )}
+          </div>
         </form>
       </Modal>
 
@@ -2334,6 +2386,26 @@ export const CounselingPage: React.FC = () => {
                 <p className="font-mono text-[10px] text-zinc-500 uppercase">RENCANA TINDAK LANJUT:</p>
                 <p className="text-amber-400 mt-0.5">{detailCounseling.followUpPlan || '-'}</p>
               </div>
+
+              {detailCounseling.isConfidential && (
+                <div className="border-t border-purple-800/40 bg-purple-950/20 p-2.5 rounded mt-2 space-y-1">
+                  <div className="flex items-center gap-1.5 text-purple-300 font-bold text-[11px]">
+                    <Lock className="w-3.5 h-3.5 text-purple-400" />
+                    <span>Catatan Konseling Rahasia (Hak Akses Khusus: Guru BK & Waka Kesiswaan)</span>
+                  </div>
+                  {isGuruBK || isWakaOrAdmin ? (
+                    <div className="bg-[#161618] p-2.5 rounded border border-purple-900/50 mt-1">
+                      <p className="text-purple-200 text-xs whitespace-pre-wrap font-sans leading-relaxed">
+                        {detailCounseling.confidentialNotes || '(Belum ada catatan khusus rahasia yang diisi)'}
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-zinc-500 text-xs italic">
+                      [Terkunci: Informasi ini dirahasiakan dan dilindungi kode etik BK. Hanya dapat diakses oleh Guru BK dan Waka Kesiswaan.]
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </Modal>

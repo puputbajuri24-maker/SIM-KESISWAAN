@@ -112,6 +112,19 @@ export const DEFAULT_SUPER_ADMIN: UserProfile = {
   status: 'Aktif'
 };
 
+export const getDefaultOsimPassword = (codeOrRole: string): string => {
+  const clean = (codeOrRole || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (clean.includes('ketua') && !clean.includes('wakil') && !clean.includes('sekbid')) return 'ketua@osim2026';
+  if (clean.includes('wakil')) return 'wakil@osim2026';
+  if (clean.includes('sekr')) return 'sekretaris@osim2026';
+  if (clean.includes('bend')) return 'bendahara@osim2026';
+  if (clean.startsWith('sekbid')) {
+    const num = clean.replace(/[^0-9]/g, '');
+    return num ? `sekbid${num}@2026` : `${clean}@2026`;
+  }
+  return `${clean || 'osim'}@2026`;
+};
+
 export const generateDefaultOsimAccounts = (departments: OsimDepartment[] = DEFAULT_OSIM_DEPARTMENTS): UserProfile[] => {
   // MODEL A: 4 Akun Fungsional Khusus Pengurus Inti OSIM (Badan Pengurus Harian / BPH)
   const bphDept = departments.find(d => d.id === 'dept_bph' || d.code === 'BPH');
@@ -124,7 +137,7 @@ export const generateDefaultOsimAccounts = (departments: OsimDepartment[] = DEFA
       uid: 'user_osim_ketua',
       email: 'osim.ketua@madrasah.sch.id',
       username: 'osim.ketua',
-      password: 'password',
+      password: getDefaultOsimPassword('ketua'),
       displayName: 'Ketua OSIM',
       role: 'pengurus_osim',
       osimRole: 'ketua',
@@ -139,7 +152,7 @@ export const generateDefaultOsimAccounts = (departments: OsimDepartment[] = DEFA
       uid: 'user_osim_wakil',
       email: 'osim.wakil@madrasah.sch.id',
       username: 'osim.wakil',
-      password: 'password',
+      password: getDefaultOsimPassword('wakil'),
       displayName: 'Wakil Ketua OSIM',
       role: 'pengurus_osim',
       osimRole: 'wakil',
@@ -154,7 +167,7 @@ export const generateDefaultOsimAccounts = (departments: OsimDepartment[] = DEFA
       uid: 'user_osim_sekretaris',
       email: 'osim.sekretaris@madrasah.sch.id',
       username: 'osim.sekretaris',
-      password: 'password',
+      password: getDefaultOsimPassword('sekretaris'),
       displayName: 'Sekretaris OSIM',
       role: 'pengurus_osim',
       osimRole: 'sekretaris',
@@ -169,7 +182,7 @@ export const generateDefaultOsimAccounts = (departments: OsimDepartment[] = DEFA
       uid: 'user_osim_bendahara',
       email: 'osim.bendahara@madrasah.sch.id',
       username: 'osim.bendahara',
-      password: 'password',
+      password: getDefaultOsimPassword('bendahara'),
       displayName: 'Bendahara OSIM',
       role: 'pengurus_osim',
       osimRole: 'bendahara',
@@ -195,7 +208,7 @@ export const generateDefaultOsimAccounts = (departments: OsimDepartment[] = DEFA
       uid: `user_osim_${dept.id}`,
       email: `${username}@madrasah.sch.id`,
       username,
-      password: 'password',
+      password: getDefaultOsimPassword(dept.code || `sekbid${idx + 1}`),
       displayName: `Pengurus OSIM - ${dept.name.split(':')[0].trim()}`,
       role: 'pengurus_osim',
       osimRole: 'sekbid',

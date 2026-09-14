@@ -367,6 +367,8 @@ export interface StudentCounseling {
   agreements?: string;
   followUpPlan: string;
   parentInvolved?: boolean;
+  isConfidential?: boolean; // Catatan Rahasia (Hanya bisa dilihat oleh sesama Guru BK dan Waka Kesiswaan)
+  confidentialNotes?: string; // Isi catatan rahasia hasil konseling mendalam
   status: 'Terbuka' | 'Dijadwalkan' | 'Berlangsung' | 'Dalam Pembinaan' | 'Selesai' | 'Perlu Tindak Lanjut';
   nextSessionDate?: string;
   academicYear?: string;
@@ -715,6 +717,10 @@ export interface OsimMember {
   vision?: string;
   flagshipProgram?: string;
   period: string; // e.g. "2026/2027"
+  loginUsername?: string;
+  loginPassword?: string;
+  username?: string;
+  password?: string;
   createdAt?: string;
 }
 
