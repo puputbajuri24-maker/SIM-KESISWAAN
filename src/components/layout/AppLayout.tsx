@@ -100,7 +100,7 @@ export interface AppLayoutProps {
 }
 
 export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, children }) => {
-  const { currentUser, allUsers, userRole, isWakaOrAdmin, isWaka, isSuperAdmin, isGuruBK, isPembinaOsim, isPembinaEkskul, isPembina, isPengurusOsim, isSimulatedFromAdmin, returnToAdminSession, logout, loginWithDemoRole, loginWithUser } = useAuth();
+  const { currentUser, allUsers, userRole, isWakaOrAdmin, isWaka, isSuperAdmin, isGuruBK, isPembinaOsim, isPembinaEkskul, isAlsoPembinaEkskul, isPembina, isPengurusOsim, isSimulatedFromAdmin, returnToAdminSession, logout, loginWithDemoRole, loginWithUser } = useAuth();
   const { schoolSetting, activeAcademicYear, activeSemester, notifications, markNotificationAsRead, markAllNotificationsAsRead, isSyncing, extracurriculars, announcements, markAnnouncementAsRead, markAllAnnouncementsAsReadForUser } = useSchool();
   const { timezoneMode, resolvedTimezone, timezoneAbbr, utcOffsetString, formattedTime, formattedDate } = useAppTimezone();
 
@@ -436,6 +436,19 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
             { id: 'permissions', label: 'Dispensasi & Izin', icon: FileCheck }
           ]
         },
+        ...(isAlsoPembinaEkskul ? [
+          {
+            title: 'BINAAN EKSTRAKURIKULER',
+            items: [
+              { id: 'extracurriculars', label: 'Ekskul Binaan Saya', icon: Compass },
+              { id: 'members', label: 'Anggota Ekskul', icon: Users },
+              { id: 'schedules', label: 'Jadwal & Kalender Latihan', icon: Calendar },
+              { id: 'attendance', label: 'Presensi Latihan', icon: ClipboardCheck, tag: 'AUTO' },
+              { id: 'activities', label: 'Agenda & Lomba', icon: FileSpreadsheet },
+              { id: 'achievements', label: 'Prestasi & Penghargaan', icon: Award }
+            ]
+          }
+        ] : []),
         {
           title: 'TRANSPARANSI & LAPORAN',
           items: [
@@ -491,12 +504,22 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
           ]
         },
         {
-          title: 'INFORMASI & REGULASI',
+          title: 'PROGRAM & AKTIVITAS OSIM',
           items: [
             { id: 'announcements', label: 'Pusat Pengumuman', icon: Megaphone, count: unreadAnnouncements.length ? `${unreadAnnouncements.length}` : undefined },
-            { id: 'rules', label: 'Buku Tata Tertib Siswa', icon: BookOpenCheck, tag: 'TATIB' }
+            { id: 'rules', label: 'Buku Tata Tertib Siswa', icon: BookOpenCheck, tag: 'TATIB' },
+            { id: 'activities', label: 'Agenda & Sidang OSIM', icon: FileSpreadsheet },
+            { id: 'reports', label: 'LPJ Kegiatan OSIM', icon: FileText }
           ]
         },
+        ...(currentUser?.isCashManager ? [
+          {
+            title: 'TRANSPARANSI KEUANGAN',
+            items: [
+              { id: 'cash', label: 'Neraca Kas & Keuangan', icon: Wallet, tag: currentUser.cashManagerTitle || 'BENDAHARA' }
+            ]
+          }
+        ] : []),
         {
           title: 'AKUN PENGURUS',
           items: [

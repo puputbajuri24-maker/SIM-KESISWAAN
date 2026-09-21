@@ -54,9 +54,18 @@ export const findLinkedOsimAccount = (
     if (nisMatch) return nisMatch;
   }
 
-  // 2. Direct ID or email match
+  // 2. Full name matching
+  if (cleanName) {
+    const nameMatch = accounts.find(u => {
+      const uName = (u.displayName || '').toLowerCase().trim();
+      return uName === cleanName || (uName.length >= 6 && cleanName.length >= 6 && (uName.includes(cleanName) || cleanName.includes(uName)));
+    });
+    if (nameMatch) return nameMatch;
+  }
+
+  // 3. Direct ID or email match
   if (member.id) {
-    const idMatch = accounts.find(u => u.uid === member.id);
+    const idMatch = accounts.find(u => u.uid === member.id || u.uid === `user_${member.id}`);
     if (idMatch) return idMatch;
   }
   if (member.email) {
@@ -64,7 +73,7 @@ export const findLinkedOsimAccount = (
     if (emailMatch) return emailMatch;
   }
 
-  // 3. SEKBID MATCHING (Sekbid 1 s.d. 8)
+  // 4. SEKBID MATCHING (Sekbid 1 s.d. 8)
   if (sekbidNum !== null) {
     const targetCodeSimple = `sekbid${sekbidNum}`;
     const sekbidMatch = accounts.find(u => {
@@ -89,49 +98,36 @@ export const findLinkedOsimAccount = (
     if (sekbidMatch) return sekbidMatch;
   }
 
-  // 4. BPH MATCHING (Ketua Umum, Wakil Ketua, Sekretaris, Bendahara)
+  // 5. BPH Role match for generic system accounts only
   if (isBphMember(member)) {
     if (pos.includes('ketua') && !pos.includes('wakil') && !pos.includes('sekbid')) {
       const ketuaMatch = accounts.find(u => 
         u.uid === 'user_osim_ketua' ||
-        u.username === 'osim.ketua' ||
-        (u.osimRole === 'ketua' && (!u.osimDepartmentCode || u.osimDepartmentCode === 'BPH'))
+        u.username === 'osim.ketua'
       );
       if (ketuaMatch) return ketuaMatch;
     }
     if (pos.includes('wakil')) {
       const wakilMatch = accounts.find(u =>
         u.uid === 'user_osim_wakil' ||
-        u.username === 'osim.wakil' ||
-        (u.osimRole === 'wakil' && (!u.osimDepartmentCode || u.osimDepartmentCode === 'BPH'))
+        u.username === 'osim.wakil'
       );
       if (wakilMatch) return wakilMatch;
     }
     if (pos.includes('sekretaris')) {
       const sekretarisMatch = accounts.find(u =>
         u.uid === 'user_osim_sekretaris' ||
-        u.username === 'osim.sekretaris' ||
-        (u.osimRole === 'sekretaris' && (!u.osimDepartmentCode || u.osimDepartmentCode === 'BPH'))
+        u.username === 'osim.sekretaris'
       );
       if (sekretarisMatch) return sekretarisMatch;
     }
     if (pos.includes('bendahara')) {
       const bendaharaMatch = accounts.find(u =>
         u.uid === 'user_osim_bendahara' ||
-        u.username === 'osim.bendahara' ||
-        (u.osimRole === 'bendahara' && (!u.osimDepartmentCode || u.osimDepartmentCode === 'BPH'))
+        u.username === 'osim.bendahara'
       );
       if (bendaharaMatch) return bendaharaMatch;
     }
-  }
-
-  // 5. Full name matching
-  if (cleanName) {
-    const nameMatch = accounts.find(u => {
-      const uName = u.displayName.toLowerCase().trim();
-      return uName === cleanName || uName.startsWith(cleanName) || cleanName.startsWith(uName);
-    });
-    if (nameMatch) return nameMatch;
   }
 
   return undefined;
@@ -141,6 +137,15 @@ export const findLinkedOsimAccount = (
  * Returns default username for a member based on role or sekbid
  */
 export const getDefaultOsimUsername = (member: OsimMember | Partial<OsimMember>): string => {
+  if (member.studentNis && member.studentNis.trim().length >= 4) {
+    return member.studentNis.trim();
+  }
+
+  const cleanName = (member.fullName || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10);
+  if (cleanName) {
+    return `osim.${cleanName}`;
+  }
+
   const sekbidNum = extractSekbidNumber(member.sekbid) || extractSekbidNumber(member.position);
   if (sekbidNum !== null) {
     return `osim.sekbid${sekbidNum}`;
@@ -160,12 +165,7 @@ export const getDefaultOsimUsername = (member: OsimMember | Partial<OsimMember>)
     return 'osim.bendahara';
   }
 
-  if (member.studentNis && member.studentNis.trim().length >= 4) {
-    return member.studentNis.trim();
-  }
-
-  const cleanName = (member.fullName || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 10);
-  return cleanName ? `osim.${cleanName}` : 'osim.anggota';
+  return 'osim.anggota';
 };
 
 /**

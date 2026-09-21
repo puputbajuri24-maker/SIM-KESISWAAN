@@ -22,10 +22,12 @@ import {
   Square,
   School,
   Sparkles,
-  Check
+  Check,
+  Lock
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useCrudPermission } from '../utils/rbacRules';
 import { ExtracurricularMember } from '../types';
 import { DataTable, Column } from '../components/common/DataTable';
 import { StatusBadge } from '../components/common/Badge';
@@ -41,6 +43,7 @@ interface MembersPageProps {
 
 export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initialEkskulId }) => {
   const { isWakaOrAdmin, isPembina, currentUser } = useAuth();
+  const canCrudMembers = useCrudPermission('members', currentUser?.role);
   const {
     classes,
     members,
@@ -429,9 +432,16 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
             {m.studentName.charAt(0)}
           </div>
           <div>
-            <p className="font-bold text-slate-900 dark:text-slate-100 hover:text-indigo-600 transition-colors cursor-pointer" onClick={() => handleOpenDetail(m)}>
-              {m.studentName}
-            </p>
+            <div className="flex items-center gap-1.5">
+              {m.studentCode && (
+                <span className="font-mono text-[10px] font-bold px-1.5 py-0.2 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                  {m.studentCode}
+                </span>
+              )}
+              <p className="font-bold text-slate-900 dark:text-slate-100 hover:text-indigo-600 transition-colors cursor-pointer" onClick={() => handleOpenDetail(m)}>
+                {m.studentName}
+              </p>
+            </div>
             <p className="text-[11px] text-slate-400">NIS: {m.studentNis} • Kelas: {m.studentClass}</p>
           </div>
         </div>
@@ -480,20 +490,24 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
           >
             <Eye className="w-4 h-4" />
           </button>
-          <button
-            onClick={e => handleOpenEdit(m, e)}
-            className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:hover:bg-amber-900 dark:text-amber-400 transition-colors"
-            title="Edit Status Keanggotaan"
-          >
-            <Edit2 className="w-4 h-4" />
-          </button>
-          <button
-            onClick={e => handleOpenDelete(m, e)}
-            className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-400 transition-colors"
-            title="Keluarkan dari Ekskul"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
+          {canCrudMembers && (
+            <>
+              <button
+                onClick={e => handleOpenEdit(m, e)}
+                className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:hover:bg-amber-900 dark:text-amber-400 transition-colors"
+                title="Edit Status Keanggotaan"
+              >
+                <Edit2 className="w-4 h-4" />
+              </button>
+              <button
+                onClick={e => handleOpenDelete(m, e)}
+                className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-400 transition-colors"
+                title="Keluarkan dari Ekskul"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </>
+          )}
         </div>
       )
     }
@@ -527,15 +541,35 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
             ]}
           />
 
-          <button
-            onClick={handleOpenAdd}
-            className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/20 flex items-center gap-2 transition-all hover:scale-105"
-          >
-            <Plus className="w-4 h-4" />
-            <span>+ Daftarkan Anggota</span>
-          </button>
+          {canCrudMembers && (
+            <button
+              onClick={handleOpenAdd}
+              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/20 flex items-center gap-2 transition-all hover:scale-105"
+            >
+              <Plus className="w-4 h-4" />
+              <span>+ Daftarkan Anggota</span>
+            </button>
+          )}
         </div>
       </div>
+
+      {!canCrudMembers && (
+        <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-between gap-3 text-amber-900 dark:text-amber-200">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-700 dark:text-amber-300 shrink-0">
+              <Lock className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-amber-800 dark:text-amber-300">
+                CRUD Data Anggota Ekstrakurikuler Dikelola Terpusat di cPanel
+              </p>
+              <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                Pendaftaran, pengeditan status, dan pengeluaran anggota dibatasi terpusat pada cPanel Kesiswaan, kecuali Admin memberikan izin pada Matriks Hak Akses Peran.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Class Grid Filter */}
       <ClassGridFilter
@@ -634,7 +668,7 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
       </div>
 
       {/* Batch Actions Toolbar when members are selected */}
-      {selectedMemberIds.size > 0 && (
+      {canCrudMembers && selectedMemberIds.size > 0 && (
         <div className="p-3.5 rounded-2xl bg-indigo-50/90 dark:bg-indigo-950/70 border-2 border-indigo-300 dark:border-indigo-700/80 flex flex-wrap items-center justify-between gap-3 shadow-md animate-in fade-in slide-in-from-top-2 duration-200">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white font-black text-xs flex items-center justify-center shadow-xs">
@@ -703,7 +737,7 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
         data={filteredMembers}
         columns={columns}
         onRowClick={m => handleOpenDetail(m)}
-        selectable={true}
+        selectable={canCrudMembers}
         selectedIds={selectedMemberIds}
         onToggleSelect={handleToggleSelectMember}
         onToggleSelectAll={handleToggleSelectAllMembers}
@@ -711,7 +745,7 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
         searchableKeys={['studentName', 'studentNis', 'studentClass', 'extracurricularName']}
         emptyTitle="Tidak Ada Anggota"
         emptySubtitle="Belum ada siswa yang terdaftar dalam kriteria filter ini."
-        batchActions={(ids) => (
+        batchActions={canCrudMembers ? (ids) => (
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -729,7 +763,7 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
               Aktifkan
             </button>
           </div>
-        )}
+        ) : undefined}
       />
 
       {/* Show / Detail Member Modal Popup */}
@@ -744,17 +778,19 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
         maxWidth="lg"
         footer={
           <>
-            <button
-              type="button"
-              onClick={() => {
-                setIsDetailOpen(false);
-                if (selectedMember) handleOpenEdit(selectedMember);
-              }}
-              className="px-4 py-2 text-xs font-semibold rounded-xl bg-amber-600 hover:bg-amber-500 text-white flex items-center gap-1.5 transition"
-            >
-              <Edit2 className="w-3.5 h-3.5" />
-              Edit Status
-            </button>
+            {canCrudMembers && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsDetailOpen(false);
+                  if (selectedMember) handleOpenEdit(selectedMember);
+                }}
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-amber-600 hover:bg-amber-500 text-white flex items-center gap-1.5 transition"
+              >
+                <Edit2 className="w-3.5 h-3.5" />
+                Edit Status
+              </button>
+            )}
             <button
               type="button"
               onClick={() => {

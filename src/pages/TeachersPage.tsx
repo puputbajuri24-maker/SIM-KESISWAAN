@@ -21,10 +21,17 @@ import {
   HelpCircle,
   RefreshCw,
   Table,
-  Wallet
+  Wallet,
+  Lock,
+  Shield,
+  HeartHandshake,
+  Sparkles,
+  Layers,
+  CheckCheck
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useCrudPermission } from '../utils/rbacRules';
 import { Teacher } from '../types';
 import { DataTable, Column } from '../components/common/DataTable';
 import { StatusBadge } from '../components/common/Badge';
@@ -43,9 +50,14 @@ import {
   isGuruBKOrPembinaRole,
   getInitialsColorTheme
 } from '../utils/initials';
+import {
+  getTeacherHierarchyClassification,
+  sortTeachersByHierarchy
+} from '../utils/syncUtils';
 
 export const TeachersPage: React.FC = () => {
-  const { isWakaOrAdmin } = useAuth();
+  const { isWakaOrAdmin, currentUser } = useAuth();
+  const canCrudTeachers = useCrudPermission('teachers', currentUser?.role);
   const {
     teachers,
     extracurriculars,
@@ -69,6 +81,9 @@ export const TeachersPage: React.FC = () => {
 
   // Bulk Selection State
   const [selectedTeacherIds, setSelectedTeacherIds] = useState<Set<string>>(new Set());
+
+  // Role Pill Filter State ('all' | 'waka' | 'guru_bk' | 'pembina_osim' | 'pembina_ekskul' | 'wali_kelas' | 'dewan_guru')
+  const [rolePillFilter, setRolePillFilter] = useState<'all' | 'waka' | 'guru_bk' | 'pembina_osim' | 'pembina_ekskul' | 'wali_kelas' | 'dewan_guru'>('all');
 
   // Import State
   const [previewTeachers, setPreviewTeachers] = useState<ParsedImportTeacher[]>([]);
@@ -372,6 +387,36 @@ export const TeachersPage: React.FC = () => {
     }
   };
 
+  // Role Counts for Pills
+  const roleCounts = React.useMemo(() => {
+    const counts = {
+      all: teachers.length,
+      waka: 0,
+      guru_bk: 0,
+      pembina_osim: 0,
+      pembina_ekskul: 0,
+      wali_kelas: 0,
+      dewan_guru: 0
+    };
+    teachers.forEach(t => {
+      const cls = getTeacherHierarchyClassification(t);
+      if (counts[cls.categoryKey] !== undefined) {
+        counts[cls.categoryKey]++;
+      }
+    });
+    return counts;
+  }, [teachers]);
+
+  // Hierarchically sorted and filtered teachers list
+  const filteredAndSortedTeachers = React.useMemo(() => {
+    const sorted = sortTeachersByHierarchy(teachers);
+    if (rolePillFilter === 'all') return sorted;
+    return sorted.filter(t => {
+      const cls = getTeacherHierarchyClassification(t);
+      return cls.categoryKey === rolePillFilter;
+    });
+  }, [teachers, rolePillFilter]);
+
   const columns: Column<Teacher>[] = [
     {
       header: 'Nama Guru / Pembina',
@@ -381,6 +426,7 @@ export const TeachersPage: React.FC = () => {
         const isBKOrPembina = isGuruBKOrPembinaRole(t.role);
         const teacherInitials = getTeacherInitials(t.fullName);
         const theme = getInitialsColorTheme(t.role);
+        const hierarchy = getTeacherHierarchyClassification(t);
 
         return (
           <div className="flex items-center gap-3">
@@ -404,8 +450,21 @@ export const TeachersPage: React.FC = () => {
               </div>
             )}
             <div>
-              <p className="font-bold text-slate-900 dark:text-slate-100">{t.fullName}</p>
-              <p className="text-[11px] text-slate-400">NIP: {t.nip}</p>
+              <div className="flex items-center gap-1.5">
+                <span
+                  className="font-mono text-[9px] font-black px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300"
+                  title={`Hirarki Keanggotaan: Peringkat ${hierarchy.rank} (${hierarchy.categoryLabel})`}
+                >
+                  #{hierarchy.rank}
+                </span>
+                {t.code && (
+                  <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 border border-slate-200 dark:border-slate-700">
+                    {t.code}
+                  </span>
+                )}
+                <p className="font-bold text-slate-900 dark:text-slate-100">{t.fullName}</p>
+              </div>
+              <p className="text-[11px] text-slate-400">NIP: {t.nip || '-'}</p>
             </div>
           </div>
         );
@@ -415,19 +474,39 @@ export const TeachersPage: React.FC = () => {
       header: 'Jabatan / Peran',
       accessorKey: 'role',
       sortable: true,
-      cell: t => (
-        <div className="flex flex-col gap-1 items-start">
-          <span className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 font-bold text-xs text-slate-700 dark:text-slate-300">
-            {t.role}
-          </span>
-          {t.isCashManager && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 text-[10px] font-bold border border-amber-300 dark:border-amber-800">
-              <Wallet className="w-3 h-3 text-amber-500" />
-              <span>★ {t.cashManagerTitle || 'Pengelola Kas'}</span>
+      cell: t => {
+        const hierarchy = getTeacherHierarchyClassification(t);
+        const getBadgeStyle = () => {
+          switch (hierarchy.categoryKey) {
+            case 'waka':
+              return 'bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-200 border-blue-200 dark:border-blue-800';
+            case 'guru_bk':
+              return 'bg-purple-100 text-purple-800 dark:bg-purple-950/70 dark:text-purple-200 border-purple-200 dark:border-purple-800';
+            case 'pembina_osim':
+              return 'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-200 border-amber-200 dark:border-amber-800';
+            case 'pembina_ekskul':
+              return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-200 border-emerald-200 dark:border-emerald-800';
+            case 'wali_kelas':
+              return 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950/70 dark:text-indigo-200 border-indigo-200 dark:border-indigo-800';
+            default:
+              return 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700';
+          }
+        };
+
+        return (
+          <div className="flex flex-col gap-1 items-start">
+            <span className={`px-2.5 py-1 rounded-lg font-bold text-xs border ${getBadgeStyle()}`}>
+              {t.role}
             </span>
-          )}
-        </div>
-      )
+            {t.isCashManager && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 text-[10px] font-bold border border-amber-300 dark:border-amber-800">
+                <Wallet className="w-3 h-3 text-amber-500" />
+                <span>★ {t.cashManagerTitle || 'Pengelola Kas'}</span>
+              </span>
+            )}
+          </div>
+        );
+      }
     },
     {
       header: 'Kontak & WhatsApp',
@@ -479,20 +558,24 @@ export const TeachersPage: React.FC = () => {
           >
             <Eye className="w-4 h-4" />
           </button>
-          <button
-            onClick={e => handleOpenEdit(t, e)}
-            className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:hover:bg-amber-900 dark:text-amber-400 transition-colors"
-            title="Edit Data Guru"
-          >
-            <Edit2 className="w-4 h-4" />
-          </button>
-          <button
-            onClick={e => handleOpenDelete(t, e)}
-            className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-400 transition-colors"
-            title="Hapus Guru / Pembina"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
+          {canCrudTeachers && (
+            <>
+              <button
+                onClick={e => handleOpenEdit(t, e)}
+                className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:hover:bg-amber-900 dark:text-amber-400 transition-colors"
+                title="Edit Data Guru"
+              >
+                <Edit2 className="w-4 h-4" />
+              </button>
+              <button
+                onClick={e => handleOpenDelete(t, e)}
+                className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-400 transition-colors"
+                title="Hapus Guru / Pembina"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </>
+          )}
         </div>
       )
     }
@@ -515,7 +598,7 @@ export const TeachersPage: React.FC = () => {
           <ExportActions
             filename="daftar_guru_pembina"
             title="Daftar Guru Pembina Kesiswaan"
-            data={teachers}
+            data={filteredAndSortedTeachers}
             headers={[
               { header: 'Nama Guru', key: 'fullName' },
               { header: 'NIP', key: 'nip' },
@@ -525,61 +608,198 @@ export const TeachersPage: React.FC = () => {
             ]}
           />
 
-          <button
-            onClick={handleDownloadTemplateXLSX}
-            className="px-3.5 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-800/80 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
-            title="Unduh Template Excel resmi untuk import data guru & pembina"
-          >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-            <span>Template Excel</span>
-          </button>
+          {canCrudTeachers && (
+            <>
+              <button
+                onClick={handleDownloadTemplateXLSX}
+                className="px-3.5 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-800/80 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 text-xs font-semibold flex items-center gap-1.5 shadow-xs transition-colors"
+                title="Unduh Template Excel resmi untuk import data guru & pembina"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <span>Template Excel</span>
+              </button>
 
-          <button
-            onClick={() => {
-              handleResetImport();
-              setIsImportOpen(true);
-            }}
-            className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-2 shadow-xs transition-colors"
-          >
-            <Upload className="w-4 h-4 text-slate-500" />
-            <span>Import Excel</span>
-          </button>
+              <button
+                onClick={() => {
+                  handleResetImport();
+                  setIsImportOpen(true);
+                }}
+                className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-2 shadow-xs transition-colors"
+              >
+                <Upload className="w-4 h-4 text-slate-500" />
+                <span>Import Excel</span>
+              </button>
 
-          {isWakaOrAdmin && teachers.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setIsClearAllTeachersOpen(true)}
-              className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-300 font-bold text-xs border border-rose-200 dark:border-rose-800 transition-colors"
-              title="Kosongkan semua data guru master untuk upload data dewan guru fresh"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>Reset Guru</span>
-            </button>
+              {isWakaOrAdmin && teachers.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setIsClearAllTeachersOpen(true)}
+                  className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-300 font-bold text-xs border border-rose-200 dark:border-rose-800 transition-colors"
+                  title="Kosongkan semua data guru master untuk upload data dewan guru fresh"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Reset Guru</span>
+                </button>
+              )}
+
+              <button
+                onClick={handleOpenAdd}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/20 flex items-center gap-2 transition-all hover:scale-105"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Tambah Guru / Pembina</span>
+              </button>
+            </>
           )}
-
-          <button
-            onClick={handleOpenAdd}
-            className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/20 flex items-center gap-2 transition-all hover:scale-105"
-          >
-            <Plus className="w-4 h-4" />
-            <span>+ Tambah Guru / Pembina</span>
-          </button>
         </div>
+      </div>
+
+      {!canCrudTeachers && (
+        <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-between gap-3 text-amber-900 dark:text-amber-200">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-700 dark:text-amber-300 shrink-0">
+              <Lock className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-amber-800 dark:text-amber-300">
+                CRUD Data Guru Pembina Terpusat di cPanel
+              </p>
+              <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                Operasi Tambah, Edit, Hapus, dan Import Guru dibatasi terpusat pada cPanel Kesiswaan, kecuali Admin memberikan izin pada Matriks Hak Akses Peran.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Role Filter Pills (Standard 6-Rank Classification) */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs no-scrollbar">
+        <button
+          type="button"
+          onClick={() => setRolePillFilter('all')}
+          className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+            rolePillFilter === 'all'
+              ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30'
+              : 'bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+          }`}
+        >
+          <Layers className="w-3.5 h-3.5" />
+          <span>Semua Guru & Pembina (1-6)</span>
+          <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${rolePillFilter === 'all' ? 'bg-indigo-800 text-indigo-100' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
+            {roleCounts.all}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setRolePillFilter('waka')}
+          className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+            rolePillFilter === 'waka'
+              ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/30'
+              : 'bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-900/60'
+          }`}
+        >
+          <Shield className="w-3.5 h-3.5" />
+          <span>1. Waka Kesiswaan</span>
+          <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${rolePillFilter === 'waka' ? 'bg-blue-800 text-blue-100' : 'bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300'}`}>
+            {roleCounts.waka}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setRolePillFilter('guru_bk')}
+          className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+            rolePillFilter === 'guru_bk'
+              ? 'bg-purple-600 text-white shadow-sm shadow-purple-600/30'
+              : 'bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-900/60'
+          }`}
+        >
+          <HeartHandshake className="w-3.5 h-3.5" />
+          <span>2. Guru BK</span>
+          <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${rolePillFilter === 'guru_bk' ? 'bg-purple-800 text-purple-100' : 'bg-purple-50 dark:bg-purple-950 text-purple-700 dark:text-purple-300'}`}>
+            {roleCounts.guru_bk}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setRolePillFilter('pembina_osim')}
+          className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+            rolePillFilter === 'pembina_osim'
+              ? 'bg-amber-600 text-white shadow-sm shadow-amber-600/30'
+              : 'bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-900/60'
+          }`}
+        >
+          <Award className="w-3.5 h-3.5" />
+          <span>3. Pembina OSIM</span>
+          <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${rolePillFilter === 'pembina_osim' ? 'bg-amber-800 text-amber-100' : 'bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300'}`}>
+            {roleCounts.pembina_osim}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setRolePillFilter('pembina_ekskul')}
+          className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+            rolePillFilter === 'pembina_ekskul'
+              ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/30'
+              : 'bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-900/60'
+          }`}
+        >
+          <Compass className="w-3.5 h-3.5" />
+          <span>4. Pembina Ekskul</span>
+          <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${rolePillFilter === 'pembina_ekskul' ? 'bg-emerald-800 text-emerald-100' : 'bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300'}`}>
+            {roleCounts.pembina_ekskul}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setRolePillFilter('wali_kelas')}
+          className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+            rolePillFilter === 'wali_kelas'
+              ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30'
+              : 'bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-900/60'
+          }`}
+        >
+          <GraduationCap className="w-3.5 h-3.5" />
+          <span>5. Wali Kelas</span>
+          <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${rolePillFilter === 'wali_kelas' ? 'bg-indigo-800 text-indigo-100' : 'bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300'}`}>
+            {roleCounts.wali_kelas}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setRolePillFilter('dewan_guru')}
+          className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+            rolePillFilter === 'dewan_guru'
+              ? 'bg-slate-700 text-white shadow-sm shadow-slate-700/30'
+              : 'bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+          }`}
+        >
+          <Users className="w-3.5 h-3.5" />
+          <span>6. Guru & Staf</span>
+          <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${rolePillFilter === 'dewan_guru' ? 'bg-slate-900 text-slate-100' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
+            {roleCounts.dewan_guru}
+          </span>
+        </button>
       </div>
 
       {/* Table */}
       <DataTable
         id="teachers-table"
-        data={teachers}
+        data={filteredAndSortedTeachers}
         columns={columns}
         searchPlaceholder="Cari nama guru, NIP, atau ekstrakurikuler binaan..."
         searchableKeys={['fullName', 'nip', 'role', 'phone', 'email']}
         onRowClick={handleOpenDetail}
-        selectable={true}
+        selectable={canCrudTeachers}
         selectedIds={selectedTeacherIds}
         onToggleSelect={handleToggleSelectTeacher}
         onToggleSelectAll={handleToggleSelectAllTeachers}
-        batchActions={(ids) => (
+        batchActions={canCrudTeachers ? (ids) => (
           <button
             type="button"
             onClick={() => setIsBulkDeleteOpen(true)}
@@ -588,7 +808,7 @@ export const TeachersPage: React.FC = () => {
             <Trash2 className="w-3.5 h-3.5" />
             <span>Hapus {ids.length} Guru Terpilih</span>
           </button>
-        )}
+        ) : undefined}
       />
 
       {/* Form Modal */}
@@ -1074,6 +1294,7 @@ export const TeachersPage: React.FC = () => {
                   <thead className="bg-slate-100 dark:bg-slate-800/90 sticky top-0 text-[11px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">
                     <tr>
                       <th className="py-2.5 px-3">No</th>
+                      <th className="py-2.5 px-3">Kode</th>
                       <th className="py-2.5 px-3">NIP</th>
                       <th className="py-2.5 px-3">Nama Guru & Gelar</th>
                       <th className="py-2.5 px-3">L/P</th>
@@ -1090,6 +1311,9 @@ export const TeachersPage: React.FC = () => {
                         className={t.isValid ? 'hover:bg-slate-50 dark:hover:bg-slate-800/40' : 'bg-rose-50/50 dark:bg-rose-950/20'}
                       >
                         <td className="py-2 px-3 font-mono text-slate-400">{idx + 1}</td>
+                        <td className="py-2 px-3 font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                          {t.code || '-'}
+                        </td>
                         <td className="py-2 px-3 font-mono text-slate-700 dark:text-slate-300">
                           {t.nip || '-'}
                         </td>
@@ -1198,17 +1422,24 @@ export const TeachersPage: React.FC = () => {
               <div>
                 <h4 className="font-bold text-sm text-slate-900 dark:text-slate-100">{selectedTeacher.fullName}</h4>
                 <p className="text-slate-500 dark:text-slate-400 font-mono text-[11px]">NIP: {selectedTeacher.nip}</p>
-                <span className="inline-block mt-0.5 px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-semibold text-[10px]">
-                  {selectedTeacher.role}
-                </span>
+                <div className="flex items-center gap-1.5 mt-1">
+                  <span className="px-2 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 font-mono font-bold text-[10px]">
+                    #{getTeacherHierarchyClassification(selectedTeacher).rank} {getTeacherHierarchyClassification(selectedTeacher).categoryLabel}
+                  </span>
+                  <span className="px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-semibold text-[10px]">
+                    {selectedTeacher.role}
+                  </span>
+                </div>
               </div>
             </div>
 
             <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/60 space-y-2">
-              <p><strong>Jabatan:</strong> {selectedTeacher.role}</p>
+              <p><strong>Jabatan Resmi:</strong> {selectedTeacher.role}</p>
+              <p><strong>Klasifikasi Hirarki:</strong> Peringkat {getTeacherHierarchyClassification(selectedTeacher).rank} ({getTeacherHierarchyClassification(selectedTeacher).categoryLabel})</p>
               <p><strong>Nomor Telepon / WA:</strong> {selectedTeacher.phone || '-'}</p>
               <p><strong>Email:</strong> {selectedTeacher.email || '-'}</p>
-              <p><strong>Status:</strong> {selectedTeacher.isActive ? 'Aktif' : 'Nonaktif'}</p>
+              <p><strong>Status Akun:</strong> {selectedTeacher.isActive ? 'Aktif' : 'Nonaktif'}</p>
+              <p><strong>Sinkronisasi Akun cPanel:</strong> <span className="text-emerald-600 dark:text-emerald-400 font-semibold">✓ Otomatis terhubung dengan kredensial login NIP/Email</span></p>
               <div className="mt-2">
                 <p className="font-bold mb-1">Ekskul Binaan:</p>
                 <div className="flex flex-wrap gap-1">

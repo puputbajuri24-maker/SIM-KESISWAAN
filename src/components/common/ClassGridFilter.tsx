@@ -8,9 +8,11 @@ import {
   Search,
   Users,
   Filter,
+  ArrowUpDown,
   X
 } from 'lucide-react';
 import { SchoolClass } from '../../types';
+import { sortClasses, ClassSortOrder } from '../../utils/classResolver';
 
 export interface ClassGridFilterProps {
   classes: SchoolClass[];
@@ -23,6 +25,7 @@ export interface ClassGridFilterProps {
   showGradeTabs?: boolean;
   isCollapsible?: boolean;
   defaultExpanded?: boolean;
+  defaultSortOrder?: ClassSortOrder;
   colorScheme?: 'indigo' | 'emerald' | 'amber' | 'rose' | 'violet' | 'sky';
   className?: string;
 }
@@ -38,11 +41,13 @@ export const ClassGridFilter: React.FC<ClassGridFilterProps> = ({
   showGradeTabs = true,
   isCollapsible = true,
   defaultExpanded = true,
+  defaultSortOrder = 'classification',
   colorScheme = 'indigo',
   className = ''
 }) => {
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [selectedGrade, setSelectedGrade] = useState<'all' | 'X' | 'XI' | 'XII'>('all');
+  const [classSortOrder, setClassSortOrder] = useState<ClassSortOrder>(defaultSortOrder);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Calculate distinct grades present in the classes
@@ -54,9 +59,9 @@ export const ClassGridFilter: React.FC<ClassGridFilterProps> = ({
     return Array.from(gradesSet).sort();
   }, [classes]);
 
-  // Filter classes based on grade and search query
+  // Filter classes based on grade and search query, then sort per chosen order
   const filteredClasses = useMemo(() => {
-    return classes.filter(c => {
+    const filtered = classes.filter(c => {
       const matchGrade = selectedGrade === 'all' || c.grade === selectedGrade;
       const matchSearch =
         !searchQuery.trim() ||
@@ -65,7 +70,9 @@ export const ClassGridFilter: React.FC<ClassGridFilterProps> = ({
         (c.homeroomTeacherName && c.homeroomTeacherName.toLowerCase().includes(searchQuery.toLowerCase()));
       return matchGrade && matchSearch;
     });
-  }, [classes, selectedGrade, searchQuery]);
+
+    return sortClasses(filtered, classSortOrder, countsByClassId);
+  }, [classes, selectedGrade, searchQuery, classSortOrder, countsByClassId]);
 
   // Computed total count if not provided
   const computedTotal = useMemo(() => {
@@ -227,25 +234,46 @@ export const ClassGridFilter: React.FC<ClassGridFilterProps> = ({
               </div>
             )}
 
-            {/* Quick search class */}
-            <div className="relative min-w-[180px] sm:w-56">
-              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Cari rombel/wali kelas..."
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                className="w-full pl-8 pr-3 py-1 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
-              />
-              {searchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setSearchQuery('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+            {/* Right Controls: Sort Order & Quick search class */}
+            <div className="flex items-center flex-wrap gap-2">
+              {/* Sort Order Selector */}
+              <div className="flex items-center gap-1.5 text-xs">
+                <span className="text-[11px] text-slate-400 font-medium hidden sm:inline flex items-center gap-1">
+                  <ArrowUpDown className="w-3 h-3 text-slate-400" /> Urutkan:
+                </span>
+                <select
+                  value={classSortOrder}
+                  onChange={e => setClassSortOrder(e.target.value as ClassSortOrder)}
+                  className="px-2.5 py-1 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 font-medium cursor-pointer"
+                  title="Urutkan Rombel Kelas"
                 >
-                  <X className="w-3 h-3" />
-                </button>
-              )}
+                  <option value="classification">🏷️ Tingkat (X ➔ XI ➔ XII) & Abjad</option>
+                  <option value="name-asc">🔤 Abjad Rombel (A ➔ Z)</option>
+                  <option value="name-desc">🔡 Abjad Rombel (Z ➔ A)</option>
+                  <option value="count-desc">👥 Jumlah {itemUnit} Terbanyak</option>
+                </select>
+              </div>
+
+              {/* Quick search class */}
+              <div className="relative min-w-[160px] sm:w-48">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Cari rombel/wali..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 

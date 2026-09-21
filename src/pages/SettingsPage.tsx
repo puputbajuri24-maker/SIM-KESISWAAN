@@ -19,7 +19,9 @@ import {
   Mail,
   Printer,
   FileText,
-  Lock
+  Lock,
+  GraduationCap,
+  CloudUpload
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -28,6 +30,7 @@ import { LogoUploader } from '../components/common/LogoUploader';
 import { SchoolLetterhead } from '../components/common/SchoolLetterhead';
 import { ClassManagementModal } from '../components/common/ClassManagementModal';
 import { AcademicYearManagementModal } from '../components/common/AcademicYearManagementModal';
+import { AcademicYearPromotionModal } from '../components/common/AcademicYearPromotionModal';
 import { TimezoneSettingsCard } from '../components/common/TimezoneSettingsCard';
 import { ThemeSettingsCard } from '../components/common/ThemeSettingsCard';
 
@@ -80,6 +83,7 @@ export const SettingsPage: React.FC = () => {
     activeSemester,
     setActiveAcademicYear,
     seedFirebaseDatabase,
+    uploadAllDataToFirestore,
     students,
     classes,
     teachers,
@@ -124,8 +128,11 @@ export const SettingsPage: React.FC = () => {
   const [selectedSemester, setSelectedSemester] = useState<'Ganjil' | 'Genap'>(activeSemester || 'Ganjil');
   const [isSaving, setIsSaving] = useState(false);
   const [isSeeding, setIsSeeding] = useState(false);
+  const [isUploadingCloud, setIsUploadingCloud] = useState(false);
+  const [uploadSuccessCount, setUploadSuccessCount] = useState<number | null>(null);
   const [isClassModalOpen, setIsClassModalOpen] = useState(false);
   const [isAcademicYearModalOpen, setIsAcademicYearModalOpen] = useState(false);
+  const [isPromotionModalOpen, setIsPromotionModalOpen] = useState(false);
   const [seedSuccess, setSeedSuccess] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -229,6 +236,30 @@ export const SettingsPage: React.FC = () => {
       alert('Gagal inisialisasi data: ' + err);
     } finally {
       setIsSeeding(false);
+    }
+  };
+
+  const handleUploadAllToFirestore = async () => {
+    const confirmUpload = window.confirm(
+      'Apakah Anda ingin mengunggah dan mengunci seluruh data aktif saat ini (Profil, Rombel, Guru, Siswa, BK, OSIM, Absensi, Kas, dsb.) ke Firebase Firestore terpusat?\n\nData ini akan langsung menjadi data aktif permanen di aplikasi yang sudah di-deploy.'
+    );
+    if (!confirmUpload) return;
+
+    setIsUploadingCloud(true);
+    setUploadSuccessCount(null);
+    try {
+      const res = await uploadAllDataToFirestore();
+      if (res.success) {
+        setUploadSuccessCount(res.count);
+        setTimeout(() => setUploadSuccessCount(null), 5000);
+      } else {
+        alert('Gagal mengunggah data: ' + res.message);
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert('Gagal mengunggah data: ' + (err?.message || err));
+    } finally {
+      setIsUploadingCloud(false);
     }
   };
 
@@ -786,6 +817,32 @@ export const SettingsPage: React.FC = () => {
           </div>
         </div>
 
+        {/* Wizard Kenaikan Kelas & Tutup Tahun Ajaran Banner */}
+        <div className="p-3.5 bg-gradient-to-r from-indigo-50 via-purple-50 to-blue-50 dark:from-indigo-950/40 dark:via-purple-950/30 dark:to-blue-950/40 rounded-xl border border-indigo-200 dark:border-indigo-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
+          <div>
+            <div className="flex items-center gap-2">
+              <GraduationCap className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <span className="font-bold text-xs text-indigo-950 dark:text-indigo-200">
+                Wizard Kenaikan Kelas & Tutup Tahun Ajaran
+              </span>
+              <span className="text-[10px] bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-bold px-1.5 py-0.5 rounded">
+                Otomatisasi
+              </span>
+            </div>
+            <p className="text-[11px] text-indigo-800 dark:text-indigo-300 mt-0.5 leading-relaxed">
+              Otomatiskan kelulusan kelas XII ke status Alumni, kenaikan rombel siswa kelas X &amp; XI, pemutihan lembaran poin baru, serta demisioner kepengurusan OSIM periode lalu.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsPromotionModalOpen(true)}
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-sm shrink-0 flex items-center gap-2 transition-all hover:scale-[1.02] active:scale-[0.98]"
+          >
+            <GraduationCap className="w-4 h-4" />
+            <span>Buka Wizard Transisi</span>
+          </button>
+        </div>
+
         {/* Section C: Fitur Upload Logo Kiri dan Logo Kanan */}
         <div className="pt-2 space-y-4">
           <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
@@ -929,15 +986,27 @@ export const SettingsPage: React.FC = () => {
           </button>
 
           {isSuperAdmin ? (
-            <button
-              type="button"
-              onClick={handleSeedDatabase}
-              disabled={isSeeding}
-              className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/20 flex items-center gap-2 transition-all hover:scale-105 disabled:opacity-50"
-            >
-              <RefreshCw className={`w-4 h-4 ${isSeeding ? 'animate-spin' : ''}`} />
-              <span>{isSeeding ? 'Mengisi Data Sample...' : 'Isi / Reset Data Sampel (Seeding)'}</span>
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={handleUploadAllToFirestore}
+                disabled={isUploadingCloud}
+                className="px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white font-bold text-xs shadow-md shadow-cyan-600/20 flex items-center gap-2 transition-all hover:scale-105 disabled:opacity-50"
+              >
+                <CloudUpload className={`w-4 h-4 ${isUploadingCloud ? 'animate-bounce' : ''}`} />
+                <span>{isUploadingCloud ? 'Mengunggah ke Firestore...' : 'Kunci & Unggah Data Aktif ke Cloud Firestore'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSeedDatabase}
+                disabled={isSeeding}
+                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/20 flex items-center gap-2 transition-all hover:scale-105 disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 ${isSeeding ? 'animate-spin' : ''}`} />
+                <span>{isSeeding ? 'Mengisi Data Sample...' : 'Isi / Reset Data Sampel (Seeding)'}</span>
+              </button>
+            </>
           ) : (
             <div className="px-4 py-2 rounded-xl bg-zinc-800/80 border border-zinc-700 text-zinc-400 text-xs flex items-center gap-2">
               <ShieldCheck className="w-4 h-4 text-amber-500" />
@@ -953,6 +1022,13 @@ export const SettingsPage: React.FC = () => {
             <Download className="w-4 h-4" />
             <span>Unduh Cadangan JSON Penuh</span>
           </button>
+
+          {uploadSuccessCount !== null && (
+            <span className="text-xs font-bold text-cyan-600 dark:text-cyan-400 flex items-center gap-1.5 animate-in fade-in">
+              <CheckCircle2 className="w-4 h-4" />
+              {uploadSuccessCount} dokumen berhasil dikunci dan diunggah ke Cloud Firestore!
+            </span>
+          )}
 
           {seedSuccess && (
             <span className="text-xs font-bold text-emerald-600 flex items-center gap-1.5 animate-in fade-in">
@@ -973,6 +1049,12 @@ export const SettingsPage: React.FC = () => {
       <AcademicYearManagementModal
         isOpen={isAcademicYearModalOpen}
         onClose={() => setIsAcademicYearModalOpen(false)}
+      />
+
+      {/* Academic Year Promotion & Transition Wizard Modal */}
+      <AcademicYearPromotionModal
+        isOpen={isPromotionModalOpen}
+        onClose={() => setIsPromotionModalOpen(false)}
       />
     </div>
   );

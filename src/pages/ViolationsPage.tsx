@@ -10,7 +10,8 @@ import {
   Eye,
   CheckCircle2,
   Filter,
-  User
+  User,
+  RefreshCw
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -38,12 +39,30 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
     addViolation,
     updateViolation,
     deleteViolation,
+    reconcileAllStudentPoints,
     activeAcademicYear
   } = useSchool();
 
   const [selectedClass, setSelectedClass] = useState<string>('all');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
+  const [isSyncingPoints, setIsSyncingPoints] = useState<boolean>(false);
+  const [syncNotice, setSyncNotice] = useState<string | null>(null);
+
+  const handleSyncPoints = async () => {
+    if (!reconcileAllStudentPoints) return;
+    setIsSyncingPoints(true);
+    try {
+      const res = await reconcileAllStudentPoints();
+      setSyncNotice(`Sinkronisasi selesai! ${res.updatedCount} poin siswa telah diselaraskan dengan riwayat.`);
+      setTimeout(() => setSyncNotice(null), 5000);
+    } catch (e) {
+      setSyncNotice('Gagal melakukan rekonsiliasi poin.');
+      setTimeout(() => setSyncNotice(null), 4000);
+    } finally {
+      setIsSyncingPoints(false);
+    }
+  };
 
   // Count violations per class
   const violationCountsByClassId = useMemo(() => {
@@ -183,7 +202,14 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
       sortable: true,
       cell: v => (
         <div>
-          <p className="font-bold text-slate-900 dark:text-slate-100">{v.studentName}</p>
+          <div className="flex items-center gap-1.5">
+            {v.studentCode && (
+              <span className="font-mono text-[10px] font-bold px-1.5 py-0.2 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                {v.studentCode}
+              </span>
+            )}
+            <p className="font-bold text-slate-900 dark:text-slate-100">{v.studentName}</p>
+          </div>
           <p className="text-[11px] text-slate-400">NIS: {v.studentNis} • Kelas: {v.studentClass}</p>
         </div>
       )
@@ -283,6 +309,20 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
         </div>
 
         <div className="flex items-center gap-2">
+          {isWakaOrAdmin && (
+            <button
+              onClick={handleSyncPoints}
+              disabled={isSyncingPoints}
+              className={`px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700/60 text-xs font-semibold flex items-center gap-2 shadow-sm transition-all ${
+                isSyncingPoints ? 'opacity-50 cursor-wait' : ''
+              }`}
+              title="Audit dan samakan total poin di profil siswa dengan riwayat riil pelanggaran"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-blue-500 ${isSyncingPoints ? 'animate-spin' : ''}`} />
+              <span>{isSyncingPoints ? 'Menyelaraskan...' : 'Sinkron Poin'}</span>
+            </button>
+          )}
+
           <ExportActions
             filename="buku_pelanggaran_siswa"
             title="Laporan Pelanggaran Kedisiplinan Siswa"
@@ -310,6 +350,19 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
           </button>
         </div>
       </div>
+
+      {/* Sync Notification Banner */}
+      {syncNotice && (
+        <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300 rounded-xl text-xs flex items-center justify-between shadow-sm animate-fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            <span className="font-medium">{syncNotice}</span>
+          </div>
+          <button onClick={() => setSyncNotice(null)} className="text-emerald-600 hover:underline text-[11px]">
+            Tutup
+          </button>
+        </div>
+      )}
 
       {/* Class Grid Filter */}
       <ClassGridFilter

@@ -224,11 +224,10 @@ export const generateDefaultOsimAccounts = (departments: OsimDepartment[] = DEFA
   return [...bphAccounts, ...sekbidAccounts];
 };
 
-export const DEFAULT_OSIM_ACCOUNTS: UserProfile[] = generateDefaultOsimAccounts(DEFAULT_OSIM_DEPARTMENTS);
+export const DEFAULT_OSIM_ACCOUNTS: UserProfile[] = [];
 
 export const DEMO_USERS: UserProfile[] = [
-  DEFAULT_SUPER_ADMIN,
-  ...DEFAULT_OSIM_ACCOUNTS
+  DEFAULT_SUPER_ADMIN
 ];
 
 export const INITIAL_TEACHERS: Teacher[] = [];
@@ -364,7 +363,21 @@ export const PURGED_DEMO_UIDS = [
   'role_active_guru_bk',
   'role_active_pembina_osim',
   'role_active_pembina_ekskul',
-  'role_active_waka_kesiswaan'
+  'role_active_waka_kesiswaan',
+  // Generic OSIM accounts (purged permanently in favor of real student NIS accounts)
+  'user_osim_dept_bph',
+  'user_osim_ketua',
+  'user_osim_wakil',
+  'user_osim_sekretaris',
+  'user_osim_bendahara',
+  'user_osim_dept_sekbid_1',
+  'user_osim_dept_sekbid_2',
+  'user_osim_dept_sekbid_3',
+  'user_osim_dept_sekbid_4',
+  'user_osim_dept_sekbid_5',
+  'user_osim_dept_sekbid_6',
+  'user_osim_dept_sekbid_7',
+  'user_osim_dept_sekbid_8'
 ];
 
 export const PURGED_DEMO_TEACHER_IDS = [
@@ -403,7 +416,20 @@ export const PURGED_DEMO_EMAILS = [
   'pembina.paskibra@man2sbt.sch.id',
   'pembina.pmr@man2sbt.sch.id',
   'pembina.pks@man2sbt.sch.id',
-  'pembina.futsal@man2sbt.sch.id'
+  'pembina.futsal@man2sbt.sch.id',
+  // Generic OSIM account emails
+  'osim.ketua@madrasah.sch.id',
+  'osim.wakil@madrasah.sch.id',
+  'osim.sekretaris@madrasah.sch.id',
+  'osim.bendahara@madrasah.sch.id',
+  'osim.sekbid1@madrasah.sch.id',
+  'osim.sekbid2@madrasah.sch.id',
+  'osim.sekbid3@madrasah.sch.id',
+  'osim.sekbid4@madrasah.sch.id',
+  'osim.sekbid5@madrasah.sch.id',
+  'osim.sekbid6@madrasah.sch.id',
+  'osim.sekbid7@madrasah.sch.id',
+  'osim.sekbid8@madrasah.sch.id'
 ];
 
 // =========================================================================
@@ -888,3 +914,265 @@ export async function clearAllFirebaseOperationalData(): Promise<{ success: bool
     return { success: false, message: err?.message || 'Gagal membersihkan data operasional Firestore.' };
   }
 }
+
+// Upload all active application state to Cloud Firestore in chunks
+export async function uploadAllStateToFirebase(bundle: {
+  schoolSetting?: any;
+  academicYears?: any[];
+  classes?: any[];
+  teachers?: any[];
+  students?: any[];
+  extracurriculars?: any[];
+  members?: any[];
+  schedules?: any[];
+  attendance?: any[];
+  activities?: any[];
+  activityReports?: any[];
+  violations?: any[];
+  counseling?: any[];
+  homeVisits?: any[];
+  parentCallLetters?: any[];
+  careerGuidances?: any[];
+  achievements?: any[];
+  permissions?: any[];
+  needsRequests?: any[];
+  osimMembers?: any[];
+  osimPrograms?: any[];
+  osimAspirations?: any[];
+  osimMeetings?: any[];
+  osimDepartments?: any[];
+  cashAccounts?: any[];
+  cashTransactions?: any[];
+  schoolRules?: any[];
+  handbookMeta?: any;
+  announcements?: any[];
+  auditLogs?: any[];
+}): Promise<{ success: boolean; message: string; count: number }> {
+  try {
+    const allOperations: Array<{ collection: string; id: string; data: any }> = [];
+
+    // School Setting
+    if (bundle.schoolSetting && bundle.schoolSetting.id) {
+      allOperations.push({ collection: 'schools', id: bundle.schoolSetting.id, data: bundle.schoolSetting });
+    }
+
+    // Academic Years
+    if (Array.isArray(bundle.academicYears)) {
+      for (const ay of bundle.academicYears) {
+        if (ay && ay.id) allOperations.push({ collection: 'academic_years', id: ay.id, data: ay });
+      }
+    }
+
+    // Classes
+    if (Array.isArray(bundle.classes)) {
+      for (const c of bundle.classes) {
+        if (c && c.id) allOperations.push({ collection: 'classes', id: c.id, data: c });
+      }
+    }
+
+    // Teachers
+    if (Array.isArray(bundle.teachers)) {
+      for (const t of bundle.teachers) {
+        if (t && t.id) allOperations.push({ collection: 'teachers', id: t.id, data: t });
+      }
+    }
+
+    // Students
+    if (Array.isArray(bundle.students)) {
+      for (const s of bundle.students) {
+        if (s && s.id) allOperations.push({ collection: 'students', id: s.id, data: s });
+      }
+    }
+
+    // Extracurriculars
+    if (Array.isArray(bundle.extracurriculars)) {
+      for (const e of bundle.extracurriculars) {
+        if (e && e.id) allOperations.push({ collection: 'extracurriculars', id: e.id, data: e });
+      }
+    }
+
+    // Extracurricular Members
+    if (Array.isArray(bundle.members)) {
+      for (const m of bundle.members) {
+        if (m && m.id) allOperations.push({ collection: 'extracurricular_members', id: m.id, data: m });
+      }
+    }
+
+    // Schedules
+    if (Array.isArray(bundle.schedules)) {
+      for (const sc of bundle.schedules) {
+        if (sc && sc.id) allOperations.push({ collection: 'schedules', id: sc.id, data: sc });
+      }
+    }
+
+    // Attendance
+    if (Array.isArray(bundle.attendance)) {
+      for (const att of bundle.attendance) {
+        if (att && att.id) allOperations.push({ collection: 'attendance', id: att.id, data: att });
+      }
+    }
+
+    // Activities
+    if (Array.isArray(bundle.activities)) {
+      for (const a of bundle.activities) {
+        if (a && a.id) allOperations.push({ collection: 'activities', id: a.id, data: a });
+      }
+    }
+
+    // Activity Reports
+    if (Array.isArray(bundle.activityReports)) {
+      for (const r of bundle.activityReports) {
+        if (r && r.id) allOperations.push({ collection: 'activity_reports', id: r.id, data: r });
+      }
+    }
+
+    // Violations
+    if (Array.isArray(bundle.violations)) {
+      for (const v of bundle.violations) {
+        if (v && v.id) allOperations.push({ collection: 'violations', id: v.id, data: v });
+      }
+    }
+
+    // Counseling
+    if (Array.isArray(bundle.counseling)) {
+      for (const cs of bundle.counseling) {
+        if (cs && cs.id) allOperations.push({ collection: 'counseling', id: cs.id, data: cs });
+      }
+    }
+
+    // Home Visits
+    if (Array.isArray(bundle.homeVisits)) {
+      for (const hv of bundle.homeVisits) {
+        if (hv && hv.id) allOperations.push({ collection: 'home_visits', id: hv.id, data: hv });
+      }
+    }
+
+    // Parent Call Letters
+    if (Array.isArray(bundle.parentCallLetters)) {
+      for (const pcl of bundle.parentCallLetters) {
+        if (pcl && pcl.id) allOperations.push({ collection: 'parent_call_letters', id: pcl.id, data: pcl });
+      }
+    }
+
+    // Career Guidances
+    if (Array.isArray(bundle.careerGuidances)) {
+      for (const cg of bundle.careerGuidances) {
+        if (cg && cg.id) allOperations.push({ collection: 'career_guidances', id: cg.id, data: cg });
+      }
+    }
+
+    // Achievements
+    if (Array.isArray(bundle.achievements)) {
+      for (const ach of bundle.achievements) {
+        if (ach && ach.id) allOperations.push({ collection: 'achievements', id: ach.id, data: ach });
+      }
+    }
+
+    // Permissions
+    if (Array.isArray(bundle.permissions)) {
+      for (const p of bundle.permissions) {
+        if (p && p.id) allOperations.push({ collection: 'permissions', id: p.id, data: p });
+      }
+    }
+
+    // Needs Requests
+    if (Array.isArray(bundle.needsRequests)) {
+      for (const nr of bundle.needsRequests) {
+        if (nr && nr.id) allOperations.push({ collection: 'needs_requests', id: nr.id, data: nr });
+      }
+    }
+
+    // OSIM Members
+    if (Array.isArray(bundle.osimMembers)) {
+      for (const om of bundle.osimMembers) {
+        if (om && om.id) allOperations.push({ collection: 'osim_members', id: om.id, data: om });
+      }
+    }
+
+    // OSIM Programs
+    if (Array.isArray(bundle.osimPrograms)) {
+      for (const op of bundle.osimPrograms) {
+        if (op && op.id) allOperations.push({ collection: 'osim_programs', id: op.id, data: op });
+      }
+    }
+
+    // OSIM Aspirations
+    if (Array.isArray(bundle.osimAspirations)) {
+      for (const oa of bundle.osimAspirations) {
+        if (oa && oa.id) allOperations.push({ collection: 'osim_aspirations', id: oa.id, data: oa });
+      }
+    }
+
+    // OSIM Meetings
+    if (Array.isArray(bundle.osimMeetings)) {
+      for (const om of bundle.osimMeetings) {
+        if (om && om.id) allOperations.push({ collection: 'osim_meetings', id: om.id, data: om });
+      }
+    }
+
+    // OSIM Departments
+    if (Array.isArray(bundle.osimDepartments)) {
+      for (const od of bundle.osimDepartments) {
+        if (od && od.id) allOperations.push({ collection: 'osim_departments', id: od.id, data: od });
+      }
+    }
+
+    // Cash Accounts
+    if (Array.isArray(bundle.cashAccounts)) {
+      for (const ca of bundle.cashAccounts) {
+        if (ca && ca.id) allOperations.push({ collection: 'cash_accounts', id: ca.id, data: ca });
+      }
+    }
+
+    // Cash Transactions
+    if (Array.isArray(bundle.cashTransactions)) {
+      for (const ct of bundle.cashTransactions) {
+        if (ct && ct.id) allOperations.push({ collection: 'cash_transactions', id: ct.id, data: ct });
+      }
+    }
+
+    // School Rules
+    if (Array.isArray(bundle.schoolRules)) {
+      for (const r of bundle.schoolRules) {
+        if (r && r.id) allOperations.push({ collection: 'school_rules', id: r.id, data: r });
+      }
+    }
+
+    // Handbook Meta
+    if (bundle.handbookMeta) {
+      allOperations.push({ collection: 'settings', id: 'handbook_meta', data: bundle.handbookMeta });
+    }
+
+    // Announcements
+    if (Array.isArray(bundle.announcements)) {
+      for (const ann of bundle.announcements) {
+        if (ann && ann.id) allOperations.push({ collection: 'announcements', id: ann.id, data: ann });
+      }
+    }
+
+    // Commit in chunks of 200
+    const CHUNK_SIZE = 200;
+    for (let i = 0; i < allOperations.length; i += CHUNK_SIZE) {
+      const chunk = allOperations.slice(i, i + CHUNK_SIZE);
+      const batch = writeBatch(db);
+      for (const op of chunk) {
+        batch.set(doc(db, op.collection, op.id), op.data, { merge: true });
+      }
+      await batch.commit();
+    }
+
+    return {
+      success: true,
+      count: allOperations.length,
+      message: `Berhasil mengunggah ${allOperations.length} dokumen data ke Cloud Firestore.`
+    };
+  } catch (error: any) {
+    console.error('Error uploading state to Firebase:', error);
+    return {
+      success: false,
+      count: 0,
+      message: error.message || 'Gagal mengunggah data ke Cloud Firestore.'
+    };
+  }
+}
+

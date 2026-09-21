@@ -21,7 +21,11 @@ import {
   AlertCircle,
   HelpCircle,
   RefreshCw,
-  Table
+  Table,
+  ArrowUpDown,
+  Layers,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -33,6 +37,7 @@ import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { ExportActions } from '../components/common/ExportActions';
 import { ClassGridFilter } from '../components/common/ClassGridFilter';
 import { ClassManagementModal } from '../components/common/ClassManagementModal';
+import { StudentsListTab, StudentsHomeroomTab } from './students/tabs';
 import * as XLSX from 'xlsx';
 import {
   downloadStudentTemplateXLSX,
@@ -42,7 +47,10 @@ import {
 } from '../utils/studentTemplate';
 import {
   calculateStudentCountsByClass,
-  isStudentInClass
+  isStudentInClass,
+  sortStudentsCustom,
+  StudentSortOrder,
+  groupStudentsByClass
 } from '../utils/classResolver';
 
 export const StudentsPage: React.FC = () => {
@@ -64,6 +72,7 @@ export const StudentsPage: React.FC = () => {
     counseling,
     achievements,
     attendance,
+    activeAcademicYear,
     schoolSetting
   } = useSchool();
 
@@ -74,6 +83,9 @@ export const StudentsPage: React.FC = () => {
   const [selectedClass, setSelectedClass] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [selectedGender, setSelectedGender] = useState<string>('all');
+  const [studentSortOrder, setStudentSortOrder] = useState<StudentSortOrder>('class-alphabetical');
+  const [viewMode, setViewMode] = useState<'table' | 'grouped'>('table');
+  const [collapsedGroupIds, setCollapsedGroupIds] = useState<Set<string>>(new Set());
 
   // Multi-Selection State for Students
   const [selectedStudentIds, setSelectedStudentIds] = useState<Set<string>>(new Set());
@@ -119,6 +131,7 @@ export const StudentsPage: React.FC = () => {
   const [importError, setImportError] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState<boolean>(false);
   const [importMode, setImportMode] = useState<'append' | 'replace'>('replace');
+  const [importPreviewFilter, setImportPreviewFilter] = useState<'all' | 'valid' | 'invalid'>('all');
   const [showGuide, setShowGuide] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -207,19 +220,42 @@ export const StudentsPage: React.FC = () => {
     return calculateStudentCountsByClass(students, classes);
   }, [students, classes]);
 
-  // Filtered Students (Sorted Alphabetically by Name)
+  // Per-class alphabetical ranking map (Nomor Urut Absen Kelas: 1, 2, 3... per rombel kelas)
+  const studentClassRankMap = useMemo(() => {
+    const map = new Map<string, { index: number; total: number }>();
+    const groups = groupStudentsByClass(students, classes);
+    groups.forEach(grp => {
+      grp.students.forEach((st, idx) => {
+        map.set(st.id, { index: idx + 1, total: grp.students.length });
+      });
+    });
+    return map;
+  }, [students, classes]);
+
+  // Filtered Students (Sorted strictly per chosen Sort Order, defaulting to Per Kelas -> Abjad A-Z)
   const filteredStudents = useMemo(() => {
-    return students
-      .filter(s => {
-        if (selectedClass !== 'all') {
-          if (!isStudentInClass(s, selectedClass, classes)) return false;
-        }
-        if (selectedStatus !== 'all' && s.status !== selectedStatus) return false;
-        if (selectedGender !== 'all' && s.gender !== selectedGender) return false;
-        return true;
-      })
-      .sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '', 'id', { sensitivity: 'base' }));
-  }, [students, selectedClass, selectedStatus, selectedGender, classes]);
+    const filtered = students.filter(s => {
+      if (selectedClass !== 'all') {
+        if (!isStudentInClass(s, selectedClass, classes)) return false;
+      }
+      if (selectedStatus !== 'all' && s.status !== selectedStatus) return false;
+      if (selectedGender !== 'all' && s.gender !== selectedGender) return false;
+      return true;
+    });
+
+    return sortStudentsCustom(filtered, classes, studentSortOrder);
+  }, [students, selectedClass, selectedStatus, selectedGender, classes, studentSortOrder]);
+
+  // Grouped students per class for the Sekat Per Kelas (Grouped View)
+  const groupedStudents = useMemo(() => {
+    if (selectedClass !== 'all') {
+      const activeCls = classes.find(c => c.id === selectedClass || c.name === selectedClass);
+      if (activeCls) {
+        return groupStudentsByClass(filteredStudents, [activeCls]);
+      }
+    }
+    return groupStudentsByClass(filteredStudents, classes);
+  }, [filteredStudents, classes, selectedClass]);
 
   const handleOpenAdd = () => {
     setSelectedStudent(null);
@@ -489,8 +525,9 @@ export const StudentsPage: React.FC = () => {
           return;
         }
 
-        const parsed = parseStudentRows(rawData, classes);
+        const parsed = parseStudentRows(rawData, classes, activeAcademicYear, students.map(s => s.nis));
         setPreviewStudents(parsed);
+        setImportPreviewFilter('all');
       } catch (err) {
         console.error('Error import excel:', err);
         setImportError('Gagal membaca format file. Pastikan file berformat Excel (.xlsx/.xls) atau CSV (.csv).');
@@ -531,11 +568,33 @@ export const StudentsPage: React.FC = () => {
 
   const columns: Column<Student>[] = [
     {
+      header: 'No.',
+      className: 'w-14 text-center',
+      cell: s => {
+        const rank = studentClassRankMap.get(s.id);
+        return (
+          <div className="flex flex-col items-center justify-center">
+            <span
+              className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 font-black text-xs text-indigo-700 dark:text-indigo-300 border border-indigo-200/70 dark:border-indigo-800 shadow-2xs"
+              title={rank ? `Nomor Urut Absen ke-${rank.index} di rombel ${s.className}` : 'Nomor Absen'}
+            >
+              {rank ? rank.index : '-'}
+            </span>
+          </div>
+        );
+      }
+    },
+    {
       header: 'NIS / NISN',
       accessorKey: 'nis',
       sortable: true,
       cell: s => (
         <div>
+          {s.code && (
+            <span className="font-mono text-[10px] font-bold px-1.5 py-0.2 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 block w-fit mb-0.5">
+              {s.code}
+            </span>
+          )}
           <span className="font-bold text-slate-900 dark:text-slate-100">{s.nis}</span>
           {s.nisn && <p className="text-[11px] text-slate-400">NISN: {s.nisn}</p>}
         </div>
@@ -563,14 +622,24 @@ export const StudentsPage: React.FC = () => {
       header: 'Kelas & Jurusan',
       accessorKey: 'className',
       sortable: true,
-      cell: s => (
-        <div>
-          <span className="inline-block px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 font-semibold text-xs text-slate-700 dark:text-slate-300">
-            {s.className}
-          </span>
-          <p className="text-[11px] text-slate-400 truncate max-w-[150px]">{s.major}</p>
-        </div>
-      )
+      cell: s => {
+        const rank = studentClassRankMap.get(s.id);
+        return (
+          <div>
+            <div className="flex items-center gap-1.5">
+              <span className="inline-block px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 font-bold text-xs text-slate-800 dark:text-slate-200">
+                {s.className}
+              </span>
+              {rank && (
+                <span className="text-[10px] text-slate-400 font-medium hidden sm:inline" title={`Urutan absen ke-${rank.index} dari total ${rank.total} siswa di kelas ${s.className}`}>
+                  (Absen #{rank.index})
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-400 truncate max-w-[150px]">{s.major}</p>
+          </div>
+        );
+      }
     },
     {
       header: 'Poin Disiplin / Prestasi',
@@ -772,256 +841,46 @@ export const StudentsPage: React.FC = () => {
       </div>
 
       {mainTab === 'students' ? (
-        <>
-          {/* Class Grid Filter Component */}
-          <ClassGridFilter
-            classes={classes}
-            selectedClassId={selectedClass}
-            onSelectClass={setSelectedClass}
-            countsByClassId={studentCountsByClassId}
-            totalCount={students.length}
-            label="Filter Rombongan Belajar (Rombel / Kelas)"
-            itemUnit="Siswa"
-            colorScheme="indigo"
-          />
-
-          {/* Secondary Filter Bar */}
-          <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 flex flex-wrap items-center gap-3 text-xs">
-            <div className="flex items-center gap-2 text-slate-500 font-semibold">
-              <Filter className="w-4 h-4" />
-              <span>Filter Lanjutan:</span>
-            </div>
-
-            {/* Filter Status */}
-            <select
-              value={selectedStatus}
-              onChange={e => setSelectedStatus(e.target.value)}
-              className="px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500/20 font-medium"
-            >
-              <option value="all">Semua Status</option>
-              <option value="Aktif">Aktif</option>
-              <option value="Alumni">Alumni</option>
-              <option value="Pindah">Pindah</option>
-              <option value="Keluar">Keluar</option>
-            </select>
-
-            {/* Filter Gender */}
-            <select
-              value={selectedGender}
-              onChange={e => setSelectedGender(e.target.value)}
-              className="px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500/20 font-medium"
-            >
-              <option value="all">Semua Gender</option>
-              <option value="L">Laki-Laki (L)</option>
-              <option value="P">Perempuan (P)</option>
-            </select>
-
-            {(selectedClass !== 'all' || selectedStatus !== 'all' || selectedGender !== 'all') && (
-              <button
-                onClick={() => {
-                  setSelectedClass('all');
-                  setSelectedStatus('all');
-                  setSelectedGender('all');
-                }}
-                className="text-xs text-rose-600 hover:underline font-semibold ml-auto"
-              >
-                Reset Semua Filter
-              </button>
-            )}
-          </div>
-
-          {/* Main Table with Batch Selection */}
-          <DataTable
-            id="students-table"
-            data={filteredStudents}
-            columns={columns}
-            searchPlaceholder="Cari siswa berdasarkan NIS, Nama, atau Kelas..."
-            searchableKeys={['nis', 'nisn', 'fullName', 'className', 'parentName']}
-            onRowClick={handleOpenDetail}
-            selectable={true}
-            selectedIds={selectedStudentIds}
-            onToggleSelect={handleToggleSelectStudent}
-            onToggleSelectAll={handleToggleSelectAllStudents}
-            batchActions={(ids) => (
-              <button
-                type="button"
-                onClick={() => setIsBulkDeleteOpen(true)}
-                className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition-colors"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>Hapus {ids.length} Siswa Terpilih</span>
-              </button>
-            )}
-            emptyTitle="Tidak Ada Siswa"
-            emptySubtitle="Tidak ditemukan data siswa yang sesuai dengan filter pencarian."
-          />
-        </>
+        <StudentsListTab
+          classes={classes}
+          selectedClass={selectedClass}
+          setSelectedClass={setSelectedClass}
+          studentCountsByClassId={studentCountsByClassId}
+          totalStudentCount={students.length}
+          selectedStatus={selectedStatus}
+          setSelectedStatus={setSelectedStatus}
+          selectedGender={selectedGender}
+          setSelectedGender={setSelectedGender}
+          studentSortOrder={studentSortOrder}
+          setStudentSortOrder={setStudentSortOrder}
+          viewMode={viewMode}
+          setViewMode={setViewMode}
+          collapsedGroupIds={collapsedGroupIds}
+          setCollapsedGroupIds={setCollapsedGroupIds}
+          filteredStudents={filteredStudents}
+          columns={columns}
+          handleOpenDetail={handleOpenDetail}
+          selectedStudentIds={selectedStudentIds}
+          handleToggleSelectStudent={handleToggleSelectStudent}
+          handleToggleSelectAllStudents={handleToggleSelectAllStudents}
+          setIsBulkDeleteOpen={setIsBulkDeleteOpen}
+          groupedStudents={groupedStudents}
+          handleOpenEdit={handleOpenEdit}
+          handleOpenDelete={handleOpenDelete}
+        />
       ) : (
-        /* Homeroom Management Tab View */
-        <div className="space-y-6">
-          {/* Summary Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs">
-              <span className="text-xs text-slate-500 font-semibold">Total Rombel Kelas</span>
-              <p className="text-2xl font-extrabold text-slate-900 dark:text-slate-100 mt-1">{homeroomStats.totalClasses}</p>
-              <p className="text-[11px] text-slate-400 mt-0.5">Tingkat X, XI, dan XII</p>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-900/50 shadow-xs">
-              <span className="text-xs text-emerald-600 dark:text-emerald-400 font-bold">Wali Kelas Terisi</span>
-              <p className="text-2xl font-extrabold text-emerald-600 dark:text-emerald-400 mt-1">{homeroomStats.filled}</p>
-              <p className="text-[11px] text-slate-400 mt-0.5">Sudah memiliki wali kelas aktif</p>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-900/50 shadow-xs">
-              <span className="text-xs text-amber-600 dark:text-amber-400 font-bold">Belum Terisi</span>
-              <p className="text-2xl font-extrabold text-amber-600 dark:text-amber-400 mt-1">{homeroomStats.empty}</p>
-              <p className="text-[11px] text-slate-400 mt-0.5">Perlu penetapan wali kelas</p>
-            </div>
-
-            <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-900/50 shadow-xs">
-              <span className="text-xs text-indigo-600 dark:text-indigo-400 font-bold">Dewan Guru Terdaftar</span>
-              <p className="text-2xl font-extrabold text-indigo-600 dark:text-indigo-400 mt-1">{teachers.length}</p>
-              <p className="text-[11px] text-slate-400 mt-0.5">Guru & pembina di database</p>
-            </div>
-          </div>
-
-          {/* Filter and Search Bar for Homeroom */}
-          <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-bold text-slate-500 mr-1">Tingkat:</span>
-              {(['all', 'X', 'XI', 'XII'] as const).map(g => (
-                <button
-                  key={g}
-                  type="button"
-                  onClick={() => setHomeroomGradeFilter(g)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
-                    homeroomGradeFilter === g
-                      ? 'bg-amber-600 text-white shadow-xs'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                  }`}
-                >
-                  {g === 'all' ? 'Semua Tingkat' : `Kelas ${g}`}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                value={homeroomSearchQuery}
-                onChange={e => setHomeroomSearchQuery(e.target.value)}
-                placeholder="Cari rombel atau wali kelas..."
-                className="px-3.5 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:outline-hidden focus:ring-2 focus:ring-amber-500/20 w-full sm:w-64"
-              />
-              <button
-                type="button"
-                onClick={() => handleOpenAddHomeroom()}
-                className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-1.5 shrink-0 shadow-sm transition-all"
-              >
-                <Plus className="w-4 h-4" />
-                <span>+ Tetapkan Wali Kelas</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Classes Cards Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filteredHomeroomClasses.map(c => {
-              const studentCount = studentCountsByClassId[c.id] || 0;
-              const hasHomeroom = !!c.homeroomTeacher && c.homeroomTeacher.trim() !== '' && c.homeroomTeacher !== '-';
-
-              return (
-                <div
-                  key={c.id}
-                  className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xs hover:shadow-md transition-shadow flex flex-col justify-between"
-                >
-                  <div>
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="px-2 py-0.5 rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-bold text-xs">
-                            {c.grade}
-                          </span>
-                          <h3 className="font-extrabold text-base text-slate-900 dark:text-slate-100">
-                            {c.name}
-                          </h3>
-                        </div>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">
-                          {c.major}
-                        </p>
-                      </div>
-
-                      <span className="px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs shrink-0">
-                        {studentCount} Siswa
-                      </span>
-                    </div>
-
-                    <div className="mt-4 pt-4 border-t border-slate-100 dark:border-slate-800">
-                      <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">
-                        Wali Kelas Saat Ini:
-                      </span>
-                      {hasHomeroom ? (
-                        <div className="flex items-center gap-2.5 p-2 rounded-xl bg-amber-50/70 dark:bg-amber-950/40 border border-amber-200/70 dark:border-amber-900/50">
-                          <div className="w-8 h-8 rounded-full bg-amber-500 text-white font-bold text-xs flex items-center justify-center shrink-0">
-                            {c.homeroomTeacher?.charAt(0)}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-xs font-bold text-amber-950 dark:text-amber-200 truncate">
-                              {c.homeroomTeacher}
-                            </p>
-                            <span className="inline-block text-[10px] text-amber-700 dark:text-amber-400 font-semibold">
-                              ✓ Wali Kelas Resmi
-                            </span>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="p-2 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 text-rose-700 dark:text-rose-300 text-xs font-bold flex items-center gap-2">
-                          <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
-                          <span>Belum Ditentukan</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="mt-4 pt-3 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={c.homeroomTeacher || ''}
-                        onChange={e => handleQuickAssignHomeroom(c.id, e.target.value)}
-                        className="w-full text-xs font-semibold px-2.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-amber-500/20"
-                      >
-                        <option value="">-- Pilih Cepat dari Dewan Guru --</option>
-                        {teachers.map(t => (
-                          <option key={t.id} value={t.fullName}>
-                            {t.fullName} ({t.role || 'Guru'})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => handleOpenAddHomeroom(c.id)}
-                      className="w-full py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
-                    >
-                      <Edit2 className="w-3.5 h-3.5 text-slate-500" />
-                      <span>Atur / Tambah Guru Baru</span>
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {filteredHomeroomClasses.length === 0 && (
-            <div className="p-12 text-center rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-              <UserCheck className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-              <h3 className="font-bold text-base text-slate-800 dark:text-slate-200">Tidak Ada Rombel Kelas</h3>
-              <p className="text-xs text-slate-400 mt-1">Tidak ditemukan rombel kelas yang sesuai dengan filter pencarian.</p>
-            </div>
-          )}
-        </div>
+        <StudentsHomeroomTab
+          homeroomStats={homeroomStats}
+          teachers={teachers}
+          homeroomGradeFilter={homeroomGradeFilter}
+          setHomeroomGradeFilter={setHomeroomGradeFilter}
+          homeroomSearchQuery={homeroomSearchQuery}
+          setHomeroomSearchQuery={setHomeroomSearchQuery}
+          handleOpenAddHomeroom={handleOpenAddHomeroom}
+          filteredHomeroomClasses={filteredHomeroomClasses}
+          studentCountsByClassId={studentCountsByClassId}
+          handleQuickAssignHomeroom={handleQuickAssignHomeroom}
+        />
       )}
 
       {/* Form Modal (Add / Edit) */}
@@ -1592,14 +1451,41 @@ export const StudentsPage: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 text-xs">
-                  <span className="px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 font-bold">
+                <div className="flex items-center gap-1.5 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setImportPreviewFilter('all')}
+                    className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+                      importPreviewFilter === 'all'
+                        ? 'bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900 shadow-xs'
+                        : 'bg-slate-200/80 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
+                    }`}
+                  >
+                    Semua ({previewStudents.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setImportPreviewFilter('valid')}
+                    className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+                      importPreviewFilter === 'valid'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300'
+                    }`}
+                  >
                     ✓ {previewStudents.filter(s => s.isValid).length} Valid
-                  </span>
+                  </button>
                   {previewStudents.filter(s => !s.isValid).length > 0 && (
-                    <span className="px-2.5 py-1 rounded-lg bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300 font-bold">
+                    <button
+                      type="button"
+                      onClick={() => setImportPreviewFilter('invalid')}
+                      className={`px-2.5 py-1 rounded-lg font-bold transition-all ${
+                        importPreviewFilter === 'invalid'
+                          ? 'bg-rose-600 text-white shadow-xs'
+                          : 'bg-rose-100 text-rose-800 dark:bg-rose-950/80 dark:text-rose-300'
+                      }`}
+                    >
                       ⚠ {previewStudents.filter(s => !s.isValid).length} Bermasalah
-                    </span>
+                    </button>
                   )}
                 </div>
               </div>
@@ -1619,13 +1505,24 @@ export const StudentsPage: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                    {previewStudents.map((s, idx) => (
+                    {previewStudents
+                      .filter(s => {
+                        if (importPreviewFilter === 'valid') return s.isValid;
+                        if (importPreviewFilter === 'invalid') return !s.isValid;
+                        return true;
+                      })
+                      .map((s, idx) => (
                       <tr
                         key={idx}
                         className={s.isValid ? 'hover:bg-slate-50 dark:hover:bg-slate-800/40' : 'bg-rose-50/50 dark:bg-rose-950/20'}
                       >
                         <td className="py-2 px-3 font-mono text-slate-400">{idx + 1}</td>
                         <td className="py-2 px-3">
+                          {s.code && (
+                            <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 block w-fit mb-0.5">
+                              {s.code}
+                            </span>
+                          )}
                           <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{s.nis || '-'}</span>
                           {s.nisn && <div className="text-[10px] text-slate-400 font-mono">NISN: {s.nisn}</div>}
                         </td>

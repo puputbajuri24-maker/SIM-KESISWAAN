@@ -77,14 +77,30 @@ import {
   INITIAL_SCHOOL_RULES,
   INITIAL_HANDBOOK_META,
   seedAllFirebaseData,
-  clearAllFirebaseOperationalData
+  clearAllFirebaseOperationalData,
+  uploadAllStateToFirebase
 } from '../services/seedData';
 import { db } from '../services/firebase';
-import { collection, getDocs, doc, setDoc, updateDoc, deleteDoc, addDoc, writeBatch } from 'firebase/firestore';
+import { collection, getDocs, getDoc, doc, setDoc, updateDoc, deleteDoc, addDoc, writeBatch } from 'firebase/firestore';
 import { useAuth } from './AuthContext';
 import { findMatchingClass, resolveStudentClass, isStudentInClass } from '../utils/classResolver';
+import { normalizeTeacherCode, formatTeacherCode, formatStudentCode } from '../utils/idGenerator';
+import { resolveStudent, resolveTeacher } from '../utils/relationResolvers';
 
 import { extractSekbidNumber, isBphMember } from '../utils/osimAccountHelper';
+import {
+  addDeletedUid,
+  removeDeletedUid,
+  isDeletedUid,
+  isTeacherUserMatch,
+  isStudentUserMatch,
+  isOsimMemberUserMatch,
+  deduplicateTeachersList,
+  deduplicateOsimMembersList,
+  getCanonicalBphPositionKey,
+  cleanDigits,
+  normalizeName
+} from '../utils/syncUtils';
 
 interface SchoolContextType {
   schoolSetting: SchoolSetting;
@@ -98,6 +114,12 @@ interface SchoolContextType {
   addAcademicYear: (data: Omit<AcademicYear, 'id'> | AcademicYear) => Promise<void>;
   updateAcademicYear: (id: string, data: Partial<AcademicYear>) => Promise<void>;
   deleteAcademicYear: (id: string) => Promise<void>;
+  promoteAcademicYear: (params: {
+    targetAcademicYear: string;
+    targetSemester?: 'Ganjil' | 'Genap';
+    resetViolationPoints?: boolean;
+    demisionerOsim?: boolean;
+  }) => Promise<{ graduatedCount: number; promotedCount: number }>;
   classes: SchoolClass[];
   teachers: Teacher[];
   students: Student[];
@@ -184,6 +206,7 @@ interface SchoolContextType {
   addViolation: (data: Omit<StudentViolation, 'id' | 'createdAt'>) => Promise<void>;
   updateViolation: (id: string, data: Partial<StudentViolation>) => Promise<void>;
   deleteViolation: (id: string) => Promise<void>;
+  reconcileAllStudentPoints: () => Promise<{ updatedCount: number }>;
 
   homeVisits: HomeVisitRecord[];
   parentCallLetters: ParentCallLetter[];
@@ -245,6 +268,7 @@ interface SchoolContextType {
   updateOsimDepartment: (id: string, data: Partial<OsimDepartment>) => Promise<void>;
   deleteOsimDepartment: (id: string) => Promise<void>;
   resetOsimDepartmentsToDefault: () => Promise<void>;
+  reconcileOsimMembersWithMasterStudents: () => Promise<number>;
 
   // Neraca Kas & Transparansi Keuangan Kesiswaan
   cashAccounts: CashAccount[];
@@ -286,6 +310,7 @@ interface SchoolContextType {
   // Logging, Full Data Management & Database Reset / Seed
   logAction: (action: string, module: string, details: string) => Promise<void>;
   syncWithFirebase: () => Promise<void>;
+  uploadAllDataToFirestore: () => Promise<{ success: boolean; message: string; count: number }>;
   seedFirebaseDatabase: () => Promise<{ success: boolean; message: string }>;
   clearAllOperationalData: () => Promise<{ success: boolean; message: string }>;
   exportFullDatabaseJSON: () => void;
@@ -305,7 +330,7 @@ export const sortStudentsAlphabetically = <T extends { fullName?: string; studen
 };
 
 export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { currentUser, syncUsersFromTeachers } = useAuth();
+  const { currentUser, syncUsersFromTeachers, deleteUser, allUsers } = useAuth();
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
 
   // States initialized with clean defaults and synced with localStorage / Firestore
@@ -394,23 +419,33 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       try {
         const parsed: Teacher[] = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          const filtered = parsed.filter(t => !isBlacklistedDemoName(t.fullName || (t as any).name));
+          const filtered = parsed.filter(t => 
+            !isBlacklistedDemoName(t.fullName || (t as any).name) &&
+            !isDeletedUid(t.id) &&
+            !isDeletedUid(cleanDigits(t.nip))
+          );
           const hasPitria = filtered.some(t =>
             (t.fullName || '').toLowerCase().includes('pitria') ||
             (t.fullName || '').toLowerCase().includes('lawenusa')
           );
-          if (!hasPitria) {
+          if (!hasPitria && !isDeletedUid('teacher_pitria_lawenusa') && !isDeletedUid('user_guru_bk')) {
             filtered.unshift(defaultPitria);
           }
-          return filtered;
+          return deduplicateTeachersList(filtered);
         }
       } catch (e) {}
     }
-    const fromInitial = (INITIAL_TEACHERS || []).filter(t => !isBlacklistedDemoName(t.fullName || (t as any).name));
+    const fromInitial = (INITIAL_TEACHERS || []).filter(t => 
+      !isBlacklistedDemoName(t.fullName || (t as any).name) &&
+      !isDeletedUid(t.id) &&
+      !isDeletedUid(cleanDigits(t.nip))
+    );
     if (!fromInitial.some(t => (t.fullName || '').toLowerCase().includes('pitria') || (t.fullName || '').toLowerCase().includes('lawenusa'))) {
-      fromInitial.unshift(defaultPitria);
+      if (!isDeletedUid('teacher_pitria_lawenusa') && !isDeletedUid('user_guru_bk')) {
+        fromInitial.unshift(defaultPitria);
+      }
     }
-    return fromInitial;
+    return deduplicateTeachersList(fromInitial);
   });
   
   const [students, setStudents] = useState<Student[]>(() => {
@@ -418,14 +453,14 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (saved) {
       try {
         const parsed: Student[] = JSON.parse(saved);
-        // Wipe legacy mock students (s01, X RPL 1)
-        if (Array.isArray(parsed) && parsed.some(s => s.id === 's01' || s.className === 'X RPL 1')) {
-          return [];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Filter out legacy mock demo student s01 only, retain all valid students
+          const filtered = parsed.filter(s => s.id !== 's01' && !s.isDeleted);
+          return sortStudentsAlphabetically(filtered);
         }
-        return sortStudentsAlphabetically(parsed);
       } catch (e) {}
     }
-    return INITIAL_STUDENTS;
+    return (INITIAL_STUDENTS || []).filter(s => s.id !== 's01' && !s.isDeleted);
   });
 
   const [extracurriculars, setExtracurriculars] = useState<Extracurricular[]>(() => {
@@ -653,13 +688,12 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.some((o: any) => o.id === 'om1')) {
-          return [];
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.filter((o: any) => o.id !== 'om1' && !o.isDeleted);
         }
-        return parsed;
       } catch (e) {}
     }
-    return INITIAL_OSIM_MEMBERS;
+    return (INITIAL_OSIM_MEMBERS || []).filter((o: any) => o.id !== 'om1' && !o.isDeleted);
   });
 
   const [osimPrograms, setOsimPrograms] = useState<OsimWorkProgram[]>(() => {
@@ -930,6 +964,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             if (loadedSchool.currentSemester) {
               setActiveSemesterState(loadedSchool.currentSemester);
             }
+            try {
+              localStorage.setItem('sim_school_setting', JSON.stringify(loadedSchool));
+            } catch (e) {}
           }
 
           // Classes Sync
@@ -937,30 +974,55 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           const loadedClasses: SchoolClass[] = [];
           classSnap.forEach(doc => loadedClasses.push({ id: doc.id, ...doc.data() } as SchoolClass));
           setClasses(loadedClasses);
+          try {
+            localStorage.setItem('sim_classes', JSON.stringify(loadedClasses));
+          } catch (e) {}
 
           // Students Sync
           const studentSnap = await getDocs(collection(db, 'students'));
           const loadedStudents: Student[] = [];
-          studentSnap.forEach(doc => loadedStudents.push({ id: doc.id, ...doc.data() } as Student));
-          setStudents(sortStudentsAlphabetically(loadedStudents));
+          studentSnap.forEach(doc => {
+            const data = doc.data() as Student;
+            const id = doc.id;
+            if (data.isDeleted) {
+              // Deleted soft-state, skip
+              return;
+            }
+            // Safely clear any accidental blacklist on real active students
+            removeDeletedUid(id);
+            if (data.nis) removeDeletedUid(cleanDigits(data.nis));
+            loadedStudents.push({ id, ...data });
+          });
+          const sortedStudents = sortStudentsAlphabetically(loadedStudents);
+          setStudents(sortedStudents);
+          try {
+            localStorage.setItem('sim_students', JSON.stringify(sortedStudents));
+          } catch (e) {}
 
           // Teachers Sync
           const teacherSnap = await getDocs(collection(db, 'teachers'));
-          const loadedTeachers: Teacher[] = [];
+          const rawLoadedTeachers: Teacher[] = [];
           teacherSnap.forEach(docSnap => {
             const data = docSnap.data() as Teacher;
-            if (isBlacklistedDemoName(data.fullName || (data as any).name)) {
-              deleteDoc(doc(db, 'teachers', docSnap.id)).catch(() => {});
+            const id = docSnap.id;
+            if (
+              isBlacklistedDemoName(data.fullName || (data as any).name) ||
+              isDeletedUid(id) ||
+              isDeletedUid(cleanDigits(data.nip))
+            ) {
+              deleteDoc(docSnap.ref).catch(() => {});
             } else {
-              loadedTeachers.push({ id: docSnap.id, ...data });
+              rawLoadedTeachers.push({ id, ...data });
             }
           });
+
+          const loadedTeachers = deduplicateTeachersList(rawLoadedTeachers);
 
           const hasPitria = loadedTeachers.some(t =>
             (t.fullName || '').toLowerCase().includes('pitria') ||
             (t.fullName || '').toLowerCase().includes('lawenusa')
           );
-          if (!hasPitria) {
+          if (!hasPitria && !isDeletedUid('teacher_pitria_lawenusa') && !isDeletedUid('user_guru_bk')) {
             const pitriaTeacher: Teacher = {
               id: 'teacher_pitria_lawenusa',
               nip: '199005122020122008',
@@ -1020,6 +1082,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }
           });
           setMembers(loadedMembers);
+          try {
+            localStorage.setItem('sim_members', JSON.stringify(loadedMembers));
+          } catch (e) {}
 
           // Schedules Sync
           const schedSnap = await getDocs(collection(db, 'schedules'));
@@ -1037,6 +1102,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }
           });
           setSchedules(loadedSched);
+          try {
+            localStorage.setItem('sim_schedules', JSON.stringify(loadedSched));
+          } catch (e) {}
 
           // Attendance Sync
           const attSnap = await getDocs(collection(db, 'attendance'));
@@ -1054,84 +1122,157 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }
           });
           setAttendance(loadedAtt);
+          try {
+            localStorage.setItem('sim_attendance', JSON.stringify(loadedAtt));
+          } catch (e) {}
 
           // Activities Sync
           const actSnap = await getDocs(collection(db, 'activities'));
           const loadedAct: SchoolActivity[] = [];
           actSnap.forEach(doc => loadedAct.push({ id: doc.id, ...doc.data() } as SchoolActivity));
           setActivities(loadedAct);
+          try {
+            localStorage.setItem('sim_activities', JSON.stringify(loadedAct));
+          } catch (e) {}
 
           // Activity Reports Sync
           const repSnap = await getDocs(collection(db, 'activity_reports'));
           const loadedRep: ActivityReport[] = [];
           repSnap.forEach(doc => loadedRep.push({ id: doc.id, ...doc.data() } as ActivityReport));
           setActivityReports(loadedRep);
+          try {
+            localStorage.setItem('sim_reports', JSON.stringify(loadedRep));
+          } catch (e) {}
 
           // Violations Sync
           const violSnap = await getDocs(collection(db, 'violations'));
           const loadedViol: StudentViolation[] = [];
           violSnap.forEach(doc => loadedViol.push({ id: doc.id, ...doc.data() } as StudentViolation));
           setViolations(loadedViol);
+          try {
+            localStorage.setItem('sim_violations', JSON.stringify(loadedViol));
+          } catch (e) {}
 
           // Achievements Sync
           const achSnap = await getDocs(collection(db, 'achievements'));
           const loadedAch: StudentAchievement[] = [];
           achSnap.forEach(doc => loadedAch.push({ id: doc.id, ...doc.data() } as StudentAchievement));
           setAchievements(loadedAch);
+          try {
+            localStorage.setItem('sim_achievements', JSON.stringify(loadedAch));
+          } catch (e) {}
 
           // BK Collections Sync
           const csSnap = await getDocs(collection(db, 'counseling'));
           const loadedCs: StudentCounseling[] = [];
           csSnap.forEach(doc => loadedCs.push({ id: doc.id, ...doc.data() } as StudentCounseling));
           setCounseling(loadedCs);
+          try {
+            localStorage.setItem('sim_counseling', JSON.stringify(loadedCs));
+          } catch (e) {}
 
           const hvSnap = await getDocs(collection(db, 'home_visits'));
           const loadedHv: HomeVisitRecord[] = [];
           hvSnap.forEach(doc => loadedHv.push({ id: doc.id, ...doc.data() } as HomeVisitRecord));
           setHomeVisits(loadedHv);
+          try {
+            localStorage.setItem('sim_home_visits', JSON.stringify(loadedHv));
+          } catch (e) {}
 
           const pclSnap = await getDocs(collection(db, 'parent_call_letters'));
           const loadedPcl: ParentCallLetter[] = [];
           pclSnap.forEach(doc => loadedPcl.push({ id: doc.id, ...doc.data() } as ParentCallLetter));
           setParentCallLetters(loadedPcl);
+          try {
+            localStorage.setItem('sim_parent_call_letters', JSON.stringify(loadedPcl));
+          } catch (e) {}
 
           const cgSnap = await getDocs(collection(db, 'career_guidances'));
           const loadedCg: CareerGuidanceRecord[] = [];
           cgSnap.forEach(doc => loadedCg.push({ id: doc.id, ...doc.data() } as CareerGuidanceRecord));
           setCareerGuidances(loadedCg);
+          try {
+            localStorage.setItem('sim_career_guidances', JSON.stringify(loadedCg));
+          } catch (e) {}
 
           // Permissions Sync
           const permSnap = await getDocs(collection(db, 'permissions'));
           const loadedPerm: StudentPermission[] = [];
           permSnap.forEach(doc => loadedPerm.push({ id: doc.id, ...doc.data() } as StudentPermission));
           setPermissions(loadedPerm);
+          try {
+            localStorage.setItem('sim_permissions', JSON.stringify(loadedPerm));
+          } catch (e) {}
 
           // Needs Requests Sync
           const needSnap = await getDocs(collection(db, 'needs_requests'));
           const loadedNeed: NeedsRequest[] = [];
           needSnap.forEach(doc => loadedNeed.push({ id: doc.id, ...doc.data() } as NeedsRequest));
           setNeedsRequests(loadedNeed);
+          try {
+            localStorage.setItem('sim_needs', JSON.stringify(loadedNeed));
+          } catch (e) {}
 
           // OSIM Collections Sync
           const osimMemSnap = await getDocs(collection(db, 'osim_members'));
-          const loadedOsimMem: OsimMember[] = [];
-          osimMemSnap.forEach(doc => loadedOsimMem.push({ id: doc.id, ...doc.data() } as OsimMember));
+          const rawOsimMem: OsimMember[] = [];
+          osimMemSnap.forEach(docSnap => {
+            const data = docSnap.data() as OsimMember;
+            const id = docSnap.id;
+            if (data.id === 'om1' || (data as any).isDeleted) {
+              deleteDoc(docSnap.ref).catch(() => {});
+              return;
+            }
+            // Safely clear accidental blacklist for real members
+            removeDeletedUid(id);
+            if (data.studentNis) removeDeletedUid(cleanDigits(data.studentNis));
+            if (data.loginUsername) removeDeletedUid(data.loginUsername);
+            rawOsimMem.push({ id, ...data });
+          });
+
+          // Deduplicate and reconcile with loadedStudents to guarantee 0 stale duplicates
+          const loadedOsimMem = deduplicateOsimMembersList(rawOsimMem, loadedStudents);
           setOsimMembers(loadedOsimMem);
+          try {
+            localStorage.setItem('sim_osim_members', JSON.stringify(loadedOsimMem));
+          } catch (e) {}
+
+          // Asynchronously purge obsolete duplicate documents from Firestore if duplicates existed
+          if (rawOsimMem.length > loadedOsimMem.length) {
+            const keptIds = new Set(loadedOsimMem.map(m => m.id));
+            const obsoleteMembers = rawOsimMem.filter(m => !keptIds.has(m.id));
+            obsoleteMembers.forEach(obs => {
+              addDeletedUid(obs.id);
+              addDeletedUid(`user_${obs.id}`);
+              deleteDoc(doc(db, 'osim_members', obs.id)).catch(() => {});
+              deleteDoc(doc(db, 'users', obs.id)).catch(() => {});
+              deleteDoc(doc(db, 'users', `user_${obs.id}`)).catch(() => {});
+            });
+          }
 
           const osimProgSnap = await getDocs(collection(db, 'osim_programs'));
           const loadedOsimProg: OsimWorkProgram[] = [];
           osimProgSnap.forEach(doc => loadedOsimProg.push({ id: doc.id, ...doc.data() } as OsimWorkProgram));
           setOsimPrograms(loadedOsimProg);
+          try {
+            localStorage.setItem('sim_osim_programs', JSON.stringify(loadedOsimProg));
+          } catch (e) {}
 
           const osimAspSnap = await getDocs(collection(db, 'osim_aspirations'));
           const loadedOsimAsp: OsimAspiration[] = [];
           osimAspSnap.forEach(doc => loadedOsimAsp.push({ id: doc.id, ...doc.data() } as OsimAspiration));
           setOsimAspirations(loadedOsimAsp);
+          try {
+            localStorage.setItem('sim_osim_aspirations', JSON.stringify(loadedOsimAsp));
+          } catch (e) {}
 
           const osimMeetSnap = await getDocs(collection(db, 'osim_meetings'));
           const loadedOsimMeet: OsimMeeting[] = [];
           osimMeetSnap.forEach(doc => loadedOsimMeet.push({ id: doc.id, ...doc.data() } as OsimMeeting));
           setOsimMeetings(loadedOsimMeet);
+          try {
+            localStorage.setItem('sim_osim_meetings', JSON.stringify(loadedOsimMeet));
+          } catch (e) {}
 
           const osimDeptSnap = await getDocs(collection(db, 'osim_departments'));
           if (!osimDeptSnap.empty) {
@@ -1139,6 +1280,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             osimDeptSnap.forEach(doc => loadedOsimDept.push({ id: doc.id, ...doc.data() } as OsimDepartment));
             loadedOsimDept.sort((a, b) => (a.sortOrder ?? 99) - (b.sortOrder ?? 99));
             setOsimDepartments(loadedOsimDept);
+            try {
+              localStorage.setItem('sim_osim_departments', JSON.stringify(loadedOsimDept));
+            } catch (e) {}
           }
 
           // Cash Ledger Sync
@@ -1147,6 +1291,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const loadedCashAcc: CashAccount[] = [];
             cashAccSnap.forEach(doc => loadedCashAcc.push({ id: doc.id, ...doc.data() } as CashAccount));
             setCashAccounts(loadedCashAcc);
+            try {
+              localStorage.setItem('sim_cash_accounts', JSON.stringify(loadedCashAcc));
+            } catch (e) {}
           }
 
           const cashTrxSnap = await getDocs(collection(db, 'cash_transactions'));
@@ -1156,6 +1303,31 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             // Sort newest first
             loadedCashTrx.sort((a, b) => (b.date > a.date ? 1 : b.date < a.date ? -1 : (b.id > a.id ? 1 : -1)));
             setCashTransactions(loadedCashTrx);
+            try {
+              localStorage.setItem('sim_cash_transactions', JSON.stringify(loadedCashTrx));
+            } catch (e) {}
+          }
+
+          // School Rules Sync
+          const rulesSnap = await getDocs(collection(db, 'school_rules'));
+          if (!rulesSnap.empty) {
+            const loadedRules: SchoolRuleArticle[] = [];
+            rulesSnap.forEach(doc => loadedRules.push({ id: doc.id, ...doc.data() } as SchoolRuleArticle));
+            setSchoolRules(loadedRules);
+            try {
+              localStorage.setItem('sim_school_rules', JSON.stringify(loadedRules));
+            } catch (e) {}
+          }
+
+          // Handbook Meta Sync
+          const handbookSnap = await getDocs(collection(db, 'settings'));
+          const handbookDoc = handbookSnap.docs.find(d => d.id === 'handbook_meta');
+          if (handbookDoc) {
+            const loadedMeta = handbookDoc.data() as SchoolHandbookMeta;
+            setHandbookMeta(loadedMeta);
+            try {
+              localStorage.setItem('sim_handbook_meta', JSON.stringify(loadedMeta));
+            } catch (e) {}
           }
 
           // Announcements Sync
@@ -1164,6 +1336,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const loadedAnn: Announcement[] = [];
             annSnap.forEach(doc => loadedAnn.push({ id: doc.id, ...doc.data() } as Announcement));
             setAnnouncements(loadedAnn);
+            try {
+              localStorage.setItem('sim_announcements', JSON.stringify(loadedAnn));
+            } catch (e) {}
           }
 
           // Audit Logs Sync from Firestore
@@ -1174,13 +1349,21 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             // Sort newest first
             loadedLogs.sort((a, b) => (b.id > a.id ? 1 : -1));
             setAuditLogs(loadedLogs);
-            localStorage.setItem('sim_audit_logs', JSON.stringify(loadedLogs));
+            try {
+              localStorage.setItem('sim_audit_logs', JSON.stringify(loadedLogs));
+            } catch (e) {}
+          }
+        } else {
+          // Cloud database is empty: auto initialize master data to Firestore
+          try {
+            await seedAllFirebaseData();
+          } catch (seedErr) {
+            console.warn('Auto-init database note:', seedErr);
           }
         }
       })();
 
-      const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 3000));
-      await Promise.race([syncPromise, timeoutPromise]);
+      await syncPromise;
     } catch (e) {
       console.warn('Firestore sync note (active offline local cache):', e);
     } finally {
@@ -1201,6 +1384,54 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
     setIsSyncing(false);
     return res;
+  };
+
+  const uploadAllDataToFirestore = async (): Promise<{ success: boolean; message: string; count: number }> => {
+    setIsSyncing(true);
+    try {
+      const res = await uploadAllStateToFirebase({
+        schoolSetting,
+        academicYears,
+        classes,
+        teachers,
+        students,
+        extracurriculars,
+        members,
+        schedules,
+        attendance,
+        activities,
+        activityReports,
+        violations,
+        counseling,
+        homeVisits,
+        parentCallLetters,
+        careerGuidances,
+        achievements,
+        permissions,
+        needsRequests,
+        osimMembers,
+        osimPrograms,
+        osimAspirations,
+        osimMeetings,
+        osimDepartments,
+        cashAccounts,
+        cashTransactions,
+        schoolRules,
+        handbookMeta,
+        announcements,
+        auditLogs
+      });
+
+      if (res.success) {
+        await logAction('UPLOAD_ALL_TO_FIREBASE', 'Manajemen Database', `Mengunggah seluruh data aktif (${res.count} dokumen) ke Cloud Firestore`);
+      }
+      return res;
+    } catch (err: any) {
+      console.error('Error uploading all data to Firestore:', err);
+      return { success: false, message: err?.message || 'Gagal mengunggah data ke Cloud Firestore', count: 0 };
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const clearAllOperationalData = async () => {
@@ -1540,6 +1771,174 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     logAction('DELETE_ACADEMIC_YEAR', 'Tahun Ajaran', `Menghapus tahun pelajaran: ${target.name}`);
   };
 
+  const promoteAcademicYear = async (params: {
+    targetAcademicYear: string;
+    targetSemester?: 'Ganjil' | 'Genap';
+    resetViolationPoints?: boolean;
+    demisionerOsim?: boolean;
+  }): Promise<{ graduatedCount: number; promotedCount: number }> => {
+    const {
+      targetAcademicYear,
+      targetSemester = 'Ganjil',
+      resetViolationPoints = true,
+      demisionerOsim = true
+    } = params;
+
+    let graduatedCount = 0;
+    let promotedCount = 0;
+
+    // 1. Process Students:
+    // XII -> Alumni
+    // XI -> XII
+    // X -> XI
+    const updatedStudents = students.map(student => {
+      if (student.isDeleted || student.status !== 'Aktif') {
+        return student;
+      }
+
+      const cls = classes.find(c => c.id === student.classId || c.name === student.className);
+      const isGradeXII = cls?.grade === 'XII' || (student.className && student.className.startsWith('XII'));
+      const isGradeXI = cls?.grade === 'XI' || (student.className && student.className.startsWith('XI'));
+      const isGradeX = cls?.grade === 'X' || (student.className && student.className.startsWith('X'));
+
+      if (isGradeXII) {
+        graduatedCount++;
+        return {
+          ...student,
+          status: 'Alumni' as const,
+          violationPoints: resetViolationPoints ? 0 : (student.violationPoints || 0),
+          updatedAt: new Date().toISOString()
+        };
+      }
+
+      if (isGradeXI) {
+        promotedCount++;
+        const targetClass = classes.find(c => c.grade === 'XII' && (c.major === cls?.major || c.name.replace(/^XII/, '') === cls?.name?.replace(/^XI/, '')));
+        const newClassName = targetClass?.name || (student.className ? student.className.replace(/^XI/, 'XII') : 'XII');
+        const newClassId = targetClass?.id || student.classId;
+
+        return {
+          ...student,
+          classId: newClassId,
+          className: newClassName,
+          violationPoints: resetViolationPoints ? 0 : (student.violationPoints || 0),
+          updatedAt: new Date().toISOString()
+        };
+      }
+
+      if (isGradeX) {
+        promotedCount++;
+        const targetClass = classes.find(c => c.grade === 'XI' && (c.major === cls?.major || c.name.replace(/^XI/, '') === cls?.name?.replace(/^X\b/, '')));
+        const newClassName = targetClass?.name || (student.className ? student.className.replace(/^X\b/, 'XI') : 'XI');
+        const newClassId = targetClass?.id || student.classId;
+
+        return {
+          ...student,
+          classId: newClassId,
+          className: newClassName,
+          violationPoints: resetViolationPoints ? 0 : (student.violationPoints || 0),
+          updatedAt: new Date().toISOString()
+        };
+      }
+
+      return {
+        ...student,
+        violationPoints: resetViolationPoints ? 0 : (student.violationPoints || 0)
+      };
+    });
+
+    setStudents(updatedStudents);
+    try {
+      localStorage.setItem('sim_students', JSON.stringify(updatedStudents));
+    } catch (e) {}
+
+    // Persist student promotions to Firestore
+    try {
+      const studentUpdates = updatedStudents
+        .filter(s => s.status === 'Aktif' || s.status === 'Alumni')
+        .map(s => updateDoc(doc(db, 'students', s.id), {
+          status: s.status,
+          classId: s.classId,
+          className: s.className,
+          violationPoints: s.violationPoints || 0,
+          updatedAt: s.updatedAt || new Date().toISOString()
+        }).catch(() => {}));
+      await Promise.allSettled(studentUpdates);
+    } catch (e) {
+      console.warn('Firestore promote students notice:', e);
+    }
+
+    // 2. Demisioner OSIM if requested
+    if (demisionerOsim) {
+      setOsimMembers(prev => {
+        const demisionered = prev.map(m => m.status === 'Aktif' ? { ...m, status: 'Demisioner' as const } : m);
+        try {
+          localStorage.setItem('sim_osim_members', JSON.stringify(demisionered));
+        } catch (e) {}
+        return demisionered;
+      });
+      try {
+        const osimUpdates = osimMembers.filter(m => m.status === 'Aktif').map(m =>
+          updateDoc(doc(db, 'osim_members', m.id), { status: 'Demisioner' }).catch(() => {})
+        );
+        await Promise.allSettled(osimUpdates);
+      } catch (e) {}
+    }
+
+    // 3. Register & activate new Academic Year
+    const exists = academicYears.find(ay => ay.name === targetAcademicYear || ay.year === targetAcademicYear);
+    if (!exists) {
+      const newAY: AcademicYear = {
+        id: `ay_${Date.now()}`,
+        name: targetAcademicYear,
+        year: targetAcademicYear,
+        semester: targetSemester,
+        isActive: true,
+        startDate: `${targetAcademicYear.split('/')[0]}-07-15`,
+        endDate: `${targetAcademicYear.split('/')[1] || targetAcademicYear.split('/')[0]}-06-25`
+      };
+      setAcademicYears(prev => {
+        const updated = [{ ...newAY }, ...prev.map(p => ({ ...p, isActive: false }))];
+        try { localStorage.setItem('sim_academic_years', JSON.stringify(updated)); } catch (e) {}
+        return updated;
+      });
+      try {
+        setDoc(doc(db, 'academic_years', newAY.id), newAY);
+      } catch (e) {}
+    } else {
+      setAcademicYears(prev => {
+        const updated = prev.map(p => ({
+          ...p,
+          isActive: p.id === exists.id || p.name === targetAcademicYear
+        }));
+        try { localStorage.setItem('sim_academic_years', JSON.stringify(updated)); } catch (e) {}
+        return updated;
+      });
+    }
+
+    // 4. Update school settings
+    setActiveAcademicYearState(targetAcademicYear);
+    setActiveSemesterState(targetSemester);
+    const updatedSetting: SchoolSetting = {
+      ...schoolSetting,
+      currentAcademicYear: targetAcademicYear,
+      currentSemester: targetSemester
+    };
+    setSchoolSetting(updatedSetting);
+    try {
+      localStorage.setItem('sim_school_setting', JSON.stringify(updatedSetting));
+      setDoc(doc(db, 'schools', 'main_school'), updatedSetting, { merge: true });
+    } catch (e) {}
+
+    logAction(
+      'ACADEMIC_YEAR_TRANSITION',
+      'Tahun Ajaran',
+      `Transisi Tahun Ajaran ${targetAcademicYear}: ${graduatedCount} siswa lulus (Alumni), ${promotedCount} siswa naik kelas.`
+    );
+
+    return { graduatedCount, promotedCount };
+  };
+
   const updateSchoolSetting = async (data: Partial<SchoolSetting>) => {
     const targetId = data.id || schoolSetting.id || 'main_school';
     const updated: SchoolSetting = {
@@ -1598,16 +1997,64 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const deleteStudent = async (id: string) => {
     const target = students.find(s => s.id === id);
-    setStudents(prev => prev.filter(s => s.id !== id));
+
+    // Tombstone
+    addDeletedUid(id);
+    addDeletedUid(`user_${id}`);
+    if (target?.nis) {
+      addDeletedUid(cleanDigits(target.nis));
+      addDeletedUid(`user_${cleanDigits(target.nis)}`);
+    }
+
+    setStudents(prev => {
+      const remaining = prev.filter(s => s.id !== id);
+      try {
+        localStorage.setItem('sim_students', JSON.stringify(remaining));
+      } catch (e) {}
+      return remaining;
+    });
+
     try {
-      deleteDoc(doc(db, 'students', id));
+      await deleteDoc(doc(db, 'students', id)).catch(() => {});
+      deleteDoc(doc(db, 'users', id)).catch(() => {});
+      deleteDoc(doc(db, 'users', `user_${id}`)).catch(() => {});
+      if (target?.nis) {
+        deleteDoc(doc(db, 'users', cleanDigits(target.nis))).catch(() => {});
+        deleteDoc(doc(db, 'users', `user_${cleanDigits(target.nis)}`)).catch(() => {});
+      }
     } catch (e) {}
-    logAction('DELETE_STUDENT', 'Data Siswa', `Menghapus data siswa: ${target?.fullName || id}`);
+
+    // Cascade delete linked user account in cPanel if present
+    if (target && deleteUser) {
+      const matchedUser = allUsers.find(u =>
+        isStudentUserMatch(u, target) ||
+        u.uid === id ||
+        u.uid === `user_${id}`
+      );
+      if (matchedUser) {
+        try {
+          await deleteUser(matchedUser.uid);
+        } catch (e) {}
+      }
+    }
+
+    logAction('DELETE_STUDENT', 'Data Siswa', `Mengarsipkan data siswa: ${target?.fullName || id}`);
   };
 
   const deleteStudentsBulk = async (ids: string[]) => {
     if (!ids || ids.length === 0) return 0;
     const idSet = new Set(ids);
+    const targetStudents = students.filter(s => idSet.has(s.id));
+
+    targetStudents.forEach(s => {
+      addDeletedUid(s.id);
+      addDeletedUid(`user_${s.id}`);
+      if (s.nis) {
+        addDeletedUid(cleanDigits(s.nis));
+        addDeletedUid(`user_${cleanDigits(s.nis)}`);
+      }
+    });
+
     setStudents(prev => {
       const remaining = prev.filter(s => !idSet.has(s.id));
       try {
@@ -1616,57 +2063,48 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return remaining;
     });
 
-    // Cascade clean related student records
+    // Remove active memberships in current extracurriculars
     setMembers(prev => {
       const remaining = prev.filter(m => !idSet.has(m.studentId));
       try { localStorage.setItem('sim_members', JSON.stringify(remaining)); } catch (e) {}
       return remaining;
     });
-    setViolations(prev => {
-      const remaining = prev.filter(v => !idSet.has(v.studentId));
-      try { localStorage.setItem('sim_violations', JSON.stringify(remaining)); } catch (e) {}
-      return remaining;
-    });
-    setCounseling(prev => {
-      const remaining = prev.filter(c => !idSet.has(c.studentId));
-      try { localStorage.setItem('sim_counseling', JSON.stringify(remaining)); } catch (e) {}
-      return remaining;
-    });
-    setAchievements(prev => {
-      const remaining = prev.filter(a => !idSet.has(a.studentId));
-      try { localStorage.setItem('sim_achievements', JSON.stringify(remaining)); } catch (e) {}
-      return remaining;
-    });
-    setPermissions(prev => {
-      const remaining = prev.filter(p => !idSet.has(p.studentId));
-      try { localStorage.setItem('sim_permissions', JSON.stringify(remaining)); } catch (e) {}
-      return remaining;
-    });
-    setHomeVisits(prev => {
-      const remaining = prev.filter(h => !idSet.has(h.studentId));
-      try { localStorage.setItem('sim_home_visits', JSON.stringify(remaining)); } catch (e) {}
-      return remaining;
-    });
-    setParentCallLetters(prev => {
-      const remaining = prev.filter(l => !idSet.has(l.studentId));
-      try { localStorage.setItem('sim_parent_call_letters', JSON.stringify(remaining)); } catch (e) {}
-      return remaining;
-    });
-    setOsimMembers(prev => {
-      const remaining = prev.filter(o => !idSet.has(o.studentId));
-      try { localStorage.setItem('sim_osim_members', JSON.stringify(remaining)); } catch (e) {}
-      return remaining;
-    });
 
-    // Delete documents in Firestore
+    // Permanently delete student records and linked user accounts from Firestore
     try {
-      const deletePromises = ids.map(id => deleteDoc(doc(db, 'students', id)));
+      const deletePromises = ids.flatMap(id => [
+        deleteDoc(doc(db, 'students', id)).catch(() => {}),
+        deleteDoc(doc(db, 'users', id)).catch(() => {}),
+        deleteDoc(doc(db, 'users', `user_${id}`)).catch(() => {})
+      ]);
+      targetStudents.forEach(s => {
+        if (s.nis) {
+          deletePromises.push(deleteDoc(doc(db, 'users', cleanDigits(s.nis))).catch(() => {}));
+          deletePromises.push(deleteDoc(doc(db, 'users', `user_${cleanDigits(s.nis)}`)).catch(() => {}));
+        }
+      });
       await Promise.allSettled(deletePromises);
     } catch (e) {
       console.warn('Firestore bulk delete students error:', e);
     }
 
-    logAction('DELETE_STUDENTS_BULK', 'Data Siswa', `Menghapus massal ${ids.length} data siswa beserta rekam jejak terkait`);
+    // Cascade delete linked user accounts
+    if (deleteUser) {
+      for (const s of targetStudents) {
+        const matchedUser = allUsers.find(u =>
+          isStudentUserMatch(u, s) ||
+          idSet.has(u.uid) ||
+          idSet.has(u.uid.replace(/^user_/, ''))
+        );
+        if (matchedUser) {
+          try {
+            await deleteUser(matchedUser.uid);
+          } catch (e) {}
+        }
+      }
+    }
+
+    logAction('BULK_DELETE_STUDENT', 'Data Siswa', `Mengarsipkan ${ids.length} siswa (Soft Delete)`);
     return ids.length;
   };
 
@@ -1734,19 +2172,61 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
 
     const combinedClasses = [...newClassesToCreate, ...classes];
+    const currentStudents = [...students];
+    const activeYearStr = activeAcademicYear || schoolSetting?.currentAcademicYear || '2024/2025';
 
-    const newStudents: Student[] = importedList.map((s, idx) => {
-      const matched = findMatchingClass(s.classId || s.className, combinedClasses);
-      return {
-        id: `s_imp_${Date.now()}_${idx}`,
-        ...s,
-        classId: matched?.id || s.classId || (combinedClasses[0]?.id || 'c_default'),
-        className: matched?.name || s.className || (combinedClasses[0]?.name || 'X'),
-        major: matched?.major || s.major || 'Umum',
-        violationPoints: s.violationPoints || 0,
-        achievementPoints: s.achievementPoints || 0,
-        createdAt: new Date().toISOString().split('T')[0]
-      };
+    // Smart Upsert: Cocokkan siswa berdasarkan NISN atau NIS
+    const processedStudents: Student[] = [];
+
+    importedList.forEach((s, idx) => {
+      const matchedClass = findMatchingClass(s.classId || s.className, combinedClasses);
+      const targetClassId = matchedClass?.id || s.classId || (combinedClasses[0]?.id || 'c_default');
+      const targetClassName = matchedClass?.name || s.className || (combinedClasses[0]?.name || 'X');
+      const targetMajor = matchedClass?.major || s.major || 'Umum';
+
+      // Cari kecocokan di database yang sudah ada (NISN, NIS, Kode Siswa, atau Nama Lengkap yang dinormalisasi)
+      const sNormName = normalizeName(s.fullName);
+      const existing = currentStudents.find(curr => {
+        if (curr.nisn && s.nisn && curr.nisn.trim() === s.nisn.trim()) return true;
+        if (curr.nis && s.nis && curr.nis.trim() === s.nis.trim()) return true;
+        if (curr.code && s.code && curr.code.trim().toUpperCase() === s.code.trim().toUpperCase()) return true;
+        if (sNormName && sNormName.length >= 4 && normalizeName(curr.fullName) === sNormName) return true;
+        return false;
+      });
+
+      const standardCode = s.code || existing?.code || formatStudentCode(activeYearStr, idx + 1);
+
+      if (existing) {
+        // UPDATE BIODATA (Pertahankan ID dan riwayat pelanggaran/prestasi)
+        const updatedStudent: Student = {
+          ...existing,
+          ...s,
+          id: existing.id,
+          code: standardCode,
+          classId: targetClassId,
+          className: targetClassName,
+          major: targetMajor,
+          violationPoints: existing.violationPoints || 0,
+          achievementPoints: existing.achievementPoints || 0,
+          createdAt: existing.createdAt || new Date().toISOString().split('T')[0],
+          updatedAt: new Date().toISOString()
+        };
+        processedStudents.push(updatedStudent);
+      } else {
+        // INSERT BARU
+        const newStudent: Student = {
+          id: `s_${standardCode.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}_${idx}`,
+          ...s,
+          code: standardCode,
+          classId: targetClassId,
+          className: targetClassName,
+          major: targetMajor,
+          violationPoints: s.violationPoints || 0,
+          achievementPoints: s.achievementPoints || 0,
+          createdAt: new Date().toISOString().split('T')[0]
+        };
+        processedStudents.push(newStudent);
+      }
     });
 
     if (newClassesToCreate.length > 0) {
@@ -1765,41 +2245,62 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       } catch (e) {}
     }
 
+    let finalStudents: Student[] = [];
     if (mode === 'replace') {
-      setStudents(sortStudentsAlphabetically(newStudents));
-      try {
-        localStorage.setItem('sim_students', JSON.stringify(newStudents));
-        const oldSnap = await getDocs(collection(db, 'students'));
-        const deletePromises = oldSnap.docs.map(d => deleteDoc(doc(db, 'students', d.id)));
-        await Promise.allSettled(deletePromises);
-        const insertPromises = newStudents.map(s => setDoc(doc(db, 'students', s.id), s));
-        await Promise.allSettled(insertPromises);
-      } catch (e) {
-        console.warn('Firestore replace students note:', e);
+      // Pada mode replace, data baru menggantikan total daftar siswa
+      finalStudents = sortStudentsAlphabetically(processedStudents);
+
+      // Hapus data siswa lama yang tidak ada dalam daftar baru dari Firestore secara permanen
+      const newIds = new Set(finalStudents.map(s => s.id));
+      const deletedOldStudents = currentStudents.filter(cs => !newIds.has(cs.id));
+      if (deletedOldStudents.length > 0) {
+        deletedOldStudents.forEach(oldS => {
+          addDeletedUid(oldS.id);
+          addDeletedUid(`user_${oldS.id}`);
+          if (oldS.nis) {
+            addDeletedUid(cleanDigits(oldS.nis));
+            addDeletedUid(`user_${cleanDigits(oldS.nis)}`);
+          }
+          deleteDoc(doc(db, 'students', oldS.id)).catch(() => {});
+          deleteDoc(doc(db, 'users', oldS.id)).catch(() => {});
+          deleteDoc(doc(db, 'users', `user_${oldS.id}`)).catch(() => {});
+        });
       }
     } else {
-      setStudents(prev => {
-        const merged = sortStudentsAlphabetically([...newStudents, ...prev]);
-        try {
-          localStorage.setItem('sim_students', JSON.stringify(merged));
-        } catch (e) {}
-        return merged;
-      });
+      // Pada mode append, gabungkan dengan siswa yang tidak tersentuh
+      const processedIds = new Set(processedStudents.map(ps => ps.id));
+      const untouchedStudents = currentStudents.filter(cs => !processedIds.has(cs.id));
+      finalStudents = sortStudentsAlphabetically([...processedStudents, ...untouchedStudents]);
+    }
 
-      try {
-        const promises = newStudents.map(student => setDoc(doc(db, 'students', student.id), student));
-        await Promise.allSettled(promises);
-      } catch (e) {
-        console.warn('Firestore bulk import note:', e);
-      }
+    setStudents(finalStudents);
+    try {
+      localStorage.setItem('sim_students', JSON.stringify(finalStudents));
+    } catch (e) {}
+
+    // Simpan / update ke Firestore tanpa menghapus relasi kunci
+    try {
+      const promises = finalStudents.map(student => 
+        setDoc(doc(db, 'students', student.id), student, { merge: true })
+      );
+      await Promise.allSettled(promises);
+    } catch (e) {
+      console.warn('Firestore bulk upsert students note:', e);
+    }
+
+    // Auto-reconcile OSIM members with updated student records to prevent stale duplicate entries
+    try {
+      await reconcileOsimMembersWithMasterStudents(finalStudents);
+    } catch (e) {
+      console.warn('Auto-reconcile OSIM after student import note:', e);
     }
 
     logAction(
       'IMPORT_STUDENTS',
       'Data Siswa',
-      `Mengimpor ${newStudents.length} data siswa (Mode: ${mode === 'replace' ? 'Gantikan Total' : 'Tambahkan'})`
+      `Mengimpor ${finalStudents.length} data siswa (Mode: ${mode === 'replace' ? 'Gantikan Total' : 'Tambahkan'})`
     );
-    return newStudents.length;
+    return finalStudents.length;
   };
 
   // Class / Rombel Operations
@@ -2009,9 +2510,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Teachers Operations
   const addTeacher = async (data: Omit<Teacher, 'id'>) => {
+    const assignedCode = normalizeTeacherCode(data.code, teachers.length + 1, data.fullName);
     const newT: Teacher = {
-      id: `t_${Date.now()}`,
-      ...data
+      id: `t_${assignedCode.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}`,
+      ...data,
+      code: assignedCode
     };
     setTeachers(prev => {
       const merged = [newT, ...prev];
@@ -2088,17 +2591,49 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const deleteTeacher = async (id: string) => {
     const target = teachers.find(t => t.id === id);
+
+    // Tombstone this teacher so sync won't recreate
+    addDeletedUid(id);
+    addDeletedUid(`user_${id}`);
+    if (id.startsWith('user_')) addDeletedUid(id.replace(/^user_/, ''));
+    if (target?.nip) {
+      addDeletedUid(cleanDigits(target.nip));
+      addDeletedUid(`user_${cleanDigits(target.nip)}`);
+    }
+
     setTeachers(prev => {
-      const merged = prev.filter(t => t.id !== id);
+      const merged = prev.filter(t => t.id !== id && (!target || !isTeacherUserMatch({ uid: t.id, displayName: t.fullName, nip: t.nip, email: t.email } as any, target)));
       try {
         localStorage.setItem('sim_teachers', JSON.stringify(merged));
       } catch (e) {}
       return merged;
     });
+
     try {
-      await deleteDoc(doc(db, 'teachers', id));
+      await deleteDoc(doc(db, 'teachers', id)).catch(() => {});
+      deleteDoc(doc(db, 'users', id)).catch(() => {});
+      deleteDoc(doc(db, 'users', `user_${id}`)).catch(() => {});
+      if (target?.nip) {
+        deleteDoc(doc(db, 'users', cleanDigits(target.nip))).catch(() => {});
+        deleteDoc(doc(db, 'users', `user_${cleanDigits(target.nip)}`)).catch(() => {});
+      }
     } catch (e) {
       console.warn('Firestore delete teacher notice:', e);
+    }
+
+    // Cascade delete linked user account in cPanel
+    if (target && deleteUser) {
+      const matchedUser = allUsers.find(u =>
+        isTeacherUserMatch(u, target) ||
+        u.uid === id ||
+        u.uid === `user_${id}` ||
+        (target.email && u.email === target.email)
+      );
+      if (matchedUser) {
+        try {
+          await deleteUser(matchedUser.uid);
+        } catch (e) {}
+      }
     }
 
     // Auto-update any extracurricular that had this teacher as coach
@@ -2133,6 +2668,16 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const idSet = new Set(ids);
     const targetTeachers = teachers.filter(t => idSet.has(t.id));
     const targetNames = new Set(targetTeachers.map(t => (t.fullName || '').trim().toLowerCase()));
+
+    targetTeachers.forEach(t => {
+      addDeletedUid(t.id);
+      addDeletedUid(`user_${t.id}`);
+      if (t.id.startsWith('user_')) addDeletedUid(t.id.replace(/^user_/, ''));
+      if (t.nip) {
+        addDeletedUid(cleanDigits(t.nip));
+        addDeletedUid(`user_${cleanDigits(t.nip)}`);
+      }
+    });
 
     setTeachers(prev => {
       const remaining = prev.filter(t => !idSet.has(t.id));
@@ -2175,10 +2720,31 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
 
     try {
-      const promises = ids.map(id => deleteDoc(doc(db, 'teachers', id)));
+      const promises = ids.map(id => {
+        deleteDoc(doc(db, 'teachers', id)).catch(() => {});
+        deleteDoc(doc(db, 'users', id)).catch(() => {});
+        deleteDoc(doc(db, 'users', `user_${id}`)).catch(() => {});
+      });
       await Promise.allSettled(promises);
     } catch (e) {
       console.warn('Firestore bulk delete teachers error:', e);
+    }
+
+    // Cascade delete user accounts for all these teachers
+    if (deleteUser) {
+      for (const t of targetTeachers) {
+        const matchedUser = allUsers.find(u =>
+          isTeacherUserMatch(u, t) ||
+          idSet.has(u.uid) ||
+          idSet.has(u.uid.replace(/^user_/, '')) ||
+          (t.email && u.email === t.email)
+        );
+        if (matchedUser) {
+          try {
+            await deleteUser(matchedUser.uid);
+          } catch (e) {}
+        }
+      }
     }
 
     logAction('DELETE_TEACHERS_BULK', 'Dewan Guru', `Menghapus massal ${ids.length} data guru`);
@@ -2209,44 +2775,93 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     importedList: Omit<Teacher, 'id'>[],
     mode: 'append' | 'replace' = 'append'
   ) => {
-    const newTeachers: Teacher[] = importedList.map((t, idx) => ({
-      id: `t_imp_${Date.now()}_${idx}`,
-      ...t,
-      isActive: t.isActive !== false
-    }));
+    // Smart Upsert: Cocokkan guru yang sudah ada berdasarkan Kode Guru, NIP, Email, atau Nama Lengkap
+    const currentTeachers = [...teachers];
+    const processedTeachers: Teacher[] = [];
 
-    if (mode === 'replace') {
-      setTeachers(newTeachers);
-      try {
-        localStorage.setItem('sim_teachers', JSON.stringify(newTeachers));
-        const oldSnap = await getDocs(collection(db, 'teachers'));
-        const deletePromises = oldSnap.docs.map(d => deleteDoc(doc(db, 'teachers', d.id)));
-        await Promise.allSettled(deletePromises);
-        const insertPromises = newTeachers.map(t => setDoc(doc(db, 'teachers', t.id), t));
-        await Promise.allSettled(insertPromises);
-      } catch (e) {
-        console.warn('Firestore replace teachers note:', e);
-      }
-    } else {
-      setTeachers(prev => {
-        const merged = [...newTeachers, ...prev];
-        try {
-          localStorage.setItem('sim_teachers', JSON.stringify(merged));
-        } catch (e) {}
-        return merged;
+    importedList.forEach((t, idx) => {
+      const standardCode = normalizeTeacherCode(t.code, idx + 1, t.fullName);
+      
+      // Cari apakah guru ini sudah ada di database
+      const existing = currentTeachers.find(curr => {
+        if (curr.code && standardCode && curr.code.trim().toUpperCase() === standardCode.trim().toUpperCase()) return true;
+        if (curr.nip && curr.nip !== '-' && t.nip && t.nip !== '-' && cleanDigits(curr.nip) === cleanDigits(t.nip)) return true;
+        if (curr.email && t.email && curr.email.trim().toLowerCase() === t.email.trim().toLowerCase()) return true;
+        if (curr.fullName && t.fullName && curr.fullName.trim().toLowerCase() === t.fullName.trim().toLowerCase()) return true;
+        return false;
       });
 
-      try {
-        const promises = newTeachers.map(teacher => setDoc(doc(db, 'teachers', teacher.id), teacher));
-        await Promise.allSettled(promises);
-      } catch (e) {
-        console.warn('Firestore bulk import teacher note:', e);
+      if (existing) {
+        // UPDATE (Pertahankan ID dan relasi ekskul yang sudah ada)
+        const updatedTeacher: Teacher = {
+          ...existing,
+          ...t,
+          id: existing.id,
+          code: standardCode,
+          assignedExtracurriculars: (t.assignedExtracurriculars && t.assignedExtracurriculars.length > 0)
+            ? t.assignedExtracurriculars
+            : existing.assignedExtracurriculars,
+          isActive: t.isActive !== false
+        };
+        processedTeachers.push(updatedTeacher);
+      } else {
+        // INSERT Baru dengan ID stabil
+        const newTeacher: Teacher = {
+          id: `t_${standardCode.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}_${idx}`,
+          ...t,
+          code: standardCode,
+          isActive: t.isActive !== false
+        };
+        processedTeachers.push(newTeacher);
       }
+    });
+
+    let finalTeachers: Teacher[] = [];
+    if (mode === 'replace') {
+      // Pada mode replace, daftar baru menggantikan total daftar guru
+      finalTeachers = deduplicateTeachersList(processedTeachers);
+
+      // Hapus permanen data guru lama yang tidak ada di daftar baru dari Firestore & Akun Login
+      const newIds = new Set(finalTeachers.map(t => t.id));
+      const deletedOldTeachers = currentTeachers.filter(ct => !newIds.has(ct.id));
+      if (deletedOldTeachers.length > 0) {
+        deletedOldTeachers.forEach(oldT => {
+          addDeletedUid(oldT.id);
+          addDeletedUid(`user_${oldT.id}`);
+          if (oldT.nip) {
+            addDeletedUid(cleanDigits(oldT.nip));
+            addDeletedUid(`user_${cleanDigits(oldT.nip)}`);
+          }
+          deleteDoc(doc(db, 'teachers', oldT.id)).catch(() => {});
+          deleteDoc(doc(db, 'users', oldT.id)).catch(() => {});
+          deleteDoc(doc(db, 'users', `user_${oldT.id}`)).catch(() => {});
+        });
+      }
+    } else {
+      // Pada mode append, gabungkan guru baru dengan sisa guru yang belum ada
+      const processedIds = new Set(processedTeachers.map(pt => pt.id));
+      const untouchedTeachers = currentTeachers.filter(ct => !processedIds.has(ct.id));
+      finalTeachers = deduplicateTeachersList([...processedTeachers, ...untouchedTeachers]);
+    }
+
+    setTeachers(finalTeachers);
+    try {
+      localStorage.setItem('sim_teachers', JSON.stringify(finalTeachers));
+    } catch (e) {}
+
+    // Simpan/Perbarui record di Firestore tanpa menghapus relasi secara destruktif
+    try {
+      const upsertPromises = finalTeachers.map(teacher => 
+        setDoc(doc(db, 'teachers', teacher.id), teacher, { merge: true })
+      );
+      await Promise.allSettled(upsertPromises);
+    } catch (e) {
+      console.warn('Firestore bulk upsert teachers note:', e);
     }
 
     // Auto-sync all imported teachers to Ekstrakurikuler & Intrakurikuler
     try {
-      for (const t of newTeachers) {
+      for (const t of finalTeachers) {
         await syncTeacherToExtracurricularAndIntracurricular(t);
       }
     } catch (err) {
@@ -2256,7 +2871,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // Auto-sync imported teachers into cPanel user accounts
     try {
       if (syncUsersFromTeachers) {
-        await syncUsersFromTeachers(newTeachers, extracurriculars);
+        await syncUsersFromTeachers(finalTeachers, extracurriculars);
       }
     } catch (err) {
       console.warn('Error auto-syncing imported teachers to cPanel accounts:', err);
@@ -2265,9 +2880,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     logAction(
       'IMPORT_TEACHERS',
       'Dewan Guru & Manajemen',
-      `Mengimpor ${newTeachers.length} data guru/pembina (Mode: ${mode === 'replace' ? 'Gantikan Total' : 'Tambahkan'})`
+      `Mengimpor ${finalTeachers.length} data guru/pembina (Mode: ${mode === 'replace' ? 'Gantikan Total' : 'Tambahkan'})`
     );
-    return newTeachers.length;
+    return finalTeachers.length;
   };
 
   // Synchronization Engine: Auto-sync Teacher & Pembina to Ekstrakurikuler & Intrakurikuler
@@ -2656,46 +3271,140 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const syncDeleteUserFromCPanel = async (uid: string, user?: UserProfile) => {
-    setTeachers(prev => prev.filter(t => t.id !== uid && (!user?.email || t.email !== user.email)));
-    if (user) {
-      setExtracurriculars(prev => prev.map(ekskul => {
-        if (ekskul.coachId === uid || ekskul.coachName === user.displayName) {
-          return { ...ekskul, coachName: 'Belum Ditentukan', coachId: '' };
-        }
-        return ekskul;
-      }));
+    // 1. Record tombstones to ensure deleted users/entities are never resurrected
+    addDeletedUid(uid);
+    addDeletedUid(`user_${uid}`);
+    if (uid.startsWith('user_')) addDeletedUid(uid.replace(/^user_/, ''));
+    if (user?.nip) {
+      addDeletedUid(cleanDigits(user.nip));
+      addDeletedUid(`user_${cleanDigits(user.nip)}`);
+    }
+    if (user?.username) {
+      addDeletedUid(user.username);
     }
 
-    // Sync OSIM members: remove if user was osim account
-    setOsimMembers(prev => {
-      const remaining = prev.filter(m => {
-        if (m.id === uid) return false;
-        if (user) {
-          if (m.loginUsername && user.username && m.loginUsername.toLowerCase() === user.username.toLowerCase()) return false;
-          if (m.username && user.username && m.username.toLowerCase() === user.username.toLowerCase()) return false;
-          if (m.studentNis && user.nip && m.studentNis.trim() === user.nip.trim()) return false;
-          if (user.role === 'pengurus_osim') {
-            const cleanM = m.fullName.toLowerCase().trim();
-            const cleanU = user.displayName.toLowerCase().replace(/\s*\(.*\)$/, '').trim();
-            if (cleanM === cleanU) return false;
-          }
-        }
+    // 2. Identify and delete matching teacher record from state and Firestore
+    let teacherDeletedId: string | null = null;
+    const targetTeacher = teachers.find(t =>
+      t.id === uid ||
+      t.id === uid.replace(/^user_/, '') ||
+      `user_${t.id}` === uid ||
+      (user && isTeacherUserMatch(user, t))
+    );
+
+    if (targetTeacher) {
+      teacherDeletedId = targetTeacher.id;
+      addDeletedUid(targetTeacher.id);
+      if (targetTeacher.nip) addDeletedUid(cleanDigits(targetTeacher.nip));
+      try {
+        await deleteDoc(doc(db, 'teachers', targetTeacher.id));
+        deleteDoc(doc(db, 'teachers', `user_${targetTeacher.id}`)).catch(() => {});
+      } catch (e) {}
+    }
+
+    setTeachers(prev => {
+      const remaining = prev.filter(t => {
+        if (t.id === uid || t.id === uid.replace(/^user_/, '') || `user_${t.id}` === uid) return false;
+        if (teacherDeletedId && t.id === teacherDeletedId) return false;
+        if (user && isTeacherUserMatch(user, t)) return false;
         return true;
       });
+      try {
+        localStorage.setItem('sim_teachers', JSON.stringify(remaining));
+      } catch (e) {}
+      return remaining;
+    });
+
+    // 3. Identify and delete matching student record from state and Firestore
+    let studentDeletedId: string | null = null;
+    const targetStudent = students.find(s =>
+      s.id === uid ||
+      s.id === uid.replace(/^user_/, '') ||
+      `user_${s.id}` === uid ||
+      (user && isStudentUserMatch(user, s))
+    );
+
+    if (targetStudent) {
+      studentDeletedId = targetStudent.id;
+      addDeletedUid(targetStudent.id);
+      if (targetStudent.nis) addDeletedUid(cleanDigits(targetStudent.nis));
+      try {
+        await deleteDoc(doc(db, 'students', targetStudent.id));
+      } catch (e) {}
+    }
+
+    setStudents(prev => {
+      const remaining = prev.filter(s => {
+        if (s.id === uid || s.id === uid.replace(/^user_/, '') || `user_${s.id}` === uid) return false;
+        if (studentDeletedId && s.id === studentDeletedId) return false;
+        if (user && isStudentUserMatch(user, s)) return false;
+        return true;
+      });
+      try {
+        localStorage.setItem('sim_students', JSON.stringify(remaining));
+      } catch (e) {}
+      return remaining;
+    });
+
+    // 4. Reset extracurricular coach if assigned
+    if (user || targetTeacher) {
+      const coachName = user?.displayName || targetTeacher?.fullName;
+      setExtracurriculars(prev => {
+        const updated = prev.map(ekskul => {
+          if (
+            ekskul.coachId === uid ||
+            (targetTeacher && ekskul.coachId === targetTeacher.id) ||
+            (coachName && ekskul.coachName === coachName)
+          ) {
+            return { ...ekskul, coachName: 'Belum Ditentukan', coachId: '' };
+          }
+          return ekskul;
+        });
+        try { localStorage.setItem('sim_extracurriculars', JSON.stringify(updated)); } catch (e) {}
+        return updated;
+      });
+    }
+
+    // 5. Delete matching OSIM member from state and Firestore
+    const matchedOsimIds: string[] = [];
+    osimMembers.forEach(m => {
+      let isMatch = false;
+      if (m.id === uid) isMatch = true;
+      if (user) {
+        if (isOsimMemberUserMatch(user, m)) isMatch = true;
+        if (m.loginUsername && user.username && m.loginUsername.toLowerCase() === user.username.toLowerCase()) isMatch = true;
+        if (m.username && user.username && m.username.toLowerCase() === user.username.toLowerCase()) isMatch = true;
+        if (m.studentNis && user.nip && cleanDigits(m.studentNis) === cleanDigits(user.nip)) isMatch = true;
+      }
+      if (isMatch) {
+        matchedOsimIds.push(m.id);
+        addDeletedUid(m.id);
+        if (m.studentNis) addDeletedUid(cleanDigits(m.studentNis));
+        if (m.loginUsername) addDeletedUid(m.loginUsername);
+      }
+    });
+
+    for (const osimId of matchedOsimIds) {
+      try {
+        await deleteDoc(doc(db, 'osim_members', osimId));
+      } catch (e) {}
+    }
+    try {
+      await deleteDoc(doc(db, 'osim_members', uid));
+    } catch (e) {}
+
+    setOsimMembers(prev => {
+      const remaining = prev.filter(m => !matchedOsimIds.includes(m.id) && m.id !== uid);
       try {
         localStorage.setItem('sim_osim_members', JSON.stringify(remaining));
       } catch (e) {}
       return remaining;
     });
 
-    try {
-      deleteDoc(doc(db, 'osim_members', uid));
-    } catch (e) {}
-
     logAction(
       'CPANEL_DELETE_SYNC',
       'cPanel Kesiswaan',
-      `Sinkronisasi penghapusan akun ${user?.displayName || uid} pada seluruh modul.`
+      `Sinkronisasi penghapusan akun ${user?.displayName || uid} pada seluruh modul (Guru, Siswa, OSIM, Ekskul).`
     );
   };
 
@@ -2711,9 +3420,18 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Extracurricular Operations
   const addExtracurricular = async (data: Omit<Extracurricular, 'id'>) => {
+    // Relational Integrity: Safely link with master Teacher
+    const teacher = resolveTeacher(teachers, { id: data.coachId, code: data.coachCode, name: data.coachName });
+    const targetCoachId = teacher?.id || data.coachId;
+    const finalCoachCode = teacher?.code || data.coachCode;
+    const finalCoachName = teacher?.fullName || data.coachName;
+
     const newEkskul: Extracurricular = {
       id: `ekskul_${Date.now()}`,
-      ...data
+      ...data,
+      coachId: targetCoachId,
+      coachCode: finalCoachCode,
+      coachName: finalCoachName
     };
     setExtracurriculars(prev => {
       const merged = [newEkskul, ...prev];
@@ -2847,9 +3565,22 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Member Operations
   const addMember = async (data: Omit<ExtracurricularMember, 'id'>) => {
+    // Relational Integrity: Safely link with master Student
+    const student = resolveStudent(students, { id: data.studentId, code: data.studentCode, nis: data.studentNis, name: data.studentName });
+    const targetStudentId = student?.id || data.studentId;
+    const finalStudentCode = student?.code || data.studentCode;
+    const finalStudentName = student?.fullName || data.studentName;
+    const finalStudentClass = student?.className || data.studentClass;
+    const finalStudentNis = student?.nis || data.studentNis;
+
     const newMember: ExtracurricularMember = {
       id: `m_${Date.now()}`,
-      ...data
+      ...data,
+      studentId: targetStudentId,
+      studentCode: finalStudentCode,
+      studentName: finalStudentName,
+      studentClass: finalStudentClass,
+      studentNis: finalStudentNis
     };
     setMembers(prev => [newMember, ...prev]);
     // update count in ekskul
@@ -2862,7 +3593,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     try {
       setDoc(doc(db, 'extracurricular_members', newMember.id), newMember);
     } catch (e) {}
-    logAction('ADD_MEMBER', 'Anggota Ekstrakurikuler', `Menambahkan anggota: ${data.studentName} ke ${data.extracurricularName || data.extracurricularId}`);
+    logAction('ADD_MEMBER', 'Anggota Ekstrakurikuler', `Menambahkan anggota: ${finalStudentName} ke ${data.extracurricularName || data.extracurricularId}`);
   };
 
   const removeMember = async (id: string) => {
@@ -3118,52 +3849,176 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   // Violations & Points
+  const syncStudentViolationPoints = async (targetStudentId: string, currentViolationsList?: StudentViolation[]) => {
+    if (!targetStudentId) return 0;
+    const list = currentViolationsList || violations;
+    const activeStudentViols = list.filter(v => 
+      v.studentId === targetStudentId && 
+      !v.isDeleted && 
+      v.status !== 'Dibatalkan'
+    );
+    const calculatedPoints = activeStudentViols.reduce((sum, v) => sum + (Number(v.points) || 0), 0);
+
+    // Update state in memory & localStorage
+    setStudents(prev => {
+      const updated = prev.map(s => s.id === targetStudentId ? { ...s, violationPoints: calculatedPoints } : s);
+      try {
+        localStorage.setItem('sim_students', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+
+    // Update in Firestore
+    try {
+      await updateDoc(doc(db, 'students', targetStudentId), { violationPoints: calculatedPoints });
+    } catch (e) {}
+
+    return calculatedPoints;
+  };
+
   const addViolation = async (data: Omit<StudentViolation, 'id' | 'createdAt'>) => {
+    // Relational Integrity: Safely link with master Student
+    const student = resolveStudent(students, { id: data.studentId, code: data.studentCode, nis: data.studentNis, name: data.studentName });
+    const targetStudentId = student?.id || data.studentId;
+    const finalStudentCode = student?.code || data.studentCode;
+    const finalStudentName = student?.fullName || data.studentName;
+    const finalStudentClass = student?.className || data.studentClass;
+    const finalStudentNis = student?.nis || data.studentNis;
+
     const newViol: StudentViolation = {
       id: `v_${Date.now()}`,
       ...data,
+      studentId: targetStudentId,
+      studentCode: finalStudentCode,
+      studentName: finalStudentName,
+      studentClass: finalStudentClass,
+      studentNis: finalStudentNis,
+      isDeleted: false,
       createdAt: new Date().toISOString().split('T')[0]
     };
-    setViolations(prev => [newViol, ...prev]);
-    // Accumulate points to student
-    setStudents(prev => prev.map(s => {
-      if (s.id === data.studentId) {
-        return { ...s, violationPoints: (s.violationPoints || 0) + (data.points || 0) };
-      }
-      return s;
-    }));
+    
+    const updatedViolations = [newViol, ...violations];
+    setViolations(updatedViolations);
+    
+    // Atomically recalculate and sync student points
+    await syncStudentViolationPoints(targetStudentId, updatedViolations);
+
     try {
-      setDoc(doc(db, 'violations', newViol.id), newViol);
+      await setDoc(doc(db, 'violations', newViol.id), newViol);
     } catch (e) {}
-    logAction('RECORD_VIOLATION', 'Pelanggaran Siswa', `Mencatat pelanggaran siswa: ${data.studentName} (+${data.points} poin)`);
+    logAction('RECORD_VIOLATION', 'Pelanggaran Siswa', `Mencatat pelanggaran siswa: ${finalStudentName} (+${data.points} poin)`);
   };
 
   const updateViolation = async (id: string, data: Partial<StudentViolation>) => {
-    setViolations(prev => prev.map(v => v.id === id ? { ...v, ...data } : v));
+    let targetStudentId = '';
+    const updatedViolations = violations.map(v => {
+      if (v.id === id) {
+        targetStudentId = v.studentId;
+        return { ...v, ...data };
+      }
+      return v;
+    });
+    setViolations(updatedViolations);
+
+    if (targetStudentId) {
+      await syncStudentViolationPoints(targetStudentId, updatedViolations);
+    }
+
     try {
-      updateDoc(doc(db, 'violations', id), data);
+      await updateDoc(doc(db, 'violations', id), data);
     } catch (e) {}
   };
 
   const deleteViolation = async (id: string) => {
-    setViolations(prev => prev.filter(v => v.id !== id));
+    let targetStudentId = '';
+    // Soft delete to protect relational history
+    const updatedViolations = violations.map(v => {
+      if (v.id === id) {
+        targetStudentId = v.studentId;
+        return { ...v, isDeleted: true, deletedAt: new Date().toISOString() };
+      }
+      return v;
+    });
+
+    // Keep only active violations in operational view
+    setViolations(updatedViolations.filter(v => !v.isDeleted));
+
+    if (targetStudentId) {
+      await syncStudentViolationPoints(targetStudentId, updatedViolations);
+    }
+
     try {
-      deleteDoc(doc(db, 'violations', id));
+      await updateDoc(doc(db, 'violations', id), {
+        isDeleted: true,
+        deletedAt: new Date().toISOString()
+      });
     } catch (e) {}
+    logAction('DELETE_VIOLATION', 'Pelanggaran Siswa', `Mencabut/menghapus pelanggaran ID ${id}`);
+  };
+
+  const reconcileAllStudentPoints = async () => {
+    let updatedCount = 0;
+    const activeViolations = violations.filter(v => !v.isDeleted && v.status !== 'Dibatalkan');
+    
+    // Group active points by studentId
+    const pointsMap = new Map<string, number>();
+    for (const viol of activeViolations) {
+      const current = pointsMap.get(viol.studentId) || 0;
+      pointsMap.set(viol.studentId, current + (Number(viol.points) || 0));
+    }
+
+    const updatedStudents = students.map(s => {
+      const realPoints = pointsMap.get(s.id) || 0;
+      if ((s.violationPoints || 0) !== realPoints) {
+        updatedCount++;
+        try {
+          updateDoc(doc(db, 'students', s.id), { violationPoints: realPoints });
+        } catch (e) {}
+        return { ...s, violationPoints: realPoints };
+      }
+      return s;
+    });
+
+    if (updatedCount > 0) {
+      setStudents(updatedStudents);
+      try {
+        localStorage.setItem('sim_students', JSON.stringify(updatedStudents));
+      } catch (e) {}
+    }
+
+    logAction('RECONCILE_POINTS', 'Integritas Data', `Rekonsiliasi poin selesai: ${updatedCount} siswa disinkronkan`);
+    return { updatedCount };
   };
 
   // Counseling
   const addCounseling = async (data: Omit<StudentCounseling, 'id' | 'createdAt'>) => {
+    // Relational Integrity: Safely link with master Student & Counselor
+    const student = resolveStudent(students, { id: data.studentId, code: data.studentCode, nis: data.studentNis, name: data.studentName });
+    const counselor = data.counselorId ? resolveTeacher(teachers, { id: data.counselorId, name: data.counselorName }) : undefined;
+
+    const targetStudentId = student?.id || data.studentId;
+    const finalStudentCode = student?.code || data.studentCode;
+    const finalStudentName = student?.fullName || data.studentName;
+    const finalStudentClass = student?.className || data.studentClass;
+    const finalCounselorCode = counselor?.code || data.counselorCode;
+    const finalCounselorName = counselor?.fullName || data.counselorName;
+
     const newCs: StudentCounseling = {
       id: `cs_${Date.now()}`,
       ...data,
+      studentId: targetStudentId,
+      studentCode: finalStudentCode,
+      studentName: finalStudentName,
+      studentClass: finalStudentClass,
+      counselorCode: finalCounselorCode,
+      counselorName: finalCounselorName,
       createdAt: new Date().toISOString().split('T')[0]
     };
     setCounseling(prev => [newCs, ...prev]);
     try {
       setDoc(doc(db, 'counseling', newCs.id), newCs);
     } catch (e) {}
-    logAction('RECORD_COUNSELING', 'Pembinaan & BK', `Mencatat sesi pembinaan siswa: ${data.studentName}`);
+    logAction('RECORD_COUNSELING', 'Pembinaan & BK', `Mencatat sesi pembinaan siswa: ${finalStudentName}`);
   };
 
   const updateCounseling = async (id: string, data: Partial<StudentCounseling>) => {
@@ -3483,19 +4338,46 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // OSIM Members
   const addOsimMember = async (data: Omit<OsimMember, 'id' | 'createdAt'>) => {
+    // Relational Integrity: Safely link with master Student
+    const student = resolveStudent(students, { id: data.studentId, code: data.studentCode, nis: data.studentNis, name: data.fullName });
+    const targetStudentId = student?.id || data.studentId;
+    const finalStudentCode = student?.code || data.studentCode;
+    const finalFullName = student?.fullName || data.fullName;
+    const finalClassName = student?.className || data.className;
+    const finalStudentNis = student?.nis || data.studentNis;
+
     const newMember: OsimMember = {
       id: `osim_m_${Date.now()}`,
       ...data,
+      studentId: targetStudentId,
+      studentCode: finalStudentCode,
+      fullName: finalFullName,
+      className: finalClassName,
+      studentNis: finalStudentNis,
       createdAt: new Date().toISOString().split('T')[0]
     };
+
+    // Ensure member and student NIS are NOT blocked by any old deleted state
+    removeDeletedUid(newMember.id);
+    removeDeletedUid(`user_${newMember.id}`);
+    if (finalStudentNis) removeDeletedUid(cleanDigits(finalStudentNis));
+    if (targetStudentId) removeDeletedUid(targetStudentId);
+    if (newMember.loginUsername) removeDeletedUid(newMember.loginUsername);
+
     setOsimMembers(prev => [newMember, ...prev]);
     try {
       setDoc(doc(db, 'osim_members', newMember.id), newMember);
     } catch (e) {}
-    logAction('ADD_OSIM_MEMBER', 'Intrakurikuler & OSIM', `Menambahkan pengurus OSIM: ${newMember.fullName} (${newMember.position})`);
+    logAction('ADD_OSIM_MEMBER', 'Intrakurikuler & OSIM', `Menambahkan pengurus OSIM: ${finalFullName} (${newMember.position})`);
   };
 
   const updateOsimMember = async (id: string, data: Partial<OsimMember>) => {
+    removeDeletedUid(id);
+    removeDeletedUid(`user_${id}`);
+    if (data.studentNis) removeDeletedUid(cleanDigits(data.studentNis));
+    if (data.studentId) removeDeletedUid(data.studentId);
+    if (data.loginUsername) removeDeletedUid(data.loginUsername);
+
     setOsimMembers(prev => prev.map(m => m.id === id ? { ...m, ...data } : m));
     try {
       updateDoc(doc(db, 'osim_members', id), data);
@@ -3504,11 +4386,93 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deleteOsimMember = async (id: string) => {
-    setOsimMembers(prev => prev.filter(m => m.id !== id));
+    const target = osimMembers.find(m => m.id === id);
+
+    // Tombstone OSIM record ID and specific OSIM login user only.
+    // NEVER tombstone student NIS because the student remains an active madrasah student!
+    addDeletedUid(id);
+    addDeletedUid(`user_${id}`);
+    if (target?.loginUsername && !/^\d{4,}$/.test(target.loginUsername)) {
+      addDeletedUid(target.loginUsername);
+    }
+
+    setOsimMembers(prev => {
+      const remaining = prev.filter(m => m.id !== id);
+      try {
+        localStorage.setItem('sim_osim_members', JSON.stringify(remaining));
+      } catch (e) {}
+      return remaining;
+    });
+
     try {
-      deleteDoc(doc(db, 'osim_members', id));
+      await deleteDoc(doc(db, 'osim_members', id));
+      deleteDoc(doc(db, 'users', id)).catch(() => {});
+      deleteDoc(doc(db, 'users', `user_${id}`)).catch(() => {});
     } catch (e) {}
-    logAction('DELETE_OSIM_MEMBER', 'Intrakurikuler & OSIM', `Menghapus data pengurus OSIM ID ${id}`);
+
+    // Cascade delete linked user account in cPanel if present
+    if (target && deleteUser) {
+      const matchedUser = allUsers.find(u =>
+        isOsimMemberUserMatch(u, target) ||
+        u.uid === id ||
+        u.uid === `user_${id}` ||
+        (target.loginUsername && u.username === target.loginUsername)
+      );
+      if (matchedUser) {
+        try {
+          await deleteUser(matchedUser.uid);
+        } catch (e) {}
+      }
+    }
+
+    logAction('DELETE_OSIM_MEMBER', 'Intrakurikuler & OSIM', `Menghapus data pengurus OSIM: ${target?.fullName || id}`);
+  };
+
+  /**
+   * Scans all OSIM members against the current master student list.
+   * 1. Eliminates duplicate records (same NIS or same student holding duplicate roles or duplicate BPH slots).
+   * 2. Updates class name, NIS, and full name if changed in the student database.
+   * 3. Purges stale duplicate documents from Firestore.
+   */
+  const reconcileOsimMembersWithMasterStudents = async (customStudents?: Student[]): Promise<number> => {
+    const studentList = customStudents || students;
+    const currentList = [...osimMembers];
+    const deduplicated = deduplicateOsimMembersList(currentList, studentList);
+
+    const keptIds = new Set(deduplicated.map(m => m.id));
+    const removedMembers = currentList.filter(m => !keptIds.has(m.id));
+
+    // Update state & storage
+    setOsimMembers(deduplicated);
+    try {
+      localStorage.setItem('sim_osim_members', JSON.stringify(deduplicated));
+    } catch (e) {}
+
+    // Synchronize to Firestore
+    try {
+      const updatePromises = deduplicated.map(m => setDoc(doc(db, 'osim_members', m.id), m, { merge: true }));
+      const deletePromises = removedMembers.map(m => {
+        addDeletedUid(m.id);
+        addDeletedUid(`user_${m.id}`);
+        if (m.loginUsername && !/^\d{4,}$/.test(m.loginUsername)) {
+          addDeletedUid(m.loginUsername);
+        }
+        return deleteDoc(doc(db, 'osim_members', m.id));
+      });
+      await Promise.allSettled([...updatePromises, ...deletePromises]);
+    } catch (e) {
+      console.warn('Reconcile OSIM Firestore sync note:', e);
+    }
+
+    if (removedMembers.length > 0) {
+      logAction(
+        'RECONCILE_OSIM_MEMBERS',
+        'Intrakurikuler & OSIM',
+        `Membersihkan ${removedMembers.length} data duplikat/usang pengurus OSIM dan menyelaraskan dengan biodata siswa terbaru.`
+      );
+    }
+
+    return removedMembers.length;
   };
 
   // OSIM Work Programs
@@ -3886,6 +4850,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         addAcademicYear,
         updateAcademicYear,
         deleteAcademicYear,
+        promoteAcademicYear,
         classes,
         teachers,
         students,
@@ -3973,6 +4938,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         addViolation,
         updateViolation,
         deleteViolation,
+        reconcileAllStudentPoints,
         addCounseling,
         updateCounseling,
         addCounselingSession: addCounseling,
@@ -4013,6 +4979,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         updateOsimDepartment,
         deleteOsimDepartment,
         resetOsimDepartmentsToDefault,
+        reconcileOsimMembersWithMasterStudents,
         addAnnouncement,
         updateAnnouncement,
         deleteAnnouncement,
@@ -4030,6 +4997,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         clearAuditLogs,
         refreshAuditLogs,
         syncWithFirebase,
+        uploadAllDataToFirestore,
         seedFirebaseDatabase,
         clearAllOperationalData,
         exportFullDatabaseJSON,

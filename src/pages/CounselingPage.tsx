@@ -43,6 +43,7 @@ import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { ExportActions } from '../components/common/ExportActions';
 import { ClassGridFilter } from '../components/common/ClassGridFilter';
+import { SchoolLetterhead } from '../components/common/SchoolLetterhead';
 import { calculateRecordCountsByClass, isStudentInClass } from '../utils/classResolver';
 
 type ActiveBkTab = 'counseling' | 'home_visit' | 'parent_call' | 'career' | 'analytics';
@@ -600,7 +601,14 @@ export const CounselingPage: React.FC = () => {
       sortable: true,
       cell: c => (
         <div>
-          <p className="font-bold text-zinc-100">{c.studentName}</p>
+          <div className="flex items-center gap-1.5">
+            {c.studentCode && (
+              <span className="font-mono text-[10px] font-bold px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                {c.studentCode}
+              </span>
+            )}
+            <p className="font-bold text-zinc-100">{c.studentName}</p>
+          </div>
           <p className="text-[11px] text-zinc-400">Kelas: {c.studentClass}</p>
         </div>
       )
@@ -635,7 +643,14 @@ export const CounselingPage: React.FC = () => {
       cell: c => (
         <div className="text-xs">
           <span className="font-semibold text-zinc-200">📅 {c.date}</span>
-          <p className="text-[11px] text-zinc-400">Oleh: {c.counselorName}</p>
+          <div className="flex items-center gap-1 mt-0.5">
+            {c.counselorCode && (
+              <span className="font-mono text-[9px] font-bold px-1 rounded bg-zinc-800 text-amber-300 border border-amber-500/30">
+                {c.counselorCode}
+              </span>
+            )}
+            <p className="text-[11px] text-zinc-400">Oleh: {c.counselorName}</p>
+          </div>
         </div>
       )
     },
@@ -2190,12 +2205,9 @@ export const CounselingPage: React.FC = () => {
           }
         >
           <div className="bg-white text-black p-6 rounded font-serif text-[11px] leading-relaxed shadow-lg select-text border border-zinc-300">
-            {/* Kop Surat */}
-            <div className="text-center border-b-2 border-black pb-2 mb-4">
-              <p className="font-bold text-xs uppercase tracking-wider">{schoolSetting?.centralInstitution || 'KEMENTERIAN AGAMA REPUBLIK INDONESIA'}</p>
-              <h3 className="font-extrabold text-sm uppercase tracking-wide">{schoolSetting?.name}</h3>
-              <p className="text-[10px] font-sans text-gray-700">{schoolSetting?.address} • Telp: {schoolSetting?.phone || '(021) 7890123'}</p>
-              <p className="text-[9px] font-mono text-gray-600">NPSN: {schoolSetting?.npsn} • Website: {schoolSetting?.website || 'sekolah.sch.id'}</p>
+            {/* Kop Surat Resmi */}
+            <div className="mb-4">
+              <SchoolLetterhead schoolInfo={schoolSetting} compact={true} />
             </div>
 
             {/* Nomor & Perihal */}
@@ -2291,10 +2303,13 @@ export const CounselingPage: React.FC = () => {
           }
         >
           <div className="bg-white text-black p-6 rounded font-serif text-[11px] leading-relaxed shadow-lg select-text border border-zinc-300">
-            <div className="text-center border-b-2 border-black pb-2 mb-4">
-              <h3 className="font-extrabold text-sm uppercase">{schoolSetting?.name}</h3>
-              <p className="font-bold text-xs uppercase tracking-wide">BERITA ACARA KUNJUNGAN RUMAH (HOME VISIT)</p>
-              <p className="text-[9px] font-sans text-gray-600">TAHUN PELAJARAN {activeAcademicYear}</p>
+            {/* Kop Surat Resmi */}
+            <div className="mb-4">
+              <SchoolLetterhead schoolInfo={schoolSetting} compact={true} />
+              <div className="text-center mt-2">
+                <p className="font-bold text-xs uppercase tracking-wide underline">BERITA ACARA KUNJUNGAN RUMAH (HOME VISIT)</p>
+                <p className="text-[9px] font-sans text-gray-600">TAHUN PELAJARAN {activeAcademicYear}</p>
+              </div>
             </div>
 
             <div className="space-y-3 font-sans text-xs">

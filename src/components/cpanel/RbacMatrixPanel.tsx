@@ -41,7 +41,7 @@ export interface RoleModulePermission {
 
 export interface ModulePermissionRow {
   id: string;
-  category: 'Manajemen & Sistem' | 'Kedisiplinan & BK' | 'Organisasi & Kegiatan' | 'Keuangan & Pelaporan';
+  category: 'Manajemen & Sistem' | 'Kedisiplinan & BK' | 'Organisasi & Kegiatan' | 'Keuangan & Pelaporan' | 'Hak CRUD Terpusat (Di Luar cPanel)';
   module: string;
   desc: string;
   isCriticalSecurity?: boolean;
@@ -51,6 +51,83 @@ export interface ModulePermissionRow {
 
 // Konfigurasi Standar / Default Rekomendasi RBAC Madrasah
 export const DEFAULT_RBAC_MATRIX: ModulePermissionRow[] = [
+  // 0. ATURAN MUTLAK: HAK CRUD TERPUSAT (DI LUAR CPANEL)
+  {
+    id: 'crud_teachers',
+    category: 'Hak CRUD Terpusat (Di Luar cPanel)',
+    module: 'CRUD Master Dewan Guru & Tendik',
+    desc: 'Hak Tambah, Edit, Hapus, dan Import Guru di modul Dewan Guru. Standar: Terpusat di cPanel',
+    isCriticalSecurity: true,
+    permissions: {
+      sa: { canInput: true, canView: true, note: 'Akses penuh cPanel' },
+      waka: { canInput: false, canView: true, note: 'Terkunci (Terpusat di cPanel kecuali checklist dibuka)' },
+      bk: { canInput: false, canView: true, note: 'Terkunci di cPanel' },
+      pembina: { canInput: false, canView: true, note: 'Terkunci di cPanel' },
+      bph: { canInput: false, canView: false, note: 'Tertutup' },
+      sekbid: { canInput: false, canView: false, note: 'Tertutup' }
+    }
+  },
+  {
+    id: 'crud_pembina_intra',
+    category: 'Hak CRUD Terpusat (Di Luar cPanel)',
+    module: 'CRUD Pembina Organisasi Intra (OSIM)',
+    desc: 'Hak Menetapkan, Mengubah, dan Mencopot Pembina OSIM di modul OSIM. Standar: Terpusat di cPanel',
+    isCriticalSecurity: true,
+    permissions: {
+      sa: { canInput: true, canView: true, note: 'Akses penuh cPanel' },
+      waka: { canInput: false, canView: true, note: 'Terkunci (Terpusat di cPanel kecuali checklist dibuka)' },
+      bk: { canInput: false, canView: true, note: 'Terkunci di cPanel' },
+      pembina: { canInput: false, canView: true, note: 'Terkunci di cPanel' },
+      bph: { canInput: false, canView: false, note: 'Tertutup' },
+      sekbid: { canInput: false, canView: false, note: 'Tertutup' }
+    }
+  },
+  {
+    id: 'crud_pembina_ekstra',
+    category: 'Hak CRUD Terpusat (Di Luar cPanel)',
+    module: 'CRUD Pembina & Pelatih Ekstrakurikuler',
+    desc: 'Hak Tambah Ekskul, Edit Pembina, dan Hapus Ekskul di modul Ekstrakurikuler. Standar: Terpusat di cPanel',
+    isCriticalSecurity: true,
+    permissions: {
+      sa: { canInput: true, canView: true, note: 'Akses penuh cPanel' },
+      waka: { canInput: false, canView: true, note: 'Terkunci (Terpusat di cPanel kecuali checklist dibuka)' },
+      bk: { canInput: false, canView: true, note: 'Terkunci di cPanel' },
+      pembina: { canInput: false, canView: true, note: 'Terkunci di cPanel' },
+      bph: { canInput: false, canView: false, note: 'Tertutup' },
+      sekbid: { canInput: false, canView: false, note: 'Tertutup' }
+    }
+  },
+  {
+    id: 'crud_guru_bk',
+    category: 'Hak CRUD Terpusat (Di Luar cPanel)',
+    module: 'CRUD Personel Guru BK (Konselor)',
+    desc: 'Hak Menetapkan, Mengubah, dan Mencopot Personel Guru BK di modul Konseling. Standar: Terpusat di cPanel',
+    isCriticalSecurity: true,
+    permissions: {
+      sa: { canInput: true, canView: true, note: 'Akses penuh cPanel' },
+      waka: { canInput: false, canView: true, note: 'Terkunci (Terpusat di cPanel kecuali checklist dibuka)' },
+      bk: { canInput: false, canView: true, note: 'Terkunci di cPanel' },
+      pembina: { canInput: false, canView: false, note: 'Tertutup' },
+      bph: { canInput: false, canView: false, note: 'Tertutup' },
+      sekbid: { canInput: false, canView: false, note: 'Tertutup' }
+    }
+  },
+  {
+    id: 'crud_members',
+    category: 'Hak CRUD Terpusat (Di Luar cPanel)',
+    module: 'CRUD Anggota (Ekskul & Kabinet OSIM)',
+    desc: 'Hak Pendaftaran dan Penghapusan Anggota Ekskul & Anggota/Pengurus OSIM di modul masing-masing. Standar: Terpusat di cPanel',
+    isCriticalSecurity: true,
+    permissions: {
+      sa: { canInput: true, canView: true, note: 'Akses penuh cPanel' },
+      waka: { canInput: false, canView: true, note: 'Terkunci (Terpusat di cPanel kecuali checklist dibuka)' },
+      bk: { canInput: false, canView: true, note: 'Terkunci di cPanel' },
+      pembina: { canInput: false, canView: true, note: 'Terkunci (Terpusat di cPanel kecuali checklist dibuka)' },
+      bph: { canInput: false, canView: true, note: 'Terkunci' },
+      sekbid: { canInput: false, canView: false, note: 'Tertutup' }
+    }
+  },
+
   // 1. MANAJEMEN & SISTEM
   {
     id: 'dashboard_analytics',
@@ -363,6 +440,14 @@ export const RbacMatrixPanel: React.FC<RbacMatrixPanelProps> = ({
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
+          // Merge in any missing rows from DEFAULT_RBAC_MATRIX (e.g. centralized CRUD rows)
+          const existingIds = new Set(parsed.map((p: any) => p.id));
+          const missingRows = DEFAULT_RBAC_MATRIX.filter(d => !existingIds.has(d.id));
+          if (missingRows.length > 0) {
+            const merged = [...missingRows, ...parsed];
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+            return merged;
+          }
           return parsed;
         }
       }
@@ -392,8 +477,12 @@ export const RbacMatrixPanel: React.FC<RbacMatrixPanelProps> = ({
         if (snap.exists() && isMounted) {
           const data = snap.data();
           if (data && Array.isArray(data.matrix) && data.matrix.length > 0) {
-            setMatrixData(data.matrix);
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(data.matrix));
+            const existingIds = new Set(data.matrix.map((p: any) => p.id));
+            const missingRows = DEFAULT_RBAC_MATRIX.filter(d => !existingIds.has(d.id));
+            const finalData = missingRows.length > 0 ? [...missingRows, ...data.matrix] : data.matrix;
+            setMatrixData(finalData);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(finalData));
+            window.dispatchEvent(new CustomEvent('rbac-matrix-updated'));
           }
         }
       } catch (err) {
@@ -424,6 +513,8 @@ export const RbacMatrixPanel: React.FC<RbacMatrixPanelProps> = ({
       } catch (firestoreErr) {
         console.warn('Firestore sync notice:', firestoreErr);
       }
+      // Broadcast real-time permission update across app modules
+      window.dispatchEvent(new CustomEvent('rbac-matrix-updated'));
       setHasUnsavedChanges(false);
       setSaveSuccessToast('Hak akses berhasil disesuaikan dan disimpan ke sistem!');
       setTimeout(() => setSaveSuccessToast(null), 4000);
@@ -442,6 +533,8 @@ export const RbacMatrixPanel: React.FC<RbacMatrixPanelProps> = ({
     }
     if (window.confirm('Apakah Anda yakin ingin mengembalikan seluruh hak akses ke standar rekomendasi RBAC madrasah? Perubahan kustom yang belum disimpan akan direset.')) {
       setMatrixData(DEFAULT_RBAC_MATRIX);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_RBAC_MATRIX));
+      window.dispatchEvent(new CustomEvent('rbac-matrix-updated'));
       setHasUnsavedChanges(true);
     }
   };
@@ -968,7 +1061,7 @@ export const RbacMatrixPanel: React.FC<RbacMatrixPanelProps> = ({
           {/* Category Pills */}
           <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
             <span className="text-[11px] text-zinc-500 font-mono mr-1">Kategori:</span>
-            {['all', 'Manajemen & Sistem', 'Kedisiplinan & BK', 'Organisasi & Kegiatan', 'Keuangan & Pelaporan'].map(cat => (
+            {['all', 'Hak CRUD Terpusat (Di Luar cPanel)', 'Manajemen & Sistem', 'Kedisiplinan & BK', 'Organisasi & Kegiatan', 'Keuangan & Pelaporan'].map(cat => (
               <button
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}
@@ -1230,7 +1323,16 @@ export const getActiveRbacMatrix = (): ModulePermissionRow[] => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const existingIds = new Set(parsed.map((p: any) => p.id));
+        const missingRows = DEFAULT_RBAC_MATRIX.filter(d => !existingIds.has(d.id));
+        if (missingRows.length > 0) {
+          const merged = [...missingRows, ...parsed];
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
+          return merged;
+        }
+        return parsed;
+      }
     }
   } catch (e) {}
   return DEFAULT_RBAC_MATRIX;
@@ -1240,10 +1342,10 @@ export const canRoleInputModule = (role: UserRole | string, moduleId: string): b
   if (role === 'super_admin') return true;
   let roleKey: RoleKey = 'sekbid';
   if (role === 'super_admin') roleKey = 'sa';
-  else if (role === 'waka_kesiswaan') roleKey = 'waka';
+  else if (role === 'waka_kesiswaan' || role === 'waka') roleKey = 'waka';
   else if (role === 'guru_bk') roleKey = 'bk';
-  else if (role === 'pembina_osim' || role === 'pembina_ekskul' || role === 'pembina') roleKey = 'pembina';
-  else if (role === 'pengurus_osim') roleKey = 'bph';
+  else if (role === 'pembina_osim' || role === 'pembina_ekskul' || role === 'pembina_ekstra' || role === 'pembina') roleKey = 'pembina';
+  else if (role === 'pengurus_osim' || role === 'anggota_osim') roleKey = 'bph';
 
   const matrix = getActiveRbacMatrix();
   const found = matrix.find(m => m.id === moduleId);

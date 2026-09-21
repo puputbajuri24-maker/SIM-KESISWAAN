@@ -1,4 +1,14 @@
-export type UserRole = 'super_admin' | 'waka_kesiswaan' | 'guru_bk' | 'pembina_osim' | 'pembina_ekskul' | 'pembina' | 'pengurus_osim';
+export type UserRole = 
+  | 'super_admin' 
+  | 'waka' 
+  | 'waka_kesiswaan' 
+  | 'guru_bk' 
+  | 'pembina_ekstra' 
+  | 'pembina_ekskul' 
+  | 'pembina' 
+  | 'pembina_osim' 
+  | 'anggota_osim' 
+  | 'pengurus_osim';
 
 export type OsimRoleType = 'ketua' | 'wakil' | 'sekretaris' | 'bendahara' | 'sekbid';
 
@@ -78,6 +88,7 @@ export interface SchoolClass {
 
 export interface Student {
   id: string;
+  code?: string; // ID Siswa e.g. SIS-2425-0001
   nis: string;
   nisn: string;
   fullName: string;
@@ -96,12 +107,14 @@ export interface Student {
   violationPoints?: number;
   achievementPoints?: number;
   isDeleted?: boolean;
+  deletedAt?: string;
   createdAt: string;
   updatedAt?: string;
 }
 
 export interface Teacher {
   id: string;
+  code?: string; // Kode Guru Standar e.g. G01-BS, G02-SN
   nip: string;
   fullName: string;
   gender?: 'L' | 'P';
@@ -115,6 +128,8 @@ export interface Teacher {
   extracurricularName?: string;
   assignedExtracurriculars?: string[];
   isActive?: boolean;
+  isDeleted?: boolean;
+  deletedAt?: string;
   isCashManager?: boolean;
   cashManagerTitle?: string;
 }
@@ -136,6 +151,7 @@ export interface Extracurricular {
   description: string;
   coachId: string;
   coachName: string;
+  coachCode?: string;
   assistantCoachName?: string;
   day: 'Senin' | 'Selasa' | 'Rabu' | 'Kamis' | 'Jumat' | 'Sabtu' | 'Minggu';
   startTime: string; // "15:30"
@@ -150,6 +166,8 @@ export interface Extracurricular {
   target: string;
   academicYear: string;
   color?: string;
+  isDeleted?: boolean;
+  deletedAt?: string;
 }
 
 export interface ExtracurricularMember {
@@ -157,6 +175,7 @@ export interface ExtracurricularMember {
   extracurricularId: string;
   extracurricularName?: string;
   studentId: string;
+  studentCode?: string;
   studentNis: string;
   studentName: string;
   studentClass: string;
@@ -192,6 +211,7 @@ export type AttendanceStatus = 'Hadir' | 'Izin' | 'Sakit' | 'Alpa';
 
 export interface AttendanceRecordItem {
   studentId: string;
+  studentCode?: string;
   studentNis: string;
   studentName: string;
   studentClass: string;
@@ -319,6 +339,7 @@ export type ViolationStatus = 'Tercatat' | 'Diproses' | 'Dalam Proses' | 'Dalam 
 export interface StudentViolation {
   id: string;
   studentId: string;
+  studentCode?: string;
   studentNis: string;
   studentName: string;
   studentClass: string;
@@ -335,6 +356,8 @@ export interface StudentViolation {
   status: ViolationStatus;
   followUpNotes?: string;
   academicYear?: string;
+  isDeleted?: boolean;
+  deletedAt?: string;
   createdAt?: string;
 }
 
@@ -347,6 +370,7 @@ export type CounselingUrgency = 'Rendah' | 'Sedang' | 'Tinggi' | 'Darurat / Butu
 export interface StudentCounseling {
   id: string;
   studentId: string;
+  studentCode?: string;
   studentNis?: string;
   studentName: string;
   studentClass: string;
@@ -354,6 +378,7 @@ export interface StudentCounseling {
   date: string;
   counselorName: string;
   counselorId?: string;
+  counselorCode?: string;
   serviceField?: CounselingServiceField; // Pribadi, Sosial, Belajar, Karir
   counselingType?: CounselingType; // Individu, Kelompok, dll.
   urgencyLevel?: CounselingUrgency;
@@ -705,6 +730,7 @@ export type OsimPosition =
 export interface OsimMember {
   id: string;
   studentId?: string;
+  studentCode?: string;
   studentNis: string;
   fullName: string;
   className: string;
