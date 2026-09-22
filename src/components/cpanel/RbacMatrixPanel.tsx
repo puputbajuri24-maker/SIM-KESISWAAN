@@ -5,6 +5,7 @@ import {
   Crown,
   HeartHandshake,
   Award,
+  Compass,
   Users,
   Sparkles,
   Lock,
@@ -31,7 +32,7 @@ import { UserRole, UserProfile } from '../../types';
 import { db } from '../../services/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 
-export type RoleKey = 'sa' | 'waka' | 'bk' | 'pembina' | 'bph' | 'sekbid';
+export type RoleKey = 'sa' | 'waka' | 'bk' | 'pembina_osim' | 'pembina_ekskul' | 'bph' | 'sekbid';
 
 export interface RoleModulePermission {
   canInput: boolean; // Hak akses input / edit / tambah data / eksekusi
@@ -62,7 +63,8 @@ export const DEFAULT_RBAC_MATRIX: ModulePermissionRow[] = [
       sa: { canInput: true, canView: true, note: 'Akses penuh cPanel' },
       waka: { canInput: false, canView: true, note: 'Terkunci (Terpusat di cPanel kecuali checklist dibuka)' },
       bk: { canInput: false, canView: true, note: 'Terkunci di cPanel' },
-      pembina: { canInput: false, canView: true, note: 'Terkunci di cPanel' },
+      pembina_osim: { canInput: false, canView: true, note: 'Terkunci di cPanel' },
+      pembina_ekskul: { canInput: false, canView: true, note: 'Terkunci di cPanel' },
       bph: { canInput: false, canView: false, note: 'Tertutup' },
       sekbid: { canInput: false, canView: false, note: 'Tertutup' }
     }
@@ -77,7 +79,8 @@ export const DEFAULT_RBAC_MATRIX: ModulePermissionRow[] = [
       sa: { canInput: true, canView: true, note: 'Akses penuh cPanel' },
       waka: { canInput: false, canView: true, note: 'Terkunci (Terpusat di cPanel kecuali checklist dibuka)' },
       bk: { canInput: false, canView: true, note: 'Terkunci di cPanel' },
-      pembina: { canInput: false, canView: true, note: 'Terkunci di cPanel' },
+      pembina_osim: { canInput: false, canView: true, note: 'Terkunci di cPanel' },
+      pembina_ekskul: { canInput: false, canView: false, note: 'Tertutup' },
       bph: { canInput: false, canView: false, note: 'Tertutup' },
       sekbid: { canInput: false, canView: false, note: 'Tertutup' }
     }
@@ -92,7 +95,8 @@ export const DEFAULT_RBAC_MATRIX: ModulePermissionRow[] = [
       sa: { canInput: true, canView: true, note: 'Akses penuh cPanel' },
       waka: { canInput: false, canView: true, note: 'Terkunci (Terpusat di cPanel kecuali checklist dibuka)' },
       bk: { canInput: false, canView: true, note: 'Terkunci di cPanel' },
-      pembina: { canInput: false, canView: true, note: 'Terkunci di cPanel' },
+      pembina_osim: { canInput: false, canView: false, note: 'Tertutup' },
+      pembina_ekskul: { canInput: false, canView: true, note: 'Terkunci di cPanel' },
       bph: { canInput: false, canView: false, note: 'Tertutup' },
       sekbid: { canInput: false, canView: false, note: 'Tertutup' }
     }
@@ -107,7 +111,8 @@ export const DEFAULT_RBAC_MATRIX: ModulePermissionRow[] = [
       sa: { canInput: true, canView: true, note: 'Akses penuh cPanel' },
       waka: { canInput: false, canView: true, note: 'Terkunci (Terpusat di cPanel kecuali checklist dibuka)' },
       bk: { canInput: false, canView: true, note: 'Terkunci di cPanel' },
-      pembina: { canInput: false, canView: false, note: 'Tertutup' },
+      pembina_osim: { canInput: false, canView: false, note: 'Tertutup' },
+      pembina_ekskul: { canInput: false, canView: false, note: 'Tertutup' },
       bph: { canInput: false, canView: false, note: 'Tertutup' },
       sekbid: { canInput: false, canView: false, note: 'Tertutup' }
     }
@@ -122,7 +127,8 @@ export const DEFAULT_RBAC_MATRIX: ModulePermissionRow[] = [
       sa: { canInput: true, canView: true, note: 'Akses penuh cPanel' },
       waka: { canInput: false, canView: true, note: 'Terkunci (Terpusat di cPanel kecuali checklist dibuka)' },
       bk: { canInput: false, canView: true, note: 'Terkunci di cPanel' },
-      pembina: { canInput: false, canView: true, note: 'Terkunci (Terpusat di cPanel kecuali checklist dibuka)' },
+      pembina_osim: { canInput: false, canView: true, note: 'Kelola anggota OSIM via cPanel' },
+      pembina_ekskul: { canInput: false, canView: true, note: 'Kelola anggota ekskul via cPanel' },
       bph: { canInput: false, canView: true, note: 'Terkunci' },
       sekbid: { canInput: false, canView: false, note: 'Tertutup' }
     }
@@ -138,7 +144,8 @@ export const DEFAULT_RBAC_MATRIX: ModulePermissionRow[] = [
       sa: { canInput: true, canView: true, note: 'Akses penuh metrik sistem' },
       waka: { canInput: true, canView: true, note: 'Overview grafik kesiswaan & OSIM' },
       bk: { canInput: true, canView: true, note: 'Fokus rekam disiplin & pembinaan' },
-      pembina: { canInput: true, canView: true, note: 'Statistik ekskul/OSIM binaan' },
+      pembina_osim: { canInput: true, canView: true, note: 'Statistik OSIM & kegiatan intra' },
+      pembina_ekskul: { canInput: true, canView: true, note: 'Statistik ekskul binaan' },
       bph: { canInput: false, canView: true, note: 'Progress proker & kas OSIM' },
       sekbid: { canInput: false, canView: true, note: 'Kegiatan bidang sendiri' }
     }
@@ -153,7 +160,8 @@ export const DEFAULT_RBAC_MATRIX: ModulePermissionRow[] = [
       sa: { canInput: true, canView: true, note: 'Otoritas mutlak seluruh akun' },
       waka: { canInput: false, canView: false, note: 'Bukan domain waka' },
       bk: { canInput: false, canView: false, note: 'Dibatasi sistem' },
-      pembina: { canInput: false, canView: false, note: 'Dibatasi sistem' },
+      pembina_osim: { canInput: false, canView: false, note: 'Dibatasi sistem' },
+      pembina_ekskul: { canInput: false, canView: false, note: 'Dibatasi sistem' },
       bph: { canInput: false, canView: false, note: 'Dibatasi sistem' },
       sekbid: { canInput: false, canView: false, note: 'Dibatasi sistem' }
     }
@@ -167,7 +175,8 @@ export const DEFAULT_RBAC_MATRIX: ModulePermissionRow[] = [
       sa: { canInput: true, canView: true, note: 'Konfigurasi dasar aplikasi' },
       waka: { canInput: true, canView: true, note: 'Memilih tahun aktif & kelas' },
       bk: { canInput: false, canView: true, note: 'Menggunakan basis kelas' },
-      pembina: { canInput: false, canView: true, note: 'Menggunakan basis kelas' },
+      pembina_osim: { canInput: false, canView: true, note: 'Menggunakan basis kelas' },
+      pembina_ekskul: { canInput: false, canView: true, note: 'Menggunakan basis kelas' },
       bph: { canInput: false, canView: false, note: 'Dibatasi sistem' },
       sekbid: { canInput: false, canView: false, note: 'Dibatasi sistem' }
     }
@@ -182,7 +191,8 @@ export const DEFAULT_RBAC_MATRIX: ModulePermissionRow[] = [
       sa: { canInput: true, canView: true, note: 'Eksekusi backup & restore' },
       waka: { canInput: false, canView: false, note: 'Dibatasi sistem' },
       bk: { canInput: false, canView: false, note: 'Dibatasi sistem' },
-      pembina: { canInput: false, canView: false, note: 'Dibatasi sistem' },
+      pembina_osim: { canInput: false, canView: false, note: 'Dibatasi sistem' },
+      pembina_ekskul: { canInput: false, canView: false, note: 'Dibatasi sistem' },
       bph: { canInput: false, canView: false, note: 'Dibatasi sistem' },
       sekbid: { canInput: false, canView: false, note: 'Dibatasi sistem' }
     }
@@ -197,7 +207,8 @@ export const DEFAULT_RBAC_MATRIX: ModulePermissionRow[] = [
       sa: { canInput: true, canView: true, note: 'Pantau semua log pengguna' },
       waka: { canInput: false, canView: true, note: 'Log operasional kebijakan' },
       bk: { canInput: false, canView: false, note: 'Dibatasi sistem' },
-      pembina: { canInput: false, canView: false, note: 'Dibatasi sistem' },
+      pembina_osim: { canInput: false, canView: false, note: 'Dibatasi sistem' },
+      pembina_ekskul: { canInput: false, canView: false, note: 'Dibatasi sistem' },
       bph: { canInput: false, canView: false, note: 'Dibatasi sistem' },
       sekbid: { canInput: false, canView: false, note: 'Dibatasi sistem' }
     }
@@ -211,7 +222,8 @@ export const DEFAULT_RBAC_MATRIX: ModulePermissionRow[] = [
       sa: { canInput: true, canView: true, note: 'Kelola semua pengumuman' },
       waka: { canInput: true, canView: true, note: 'Terbitkan pengumuman resmi' },
       bk: { canInput: true, canView: true, note: 'Info bimbingan & sosialisasi' },
-      pembina: { canInput: true, canView: true, note: 'Info jadwal ekskul/latihan' },
+      pembina_osim: { canInput: true, canView: true, note: 'Info kegiatan siswa/OSIM' },
+      pembina_ekskul: { canInput: true, canView: true, note: 'Info jadwal ekskul/latihan' },
       bph: { canInput: true, canView: true, note: 'Info kegiatan siswa/OSIM' },
       sekbid: { canInput: false, canView: true, note: 'Hanya membaca pengumuman' }
     }
@@ -227,7 +239,8 @@ export const DEFAULT_RBAC_MATRIX: ModulePermissionRow[] = [
       sa: { canInput: true, canView: true, note: 'Audit data & supervisi' },
       waka: { canInput: true, canView: true, note: 'Disposisi & tindakan pimpinan' },
       bk: { canInput: true, canView: true, note: 'Kelola penuh poin disiplin' },
-      pembina: { canInput: false, canView: false, note: 'Dibatasi privasi siswa' },
+      pembina_osim: { canInput: false, canView: false, note: 'Dibatasi privasi siswa' },
+      pembina_ekskul: { canInput: false, canView: false, note: 'Dibatasi privasi siswa' },
       bph: { canInput: false, canView: false, note: 'Tertutup total (Shield)' },
       sekbid: { canInput: false, canView: false, note: 'Tertutup total (Shield)' }
     }
@@ -242,7 +255,8 @@ export const DEFAULT_RBAC_MATRIX: ModulePermissionRow[] = [
       sa: { canInput: false, canView: true, note: 'Audit keamanan sistem' },
       waka: { canInput: true, canView: true, note: 'Dapat membaca catatan rahasia' },
       bk: { canInput: true, canView: true, note: 'Input & baca catatan rahasia BK' },
-      pembina: { canInput: false, canView: false, note: 'Dilindungi kode etik BK' },
+      pembina_osim: { canInput: false, canView: false, note: 'Dilindungi kode etik BK' },
+      pembina_ekskul: { canInput: false, canView: false, note: 'Dilindungi kode etik BK' },
       bph: { canInput: false, canView: false, note: 'Tertutup total (Shield)' },
       sekbid: { canInput: false, canView: false, note: 'Tertutup total (Shield)' }
     }
@@ -256,7 +270,8 @@ export const DEFAULT_RBAC_MATRIX: ModulePermissionRow[] = [
       sa: { canInput: false, canView: true, note: 'Arsip dokumen dinas' },
       waka: { canInput: true, canView: true, note: 'Verifikasi & disposisi SP' },
       bk: { canInput: true, canView: true, note: 'Terbitkan SP & Home Visit' },
-      pembina: { canInput: false, canView: false, note: 'Dibatasi sistem' },
+      pembina_osim: { canInput: false, canView: false, note: 'Dibatasi sistem' },
+      pembina_ekskul: { canInput: false, canView: false, note: 'Dibatasi sistem' },
       bph: { canInput: false, canView: false, note: 'Tertutup total' },
       sekbid: { canInput: false, canView: false, note: 'Tertutup total' }
     }
@@ -270,7 +285,8 @@ export const DEFAULT_RBAC_MATRIX: ModulePermissionRow[] = [
       sa: { canInput: true, canView: true, note: 'Konfigurasi master' },
       waka: { canInput: true, canView: true, note: 'Menentukan bobot poin & aturan' },
       bk: { canInput: true, canView: true, note: 'Konsultasi kriteria sanksi' },
-      pembina: { canInput: false, canView: true, note: 'Pedoman tata tertib' },
+      pembina_osim: { canInput: false, canView: true, note: 'Pedoman tata tertib' },
+      pembina_ekskul: { canInput: false, canView: true, note: 'Pedoman tata tertib' },
       bph: { canInput: false, canView: true, note: 'Pedoman tata tertib' },
       sekbid: { canInput: false, canView: true, note: 'Pedoman tata tertib' }
     }
@@ -286,7 +302,8 @@ export const DEFAULT_RBAC_MATRIX: ModulePermissionRow[] = [
       sa: { canInput: true, canView: true, note: 'Akses darurat/supervisi' },
       waka: { canInput: true, canView: true, note: 'Otoritas tertinggi ACC proposal/LPJ' },
       bk: { canInput: false, canView: false, note: 'Dibatasi sistem' },
-      pembina: { canInput: true, canView: true, note: 'Verifikasi & koreksi usulan' },
+      pembina_osim: { canInput: true, canView: true, note: 'Verifikasi & koreksi usulan OSIM' },
+      pembina_ekskul: { canInput: true, canView: true, note: 'Verifikasi proposal/LPJ ekskul' },
       bph: { canInput: true, canView: true, note: 'Membuat & ajukan proposal resmi' },
       sekbid: { canInput: true, canView: true, note: 'Ajukan lewat Sekbid sendiri' }
     }
@@ -300,7 +317,8 @@ export const DEFAULT_RBAC_MATRIX: ModulePermissionRow[] = [
       sa: { canInput: true, canView: true, note: 'Pantau semua draf' },
       waka: { canInput: true, canView: true, note: 'Setelah diajukan pembina' },
       bk: { canInput: false, canView: false, note: 'Bukan domain BK' },
-      pembina: { canInput: true, canView: true, note: 'Review proposal sekbid' },
+      pembina_osim: { canInput: true, canView: true, note: 'Review & bimbingan proposal sekbid' },
+      pembina_ekskul: { canInput: false, canView: false, note: 'Khusus intra OSIM' },
       bph: { canInput: true, canView: true, note: 'Koordinasi lintas sekbid' },
       sekbid: { canInput: true, canView: true, note: 'Khusus bidang sendiri (terisolasi)' }
     }
@@ -314,7 +332,8 @@ export const DEFAULT_RBAC_MATRIX: ModulePermissionRow[] = [
       sa: { canInput: true, canView: true, note: 'Audit nilai & piagam' },
       waka: { canInput: true, canView: true, note: 'Pengesahan nilai & prestasi' },
       bk: { canInput: false, canView: true, note: 'Dukungan karir / SNBP' },
-      pembina: { canInput: true, canView: true, note: 'Input nilai ekskul & piagam siswa' },
+      pembina_osim: { canInput: false, canView: true, note: 'Lihat prestasi siswa' },
+      pembina_ekskul: { canInput: true, canView: true, note: 'Input nilai rapor ekskul binaan' },
       bph: { canInput: true, canView: true, note: 'Catat piagam lomba OSIM' },
       sekbid: { canInput: false, canView: false, note: 'Tertutup dari nilai rapor' }
     }
@@ -328,7 +347,8 @@ export const DEFAULT_RBAC_MATRIX: ModulePermissionRow[] = [
       sa: { canInput: true, canView: true, note: 'Pemantauan sistem' },
       waka: { canInput: true, canView: true, note: 'Persetujuan kalender sekolah' },
       bk: { canInput: false, canView: true, note: 'Sinkronisasi layanan' },
-      pembina: { canInput: true, canView: true, note: 'Pantau rapat & latihan' },
+      pembina_osim: { canInput: true, canView: true, note: 'Kelola jadwal & agenda OSIM' },
+      pembina_ekskul: { canInput: false, canView: true, note: 'Pantau jadwal kegiatan' },
       bph: { canInput: true, canView: true, note: 'Kelola timeline kalender OSIM' },
       sekbid: { canInput: false, canView: true, note: 'Jadwal bidang sendiri' }
     }
@@ -342,7 +362,8 @@ export const DEFAULT_RBAC_MATRIX: ModulePermissionRow[] = [
       sa: { canInput: true, canView: true, note: 'Supervisi & audit sistem' },
       waka: { canInput: true, canView: true, note: 'Pengesahan SK & struktur' },
       bk: { canInput: false, canView: true, note: 'Lihat struktur pengurus' },
-      pembina: { canInput: true, canView: true, note: 'Kelola & CRUD pengurus kabinet' },
+      pembina_osim: { canInput: true, canView: true, note: 'Kelola & CRUD pengurus kabinet OSIM' },
+      pembina_ekskul: { canInput: false, canView: true, note: 'Lihat struktur OSIM' },
       bph: { canInput: false, canView: true, note: 'Hanya melihat (Read-Only)' },
       sekbid: { canInput: false, canView: true, note: 'Hanya melihat (Read-Only)' }
     }
@@ -356,7 +377,8 @@ export const DEFAULT_RBAC_MATRIX: ModulePermissionRow[] = [
       sa: { canInput: true, canView: true, note: 'Audit presensi' },
       waka: { canInput: true, canView: true, note: 'Rekap kehadiran peserta' },
       bk: { canInput: false, canView: false, note: 'Dibatasi sistem' },
-      pembina: { canInput: true, canView: true, note: 'Pengawasan acara & rapat' },
+      pembina_osim: { canInput: true, canView: true, note: 'Pengawasan acara & rapat OSIM' },
+      pembina_ekskul: { canInput: true, canView: true, note: 'Input presensi latihan ekskul' },
       bph: { canInput: true, canView: true, note: 'Evaluasi keterlibatan' },
       sekbid: { canInput: true, canView: true, note: 'Absensi panitia & mini report' }
     }
@@ -370,7 +392,8 @@ export const DEFAULT_RBAC_MATRIX: ModulePermissionRow[] = [
       sa: { canInput: true, canView: true, note: 'Arsip surat izin' },
       waka: { canInput: true, canView: true, note: 'Persetujuan & TTD dispensasi' },
       bk: { canInput: true, canView: true, note: 'Buat izin rujukan konseling' },
-      pembina: { canInput: true, canView: true, note: 'Ajukan dispensasi atlet lomba' },
+      pembina_osim: { canInput: true, canView: true, note: 'Ajukan dispensasi panitia/delegasi OSIM' },
+      pembina_ekskul: { canInput: true, canView: true, note: 'Ajukan dispensasi atlet lomba ekskul' },
       bph: { canInput: true, canView: true, note: 'Ajukan izin panitia acara' },
       sekbid: { canInput: false, canView: false, note: 'Dibatasi sistem' }
     }
@@ -386,7 +409,8 @@ export const DEFAULT_RBAC_MATRIX: ModulePermissionRow[] = [
       sa: { canInput: true, canView: true, note: 'Supervisi kas' },
       waka: { canInput: true, canView: true, note: 'Validasi realisasi anggaran' },
       bk: { canInput: false, canView: true, note: 'Audit transparansi umum' },
-      pembina: { canInput: true, canView: true, note: 'Pengawasan dana OSIM' },
+      pembina_osim: { canInput: true, canView: true, note: 'Pengawasan dana kas OSIM' },
+      pembina_ekskul: { canInput: false, canView: true, note: 'Audit transparansi umum' },
       bph: { canInput: true, canView: true, note: 'Catat kas besar OSIM (Bendahara)' },
       sekbid: { canInput: true, canView: true, note: 'Laporan dana kegiatan sendiri' }
     }
@@ -400,7 +424,8 @@ export const DEFAULT_RBAC_MATRIX: ModulePermissionRow[] = [
       sa: { canInput: true, canView: true, note: 'Ekspor database lengkap' },
       waka: { canInput: true, canView: true, note: 'Rekap kesiswaan resmi untuk rapat' },
       bk: { canInput: true, canView: true, note: 'Laporan bimbingan siswa' },
-      pembina: { canInput: true, canView: true, note: 'Laporan presensi & nilai ekskul' },
+      pembina_osim: { canInput: true, canView: true, note: 'Laporan kinerja kabinet OSIM' },
+      pembina_ekskul: { canInput: true, canView: true, note: 'Laporan presensi & nilai ekskul' },
       bph: { canInput: true, canView: true, note: 'LPJ performa sekbid' },
       sekbid: { canInput: false, canView: false, note: 'Dibatasi sistem' }
     }
@@ -413,9 +438,10 @@ const ROLE_COLUMNS: { key: RoleKey; label: string; subLabel: string; color: stri
   { key: 'sa', label: '1. Super Admin', subLabel: 'IT & Master Data', color: 'text-rose-400', border: 'border-rose-500/30' },
   { key: 'waka', label: '2. Waka Kesiswaan', subLabel: 'Top Policy / Kebijakan', color: 'text-blue-400', border: 'border-blue-500/30' },
   { key: 'bk', label: '3. Guru BK', subLabel: 'Bimbingan Konseling', color: 'text-purple-400', border: 'border-purple-500/30' },
-  { key: 'pembina', label: '4. Pembina OSIM/Ekskul', subLabel: 'Verifikator Pembina', color: 'text-emerald-400', border: 'border-emerald-500/30' },
-  { key: 'bph', label: '5. OSIM BPH', subLabel: 'Manajer Inti OSIM', color: 'text-amber-400', border: 'border-amber-500/30' },
-  { key: 'sekbid', label: '6. OSIM Sekbid', subLabel: 'Pelaksana Program', color: 'text-teal-400', border: 'border-teal-500/30' }
+  { key: 'pembina_osim', label: '4. Pembina OSIM', subLabel: 'Verifikator Intra OSIM', color: 'text-emerald-400', border: 'border-emerald-500/30' },
+  { key: 'pembina_ekskul', label: '5. Pembina Ekskul', subLabel: 'Pelatih & Pembina Ekstra', color: 'text-cyan-400', border: 'border-cyan-500/30' },
+  { key: 'bph', label: '6. OSIM BPH', subLabel: 'Manajer Inti OSIM', color: 'text-amber-400', border: 'border-amber-500/30' },
+  { key: 'sekbid', label: '7. OSIM Sekbid', subLabel: 'Pelaksana Program', color: 'text-teal-400', border: 'border-teal-500/30' }
 ];
 
 interface RbacMatrixPanelProps {
@@ -424,6 +450,37 @@ interface RbacMatrixPanelProps {
   onSimulateRole: (role: UserRole, customUid?: string) => void;
   isSuperAdmin?: boolean;
 }
+
+// Helper to migrate legacy matrix data with single 'pembina' role key to separate 'pembina_osim' & 'pembina_ekskul'
+export const migrateLegacyMatrixRows = (rows: any[]): ModulePermissionRow[] => {
+  return rows.map(r => {
+    const defaultRow = DEFAULT_RBAC_MATRIX.find(d => d.id === r.id);
+    const permissions = { ...(r.permissions || {}) };
+
+    // If legacy 'pembina' exists and either pembina_osim or pembina_ekskul is missing
+    if (permissions.pembina && (!permissions.pembina_osim || !permissions.pembina_ekskul)) {
+      if (!permissions.pembina_osim) {
+        permissions.pembina_osim = defaultRow?.permissions.pembina_osim || { ...permissions.pembina };
+      }
+      if (!permissions.pembina_ekskul) {
+        permissions.pembina_ekskul = defaultRow?.permissions.pembina_ekskul || { ...permissions.pembina };
+      }
+      delete permissions.pembina;
+    }
+
+    // Ensure all current RoleKey values are present
+    for (const col of ROLE_COLUMNS) {
+      if (!permissions[col.key]) {
+        permissions[col.key] = defaultRow?.permissions[col.key] || { canInput: false, canView: false };
+      }
+    }
+
+    return {
+      ...r,
+      permissions
+    };
+  });
+};
 
 export const RbacMatrixPanel: React.FC<RbacMatrixPanelProps> = ({
   currentUser,
@@ -440,15 +497,12 @@ export const RbacMatrixPanel: React.FC<RbacMatrixPanelProps> = ({
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          // Merge in any missing rows from DEFAULT_RBAC_MATRIX (e.g. centralized CRUD rows)
-          const existingIds = new Set(parsed.map((p: any) => p.id));
+          const migrated = migrateLegacyMatrixRows(parsed);
+          const existingIds = new Set(migrated.map((p: any) => p.id));
           const missingRows = DEFAULT_RBAC_MATRIX.filter(d => !existingIds.has(d.id));
-          if (missingRows.length > 0) {
-            const merged = [...missingRows, ...parsed];
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-            return merged;
-          }
-          return parsed;
+          const finalMerged = missingRows.length > 0 ? [...missingRows, ...migrated] : migrated;
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(finalMerged));
+          return finalMerged;
         }
       }
     } catch (e) {
@@ -477,9 +531,10 @@ export const RbacMatrixPanel: React.FC<RbacMatrixPanelProps> = ({
         if (snap.exists() && isMounted) {
           const data = snap.data();
           if (data && Array.isArray(data.matrix) && data.matrix.length > 0) {
-            const existingIds = new Set(data.matrix.map((p: any) => p.id));
+            const migrated = migrateLegacyMatrixRows(data.matrix);
+            const existingIds = new Set(migrated.map((p: any) => p.id));
             const missingRows = DEFAULT_RBAC_MATRIX.filter(d => !existingIds.has(d.id));
-            const finalData = missingRows.length > 0 ? [...missingRows, ...data.matrix] : data.matrix;
+            const finalData = missingRows.length > 0 ? [...missingRows, ...migrated] : migrated;
             setMatrixData(finalData);
             localStorage.setItem(STORAGE_KEY, JSON.stringify(finalData));
             window.dispatchEvent(new CustomEvent('rbac-matrix-updated'));
@@ -648,7 +703,8 @@ export const RbacMatrixPanel: React.FC<RbacMatrixPanelProps> = ({
       sa: { inputCount: 0, viewCount: 0, total: matrixData.length },
       waka: { inputCount: 0, viewCount: 0, total: matrixData.length },
       bk: { inputCount: 0, viewCount: 0, total: matrixData.length },
-      pembina: { inputCount: 0, viewCount: 0, total: matrixData.length },
+      pembina_osim: { inputCount: 0, viewCount: 0, total: matrixData.length },
+      pembina_ekskul: { inputCount: 0, viewCount: 0, total: matrixData.length },
       bph: { inputCount: 0, viewCount: 0, total: matrixData.length },
       sekbid: { inputCount: 0, viewCount: 0, total: matrixData.length }
     };
@@ -738,30 +794,52 @@ export const RbacMatrixPanel: React.FC<RbacMatrixPanelProps> = ({
       testUid: bkUser?.uid
     },
     {
-      id: 'pembina',
-      roleKey: 'pembina' as RoleKey,
+      id: 'pembina_osim',
+      roleKey: 'pembina_osim' as RoleKey,
       role: 'pembina_osim' as UserRole,
-      title: '4. Pembina OSIM & Pembina Ekskul',
-      subtitle: 'Verifikator & Pengawas Organisasi',
-      badge: 'VERIFIKATOR KEGIATAN',
+      title: '4. Pembina OSIM',
+      subtitle: 'Verifikator Intra OSIM',
+      badge: 'PEMBINA INTRA (OSIM)',
       badgeColor: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
       icon: Award,
       iconColor: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20',
-      mission: 'Bertindak sebagai verifikator dan pengawas kegiatan organisasi siswa di madrasah.',
+      mission: 'Bertindak sebagai verifikator, pembimbing, dan pengawas organisasi intra kesiswaan (OSIM & Sekbid).',
       privileges: [
-        'Menyetujui atau merevisi program kerja, proposal, dan LPJ yang diajukan oleh pengurus OSIM/Ekstra',
-        'Menginput data nilai ekstrakurikuler siswa atau piagam penghargaan prestasi binaan',
-        'Memantau presensi (kehadiran) siswa dalam kegiatan ekstrakurikuler atau rapat OSIM'
+        'Menyetujui, merevisi, atau mengesahkan program kerja, draf proposal, dan LPJ kegiatan OSIM',
+        'Mengelola SK kepengurusan, struktur kabinet OSIM, dan pengurus per seksi bidang (Sekbid)',
+        'Mengawasi arus kas besar OSIM dan realisasi anggaran kegiatan kesiswaan intra madrasah',
+        'Memvalidasi absensi rapat dan kegiatan intra yang dilaporkan oleh BPH dan Sekbid OSIM'
       ],
-      boundaries: 'Wewenang terbatas pada organisasi atau cabang ekskul binaannya sendiri; tidak dapat membuka data konseling atau rekam disiplin siswa lain.',
-      sampleUser: pembinaOsimUser || pembinaEkskulUser,
+      boundaries: 'Fokus pembinaan terarah pada organisasi intra kesiswaan (OSIM); tidak mengelola penilaian rapor ekstrakurikuler cabang olahraga/seni, dan tertutup dari catatan konseling rahasia BK.',
+      sampleUser: pembinaOsimUser,
       testUid: pembinaOsimUser?.uid
+    },
+    {
+      id: 'pembina_ekskul',
+      roleKey: 'pembina_ekskul' as RoleKey,
+      role: 'pembina_ekskul' as UserRole,
+      title: '5. Pembina Ekskul',
+      subtitle: 'Pelatih & Pembina Ekstra',
+      badge: 'PEMBINA EKSTRAKURIKULER',
+      badgeColor: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30',
+      icon: Compass,
+      iconColor: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20',
+      mission: 'Membina bakat minat, menyelenggarakan latihan rutin, presensi anggota, dan menginput penilaian rapor ekskul siswa binaan.',
+      privileges: [
+        'Menginput dan menerbitkan nilai rapor ekstrakurikuler siswa binaan pada akhir semester',
+        'Mencatat piagam penghargaan, piala kejuaraan prestasi, dan rekor siswa binaannya',
+        'Menginput presensi digital kehadiran siswa dalam agenda latihan rutin ekstrakurikuler',
+        'Mengajukan proposal pendanaan kejuaraan/lomba ekskul serta pengajuan dispensasi siswa bertanding'
+      ],
+      boundaries: 'Wewenang terbatas pada cabang ekstrakurikuler binaannya sendiri; tertutup dari struktur kabinet OSIM, kas besar OSIM, dan catatan bimbingan konseling rahasia BK.',
+      sampleUser: pembinaEkskulUser,
+      testUid: pembinaEkskulUser?.uid
     },
     {
       id: 'osim_bph',
       roleKey: 'bph' as RoleKey,
       role: 'pengurus_osim' as UserRole,
-      title: '5. Anggota OSIM - BPH',
+      title: '6. Anggota OSIM - BPH',
       subtitle: 'Badan Pengurus Harian (Ketua, Wakil, Sekr, Bend)',
       badge: 'MANAJER OPERASIONAL',
       badgeColor: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
@@ -782,7 +860,7 @@ export const RbacMatrixPanel: React.FC<RbacMatrixPanelProps> = ({
       id: 'osim_sekbid',
       roleKey: 'sekbid' as RoleKey,
       role: 'pengurus_osim' as UserRole,
-      title: '6. Anggota OSIM - Masing-Masing Sekbid',
+      title: '7. Anggota OSIM - Masing-Masing Sekbid',
       subtitle: 'Seksi Bidang 1 s.d. 8 Pelaksana Program',
       badge: 'PELAKSANA PROGRAM SPESIFIK',
       badgeColor: 'bg-teal-500/10 text-teal-400 border-teal-500/30',
@@ -862,13 +940,13 @@ export const RbacMatrixPanel: React.FC<RbacMatrixPanelProps> = ({
         </div>
       </div>
 
-      {/* 6 Role Cards Overview with Live Input Permissions Counters */}
+      {/* 7 Role Cards Overview with Live Input Permissions Counters */}
       <div className="space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <Users className="w-4 h-4 text-emerald-400" />
             <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-zinc-300">
-              Profil 6 Peran & Ringkasan Hak Akses Input Aktif
+              Profil 7 Peran & Ringkasan Hak Akses Input Aktif
             </h3>
           </div>
           <span className="text-[11px] text-zinc-400 font-mono">
@@ -1144,7 +1222,7 @@ export const RbacMatrixPanel: React.FC<RbacMatrixPanelProps> = ({
             <tbody className="divide-y divide-[#222226] text-[11px]">
               {filteredMatrix.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-zinc-500">
+                  <td colSpan={8} className="py-8 text-center text-zinc-500">
                     Tidak ditemukan modul yang sesuai dengan pencarian atau filter.
                   </td>
                 </tr>
@@ -1174,7 +1252,7 @@ export const RbacMatrixPanel: React.FC<RbacMatrixPanelProps> = ({
                       </div>
                     </td>
 
-                    {/* 6 Role Checkbox Columns */}
+                    {/* 7 Role Checkbox Columns */}
                     {ROLE_COLUMNS.map(col => {
                       const perm = row.permissions[col.key];
                       const canInput = perm?.canInput ?? false;
@@ -1324,14 +1402,12 @@ export const getActiveRbacMatrix = (): ModulePermissionRow[] => {
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        const existingIds = new Set(parsed.map((p: any) => p.id));
+        const migrated = migrateLegacyMatrixRows(parsed);
+        const existingIds = new Set(migrated.map((p: any) => p.id));
         const missingRows = DEFAULT_RBAC_MATRIX.filter(d => !existingIds.has(d.id));
-        if (missingRows.length > 0) {
-          const merged = [...missingRows, ...parsed];
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
-          return merged;
-        }
-        return parsed;
+        const finalMerged = missingRows.length > 0 ? [...missingRows, ...migrated] : migrated;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(finalMerged));
+        return finalMerged;
       }
     }
   } catch (e) {}
@@ -1344,11 +1420,14 @@ export const canRoleInputModule = (role: UserRole | string, moduleId: string): b
   if (role === 'super_admin') roleKey = 'sa';
   else if (role === 'waka_kesiswaan' || role === 'waka') roleKey = 'waka';
   else if (role === 'guru_bk') roleKey = 'bk';
-  else if (role === 'pembina_osim' || role === 'pembina_ekskul' || role === 'pembina_ekstra' || role === 'pembina') roleKey = 'pembina';
+  else if (role === 'pembina_osim') roleKey = 'pembina_osim';
+  else if (role === 'pembina_ekskul' || role === 'pembina_ekstra' || role === 'pembina') roleKey = 'pembina_ekskul';
   else if (role === 'pengurus_osim' || role === 'anggota_osim') roleKey = 'bph';
 
   const matrix = getActiveRbacMatrix();
   const found = matrix.find(m => m.id === moduleId);
   if (!found) return false;
-  return Boolean(found.permissions[roleKey]?.canInput);
+  
+  const perm = found.permissions[roleKey] || (found.permissions as any)?.pembina;
+  return Boolean(perm?.canInput);
 };

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Compass,
   Plus,
@@ -83,15 +83,68 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
     'Teknologi'
   ];
 
-  // Extract all extracurricular names found in uploaded / registered teachers data
-  const teacherAssignedEkskulNames = Array.from(
-    new Set(
-      teachers.flatMap(t => [
-        ...(t.assignedExtracurriculars || []),
-        ...(t.extracurricularName ? [t.extracurricularName] : [])
-      ]).filter(Boolean)
-    )
-  );
+  // Helper: Penerjemah ID/Kode ke Nama Ekstrakurikuler yang manusiawi (Rekomendasi A)
+  const resolveEkskulName = (item: string): string => {
+    if (!item || typeof item !== 'string') return '';
+    const trimmed = item.trim();
+
+    // 1. Cocokkan langsung berdasarkan ID dokumen yang ada di database
+    const foundById = extracurriculars.find(e => e.id === trimmed);
+    if (foundById) return foundById.name;
+
+    // 2. Cocokkan berdasarkan nama persis atau lowercase
+    const foundByName = extracurriculars.find(e => e.name.toLowerCase() === trimmed.toLowerCase());
+    if (foundByName) return foundByName.name;
+
+    // 3. Cocokkan di pustaka standar preset
+    const foundPreset = EXTRACURRICULAR_PRESETS.find(
+      p => p.id.toLowerCase() === trimmed.toLowerCase() || p.name.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (foundPreset) return foundPreset.name;
+
+    // 4. Bersihkan prefiks ekskul_ jika ada
+    if (trimmed.startsWith('ekskul_')) {
+      const clean = trimmed.replace(/^ekskul_/, '').replace(/[_-]/g, ' ');
+      // Jika berisi angka stempel waktu (seperti ekskul_1788508829222), abaikan agar tidak muncul angka acak
+      if (/^\d+$/.test(clean.replace(/\s+/g, ''))) {
+        return '';
+      }
+      return clean.charAt(0).toUpperCase() + clean.slice(1);
+    }
+
+    return trimmed;
+  };
+
+  // Set nama-nama ekstrakurikuler yang sudah aktif terdaftar di sistem (Rekomendasi B)
+  const existingEkskulNamesSet = useMemo(() => {
+    return new Set(extracurriculars.map(e => e.name.trim().toLowerCase()));
+  }, [extracurriculars]);
+
+  // Ekstrak ekskul binaan dari guru yang BELUM terdaftar di database (Kombinasi Rekomendasi A & B)
+  const teacherAssignedEkskulNames = useMemo(() => {
+    const rawItems = teachers.flatMap(t => [
+      ...(t.assignedExtracurriculars || []),
+      ...(t.extracurricularName ? [t.extracurricularName] : [])
+    ]).filter(Boolean);
+
+    const resolved = rawItems
+      .map(resolveEkskulName)
+      .filter(name => Boolean(name) && name.length > 1);
+
+    // Rekomendasi B: Saring ekskul yang SUDAH terdaftar di tabel agar tidak muncul berulang
+    const uniqueUnregistered = Array.from(new Set(resolved)).filter(name => {
+      return !existingEkskulNamesSet.has(name.trim().toLowerCase());
+    });
+
+    return uniqueUnregistered;
+  }, [teachers, extracurriculars, existingEkskulNamesSet]);
+
+  // Daftar template standar yang belum pernah dibuat di sekolah (Rekomendasi B)
+  const availablePresets = useMemo(() => {
+    return EXTRACURRICULAR_PRESETS.filter(
+      p => !existingEkskulNamesSet.has(p.name.trim().toLowerCase())
+    );
+  }, [existingEkskulNamesSet]);
 
   const isPembinaOnly = isPembina && !isWakaOrAdmin;
   const myAssignedIds = currentUser?.extracurricularIds || [];
@@ -112,15 +165,17 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
     setActiveTemplateFeedback(null);
     if (!presetName) return;
 
+    const resolvedName = resolveEkskulName(presetName) || presetName;
+
     // 1. Check in standard presets library
     const matchedPreset = EXTRACURRICULAR_PRESETS.find(
-      p => p.name.toLowerCase() === presetName.toLowerCase() ||
-           p.id.toLowerCase() === presetName.toLowerCase() ||
-           p.name.toLowerCase().includes(presetName.toLowerCase())
+      p => p.name.toLowerCase() === resolvedName.toLowerCase() ||
+           p.id.toLowerCase() === resolvedName.toLowerCase() ||
+           p.name.toLowerCase().includes(resolvedName.toLowerCase())
     );
 
     // 2. Find matching teacher from database / uploaded teachers
-    const matchedTeacher = findMatchingTeacherForEkskul(presetName, teachers);
+    const matchedTeacher = findMatchingTeacherForEkskul(resolvedName, teachers, extracurriculars);
 
     if (matchedPreset) {
       setFormData(prev => ({
@@ -148,13 +203,13 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
       // If from custom uploaded teacher assigned string
       setFormData(prev => ({
         ...prev,
-        name: presetName,
+        name: resolvedName,
         coachId: matchedTeacher?.id || prev.coachId || (teachers[0]?.id || ''),
         coachName: matchedTeacher?.fullName || prev.coachName || (teachers[0]?.fullName || '')
       }));
 
       setActiveTemplateFeedback(
-        `Ekstrakurikuler "${presetName}" dipilih.` +
+        `Ekstrakurikuler "${resolvedName}" dipilih.` +
         (matchedTeacher ? ` Guru Pembina otomatis dipilih: ${matchedTeacher.fullName}` : '')
       );
     }
@@ -164,9 +219,9 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
     setSelectedEkskul(null);
     setActiveTemplateFeedback(null);
 
-    // Pre-populate with first preset by default for instant ease
-    const defaultPreset = EXTRACURRICULAR_PRESETS[0];
-    const defaultTeacher = findMatchingTeacherForEkskul(defaultPreset.name, teachers) || teachers[0];
+    // Pre-populate with first available unregistered preset, or default to first preset
+    const defaultPreset = availablePresets[0] || EXTRACURRICULAR_PRESETS[0];
+    const defaultTeacher = findMatchingTeacherForEkskul(defaultPreset.name, teachers, extracurriculars) || teachers[0];
 
     setFormData({
       name: defaultPreset?.name || 'Pramuka (Gugus Depan)',
@@ -575,68 +630,80 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
                 )}
 
                 {/* 2. Bela Negara & Kepemimpinan */}
-                <optgroup label="🛡️ Bela Negara & Kepemimpinan">
-                  {EXTRACURRICULAR_PRESETS.filter(p => p.category === 'Kepemimpinan' || p.category === 'Bela Negara' || p.category === 'Sosial').map(p => (
-                    <option key={p.id} value={p.name}>
-                      {p.name} ({p.category})
-                    </option>
-                  ))}
-                </optgroup>
+                {availablePresets.some(p => p.category === 'Kepemimpinan' || p.category === 'Bela Negara' || p.category === 'Sosial') && (
+                  <optgroup label="🛡️ Bela Negara & Kepemimpinan">
+                    {availablePresets.filter(p => p.category === 'Kepemimpinan' || p.category === 'Bela Negara' || p.category === 'Sosial').map(p => (
+                      <option key={p.id} value={p.name}>
+                        {p.name} ({p.category})
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
 
                 {/* 3. Olahraga */}
-                <optgroup label="⚽ Olahraga & Bela Diri">
-                  {EXTRACURRICULAR_PRESETS.filter(p => p.category === 'Olahraga').map(p => (
-                    <option key={p.id} value={p.name}>
-                      {p.name}
-                    </option>
-                  ))}
-                </optgroup>
+                {availablePresets.some(p => p.category === 'Olahraga') && (
+                  <optgroup label="⚽ Olahraga & Bela Diri">
+                    {availablePresets.filter(p => p.category === 'Olahraga').map(p => (
+                      <option key={p.id} value={p.name}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
 
                 {/* 4. Keagamaan */}
-                <optgroup label="🕌 Keagamaan & Karakter">
-                  {EXTRACURRICULAR_PRESETS.filter(p => p.category === 'Keagamaan').map(p => (
-                    <option key={p.id} value={p.name}>
-                      {p.name}
-                    </option>
-                  ))}
-                </optgroup>
+                {availablePresets.some(p => p.category === 'Keagamaan') && (
+                  <optgroup label="🕌 Keagamaan & Karakter">
+                    {availablePresets.filter(p => p.category === 'Keagamaan').map(p => (
+                      <option key={p.id} value={p.name}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
 
                 {/* 5. Akademik */}
-                <optgroup label="🔬 Akademik & Bahasa">
-                  {EXTRACURRICULAR_PRESETS.filter(p => p.category === 'Akademik').map(p => (
-                    <option key={p.id} value={p.name}>
-                      {p.name}
-                    </option>
-                  ))}
-                </optgroup>
+                {availablePresets.some(p => p.category === 'Akademik') && (
+                  <optgroup label="🔬 Akademik & Bahasa">
+                    {availablePresets.filter(p => p.category === 'Akademik').map(p => (
+                      <option key={p.id} value={p.name}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
 
                 {/* 6. Teknologi */}
-                <optgroup label="💻 Teknologi & Media">
-                  {EXTRACURRICULAR_PRESETS.filter(p => p.category === 'Teknologi').map(p => (
-                    <option key={p.id} value={p.name}>
-                      {p.name}
-                    </option>
-                  ))}
-                </optgroup>
+                {availablePresets.some(p => p.category === 'Teknologi') && (
+                  <optgroup label="💻 Teknologi & Media">
+                    {availablePresets.filter(p => p.category === 'Teknologi').map(p => (
+                      <option key={p.id} value={p.name}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
 
                 {/* 7. Seni & Budaya */}
-                <optgroup label="🎨 Seni & Budaya">
-                  {EXTRACURRICULAR_PRESETS.filter(p => p.category === 'Seni').map(p => (
-                    <option key={p.id} value={p.name}>
-                      {p.name}
-                    </option>
-                  ))}
-                </optgroup>
+                {availablePresets.some(p => p.category === 'Seni') && (
+                  <optgroup label="🎨 Seni & Budaya">
+                    {availablePresets.filter(p => p.category === 'Seni').map(p => (
+                      <option key={p.id} value={p.name}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
             </div>
 
             {/* Quick Preset Badges */}
             <div className="space-y-1">
               <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
-                Pilihan Cepat (1-Klik):
+                Pilihan Cepat Template yang Tersedia:
               </span>
               <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pt-0.5">
-                {EXTRACURRICULAR_PRESETS.slice(0, 10).map(p => {
+                {(availablePresets.length > 0 ? availablePresets.slice(0, 10) : EXTRACURRICULAR_PRESETS.slice(0, 5)).map(p => {
                   const isCurrent = formData.name?.toLowerCase().includes(p.name.toLowerCase().split(' ')[0]);
                   return (
                     <button
@@ -777,9 +844,14 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
               >
                 <option value="">-- Pilih Guru Pembina dari Dewan Guru --</option>
                 {teachers.map(t => {
-                  const isAssigned = (t.assignedExtracurriculars || []).some(
-                    item => item.toLowerCase() === formData.name?.toLowerCase()
-                  );
+                  const isAssigned = (t.assignedExtracurriculars || []).some(item => {
+                    const resolved = resolveEkskulName(item);
+                    return (
+                      (resolved && resolved.toLowerCase() === formData.name?.toLowerCase()) ||
+                      item.toLowerCase() === formData.name?.toLowerCase() ||
+                      (selectedEkskul && item === selectedEkskul.id)
+                    );
+                  });
                   return (
                     <option key={t.id} value={t.fullName}>
                       {t.fullName} {t.role ? `• ${t.role}` : ''} {t.subject ? `(${t.subject})` : ''} {isAssigned ? '⭐ [Ditugaskan]' : ''}

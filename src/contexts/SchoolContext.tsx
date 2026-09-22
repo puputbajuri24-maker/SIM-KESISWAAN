@@ -3155,6 +3155,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     const roleLabel = getRoleLabelFromUserRole(user.role);
     const assignedIds = user.extracurricularIds || [];
+    // Convert extracurricular IDs to human-readable names for teacher.assignedExtracurriculars
+    const assignedNames = assignedIds.map(id => {
+      const found = extracurriculars.find(e => e.id === id);
+      return found ? found.name : id;
+    });
 
     // 1. Sync Dewan Guru (teachers list)
     setTeachers(prev => {
@@ -3175,7 +3180,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           email: user.email,
           phone: user.phone || updated[idx].phone || '-',
           role: roleLabel,
-          assignedExtracurriculars: assignedIds,
+          assignedExtracurriculars: assignedNames,
           photoUrl: user.photoURL || (user as any).photoUrl || updated[idx].photoUrl,
           isActive: user.status !== 'Nonaktif'
         };
@@ -3192,7 +3197,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           email: user.email,
           phone: user.phone || '-',
           role: roleLabel,
-          assignedExtracurriculars: assignedIds,
+          assignedExtracurriculars: assignedNames,
           photoUrl: user.photoURL || (user as any).photoUrl,
           isActive: user.status !== 'Nonaktif'
         };

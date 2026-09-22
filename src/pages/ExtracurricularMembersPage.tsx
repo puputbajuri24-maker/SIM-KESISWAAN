@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   Users,
   Plus,
@@ -23,8 +23,16 @@ import {
   School,
   Sparkles,
   Check,
-  Lock
+  Lock,
+  Download,
+  Upload,
+  UserPlus,
+  AlertCircle,
+  ArrowRight,
+  Info,
+  BookOpen
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useCrudPermission } from '../utils/rbacRules';
@@ -35,13 +43,15 @@ import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { ExportActions } from '../components/common/ExportActions';
 import { ClassGridFilter } from '../components/common/ClassGridFilter';
-import { calculateRecordCountsByClass, isStudentInClass } from '../utils/classResolver';
+import { calculateRecordCountsByClass, isStudentInClass, resolveStudentClass } from '../utils/classResolver';
+import { downloadStudentTemplateXLSX, downloadStudentTemplateCSV, parseStudentRows } from '../utils/studentTemplate';
 
 interface MembersPageProps {
   initialEkskulId?: string;
+  onNavigate?: (tab: string) => void;
 }
 
-export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initialEkskulId }) => {
+export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initialEkskulId, onNavigate }) => {
   const { isWakaOrAdmin, isPembina, currentUser } = useAuth();
   const canCrudMembers = useCrudPermission('members', currentUser?.role);
   const {
@@ -56,7 +66,10 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
     deleteMember,
     deleteMembersBulk,
     updateMembersStatusBulk,
-    activeAcademicYear
+    activeAcademicYear,
+    schoolSetting,
+    addStudent,
+    importStudentsBulk
   } = useSchool();
 
   const isPembinaOnly = isPembina && !isWakaOrAdmin;
@@ -112,6 +125,23 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
   const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
   const [isSavingEnroll, setIsSavingEnroll] = useState(false);
 
+  // Skenario B Modal Tab state: 'class_select' | 'quick_add' | 'import_excel'
+  const [enrollTab, setEnrollTab] = useState<'class_select' | 'quick_add' | 'import_excel'>('class_select');
+
+  // Quick Add Student State
+  const [quickStudentNis, setQuickStudentNis] = useState('');
+  const [quickStudentNisn, setQuickStudentNisn] = useState('');
+  const [quickStudentName, setQuickStudentName] = useState('');
+  const [quickStudentGender, setQuickStudentGender] = useState<'L' | 'P'>('L');
+  const [quickStudentClassId, setQuickStudentClassId] = useState('');
+  const [quickStudentRole, setQuickStudentRole] = useState('Anggota');
+  const [isSavingQuickStudent, setIsSavingQuickStudent] = useState(false);
+
+  // File import state for Skenario B
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isImportingStudents, setIsImportingStudents] = useState(false);
+  const [importFeedback, setImportFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
   // Extract distinct class list sorted naturally
   const uniqueClassNames = useMemo(() => {
     const classSet = new Set<string>();
@@ -119,7 +149,9 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
       if (c.name) classSet.add(c.name.trim());
     });
     students.forEach(s => {
-      if (s.className) classSet.add(s.className.trim());
+      const resolved = resolveStudentClass(s, classes);
+      if (resolved?.name) classSet.add(resolved.name.trim());
+      else if (s.className) classSet.add(s.className.trim());
     });
     return Array.from(classSet).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   }, [classes, students]);
@@ -138,17 +170,18 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
       .sort((a, b) => (a.fullName || '').localeCompare(b.fullName || '', 'id', { sensitivity: 'base' }));
   }, [students, enrolledStudentIdSet]);
 
-  // Count un-enrolled students per class
+  // Count un-enrolled students per class (resiliently matched)
   const studentCountPerClass = useMemo(() => {
     const counts: Record<string, number> = {};
     eligibleStudentsForEnrollment.forEach(s => {
-      if (s.className) {
-        const cls = s.className.trim();
+      const resolved = resolveStudentClass(s, classes);
+      const cls = resolved ? resolved.name : (s.className?.trim() || '');
+      if (cls) {
         counts[cls] = (counts[cls] || 0) + 1;
       }
     });
     return counts;
-  }, [eligibleStudentsForEnrollment]);
+  }, [eligibleStudentsForEnrollment, classes]);
 
   // Filtered class list based on grade level
   const displayedClassList = useMemo(() => {
@@ -171,11 +204,17 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
   // Filtered students for enrollment list based on class grid selection and search query
   const filteredStudentsForEnrollment = useMemo(() => {
     return eligibleStudentsForEnrollment.filter(s => {
-      if (selectedEnrollClass !== 'all' && s.className?.trim() !== selectedEnrollClass) {
-        return false;
+      if (selectedEnrollClass !== 'all') {
+        const resolved = resolveStudentClass(s, classes);
+        const matchesClass = (resolved && resolved.name === selectedEnrollClass) ||
+                             (s.className && s.className.trim().toLowerCase() === selectedEnrollClass.toLowerCase()) ||
+                             isStudentInClass(s, selectedEnrollClass, classes);
+        if (!matchesClass) return false;
       }
       if (selectedEnrollGrade !== 'all') {
-        const upper = (s.className || '').trim().toUpperCase();
+        const resolved = resolveStudentClass(s, classes);
+        const targetCls = resolved ? resolved.name : (s.className || '');
+        const upper = targetCls.trim().toUpperCase();
         if (selectedEnrollGrade === 'X' && !((upper.startsWith('X ') || upper.startsWith('X-') || upper === 'X') && !upper.startsWith('XI') && !upper.startsWith('XII'))) {
           return false;
         }
@@ -194,7 +233,7 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
         (s.className && s.className.toLowerCase().includes(q))
       );
     });
-  }, [eligibleStudentsForEnrollment, selectedEnrollClass, selectedEnrollGrade, studentSearchQuery]);
+  }, [eligibleStudentsForEnrollment, selectedEnrollClass, selectedEnrollGrade, studentSearchQuery, classes]);
 
   // Filtered members list (Sorted Alphabetically by Student Name)
   const filteredMembers = useMemo(() => {
@@ -221,7 +260,127 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
     setSelectedEnrollClass('all');
     setSelectedEnrollGrade('all');
     setStudentSearchQuery('');
+    setImportFeedback(null);
+    setEnrollTab(students.length === 0 ? 'import_excel' : 'class_select');
+    if (classes.length > 0 && !quickStudentClassId) {
+      setQuickStudentClassId(classes[0].id);
+    }
     setIsAddOpen(true);
+  };
+
+  const handleDownloadXLSX = () => {
+    downloadStudentTemplateXLSX(classes, schoolSetting?.name);
+  };
+
+  const handleDownloadCSV = () => {
+    downloadStudentTemplateCSV(classes);
+  };
+
+  const handleExcelFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsImportingStudents(true);
+    setImportFeedback(null);
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array' });
+      const sheetName = workbook.SheetNames[0];
+      const rawRows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+
+      if (!rawRows || rawRows.length === 0) {
+        setImportFeedback({ type: 'error', message: 'File Excel kosong atau tidak memiliki baris data siswa.' });
+        return;
+      }
+
+      const parsed = parseStudentRows(rawRows, classes, activeAcademicYear, students.map(s => s.nis));
+      const validRows = parsed.filter(p => p.isValid);
+
+      if (validRows.length === 0) {
+        setImportFeedback({
+          type: 'error',
+          message: `Tidak ada data valid. Ditemukan ${parsed.length} baris dengan kesalahan format (cek kolom NIS dan Nama Lengkap).`
+        });
+        return;
+      }
+
+      const insertedCount = await importStudentsBulk(validRows, 'append');
+      setImportFeedback({
+        type: 'success',
+        message: `Sukses! ${insertedCount} siswa berhasil diimpor ke database sekolah. Rombel kelas kini telah terisi siswa.`
+      });
+      setEnrollTab('class_select');
+    } catch (err) {
+      console.error('Error importing student excel:', err);
+      setImportFeedback({ type: 'error', message: 'Gagal memproses file Excel. Pastikan file berformat .xlsx atau .csv standar.' });
+    } finally {
+      setIsImportingStudents(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleSaveQuickStudent = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickStudentName.trim() || !quickStudentNis.trim() || !targetEkskulId) {
+      alert('Harap lengkapi Nama Siswa, NIS, dan pilih Ekstrakurikuler Tujuan.');
+      return;
+    }
+
+    const ekskul = extracurriculars.find(e => e.id === targetEkskulId);
+    if (!ekskul) return;
+
+    const targetClass = classes.find(c => c.id === quickStudentClassId) || classes[0];
+    const className = targetClass?.name || 'X';
+
+    setIsSavingQuickStudent(true);
+    try {
+      const newStudentId = `s_${Date.now()}`;
+      // 1. Simpan ke data pokok siswa
+      await addStudent({
+        nis: quickStudentNis.trim(),
+        nisn: quickStudentNisn.trim() || '',
+        fullName: quickStudentName.trim(),
+        gender: quickStudentGender,
+        birthPlace: '-',
+        birthDate: '2008-01-01',
+        classId: targetClass?.id || (classes[0]?.id || 'c_default'),
+        className: className,
+        major: targetClass?.major || 'Umum',
+        phone: '',
+        parentName: '',
+        parentPhone: '',
+        address: '',
+        status: 'Aktif'
+      });
+
+      // 2. Daftarkan langsung sebagai anggota ekstrakurikuler
+      await addMember({
+        extracurricularId: targetEkskulId,
+        extracurricularName: ekskul.name,
+        studentId: newStudentId,
+        studentName: quickStudentName.trim(),
+        studentNis: quickStudentNis.trim(),
+        studentClass: className,
+        gender: quickStudentGender,
+        role: quickStudentRole || 'Anggota',
+        notes: quickStudentRole && quickStudentRole !== 'Anggota' ? `Jabatan: ${quickStudentRole}` : undefined,
+        joinDate: new Date().toISOString().split('T')[0],
+        status: 'Aktif',
+        academicYear: activeAcademicYear
+      });
+
+      // Reset form
+      setQuickStudentNis('');
+      setQuickStudentNisn('');
+      setQuickStudentName('');
+      setQuickStudentGender('L');
+      setIsAddOpen(false);
+    } catch (err) {
+      console.error('Error adding quick student:', err);
+      alert('Gagal menambahkan siswa.');
+    } finally {
+      setIsSavingQuickStudent(false);
+    }
   };
 
   const handleToggleSelectStudent = (studentId: string) => {
@@ -566,6 +725,126 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
               <p className="text-[11px] text-slate-600 dark:text-slate-400">
                 Pendaftaran, pengeditan status, dan pengeluaran anggota dibatasi terpusat pada cPanel Kesiswaan, kecuali Admin memberikan izin pada Matriks Hak Akses Peran.
               </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Skenario B Guidance Card when master students list is empty */}
+      {students.length === 0 && (
+        <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-blue-500/10 border border-amber-500/30 text-slate-800 dark:text-slate-100 shadow-sm space-y-3.5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-700 dark:text-amber-300 shrink-0 mt-0.5">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-sm font-extrabold text-slate-900 dark:text-white">
+                    Penerapan Alur Skenario B: Master Data Siswa Belum Diisi (Semua Kelas 0 Siswa)
+                  </h3>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-700">
+                    Fondasi Data Riil
+                  </span>
+                </div>
+                <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
+                  Data anggota ekstrakurikuler bersumber langsung dari <strong>Data Pokok Siswa (Rombel Kelas)</strong>. Karena database siswa saat ini masih kosong (0 siswa), Pembina belum memiliki siswa untuk dicentang. Ikuti 3 tahapan integrasi data riil berikut:
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+            <div className="p-3.5 rounded-xl bg-white/90 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 flex flex-col justify-between shadow-xs">
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-mono font-extrabold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
+                    Langkah 1
+                  </span>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300">
+                    {classes.length} Rombel
+                  </span>
+                </div>
+                <p className="text-xs font-bold text-slate-800 dark:text-slate-200 mt-1">Cek Daftar Rombel Kelas</p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                  Rombel kelas sekolah sudah terdaftar ({classes.slice(0, 3).map(c => c.name).join(', ')}{classes.length > 3 ? '...' : ''}).
+                </p>
+              </div>
+              {onNavigate && (
+                <button
+                  type="button"
+                  onClick={() => onNavigate('students')}
+                  className="mt-3 text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 self-start"
+                >
+                  <span>Buka Menu Data Siswa</span>
+                  <ArrowRight className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-white/90 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 flex flex-col justify-between shadow-xs">
+              <div>
+                <span className="text-[10px] font-mono font-extrabold text-amber-600 dark:text-amber-400 uppercase tracking-wider block">
+                  Langkah 2
+                </span>
+                <p className="text-xs font-bold text-slate-800 dark:text-slate-200 mt-1">Unduh Format Excel Siswa</p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                  Format resmi Kesiswaan siap pakai. Kolom nama kelas otomatis disesuaikan dengan rombel sekolah Anda.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 mt-3">
+                <button
+                  type="button"
+                  onClick={handleDownloadXLSX}
+                  className="px-3 py-1.5 text-[11px] font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 shadow-xs transition"
+                >
+                  <Download className="w-3.5 h-3.5" />
+                  <span>Unduh .XLSX</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDownloadCSV}
+                  className="px-2.5 py-1.5 text-[11px] font-bold rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 flex items-center gap-1 transition"
+                >
+                  <span>.CSV</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-white/90 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 flex flex-col justify-between shadow-xs">
+              <div>
+                <span className="text-[10px] font-mono font-extrabold text-blue-600 dark:text-blue-400 uppercase tracking-wider block">
+                  Langkah 3
+                </span>
+                <p className="text-xs font-bold text-slate-800 dark:text-slate-200 mt-1">Unggah Excel / Tambah Siswa</p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                  Impor massal data siswa riil, atau tambahkan siswa baru secara instan langsung ke rombel kelas.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 mt-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleOpenAdd();
+                    setEnrollTab('import_excel');
+                  }}
+                  className="px-3 py-1.5 text-[11px] font-bold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 shadow-xs transition"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>Impor Excel</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleOpenAdd();
+                    setEnrollTab('quick_add');
+                  }}
+                  className="px-2.5 py-1.5 text-[11px] font-bold rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-900 flex items-center gap-1 shadow-xs transition"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>+1 Siswa</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -981,54 +1260,124 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
         isOpen={isAddOpen}
         onClose={() => setIsAddOpen(false)}
         title="Daftarkan Siswa ke Ekstrakurikuler"
-        subtitle="Pilih satu atau beberapa siswa aktif untuk didaftarkan ke ekstrakurikuler"
+        subtitle="Pilih dari rombel kelas, tambah siswa langsung, atau impor massal Excel (Skenario B)"
         maxWidth="2xl"
         footer={
           <div className="flex items-center justify-between w-full">
-            <div className="text-xs text-slate-500 dark:text-slate-400">
-              {selectedStudentIds.length > 0 ? (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-bold border border-indigo-200 dark:border-indigo-800">
-                  <Check className="w-3.5 h-3.5" />
-                  {selectedStudentIds.length} Siswa Siap Didaftarkan
-                </span>
-              ) : (
-                <span>Pilih siswa dari daftar di bawah</span>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setIsAddOpen(false)}
-                className="px-4 py-2 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                disabled={selectedStudentIds.length === 0 || isSavingEnroll}
-                onClick={handleSaveMember}
-                className="px-5 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all"
-              >
-                {isSavingEnroll ? (
-                  <>
-                    <Clock className="w-3.5 h-3.5 animate-spin" />
-                    <span>Mendaftarkan...</span>
-                  </>
-                ) : (
-                  <>
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>
-                      Daftarkan {selectedStudentIds.length > 0 ? `(${selectedStudentIds.length}) Siswa` : 'Anggota'}
+            {enrollTab === 'class_select' && (
+              <>
+                <div className="text-xs text-slate-500 dark:text-slate-400">
+                  {selectedStudentIds.length > 0 ? (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-bold border border-indigo-200 dark:border-indigo-800">
+                      <Check className="w-3.5 h-3.5" />
+                      {selectedStudentIds.length} Siswa Siap Didaftarkan
                     </span>
-                  </>
-                )}
-              </button>
-            </div>
+                  ) : (
+                    <span>Pilih siswa dari daftar di bawah</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddOpen(false)}
+                    className="px-4 py-2 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="button"
+                    disabled={selectedStudentIds.length === 0 || isSavingEnroll}
+                    onClick={handleSaveMember}
+                    className="px-5 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all"
+                  >
+                    {isSavingEnroll ? (
+                      <>
+                        <Clock className="w-3.5 h-3.5 animate-spin" />
+                        <span>Mendaftarkan...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>
+                          Daftarkan {selectedStudentIds.length > 0 ? `(${selectedStudentIds.length}) Siswa` : 'Anggota'}
+                        </span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {enrollTab === 'quick_add' && (
+              <>
+                <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Siswa otomatis tersimpan ke <strong>Data Pokok</strong> dan terdaftar di ekskul.
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddOpen(false)}
+                    className="px-4 py-2 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!quickStudentName.trim() || !quickStudentNis.trim() || isSavingQuickStudent}
+                    onClick={handleSaveQuickStudent}
+                    className="px-5 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all"
+                  >
+                    {isSavingQuickStudent ? (
+                      <>
+                        <Clock className="w-3.5 h-3.5 animate-spin" />
+                        <span>Menyimpan...</span>
+                      </>
+                    ) : (
+                      <>
+                        <UserPlus className="w-3.5 h-3.5" />
+                        <span>Simpan Siswa & Daftarkan</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {enrollTab === 'import_excel' && (
+              <>
+                <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {students.length > 0 ? (
+                    <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                      Tersimpan {students.length} data siswa di rombel sekolah.
+                    </span>
+                  ) : (
+                    <span>Unggah file Excel untuk mengisi database siswa.</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddOpen(false)}
+                    className="px-4 py-2 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+                  >
+                    Tutup
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEnrollTab('class_select')}
+                    className="px-5 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20 flex items-center gap-2 transition-all"
+                  >
+                    <span>Lanjut ke Pemilihan Siswa</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         }
       >
-        <form onSubmit={handleSaveMember} className="space-y-4">
-          {/* Target Extracurricular */}
+        <div className="space-y-4">
+          {/* Target Extracurricular Selector */}
           <div>
             <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
               Pilih Ekstrakurikuler Tujuan *
@@ -1052,205 +1401,527 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
             </select>
           </div>
 
-          {/* Quick Class Grid Filter */}
-          <div className="space-y-2 pt-1 border-t border-slate-100 dark:border-slate-800">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                <Grid className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                <span>Filter Kelas Siswa (Pilih Cepat Grid):</span>
-              </label>
-              {selectedEnrollClass !== 'all' && (
-                <button
-                  type="button"
-                  onClick={() => setSelectedEnrollClass('all')}
-                  className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
-                >
-                  Tampilkan Semua Kelas
-                </button>
-              )}
-            </div>
+          {/* Mode Switcher Tabs */}
+          <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700/80">
+            <button
+              type="button"
+              onClick={() => setEnrollTab('class_select')}
+              className={`flex-1 py-1.5 px-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                enrollTab === 'class_select'
+                  ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+            >
+              <Grid className="w-3.5 h-3.5" />
+              <span className="truncate">Pilih dari Rombel ({eligibleStudentsForEnrollment.length} Siap)</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setEnrollTab('quick_add')}
+              className={`flex-1 py-1.5 px-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                enrollTab === 'quick_add'
+                  ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              <span className="truncate">+ Tambah 1 Siswa Langsung</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setEnrollTab('import_excel')}
+              className={`flex-1 py-1.5 px-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                enrollTab === 'import_excel'
+                  ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200'
+              }`}
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span className="truncate">Skenario B (Impor Excel)</span>
+            </button>
+          </div>
 
-            {/* Grade Level Selector Tabs */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
-              {(['all', 'X', 'XI', 'XII'] as const).map(grade => (
-                <button
-                  key={grade}
-                  type="button"
-                  onClick={() => setSelectedEnrollGrade(grade)}
-                  className={`px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
-                    selectedEnrollGrade === grade
-                      ? 'bg-indigo-600 text-white shadow-xs'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+          {/* TAB 1: Skenario B Impor Excel */}
+          {enrollTab === 'import_excel' && (
+            <div className="space-y-3.5 pt-1">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".xlsx,.xls,.csv"
+                onChange={handleExcelFileChange}
+                className="hidden"
+              />
+
+              <div className="p-3.5 rounded-xl bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800/80 text-xs">
+                <div className="flex items-start gap-2.5">
+                  <Info className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="font-bold text-indigo-900 dark:text-indigo-200">
+                      Alur Skenario B: Memasukkan Siswa Riil ke Database Sekolah
+                    </p>
+                    <p className="text-slate-600 dark:text-slate-400 text-[11px] leading-relaxed">
+                      Sistem ekstrakurikuler menggunakan basis data kesiswaan terpusat. Ketika siswa diimpor ke rombel kelasnya masing-masing, nama mereka otomatis terdistribusi di grid kelas dan dapat langsung dicentang oleh Pembina.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Steps Layout */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Step 1: Download Template */}
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700/80 flex flex-col justify-between">
+                  <div>
+                    <span className="text-[10px] font-mono font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
+                      Langkah 1
+                    </span>
+                    <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 mt-0.5">
+                      Unduh Template Excel Siswa
+                    </h4>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                      File template sudah memuat referensi <strong>{classes.length} rombel kelas</strong> yang terdaftar di sekolah.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 mt-3">
+                    <button
+                      type="button"
+                      onClick={handleDownloadXLSX}
+                      className="flex-1 px-3 py-1.5 text-xs font-bold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center gap-1.5 shadow-xs transition"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Format .XLSX</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDownloadCSV}
+                      className="px-3 py-1.5 text-xs font-bold rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 flex items-center justify-center gap-1 transition"
+                    >
+                      <span>.CSV</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Step 2: Upload Excel */}
+                <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700/80 flex flex-col justify-between">
+                  <div>
+                    <span className="text-[10px] font-mono font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider">
+                      Langkah 2
+                    </span>
+                    <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 mt-0.5">
+                      Unggah Berkas Data Siswa
+                    </h4>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                      Pilih berkas Excel (.xlsx) atau .csv yang telah diisi dengan daftar nama dan NIS siswa.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={isImportingStudents}
+                    onClick={() => fileInputRef.current?.click()}
+                    className="mt-3 w-full px-3 py-1.5 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white flex items-center justify-center gap-1.5 shadow-xs transition disabled:opacity-50"
+                  >
+                    {isImportingStudents ? (
+                      <>
+                        <Clock className="w-3.5 h-3.5 animate-spin" />
+                        <span>Memproses File...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Pilih & Unggah File Excel</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Feedback Alert */}
+              {importFeedback && (
+                <div
+                  className={`p-3 rounded-xl border text-xs flex items-start gap-2.5 ${
+                    importFeedback.type === 'success'
+                      ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200'
+                      : 'bg-rose-50 dark:bg-rose-950/50 border-rose-300 dark:border-rose-800 text-rose-800 dark:text-rose-200'
                   }`}
                 >
-                  {grade === 'all' ? 'Semua Tingkat' : `Tingkat ${grade}`}
-                </button>
-              ))}
-            </div>
-
-            {/* Interactive Class Tiles Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-44 overflow-y-auto p-1.5 border border-slate-200 dark:border-slate-700/80 rounded-xl bg-slate-50/70 dark:bg-slate-900/60 custom-scrollbar">
-              {/* "Semua Kelas" Card */}
-              <button
-                type="button"
-                onClick={() => setSelectedEnrollClass('all')}
-                className={`p-2.5 rounded-xl text-left transition-all border flex flex-col justify-between ${
-                  selectedEnrollClass === 'all'
-                    ? 'bg-indigo-50 dark:bg-indigo-950/80 border-indigo-500 text-indigo-900 dark:text-indigo-200 shadow-xs ring-2 ring-indigo-500/20'
-                    : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-indigo-300 dark:hover:border-indigo-600 hover:bg-slate-50 dark:hover:bg-slate-750'
-                }`}
-              >
-                <div className="flex items-center justify-between w-full">
-                  <span className="font-extrabold text-xs">Semua Kelas</span>
-                  {selectedEnrollClass === 'all' && (
-                    <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
-                  )}
-                </div>
-                <span className="text-[10px] text-slate-400 dark:text-slate-400 mt-1 font-medium">
-                  {eligibleStudentsForEnrollment.length} Siswa Siap
-                </span>
-              </button>
-
-              {/* Individual Class Tiles */}
-              {displayedClassList.map(clsName => {
-                const count = studentCountPerClass[clsName] || 0;
-                const isSelected = selectedEnrollClass === clsName;
-                return (
-                  <button
-                    key={clsName}
-                    type="button"
-                    onClick={() => setSelectedEnrollClass(clsName)}
-                    className={`p-2.5 rounded-xl text-left transition-all border flex flex-col justify-between ${
-                      isSelected
-                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs shadow-indigo-600/30 ring-2 ring-indigo-500/30'
-                        : count > 0
-                        ? 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 hover:border-indigo-400 dark:hover:border-indigo-600 hover:bg-indigo-50/40 dark:hover:bg-indigo-950/30'
-                        : 'bg-slate-100/70 dark:bg-slate-800/40 border-slate-200/50 dark:border-slate-800 text-slate-400 opacity-60'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between w-full">
-                      <span className="font-extrabold text-xs truncate">{clsName}</span>
-                      {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-white shrink-0" />}
-                    </div>
-                    <div className="flex items-center justify-between mt-1">
-                      <span
-                        className={`text-[10px] font-semibold ${
-                          isSelected
-                            ? 'text-indigo-100'
-                            : count > 0
-                            ? 'text-indigo-600 dark:text-indigo-400'
-                            : 'text-slate-400'
-                        }`}
-                      >
-                        {count} Siswa
-                      </span>
-                      {count > 0 && !isSelected && (
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Student Search & Multi-Select List */}
-          <div className="space-y-2 pt-1">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                Pilih Siswa ({filteredStudentsForEnrollment.length} Tersedia
-                {selectedEnrollClass !== 'all' ? ` di ${selectedEnrollClass}` : ''})
-              </label>
-              {filteredStudentsForEnrollment.length > 0 && (
-                <button
-                  type="button"
-                  onClick={handleSelectAllFilteredStudents}
-                  className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 flex items-center gap-1 transition"
-                >
-                  {filteredStudentsForEnrollment.every(s => selectedStudentIds.includes(s.id)) ? (
-                    <>
-                      <CheckSquare className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                      <span>Batal Tandai Semua</span>
-                    </>
+                  {importFeedback.type === 'success' ? (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
                   ) : (
-                    <>
-                      <Square className="w-3.5 h-3.5 text-indigo-500" />
-                      <span>Tandai Semua ({filteredStudentsForEnrollment.length})</span>
-                    </>
+                    <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
                   )}
-                </button>
+                  <div>
+                    <p className="font-bold">{importFeedback.type === 'success' ? 'Berhasil' : 'Pemberitahuan'}</p>
+                    <p className="text-[11px] mt-0.5">{importFeedback.message}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Navigation link to full Data Siswa page */}
+              {onNavigate && (
+                <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between text-xs">
+                  <span className="text-slate-500 dark:text-slate-400 text-[11px]">
+                    Atau gunakan modul lengkap Data Siswa untuk melihat pratinjau tabel, validasi kelas, dan cetak kartu.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddOpen(false);
+                      onNavigate('students');
+                    }}
+                    className="font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 shrink-0 ml-2"
+                  >
+                    <span>Buka Halaman Data Siswa</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               )}
             </div>
+          )}
 
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
-              <input
-                type="text"
-                value={studentSearchQuery}
-                onChange={e => setStudentSearchQuery(e.target.value)}
-                placeholder="Cari nama atau NIS siswa..."
-                className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
-              />
+          {/* TAB 2: Quick Add Single Student */}
+          {enrollTab === 'quick_add' && (
+            <div className="space-y-3.5 pt-1">
+              <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs">
+                <p className="font-bold text-amber-900 dark:text-amber-200">
+                  Pendaftaran 1 Siswa Cepat ke Rombel & Ekstrakurikuler
+                </p>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5 leading-relaxed">
+                  Gunakan form ini jika Anda ingin mendaftarkan siswa baru yang belum tercatat di data pokok tanpa harus mengunggah file Excel.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Nomor Induk Siswa (NIS) *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={quickStudentNis}
+                    onChange={e => setQuickStudentNis(e.target.value)}
+                    placeholder="Contoh: 2425001"
+                    className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium text-slate-800 dark:text-slate-100 focus:border-indigo-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    NISN (Opsional)
+                  </label>
+                  <input
+                    type="text"
+                    value={quickStudentNisn}
+                    onChange={e => setQuickStudentNisn(e.target.value)}
+                    placeholder="Contoh: 0071234567"
+                    className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium text-slate-800 dark:text-slate-100 focus:border-indigo-500 focus:outline-none"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Nama Lengkap Siswa *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={quickStudentName}
+                    onChange={e => setQuickStudentName(e.target.value)}
+                    placeholder="Masukkan nama lengkap siswa..."
+                    className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium text-slate-800 dark:text-slate-100 focus:border-indigo-500 focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Jenis Kelamin *
+                  </label>
+                  <select
+                    value={quickStudentGender}
+                    onChange={e => setQuickStudentGender(e.target.value as 'L' | 'P')}
+                    className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium text-slate-800 dark:text-slate-100 focus:border-indigo-500 focus:outline-none"
+                  >
+                    <option value="L">Laki-laki (L)</option>
+                    <option value="P">Perempuan (P)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Rombel Kelas Siswa *
+                  </label>
+                  <select
+                    value={quickStudentClassId}
+                    onChange={e => setQuickStudentClassId(e.target.value)}
+                    className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium text-slate-800 dark:text-slate-100 focus:border-indigo-500 focus:outline-none"
+                  >
+                    {classes.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} ({c.major || 'Umum'})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Peran / Jabatan dalam Ekstrakurikuler
+                  </label>
+                  <select
+                    value={quickStudentRole}
+                    onChange={e => setQuickStudentRole(e.target.value)}
+                    className="w-full px-3.5 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-medium text-slate-800 dark:text-slate-100 focus:border-indigo-500 focus:outline-none"
+                  >
+                    <option value="Anggota">Anggota</option>
+                    <option value="Ketua">Ketua</option>
+                    <option value="Wakil Ketua">Wakil Ketua</option>
+                    <option value="Sekretaris">Sekretaris</option>
+                    <option value="Bendahara">Bendahara</option>
+                  </select>
+                </div>
+              </div>
             </div>
+          )}
 
-            {/* Student List with Checkboxes */}
-            <div className="max-h-56 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-xl divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900 custom-scrollbar">
-              {filteredStudentsForEnrollment.length === 0 ? (
-                <div className="p-6 text-center">
-                  <p className="text-xs font-medium text-slate-400">
-                    Tidak ada siswa yang belum bergabung
-                    {selectedEnrollClass !== 'all' ? ` untuk kelas ${selectedEnrollClass}` : ''}.
-                  </p>
+          {/* TAB 3: Class Grid & Student Select List */}
+          {enrollTab === 'class_select' && (
+            <div className="space-y-3 pt-1">
+              {students.length === 0 ? (
+                <div className="p-6 text-center border-2 border-dashed border-amber-300 dark:border-amber-800/60 rounded-2xl bg-amber-50/50 dark:bg-amber-950/20 space-y-3">
+                  <div className="w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-900/60 text-amber-600 dark:text-amber-300 flex items-center justify-center mx-auto">
+                    <Users className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                      Semua Kelas Masih Tercatat 0 Siswa
+                    </h4>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
+                      Belum ada siswa aktif di database sekolah. Untuk mendaftarkan anggota ke ekstrakurikuler, Anda dapat mengunggah file Excel data pokok atau menambahkan siswa baru secara cepat.
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-center gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setEnrollTab('import_excel')}
+                      className="px-4 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-1.5 shadow-sm transition"
+                    >
+                      <FileSpreadsheet className="w-3.5 h-3.5" />
+                      <span>Alur Skenario B (Impor Excel)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEnrollTab('quick_add')}
+                      className="px-4 py-2 text-xs font-bold rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-900 flex items-center gap-1.5 shadow-sm transition"
+                    >
+                      <UserPlus className="w-3.5 h-3.5" />
+                      <span>+ Tambah Siswa Cepat</span>
+                    </button>
+                  </div>
                 </div>
               ) : (
-                filteredStudentsForEnrollment.map(s => {
-                  const isChecked = selectedStudentIds.includes(s.id);
-                  return (
-                    <div
-                      key={s.id}
-                      onClick={() => handleToggleSelectStudent(s.id)}
-                      className={`p-2.5 text-xs flex items-center justify-between cursor-pointer transition-colors ${
-                        isChecked
-                          ? 'bg-indigo-50/90 dark:bg-indigo-950/70 border-l-4 border-indigo-600'
-                          : 'hover:bg-slate-50 dark:hover:bg-slate-800/60'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="shrink-0 text-indigo-600 dark:text-indigo-400">
-                          {isChecked ? (
-                            <CheckSquare className="w-4 h-4" />
-                          ) : (
-                            <Square className="w-4 h-4 text-slate-300 dark:text-slate-600" />
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <p
-                            className={`truncate ${
-                              isChecked
-                                ? 'font-bold text-indigo-950 dark:text-indigo-100'
-                                : 'font-semibold text-slate-800 dark:text-slate-200'
-                            }`}
-                          >
-                            {s.fullName}
-                          </p>
-                          <p className="text-[10px] text-slate-400">
-                            NIS: {s.nis} • Kelas: <span className="font-bold text-slate-600 dark:text-slate-300">{s.className}</span> • {s.gender === 'L' ? 'Laki-laki' : 'Perempuan'}
-                          </p>
-                        </div>
-                      </div>
-
-                      {isChecked && (
-                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-600 text-white shrink-0 ml-2">
-                          Terpilih
-                        </span>
+                <>
+                  {/* Quick Class Grid Filter */}
+                  <div className="space-y-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                        <Grid className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                        <span>Filter Kelas Siswa (Pilih Cepat Grid):</span>
+                      </label>
+                      {selectedEnrollClass !== 'all' && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedEnrollClass('all')}
+                          className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                        >
+                          Tampilkan Semua Kelas
+                        </button>
                       )}
                     </div>
-                  );
-                })
+
+                    {/* Grade Level Selector Tabs */}
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+                      {(['all', 'X', 'XI', 'XII'] as const).map(grade => (
+                        <button
+                          key={grade}
+                          type="button"
+                          onClick={() => setSelectedEnrollGrade(grade)}
+                          className={`px-3 py-1 rounded-lg text-xs font-bold whitespace-nowrap transition-all ${
+                            selectedEnrollGrade === grade
+                              ? 'bg-indigo-600 text-white shadow-xs'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                          }`}
+                        >
+                          {grade === 'all' ? 'Semua Tingkat' : `Tingkat ${grade}`}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Interactive Class Tiles Grid */}
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-44 overflow-y-auto p-1.5 border border-slate-200 dark:border-slate-700/80 rounded-xl bg-slate-50/70 dark:bg-slate-900/60 custom-scrollbar">
+                      {/* "Semua Kelas" Card */}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedEnrollClass('all')}
+                        className={`p-2.5 rounded-xl text-left transition-all border flex flex-col justify-between ${
+                          selectedEnrollClass === 'all'
+                            ? 'bg-indigo-50 dark:bg-indigo-950/80 border-indigo-500 text-indigo-900 dark:text-indigo-200 shadow-xs ring-2 ring-indigo-500/20'
+                            : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-indigo-300 dark:hover:border-indigo-600 hover:bg-slate-50 dark:hover:bg-slate-750'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <span className="font-extrabold text-xs">Semua Kelas</span>
+                          {selectedEnrollClass === 'all' && (
+                            <CheckCircle2 className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                          )}
+                        </div>
+                        <span className="text-[10px] text-slate-400 dark:text-slate-400 mt-1 font-medium">
+                          {eligibleStudentsForEnrollment.length} Siswa Siap
+                        </span>
+                      </button>
+
+                      {/* Individual Class Tiles */}
+                      {displayedClassList.map(clsName => {
+                        const count = studentCountPerClass[clsName] || 0;
+                        const isSelected = selectedEnrollClass === clsName;
+                        return (
+                          <button
+                            key={clsName}
+                            type="button"
+                            onClick={() => setSelectedEnrollClass(clsName)}
+                            className={`p-2.5 rounded-xl text-left transition-all border flex flex-col justify-between ${
+                              isSelected
+                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs shadow-indigo-600/30 ring-2 ring-indigo-500/30'
+                                : count > 0
+                                ? 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 hover:border-indigo-400 dark:hover:border-indigo-600 hover:bg-indigo-50/40 dark:hover:bg-indigo-950/30'
+                                : 'bg-slate-100/70 dark:bg-slate-800/40 border-slate-200/50 dark:border-slate-800 text-slate-400 opacity-60'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between w-full">
+                              <span className="font-extrabold text-xs truncate">{clsName}</span>
+                              {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-white shrink-0" />}
+                            </div>
+                            <div className="flex items-center justify-between mt-1">
+                              <span
+                                className={`text-[10px] font-semibold ${
+                                  isSelected
+                                    ? 'text-indigo-100'
+                                    : count > 0
+                                    ? 'text-indigo-600 dark:text-indigo-400'
+                                    : 'text-slate-400'
+                                }`}
+                              >
+                                {count} Siswa
+                              </span>
+                              {count > 0 && !isSelected && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Student Search & Multi-Select List */}
+                  <div className="space-y-2 pt-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                        Pilih Siswa ({filteredStudentsForEnrollment.length} Tersedia
+                        {selectedEnrollClass !== 'all' ? ` di ${selectedEnrollClass}` : ''})
+                      </label>
+                      {filteredStudentsForEnrollment.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleSelectAllFilteredStudents}
+                          className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 flex items-center gap-1 transition"
+                        >
+                          {filteredStudentsForEnrollment.every(s => selectedStudentIds.includes(s.id)) ? (
+                            <>
+                              <CheckSquare className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                              <span>Batal Tandai Semua</span>
+                            </>
+                          ) : (
+                            <>
+                              <Square className="w-3.5 h-3.5 text-indigo-500" />
+                              <span>Tandai Semua ({filteredStudentsForEnrollment.length})</span>
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="relative">
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                      <input
+                        type="text"
+                        value={studentSearchQuery}
+                        onChange={e => setStudentSearchQuery(e.target.value)}
+                        placeholder="Cari nama atau NIS siswa..."
+                        className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
+                      />
+                    </div>
+
+                    {/* Student List with Checkboxes */}
+                    <div className="max-h-56 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-xl divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900 custom-scrollbar">
+                      {filteredStudentsForEnrollment.length === 0 ? (
+                        <div className="p-6 text-center">
+                          <p className="text-xs font-medium text-slate-400">
+                            Tidak ada siswa yang belum bergabung
+                            {selectedEnrollClass !== 'all' ? ` untuk kelas ${selectedEnrollClass}` : ''}.
+                          </p>
+                        </div>
+                      ) : (
+                        filteredStudentsForEnrollment.map(s => {
+                          const isChecked = selectedStudentIds.includes(s.id);
+                          return (
+                            <div
+                              key={s.id}
+                              onClick={() => handleToggleSelectStudent(s.id)}
+                              className={`p-2.5 text-xs flex items-center justify-between cursor-pointer transition-colors ${
+                                isChecked
+                                  ? 'bg-indigo-50/90 dark:bg-indigo-950/70 border-l-4 border-indigo-600'
+                                  : 'hover:bg-slate-50 dark:hover:bg-slate-800/60'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3 min-w-0">
+                                <div className="shrink-0 text-indigo-600 dark:text-indigo-400">
+                                  {isChecked ? (
+                                    <CheckSquare className="w-4 h-4" />
+                                  ) : (
+                                    <Square className="w-4 h-4 text-slate-300 dark:text-slate-600" />
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <p
+                                    className={`truncate ${
+                                      isChecked
+                                        ? 'font-bold text-indigo-950 dark:text-indigo-100'
+                                        : 'font-semibold text-slate-800 dark:text-slate-200'
+                                    }`}
+                                  >
+                                    {s.fullName}
+                                  </p>
+                                  <p className="text-[10px] text-slate-400">
+                                    NIS: {s.nis} • Kelas: <span className="font-bold text-slate-600 dark:text-slate-300">{s.className}</span> • {s.gender === 'L' ? 'Laki-laki' : 'Perempuan'}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {isChecked && (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-600 text-white shrink-0 ml-2">
+                                  Terpilih
+                                </span>
+                              )}
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                </>
               )}
             </div>
-          </div>
-        </form>
+          )}
+        </div>
       </Modal>
 
       {/* Delete / Remove Confirmation Popup */}

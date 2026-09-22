@@ -183,6 +183,7 @@ export interface ExtracurricularMember {
   joinDate: string;
   memberNumber?: string;
   status: 'Aktif' | 'Nonaktif';
+  role?: string;
   notes?: string;
   academicYear?: string;
 }

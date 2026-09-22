@@ -107,6 +107,19 @@ export const TeachersPage: React.FC = () => {
     cashManagerTitle: 'Bendahara Kesiswaan'
   });
 
+  // Helper: Penerjemah ID/Kode ekskul ke Nama yang mudah dibaca
+  const getEkskulDisplayName = (item: string) => {
+    if (!item) return '';
+    const found = extracurriculars.find(e => e.id === item || e.name.toLowerCase() === item.toLowerCase());
+    if (found) return found.name;
+    if (item.startsWith('ekskul_')) {
+      const clean = item.replace(/^ekskul_/, '').replace(/[_-]/g, ' ');
+      if (/^\d+$/.test(clean.replace(/\s+/g, ''))) return item;
+      return clean.charAt(0).toUpperCase() + clean.slice(1);
+    }
+    return item;
+  };
+
   // Automatically open teacher detail if selected from Global Search or pending selection
   useEffect(() => {
     const processTeacherTarget = (detail: any) => {
@@ -186,7 +199,10 @@ export const TeachersPage: React.FC = () => {
     setFormData({
       ...t,
       subject: t.subject || '',
-      assignedExtracurriculars: t.assignedExtracurriculars || [],
+      assignedExtracurriculars: (t.assignedExtracurriculars || []).map(item => {
+        const found = extracurriculars.find(ex => ex.id === item);
+        return found ? found.name : item;
+      }),
       isCashManager: !!t.isCashManager,
       cashManagerTitle: t.cashManagerTitle || 'Bendahara Kesiswaan'
     });
@@ -205,17 +221,18 @@ export const TeachersPage: React.FC = () => {
   };
 
   // Toggle extracurricular assignment
-  const handleToggleEkskul = (ekskulName: string) => {
+  const handleToggleEkskul = (ekskulName: string, ekskulId?: string) => {
     const current = formData.assignedExtracurriculars || [];
-    if (current.includes(ekskulName)) {
+    const isAlready = current.some(item => item === ekskulName || (ekskulId && item === ekskulId));
+    if (isAlready) {
       setFormData({
         ...formData,
-        assignedExtracurriculars: current.filter(item => item !== ekskulName)
+        assignedExtracurriculars: current.filter(item => item !== ekskulName && item !== ekskulId)
       });
     } else {
       setFormData({
         ...formData,
-        assignedExtracurriculars: [...current, ekskulName]
+        assignedExtracurriculars: [...current.filter(item => item !== ekskulId), ekskulName]
       });
     }
   };
@@ -525,7 +542,7 @@ export const TeachersPage: React.FC = () => {
           {t.assignedExtracurriculars && t.assignedExtracurriculars.length > 0 ? (
             t.assignedExtracurriculars.map((e, idx) => (
               <span key={idx} className="px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 text-[10px] font-semibold">
-                {e}
+                {getEkskulDisplayName(e)}
               </span>
             ))
           ) : (
@@ -942,12 +959,14 @@ export const TeachersPage: React.FC = () => {
             </p>
             <div className="flex flex-wrap gap-1.5 pt-1 max-h-36 overflow-y-auto">
               {extracurriculars.map(ekskul => {
-                const isSelected = (formData.assignedExtracurriculars || []).includes(ekskul.name);
+                const isSelected = (formData.assignedExtracurriculars || []).some(
+                  item => item === ekskul.name || item === ekskul.id
+                );
                 return (
                   <button
                     key={ekskul.id}
                     type="button"
-                    onClick={() => handleToggleEkskul(ekskul.name)}
+                    onClick={() => handleToggleEkskul(ekskul.name, ekskul.id)}
                     className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 border ${
                       isSelected
                         ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
@@ -1338,7 +1357,7 @@ export const TeachersPage: React.FC = () => {
                             <div className="flex flex-wrap gap-1 max-w-[150px]">
                               {t.assignedExtracurriculars.map((ekskul, eIdx) => (
                                 <span key={eIdx} className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-[10px] text-slate-700 dark:text-slate-300">
-                                  {ekskul}
+                                  {getEkskulDisplayName(ekskul)}
                                 </span>
                               ))}
                             </div>
@@ -1445,7 +1464,7 @@ export const TeachersPage: React.FC = () => {
                 <div className="flex flex-wrap gap-1">
                   {selectedTeacher.assignedExtracurriculars?.map((e, idx) => (
                     <span key={idx} className="px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded font-semibold text-[11px]">
-                      {e}
+                      {getEkskulDisplayName(e)}
                     </span>
                   )) || <span className="text-slate-400">-</span>}
                 </div>

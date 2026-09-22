@@ -205,7 +205,7 @@ const MainContent: React.FC = () => {
       case 'extracurriculars':
         return <ExtracurricularPage onNavigateToMembers={() => setActiveTab('members')} />;
       case 'members':
-        return <ExtracurricularMembersPage />;
+        return <ExtracurricularMembersPage onNavigate={setActiveTab} />;
       case 'schedules':
         return <SchedulesPage onStartAttendance={handleOpenAttendanceForSchedule} />;
       case 'attendance':

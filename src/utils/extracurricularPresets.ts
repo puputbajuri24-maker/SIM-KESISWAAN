@@ -1,4 +1,4 @@
-import { ExtracurricularCategory, Teacher } from '../types';
+import { ExtracurricularCategory, Teacher, Extracurricular } from '../types';
 
 export interface ExtracurricularPreset {
   id: string;
@@ -385,17 +385,28 @@ export const EXTRACURRICULAR_PRESETS: ExtracurricularPreset[] = [
  */
 export const findMatchingTeacherForEkskul = (
   ekskulName: string,
-  teachers: Teacher[]
+  teachers: Teacher[],
+  extracurriculars?: Extracurricular[]
 ): Teacher | undefined => {
   if (!ekskulName || !teachers || teachers.length === 0) return undefined;
   const targetLower = ekskulName.toLowerCase();
 
-  // 1. Direct match in assignedExtracurriculars
+  // 1. Direct match in assignedExtracurriculars (with ID resolution)
   const directAssigned = teachers.find(t =>
     t.assignedExtracurriculars &&
-    t.assignedExtracurriculars.some(item =>
-      targetLower.includes(item.toLowerCase()) || item.toLowerCase().includes(targetLower)
-    )
+    t.assignedExtracurriculars.some(item => {
+      const itemLower = item.toLowerCase();
+      // If item is ID or name
+      if (targetLower.includes(itemLower) || itemLower.includes(targetLower)) return true;
+      if (extracurriculars) {
+        const found = extracurriculars.find(e => e.id === item);
+        if (found) {
+          const foundNameLower = found.name.toLowerCase();
+          if (targetLower.includes(foundNameLower) || foundNameLower.includes(targetLower)) return true;
+        }
+      }
+      return false;
+    })
   );
   if (directAssigned) return directAssigned;
 
