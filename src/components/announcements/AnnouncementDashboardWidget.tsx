@@ -32,7 +32,7 @@ export const AnnouncementDashboardWidget: React.FC<AnnouncementDashboardWidgetPr
 
   // Filter announcements for current user
   const relevantAnnouncements = (announcements || []).filter(ann => {
-    if (ann.isActive === false) return false;
+    if (!ann || ann.isActive === false) return false;
     const target = (ann.targetRole || '').toLowerCase();
     if (target.includes('semua')) return true;
     if (isPembina || isPembinaOsim || isPembinaEkskul) {
@@ -59,7 +59,9 @@ export const AnnouncementDashboardWidget: React.FC<AnnouncementDashboardWidgetPr
     const pA = priorityOrder[a.priority || 'normal'] || 2;
     const pB = priorityOrder[b.priority || 'normal'] || 2;
     if (pA !== pB) return pB - pA;
-    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+    const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+    return timeB - timeA;
   });
 
   const featured = sorted[0];

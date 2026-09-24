@@ -43,8 +43,12 @@ export const AnnouncementPopupModal: React.FC<AnnouncementPopupModalProps> = ({
     return null;
   }
 
-  const safeIndex = Math.min(currentIndex, announcements.length - 1);
+  const safeIndex = Math.max(0, Math.min(currentIndex, announcements.length - 1));
   const currentAnn = announcements[safeIndex];
+
+  if (!currentAnn) {
+    return null;
+  }
 
   const handleNext = () => {
     if (safeIndex < announcements.length - 1) {

@@ -45,8 +45,13 @@ import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { StatusBadge } from '../components/common/Badge';
 import { SchoolLetterhead } from '../components/common/SchoolLetterhead';
+import { OFFICIAL_DISCIPLINE_TIERS } from '../services/officialRulesData';
 
 const ALL_CHAPTERS: RuleCategoryChapter[] = [
+  'A. Kedisiplinan Kehadiran, Waktu & Kerapian Pribadi',
+  'B. Nilai Akhlakul Karimah, Ibadah & Ketertiban Belajar',
+  'C. Pelanggaran Berat, Hukum, Asusila & Perlindungan Madrasah',
+  'Bab V: Penghargaan / Reward Prestasi & Pemutihan Poin',
   'Bab I: Ketentuan Umum & Kehadiran',
   'Bab II: Pakaian, Seragam & Kerapian',
   'Bab III: Etika, Perilaku & Sopan Santun',
@@ -610,31 +615,36 @@ export const TataTertibPage: React.FC = () => {
           <!-- DAFTAR BAB & PASAL TATA TERTIB -->
           ${chaptersHtml}
 
-          <!-- MATRIKS AMBANG BATAS POIN SANKSI -->
+          <!-- MATRIKS 5 TAHAPAN AMBANG BATAS SANKSI -->
           <div class="threshold-box">
             <div style="font-weight: bold; font-size: 11px; text-transform: uppercase;">
-              ⚖️ Matriks Ambang Batas Akumulasi Poin Pelanggaran & Tindak Lanjut:
+              ⚖️ Matriks 5 Tahapan Penanganan & Sanksi Pelanggaran Siswa (SK B-380):
             </div>
-            <div class="threshold-grid">
+            <div class="threshold-grid" style="grid-template-columns: repeat(5, 1fr);">
               <div class="threshold-item">
-                <div style="font-weight: bold; color: #d97706;">Peringatan I (SP 1)</div>
-                <div style="font-size: 12px; font-weight: 900; margin-top: 2px;">${handbookMeta.thresholdSp1} Poin</div>
-                <div style="color: #64748b; font-size: 9.5px;">Teguran Tertulis & Pembinaan</div>
+                <div style="font-weight: bold; color: #b45309;">Tahap 1 (Lisan)</div>
+                <div style="font-size: 11px; font-weight: 900; margin-top: 2px;">10 - 20 Poin</div>
+                <div style="color: #64748b; font-size: 9px;">Wali Kelas</div>
               </div>
               <div class="threshold-item">
-                <div style="font-weight: bold; color: #ea580c;">Peringatan II (SP 2)</div>
-                <div style="font-size: 12px; font-weight: 900; margin-top: 2px;">${handbookMeta.thresholdSp2} Poin</div>
-                <div style="color: #64748b; font-size: 9.5px;">Panggilan Orang Tua & Perjanjian</div>
+                <div style="font-weight: bold; color: #c2410c;">Tahap 2 (SP 1)</div>
+                <div style="font-size: 11px; font-weight: 900; margin-top: 2px;">21 - 40 Poin</div>
+                <div style="color: #64748b; font-size: 9px;">Wali Kelas & Guru BK</div>
               </div>
               <div class="threshold-item">
-                <div style="font-weight: bold; color: #dc2626;">Peringatan III (SP 3)</div>
-                <div style="font-size: 12px; font-weight: 900; margin-top: 2px;">${handbookMeta.thresholdSp3} Poin</div>
-                <div style="color: #64748b; font-size: 9.5px;">Skorsing & Konferensi Kasus</div>
+                <div style="font-weight: bold; color: #be123c;">Tahap 3 (SP 2)</div>
+                <div style="font-size: 11px; font-weight: 900; margin-top: 2px;">41 - 75 Poin</div>
+                <div style="color: #64748b; font-size: 9px;">Waka & BK (Skorsing 3 Hari)</div>
               </div>
               <div class="threshold-item">
-                <div style="font-weight: bold; color: #7f1d1d;">Dikembalikan ke Ortu</div>
-                <div style="font-size: 12px; font-weight: 900; margin-top: 2px;">${handbookMeta.thresholdDrop} Poin</div>
-                <div style="color: #64748b; font-size: 9.5px;">Pemberhentian / Mutasi</div>
+                <div style="font-weight: bold; color: #b91c1c;">Tahap 4 (SP 3)</div>
+                <div style="font-size: 11px; font-weight: 900; margin-top: 2px;">76 - 99 Poin</div>
+                <div style="color: #64748b; font-size: 9px;">Kepala, Waka & BK</div>
+              </div>
+              <div class="threshold-item">
+                <div style="font-weight: bold; color: #581c87;">Tahap 5 (Keluar)</div>
+                <div style="font-size: 11px; font-weight: 900; margin-top: 2px;">≥ 100 Poin</div>
+                <div style="color: #64748b; font-size: 9px;">Kepala MAN 2 SBT</div>
               </div>
             </div>
           </div>
@@ -734,68 +744,39 @@ export const TataTertibPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Ambang Poin SP Escalation Banner */}
+        {/* 5 Tahapan Sanksi Disiplin Berjenjang (Buku Pedoman SK B-380) */}
         <div className="mt-5 pt-4 border-t border-slate-100 dark:border-slate-800/80">
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Ambang Surat Peringatan I (SP 1)
+          <div className="flex items-center justify-between mb-2.5">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+              <Scale className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              5 Tahapan Penanganan & Sanksi Pelanggaran Siswa
+            </span>
+            <span className="text-[10px] text-slate-500 font-medium">Berdasarkan SK B-380/Ma.26.02/PP.00.6/09/2026</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
+            {OFFICIAL_DISCIPLINE_TIERS.map(tier => (
+              <div
+                key={tier.tier}
+                className={`p-3 rounded-lg border transition-all ${tier.bgClass} ${tier.borderClass}`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className={`text-[10px] font-black px-1.5 py-0.5 rounded ${tier.badgeClass}`}>
+                    {tier.tier === 5 ? '≥ 100 Poin' : `${tier.minPoints} - ${tier.maxPoints} Poin`}
+                  </span>
+                  <span className="text-[9px] font-bold text-slate-500 uppercase">Tahap {tier.tier}</span>
+                </div>
+                <div className={`text-xs font-bold mt-2 ${tier.colorClass}`}>
+                  {tier.name.split(':')[1]?.trim() || tier.name}
+                </div>
+                <div className="text-[10px] font-semibold text-slate-700 dark:text-slate-300 mt-1 flex items-center gap-1">
+                  <UserCheck className="w-3 h-3 text-slate-400 shrink-0" />
+                  <span className="truncate">{tier.responsibleOfficer}</span>
+                </div>
+                <p className="text-[10px] text-slate-600 dark:text-slate-400 mt-1 line-clamp-2 leading-snug">
+                  {tier.actionRequired}
+                </p>
               </div>
-              <div className="flex items-baseline gap-1.5 mt-1">
-                <span className="text-lg font-black text-amber-600 dark:text-amber-400">
-                  {handbookMeta.thresholdSp1}
-                </span>
-                <span className="text-[11px] text-slate-500">Poin Akumulasi</span>
-              </div>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-1">
-                Peringatan tertulis & pembinaan wali kelas
-              </p>
-            </div>
-
-            <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Ambang Surat Peringatan II (SP 2)
-              </div>
-              <div className="flex items-baseline gap-1.5 mt-1">
-                <span className="text-lg font-black text-orange-600 dark:text-orange-400">
-                  {handbookMeta.thresholdSp2}
-                </span>
-                <span className="text-[11px] text-slate-500">Poin Akumulasi</span>
-              </div>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-1">
-                Pemanggilan orang tua & konseling intensif BK
-              </p>
-            </div>
-
-            <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Ambang SP 3 & Skorsing Edukatif
-              </div>
-              <div className="flex items-baseline gap-1.5 mt-1">
-                <span className="text-lg font-black text-rose-600 dark:text-rose-400">
-                  {handbookMeta.thresholdSp3}
-                </span>
-                <span className="text-[11px] text-slate-500">Poin Akumulasi</span>
-              </div>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-1">
-                Konferensi kasus kesiswaan & skorsing 3-7 hari
-              </p>
-            </div>
-
-            <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800">
-              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Maksimal Poin (Dikembalikan)
-              </div>
-              <div className="flex items-baseline gap-1.5 mt-1">
-                <span className="text-lg font-black text-rose-700 dark:text-rose-500">
-                  {handbookMeta.thresholdDrop}
-                </span>
-                <span className="text-[11px] text-slate-500">Poin Batas Akhir</span>
-              </div>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-1">
-                Dikembalikan pembinaannya kepada Orang Tua
-              </p>
-            </div>
+            ))}
           </div>
         </div>
       </div>
@@ -993,6 +974,11 @@ export const TataTertibPage: React.FC = () => {
                       <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
                         <div className="flex-1 space-y-2">
                           <div className="flex flex-wrap items-center gap-2">
+                            {rule.code && (
+                              <span className="text-xs font-mono font-black text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded border border-blue-200 dark:border-blue-900/60">
+                                {rule.code}
+                              </span>
+                            )}
                             <span className="text-xs font-mono font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-2.5 py-0.5 rounded border border-amber-200 dark:border-amber-900/60">
                               {rule.articleNumber}
                             </span>
@@ -1137,8 +1123,13 @@ export const TataTertibPage: React.FC = () => {
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800/70">
                 {filteredRules.map(rule => (
                   <tr key={rule.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-900/40 transition-colors">
-                    <td className="px-4 py-3 font-mono font-bold text-amber-700 dark:text-amber-400 whitespace-nowrap">
-                      {rule.articleNumber}
+                    <td className="px-4 py-3 font-mono font-bold whitespace-nowrap">
+                      {rule.code && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 font-bold border border-blue-200 dark:border-blue-900/60 mr-1.5">
+                          {rule.code}
+                        </span>
+                      )}
+                      <span className="text-amber-700 dark:text-amber-400">{rule.articleNumber}</span>
                     </td>
                     <td className="px-4 py-3">
                       <div className="font-bold text-slate-900 dark:text-white">{rule.title}</div>
@@ -1208,100 +1199,100 @@ export const TataTertibPage: React.FC = () => {
             <div className="relative border-l-2 border-amber-500/30 ml-4 space-y-8 pl-6">
               {/* Step 1 */}
               <div className="relative">
-                <div className="absolute -left-[33px] top-0 w-8 h-8 rounded-full bg-emerald-500/20 border-2 border-emerald-500 flex items-center justify-center text-emerald-600 dark:text-emerald-400 text-xs font-bold">
+                <div className="absolute -left-[33px] top-0 w-8 h-8 rounded-full bg-amber-500/20 border-2 border-amber-500 flex items-center justify-center text-amber-600 dark:text-amber-400 text-xs font-bold">
                   1
                 </div>
                 <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
                   <div className="flex items-center justify-between mb-1">
                     <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                      Tahap I: Teguran Lisan & Pembinaan Awal (1 - 24 Poin)
+                      Tahap I: Peringatan Lisan 1 & 2 (10 - 20 Poin)
                     </h3>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
-                      Guru Piket / Wali Kelas
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-300 border border-amber-500/20">
+                      Wali Kelas
                     </span>
                   </div>
                   <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                    Setiap pelanggaran ringan langsung dicatat ke dalam SIM Kesiswaan. Guru piket atau wali kelas memberikan nasihat, teguran edukatif, dan mencatat komitmen perbaikan pada buku saku kedisiplinan.
+                    Penanganan dan pembinaan langsung oleh Wali Kelas. Wali kelas memberikan teguran dan peringatan lisan 1 & 2, pembinaan perilaku terarah, serta mencatat komitmen perbaikan siswa pada buku pemantauan kedisiplinan.
                   </p>
                 </div>
               </div>
 
               {/* Step 2 */}
               <div className="relative">
-                <div className="absolute -left-[33px] top-0 w-8 h-8 rounded-full bg-amber-500/20 border-2 border-amber-500 flex items-center justify-center text-amber-600 dark:text-amber-400 text-xs font-bold">
+                <div className="absolute -left-[33px] top-0 w-8 h-8 rounded-full bg-orange-500/20 border-2 border-orange-500 flex items-center justify-center text-orange-600 dark:text-orange-400 text-xs font-bold">
                   2
                 </div>
                 <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
                   <div className="flex items-center justify-between mb-1">
                     <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                      Tahap II: Surat Peringatan I (SP 1) & Konseling BK (25 - 49 Poin)
+                      Tahap II: Surat Peringatan I (SP 1) & Panggilan Orang Tua 1 (21 - 40 Poin)
                     </h3>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/10 text-amber-600 border border-amber-500/20">
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-orange-500/10 text-orange-700 dark:text-orange-300 border border-orange-500/20">
                       Wali Kelas & Guru BK
                     </span>
                   </div>
                   <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                    Wali kelas menerbitkan Surat Peringatan I (SP1) yang ditandatangani oleh siswa dan diketahui orang tua. Siswa dirujuk ke Layanan Bimbingan Konseling (BK) untuk sesi konseling terstruktur dan penandatanganan surat pernyataan pertama.
+                    Penerbitan Surat Peringatan I (SP 1) dan Surat Panggilan Orang Tua ke-1. Penanganan dilakukan secara kolaboratif oleh Wali Kelas dan Guru BK untuk bimbingan konseling dan penandatanganan surat pernyataan bersama orang tua.
                   </p>
                 </div>
               </div>
 
               {/* Step 3 */}
               <div className="relative">
-                <div className="absolute -left-[33px] top-0 w-8 h-8 rounded-full bg-orange-500/20 border-2 border-orange-500 flex items-center justify-center text-orange-600 dark:text-orange-400 text-xs font-bold">
+                <div className="absolute -left-[33px] top-0 w-8 h-8 rounded-full bg-rose-500/20 border-2 border-rose-500 flex items-center justify-center text-rose-600 dark:text-rose-400 text-xs font-bold">
                   3
                 </div>
                 <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
                   <div className="flex items-center justify-between mb-1">
                     <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                      Tahap III: Surat Peringatan II (SP 2) & Pemanggilan Orang Tua (50 - 74 Poin)
+                      Tahap III: Surat Peringatan II (SP 2) & Skorsing 3 Hari (41 - 75 Poin)
                     </h3>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-orange-500/10 text-orange-600 border border-orange-500/20">
-                      Guru BK & Waka Kesiswaan
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/20">
+                      Waka Kesiswaan & Guru BK
                     </span>
                   </div>
                   <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                    Penerbitan Surat Panggilan Resmi Orang Tua / Wali ke sekolah untuk duduk bersama Guru BK, Wali Kelas, dan Waka Kesiswaan. Penandatanganan fakta integritas bermaterai serta penugasan sanksi sosial edukatif di lingkungan sekolah.
+                    Penerbitan Surat Peringatan II (SP 2) dan Panggilan Orang Tua ke-2 oleh Waka Kesiswaan bersama Guru BK. Siswa dikenakan sanksi skorsing belajar di rumah selama 3 hari kerja dan wajib membuat surat perjanjian bermaterai.
                   </p>
                 </div>
               </div>
 
               {/* Step 4 */}
               <div className="relative">
-                <div className="absolute -left-[33px] top-0 w-8 h-8 rounded-full bg-rose-500/20 border-2 border-rose-500 flex items-center justify-center text-rose-600 dark:text-rose-400 text-xs font-bold">
+                <div className="absolute -left-[33px] top-0 w-8 h-8 rounded-full bg-red-600/20 border-2 border-red-600 flex items-center justify-center text-red-600 dark:text-red-400 text-xs font-bold">
                   4
                 </div>
                 <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
                   <div className="flex items-center justify-between mb-1">
                     <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                      Tahap IV: Surat Peringatan Terakhir (SP 3) & Skorsing Edukatif (75 - 99 Poin)
+                      Tahap IV: Surat Peringatan Terakhir (SP 3) & Panggilan Ortu 3 (76 - 99 Poin)
                     </h3>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-500/10 text-rose-600 border border-rose-500/20">
-                      Kepala Madrasah & Tim Kesiswaan
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-red-500/10 text-red-700 dark:text-red-300 border border-red-500/20">
+                      Kepala Madrasah, Waka Kesiswaan & Guru BK
                     </span>
                   </div>
                   <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                    Pelaksanaan Konferensi Kasus Tingkat Sekolah yang dipimpin oleh Kepala Madrasah/Sekolah. Siswa dikenakan sanksi skorsing belajar mandiri di rumah selama 3 s.d 7 hari kerja di bawah pengawasan ketat orang tua.
+                    Pelaksanaan sidang konferensi kasus tingkat madrasah yang dipimpin langsung oleh Kepala Madrasah bersama Waka Kesiswaan dan Guru BK. Diterbitkan SP 3 sebagai peringatan terakhir sebelum sanksi pengembalian peserta didik.
                   </p>
                 </div>
               </div>
 
               {/* Step 5 */}
               <div className="relative">
-                <div className="absolute -left-[33px] top-0 w-8 h-8 rounded-full bg-rose-700/20 border-2 border-rose-700 flex items-center justify-center text-rose-700 dark:text-rose-500 text-xs font-bold">
+                <div className="absolute -left-[33px] top-0 w-8 h-8 rounded-full bg-purple-700/20 border-2 border-purple-700 flex items-center justify-center text-purple-700 dark:text-purple-400 text-xs font-bold">
                   5
                 </div>
                 <div className="bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
                   <div className="flex items-center justify-between mb-1">
                     <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                      Tahap V: Pengembalian Pembinaan Siswa ke Orang Tua (≥100 Poin)
+                      Tahap V: Pengembalian Pembinaan Kepada Orang Tua (≥ 100 Poin)
                     </h3>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-rose-700/10 text-rose-700 border border-rose-700/20">
-                      Rapat Pleno Dewan Guru & Kepala Madrasah
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-700/10 text-purple-700 dark:text-purple-300 border border-purple-700/20">
+                      Kepala MAN 2 Seram Bagian Timur
                     </span>
                   </div>
                   <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                    Berdasarkan hasil Rapat Pleno Dewan Guru dan bukti rekapitulasi poin pelanggaran pada SIM Kesiswaan, Kepala Madrasah/Sekolah menerbitkan SK Pengembalian Pembinaan Siswa kepada Orang Tua / Wali atau fasilitasi mutasi ke sekolah lain.
+                    Peserta didik yang telah mencapai akumulasi 100 poin dikembalikan hak pembinaannya kepada orang tua / wali atau dimutasikan dari MAN 2 Seram Bagian Timur melalui Surat Keputusan resmi Kepala Madrasah setelah musyawarah dewan guru.
                   </p>
                 </div>
               </div>
@@ -2086,32 +2077,39 @@ export const TataTertibPage: React.FC = () => {
               })}
             </div>
 
-            {/* Matriks Ambang Batas Poin Sanksi */}
+            {/* Matriks 5 Tahapan Penanganan & Sanksi Pelanggaran Siswa */}
             <div className="p-4 rounded-xl border border-slate-300 bg-slate-50 print-avoid-break space-y-2">
-              <div className="font-bold text-xs uppercase text-slate-900 flex items-center gap-1.5">
-                <Scale className="w-4 h-4 text-amber-600" />
-                <span>Matriks Ambang Batas Akumulasi Poin Pelanggaran & Tindak Lanjut</span>
+              <div className="font-bold text-xs uppercase text-slate-900 flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Scale className="w-4 h-4 text-amber-600" />
+                  <span>Matriks 5 Tahapan Penanganan & Sanksi Pelanggaran Siswa (SK B-380)</span>
+                </div>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
-                <div className="p-2.5 rounded bg-white border border-slate-200 text-center">
-                  <div className="font-bold text-amber-700 text-[11px]">Peringatan I (SP 1)</div>
-                  <div className="text-sm font-black text-slate-900 mt-0.5">{handbookMeta.thresholdSp1} Poin</div>
-                  <div className="text-[10px] text-slate-500 mt-0.5">Teguran & Pembinaan</div>
+              <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 pt-1">
+                <div className="p-2 rounded bg-white border border-slate-200 text-center">
+                  <div className="font-bold text-amber-700 text-[10px]">Tahap 1 (Lisan)</div>
+                  <div className="text-xs font-black text-slate-900 mt-0.5">10 - 20 Poin</div>
+                  <div className="text-[9px] text-slate-500 mt-0.5">Wali Kelas</div>
                 </div>
-                <div className="p-2.5 rounded bg-white border border-slate-200 text-center">
-                  <div className="font-bold text-orange-700 text-[11px]">Peringatan II (SP 2)</div>
-                  <div className="text-sm font-black text-slate-900 mt-0.5">{handbookMeta.thresholdSp2} Poin</div>
-                  <div className="text-[10px] text-slate-500 mt-0.5">Panggilan Orang Tua</div>
+                <div className="p-2 rounded bg-white border border-slate-200 text-center">
+                  <div className="font-bold text-orange-700 text-[10px]">Tahap 2 (SP 1)</div>
+                  <div className="text-xs font-black text-slate-900 mt-0.5">21 - 40 Poin</div>
+                  <div className="text-[9px] text-slate-500 mt-0.5">Wali Kelas & BK</div>
                 </div>
-                <div className="p-2.5 rounded bg-white border border-slate-200 text-center">
-                  <div className="font-bold text-rose-700 text-[11px]">Peringatan III (SP 3)</div>
-                  <div className="text-sm font-black text-slate-900 mt-0.5">{handbookMeta.thresholdSp3} Poin</div>
-                  <div className="text-[10px] text-slate-500 mt-0.5">Skorsing & Konferensi Kasus</div>
+                <div className="p-2 rounded bg-white border border-slate-200 text-center">
+                  <div className="font-bold text-rose-700 text-[10px]">Tahap 3 (SP 2)</div>
+                  <div className="text-xs font-black text-slate-900 mt-0.5">41 - 75 Poin</div>
+                  <div className="text-[9px] text-slate-500 mt-0.5">Waka & BK (Skorsing)</div>
                 </div>
-                <div className="p-2.5 rounded bg-white border border-slate-200 text-center">
-                  <div className="font-bold text-red-900 text-[11px]">Dikembalikan ke Ortu</div>
-                  <div className="text-sm font-black text-slate-900 mt-0.5">{handbookMeta.thresholdDrop} Poin</div>
-                  <div className="text-[10px] text-slate-500 mt-0.5">Pemberhentian / Mutasi</div>
+                <div className="p-2 rounded bg-white border border-slate-200 text-center">
+                  <div className="font-bold text-red-700 text-[10px]">Tahap 4 (SP 3)</div>
+                  <div className="text-xs font-black text-slate-900 mt-0.5">76 - 99 Poin</div>
+                  <div className="text-[9px] text-slate-500 mt-0.5">Kepala, Waka & BK</div>
+                </div>
+                <div className="p-2 rounded bg-white border border-slate-200 text-center">
+                  <div className="font-bold text-purple-900 text-[10px]">Tahap 5 (Keluar)</div>
+                  <div className="text-xs font-black text-slate-900 mt-0.5">≥ 100 Poin</div>
+                  <div className="text-[9px] text-slate-500 mt-0.5">Kepala MAN 2 SBT</div>
                 </div>
               </div>
             </div>

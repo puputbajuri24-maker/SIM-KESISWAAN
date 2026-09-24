@@ -1,9 +1,24 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { UserProfile, UserRole, Teacher, Extracurricular, AuditLogItem, OsimDepartment, OsimMember, OsimRoleType } from '../types';
+import { UserProfile, UserRole, CanonicalUserRole, OsimPosition, Teacher, Extracurricular, AuditLogItem, OsimDepartment, OsimMember, OsimRoleType } from '../types';
 import { DEMO_USERS, DEFAULT_SUPER_ADMIN, PURGED_DEMO_UIDS, PURGED_DEMO_EMAILS, isBlacklistedDemoName, getDefaultOsimPassword } from '../services/seedData';
 import { auth, db } from '../services/firebase';
 import { doc, getDoc, getDocs, collection, setDoc, deleteDoc } from 'firebase/firestore';
 import { onAuthStateChanged, signOut as fbSignOut, signInWithEmailAndPassword } from 'firebase/auth';
+import {
+  normalizeUserRole,
+  normalizeOsimPosition,
+  normalizeUserProfile,
+  hasRole,
+  hasPosition,
+  hasScope,
+  hasPermission,
+  canManageCash,
+  canReviewOsimProgram,
+  canApproveOsimProgram,
+  canManageExtracurricular,
+  canAccessMenu,
+  Permission
+} from '../permissions';
 import {
   addDeletedUid,
   isDeletedUid,
@@ -83,6 +98,18 @@ interface AuthContextType {
   currentUser: UserProfile | null;
   allUsers: UserProfile[];
   userRole: UserRole;
+  canonicalRole: CanonicalUserRole;
+  osimPosition?: OsimPosition;
+  // Capability and Permission helpers
+  hasRole: (...roles: CanonicalUserRole[]) => boolean;
+  hasPosition: (...positions: OsimPosition[]) => boolean;
+  hasScope: (scopeType: 'extracurricular' | 'osim_department', targetId: string) => boolean;
+  hasPermission: (permission: Permission) => boolean;
+  canManageCash: () => boolean;
+  canReviewOsimProgram: () => boolean;
+  canApproveOsimProgram: () => boolean;
+  canManageExtracurricular: (ekskulId?: string) => boolean;
+  // Legacy boolean compatibility flags
   isSuperAdmin: boolean;
   isWaka: boolean;
   isWakaOrAdmin: boolean;
@@ -396,30 +423,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loginWithIdentifier = async (identifier: string, pass: string): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
     const cleanId = identifier.trim().toLowerCase();
+    const normalizedId = cleanId.startsWith('@') ? cleanId.substring(1) : cleanId;
     const cleanPass = pass.trim();
 
     // Check across local and seeded allUsers (by email, NIP, username, or role alias)
     let foundUser = allUsers.find(u => {
-      const emailMatch = u.email && u.email.toLowerCase() === cleanId;
-      const emailPrefixMatch = u.email && u.email.toLowerCase().split('@')[0] === cleanId;
-      const nipMatch = u.nip && u.nip.replace(/[^0-9a-zA-Z]/g, '').toLowerCase() === cleanId.replace(/[^0-9a-zA-Z]/g, '');
-      const usernameMatch = u.username && u.username.toLowerCase() === cleanId;
-      // OSIM department functional account matching (e.g. osim.ketua, osim.wakil, osim.sekretaris, osim.bendahara, osim.sekbid1, or shorthand)
-      const osimMatch = u.role === 'pengurus_osim' && (
-        (u.username && u.username.toLowerCase() === cleanId) ||
-        (u.username && u.username.toLowerCase() === `osim.${cleanId.replace(/[^a-z0-9]/g, '')}`) ||
-        (cleanId === 'ketua' && (u.osimRole === 'ketua' || u.username === 'osim.ketua')) ||
-        (cleanId === 'wakil' && (u.osimRole === 'wakil' || u.username === 'osim.wakil')) ||
-        (cleanId === 'sekretaris' && (u.osimRole === 'sekretaris' || u.username === 'osim.sekretaris')) ||
-        (cleanId === 'bendahara' && (u.osimRole === 'bendahara' || u.username === 'osim.bendahara')) ||
-        (cleanId === 'bph' && (u.osimDepartmentCode === 'BPH' || u.osimDepartmentId === 'dept_bph')) ||
-        (cleanId.replace(/[^a-z0-9]/g, '') === (u.osimDepartmentCode || '').toLowerCase().replace(/[^a-z0-9]/g, ''))
+      const emailMatch = u.email && (u.email.toLowerCase() === cleanId || u.email.toLowerCase() === normalizedId);
+      const emailPrefixMatch = u.email && (
+        u.email.toLowerCase().split('@')[0] === cleanId || 
+        u.email.toLowerCase().split('@')[0] === normalizedId
       );
-      const roleMatch = (cleanId === 'admin' && (u.role === 'super_admin' || u.role === 'waka_kesiswaan')) ||
-                        (cleanId === 'waka' && u.role === 'waka_kesiswaan') ||
-                        (cleanId === 'bk' && u.role === 'guru_bk') ||
-                        (cleanId === 'osim' && u.role === 'pembina_osim') ||
-                        (cleanId === 'pembina' && (u.role === 'pembina_ekskul' || u.role === 'pembina'));
+      const cleanDigitsNip = cleanId.replace(/[^0-9a-zA-Z]/g, '');
+      const nipMatch = u.nip && u.nip.replace(/[^0-9a-zA-Z]/g, '').toLowerCase() === cleanDigitsNip;
+      const usernameMatch = u.username && (
+        u.username.toLowerCase() === cleanId || 
+        u.username.toLowerCase() === normalizedId
+      );
+      
+      // OSIM department functional account matching (e.g. osim.ketua, osim.wakil, osim.sekretaris, osim.bendahara, osim.sekbid1, or shorthand)
+      const isOsimUser = u.role === 'pengurus_osim' || u.role === 'anggota_osim';
+      const osimMatch = isOsimUser && (
+        (u.username && (u.username.toLowerCase() === cleanId || u.username.toLowerCase() === normalizedId)) ||
+        (u.username && u.username.toLowerCase() === `osim.${normalizedId.replace(/[^a-z0-9]/g, '')}`) ||
+        (normalizedId === 'ketua' && (u.position === 'ketua_osim' || u.osimRole === 'ketua' || u.username === 'osim.ketua')) ||
+        (normalizedId === 'wakil' && (u.position === 'wakil_ketua_osim' || u.osimRole === 'wakil' || u.username === 'osim.wakil')) ||
+        (normalizedId === 'sekretaris' && (u.position === 'sekretaris' || u.osimRole === 'sekretaris' || u.username === 'osim.sekretaris')) ||
+        (normalizedId === 'bendahara' && (u.position === 'bendahara' || u.osimRole === 'bendahara' || u.username === 'osim.bendahara')) ||
+        (normalizedId === 'bph' && (u.osimDepartmentCode === 'BPH' || u.osimDepartmentId === 'dept_bph')) ||
+        (normalizedId.replace(/[^a-z0-9]/g, '') === (u.osimDepartmentCode || '').toLowerCase().replace(/[^a-z0-9]/g, ''))
+      );
+      const roleMatch = (normalizedId === 'admin' && (u.role === 'super_admin' || u.role === 'waka_kesiswaan')) ||
+                        (normalizedId === 'waka' && (u.role === 'waka_kesiswaan' || u.role === 'waka')) ||
+                        (normalizedId === 'bk' && u.role === 'guru_bk') ||
+                        (normalizedId === 'osim' && u.role === 'pembina_osim') ||
+                        (normalizedId === 'pembina' && (u.role === 'pembina_ekstrakurikuler' || u.role === 'pembina_ekskul' || u.role === 'pembina'));
       return emailMatch || emailPrefixMatch || nipMatch || usernameMatch || osimMatch || roleMatch;
     });
 
@@ -430,8 +467,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (rawStudents) {
           const studentList = JSON.parse(rawStudents);
           const foundStudent = studentList.find((s: any) => 
-            (s.nis && s.nis.replace(/[^0-9a-zA-Z]/g, '').toLowerCase() === cleanId.replace(/[^0-9a-zA-Z]/g, '')) ||
-            (s.nisn && s.nisn.replace(/[^0-9a-zA-Z]/g, '').toLowerCase() === cleanId.replace(/[^0-9a-zA-Z]/g, '')) ||
+            (s.nis && (s.nis.replace(/[^0-9a-zA-Z]/g, '').toLowerCase() === cleanId || s.nis.replace(/[^0-9a-zA-Z]/g, '').toLowerCase() === normalizedId)) ||
+            (s.nisn && (s.nisn.replace(/[^0-9a-zA-Z]/g, '').toLowerCase() === cleanId || s.nisn.replace(/[^0-9a-zA-Z]/g, '').toLowerCase() === normalizedId)) ||
             (s.fullName && s.fullName.toLowerCase() === cleanId)
           );
           if (foundStudent) {
@@ -450,13 +487,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     if (foundUser) {
-      // Synchronize latest credential from Firestore in real-time if Admin or Pembina updated it
+      // Synchronize latest credential from Firestore with timestamp conflict resolution & self-healing
       try {
-        const userDocRef = doc(db, 'users', foundUser.uid);
-        const userDocSnap = await getDoc(userDocRef);
+        let userDocRef = doc(db, 'users', foundUser.uid);
+        let userDocSnap = await getDoc(userDocRef);
+        
+        // If not found by primary uid, check potential alias uids (e.g. user_ prefix or stripped)
+        if (!userDocSnap.exists()) {
+          const altUid = foundUser.uid.startsWith('user_') ? foundUser.uid.replace(/^user_/, '') : `user_${foundUser.uid}`;
+          const altDocRef = doc(db, 'users', altUid);
+          const altSnap = await getDoc(altDocRef);
+          if (altSnap.exists()) {
+            userDocRef = altDocRef;
+            userDocSnap = altSnap;
+          }
+        }
+
         if (userDocSnap.exists()) {
           const freshData = userDocSnap.data() as UserProfile;
-          if (freshData.password && freshData.password.trim()) {
+          const localUpdated = foundUser.updatedAt ? new Date(foundUser.updatedAt).getTime() : 0;
+          const remoteUpdated = freshData.updatedAt ? new Date(freshData.updatedAt).getTime() : 0;
+
+          // Conflict resolution logic:
+          // Case 1: Remote in Firestore is newer than local memory -> accept Firestore data
+          if (remoteUpdated > localUpdated && freshData.password && freshData.password.trim()) {
             foundUser = { ...foundUser, ...freshData };
             setAllUsers(prev => {
               const updatedList = prev.map(u => u.uid === foundUser!.uid ? { ...u, ...freshData } : u);
@@ -466,8 +520,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               return updatedList;
             });
           }
+          // Case 2: Local is newer than Firestore (Admin changed password locally or Firestore write lagged)
+          else if (localUpdated > remoteUpdated && foundUser.password && foundUser.password.trim()) {
+            // Self-healing push: Update Firestore so cloud storage gets the latest admin-set password
+            setDoc(userDocRef, { password: foundUser.password, updatedAt: foundUser.updatedAt }, { merge: true }).catch(() => {});
+          }
+          // Case 3: Local has a custom password set while Firestore still has stale default 'password'
+          else if (
+            foundUser.password && 
+            foundUser.password !== 'password' && 
+            (!freshData.password || freshData.password === 'password')
+          ) {
+            // Self-healing push: Update Firestore with local's customized password
+            const newTimestamp = foundUser.updatedAt || new Date().toISOString();
+            setDoc(userDocRef, { password: foundUser.password, updatedAt: newTimestamp }, { merge: true }).catch(() => {});
+          }
+          // Case 4: Remote has a customized password and local is default -> adopt remote
+          else if (freshData.password && freshData.password.trim() && freshData.password !== 'password' && (!foundUser.password || foundUser.password === 'password')) {
+            foundUser = { ...foundUser, ...freshData };
+            setAllUsers(prev => {
+              const updatedList = prev.map(u => u.uid === foundUser!.uid ? { ...u, ...freshData } : u);
+              try {
+                localStorage.setItem(LOCAL_STORAGE_ALL_USERS_KEY, JSON.stringify(updatedList));
+              } catch {}
+              return updatedList;
+            });
+          }
+        } else {
+          // Document does not exist in Firestore yet -> self-heal by writing to Firestore
+          setDoc(userDocRef, { ...foundUser, updatedAt: foundUser.updatedAt || new Date().toISOString() }, { merge: true }).catch(() => {});
         }
-      } catch (e) {}
+      } catch (e) {
+        console.warn('Firestore credential sync note:', e);
+      }
 
       if (foundUser.status === 'Nonaktif') {
         setIsLoading(false);
@@ -475,9 +560,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: false, error: 'Akun Anda dinonaktifkan oleh Administrator. Hubungi Proktor / Super Admin.' };
       }
 
-      // Check password: user.password or default fallback 'password'
+      // Check password: user.password or default fallback 'password' or OSIM default
       const userPassword = (foundUser.password && foundUser.password.trim()) || 'password';
-      if (cleanPass === userPassword) {
+      const isOsimAccount = foundUser.role === 'pengurus_osim' || foundUser.role === 'anggota_osim';
+      const osimFallbackPassword = isOsimAccount
+        ? getDefaultOsimPassword(foundUser.osimDepartmentCode || foundUser.position || foundUser.osimRole || foundUser.username)
+        : null;
+
+      const isPasswordCorrect = cleanPass === userPassword || (osimFallbackPassword && cleanPass === osimFallbackPassword);
+
+      if (isPasswordCorrect) {
         // Direct login clears any temporary simulation session
         setAdminImpersonator(null);
         try {
@@ -602,12 +694,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       let targetUserDisplayName = uid;
       let mergedUser: UserProfile | undefined;
+      const nowIso = new Date().toISOString();
+      const updatedWithTimestamp = { ...updated, updatedAt: nowIso };
 
       setAllUsers(prev => {
         const next = prev.map(u => {
           if (u.uid === uid) {
             targetUserDisplayName = u.displayName;
-            const merged = { ...u, ...updated, updatedAt: new Date().toISOString() };
+            const merged = { ...u, ...updatedWithTimestamp };
             mergedUser = merged;
             return merged;
           }
@@ -629,8 +723,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
+      // Write to Firestore with guaranteed updatedAt
       try {
-        await setDoc(doc(db, 'users', uid), updated, { merge: true });
+        const firestorePayload = { ...updatedWithTimestamp };
+        await setDoc(doc(db, 'users', uid), firestorePayload, { merge: true });
+
+        // Also update alias document IDs if any
+        if (uid.startsWith('user_')) {
+          setDoc(doc(db, 'users', uid.replace(/^user_/, '')), firestorePayload, { merge: true }).catch(() => {});
+        } else {
+          setDoc(doc(db, 'users', `user_${uid}`), firestorePayload, { merge: true }).catch(() => {});
+        }
+
+        if (mergedUser?.role === 'pengurus_osim') {
+          if (mergedUser.osimRole === 'ketua') {
+            setDoc(doc(db, 'users', 'user_osim_dept_bph'), firestorePayload, { merge: true }).catch(() => {});
+            setDoc(doc(db, 'users', 'user_osim_ketua'), firestorePayload, { merge: true }).catch(() => {});
+          } else if (mergedUser.osimRole) {
+            setDoc(doc(db, 'users', `user_osim_${mergedUser.osimRole}`), firestorePayload, { merge: true }).catch(() => {});
+          }
+          if (mergedUser.osimDepartmentId) {
+            setDoc(doc(db, 'users', `user_osim_${mergedUser.osimDepartmentId}`), firestorePayload, { merge: true }).catch(() => {});
+          }
+        }
       } catch (e) {
         console.warn('Firestore updateUser sync note:', e);
       }
@@ -713,11 +828,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const targetUser = allUsers.find(u => u.uid === uid);
       let updatedUserObj: UserProfile | undefined;
+      const nowIso = new Date().toISOString();
 
       setAllUsers(prev => {
         const next = prev.map(u => {
           if (u.uid === uid) {
-            const merged = { ...u, password: newPassword, updatedAt: new Date().toISOString() };
+            const merged = { ...u, password: newPassword, updatedAt: nowIso };
             updatedUserObj = merged;
             return merged;
           }
@@ -734,13 +850,62 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } catch {}
       }
 
+      // Guaranteed Firestore persistence across primary document & aliases
       try {
-        await setDoc(doc(db, 'users', uid), { password: newPassword, updatedAt: new Date().toISOString() }, { merge: true });
-      } catch (e) {
+        const payload = { password: newPassword, updatedAt: nowIso };
+        await setDoc(doc(db, 'users', uid), payload, { merge: true });
+
+        // Update alias IDs
+        if (uid.startsWith('user_')) {
+          setDoc(doc(db, 'users', uid.replace(/^user_/, '')), payload, { merge: true }).catch(() => {});
+        } else {
+          setDoc(doc(db, 'users', `user_${uid}`), payload, { merge: true }).catch(() => {});
+        }
+
+        // If OSIM account, also sync to role/department aliases and osim_members
+        if (targetUser?.role === 'pengurus_osim') {
+          if (targetUser.osimRole === 'ketua') {
+            setDoc(doc(db, 'users', 'user_osim_dept_bph'), payload, { merge: true }).catch(() => {});
+            setDoc(doc(db, 'users', 'user_osim_ketua'), payload, { merge: true }).catch(() => {});
+          } else if (targetUser.osimRole) {
+            setDoc(doc(db, 'users', `user_osim_${targetUser.osimRole}`), payload, { merge: true }).catch(() => {});
+          }
+          if (targetUser.osimDepartmentId) {
+            setDoc(doc(db, 'users', `user_osim_${targetUser.osimDepartmentId}`), payload, { merge: true }).catch(() => {});
+          }
+
+          // Also update osim_members in localStorage and Firestore if matching member exists
+          try {
+            const rawOsim = localStorage.getItem('sim_osim_members');
+            if (rawOsim) {
+              const members = JSON.parse(rawOsim);
+              let foundMemberId: string | null = null;
+              const updatedMembers = members.map((m: any) => {
+                const isMatch = m.id === uid ||
+                  (m.loginUsername && targetUser.username && m.loginUsername.toLowerCase() === targetUser.username.toLowerCase()) ||
+                  (m.studentNis && targetUser.nip && m.studentNis === targetUser.nip);
+                if (isMatch) {
+                  foundMemberId = m.id;
+                  return { ...m, loginPassword: newPassword, password: newPassword, updatedAt: nowIso };
+                }
+                return m;
+              });
+              if (foundMemberId) {
+                localStorage.setItem('sim_osim_members', JSON.stringify(updatedMembers));
+                setDoc(doc(db, 'osim_members', foundMemberId), {
+                  loginPassword: newPassword,
+                  password: newPassword,
+                  updatedAt: nowIso
+                }, { merge: true }).catch(() => {});
+              }
+            }
+          } catch {}
+        }
+      } catch (e: any) {
         console.warn('Firestore resetUserPassword sync note:', e);
       }
 
-      recordSystemAuditLog('RESET_PASSWORD', 'Keamanan Akun', `Administrator mereset kata sandi akun: ${targetUser?.displayName || uid} menjadi default (${newPassword})`, currentUser);
+      recordSystemAuditLog('RESET_PASSWORD', 'Keamanan Akun', `Administrator mereset kata sandi akun: ${targetUser?.displayName || uid} (${targetUser?.email || '-'})`, currentUser);
 
       return { success: true };
     } catch (e: any) {
@@ -826,7 +991,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const rawRole = (t.role || '').toLowerCase();
         const rawSubject = (t.subject || '').toLowerCase();
         const rawName = (t.fullName || '').toLowerCase();
-        let role: UserRole = 'pembina_ekskul';
+        let role: CanonicalUserRole = 'pembina_ekstrakurikuler';
 
         if (rawRole.includes('bk') || rawRole.includes('bimbingan') || rawRole.includes('konselor') || rawSubject.includes('bk') || rawSubject.includes('bimbingan')) {
           role = 'guru_bk';
@@ -837,9 +1002,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } else if (rawRole.includes('osim') || rawRole.includes('osis')) {
           role = 'pembina_osim';
         } else if (t.isPembina || (t.assignedExtracurriculars && t.assignedExtracurriculars.length > 0)) {
-          role = 'pembina_ekskul';
+          role = 'pembina_ekstrakurikuler';
         } else {
-          role = 'pembina_ekskul';
+          role = 'pembina_ekstrakurikuler';
         }
 
         // 2. Resolve clean institutional email and username
@@ -980,6 +1145,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const defaultPassword = m.loginPassword || m.password || getDefaultOsimPassword(osimRoleVal);
           const email = m.email || `${username}@madrasah.sch.id`;
 
+          // Map to Canonical OsimPosition
+          const canonicalOsimPos: OsimPosition =
+            osimRoleVal === 'ketua' ? 'ketua_osim' :
+            osimRoleVal === 'wakil' ? 'wakil_ketua_osim' :
+            osimRoleVal === 'sekretaris' ? 'sekretaris' :
+            osimRoleVal === 'bendahara' ? 'bendahara' :
+            pos.includes('ketua') || pos.includes('koordinator') ? 'ketua_sekbid' : 'anggota_sekbid';
+
           // Match existing user by ID, username, NIS, or member match
           const existingIdx = updatedUsers.findIndex(u =>
             u.uid === m.id ||
@@ -1002,7 +1175,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               username: existing.username || username,
               email: existing.email || email,
               password: currentPassword,
-              role: 'pengurus_osim',
+              role: 'anggota_osim',
+              position: canonicalOsimPos,
               osimRole: osimRoleVal,
               osimPosition: m.position,
               osimDepartmentId: deptId,
@@ -1025,7 +1199,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               password: defaultPassword,
               nip: m.studentNis,
               phone: m.phone && m.phone !== '-' ? m.phone : undefined,
-              role: 'pengurus_osim',
+              role: 'anggota_osim',
+              position: canonicalOsimPos,
               osimRole: osimRoleVal,
               osimPosition: m.position,
               osimDepartmentId: deptId,
@@ -1062,45 +1237,68 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return count;
   };
 
-  const role = currentUser?.role || 'waka_kesiswaan';
-  const isSuperAdmin = role === 'super_admin';
-  const isWaka = role === 'waka_kesiswaan' || role === 'waka';
-  const isWakaOrAdmin = isSuperAdmin || isWaka;
-  const isGuruBK = role === 'guru_bk';
-  const isPembinaOsim = role === 'pembina_osim';
-  const isPembinaEkskul = role === 'pembina_ekskul' || role === 'pembina_ekstra' || role === 'pembina';
-  const isPengurusOsim = role === 'pengurus_osim' || role === 'anggota_osim';
+  // Canonical Role and Position Evaluation
+  const canonicalRole: CanonicalUserRole = currentUser ? normalizeUserRole(currentUser.role) : 'anggota_osim';
+  const osimPosition: OsimPosition | undefined = currentUser ? normalizeOsimPosition(currentUser) : undefined;
 
-  // Dukungan Rangkap Jabatan: Guru BK yang juga membina ekstrakurikuler
-  const isAlsoPembinaEkskul = isPembinaEkskul || Boolean(
-    (currentUser?.extracurricularIds && currentUser.extracurricularIds.length > 0) ||
-    ((currentUser as any)?.assignedExtracurriculars && (currentUser as any).assignedExtracurriculars.length > 0)
+  // Centralized capability helpers bound to the active user
+  const checkHasRole = (...roles: CanonicalUserRole[]): boolean => currentUser ? hasRole(currentUser, ...roles) : false;
+  const checkHasPosition = (...positions: OsimPosition[]): boolean => currentUser ? hasPosition(currentUser, ...positions) : false;
+  const checkHasScope = (scopeType: 'extracurricular' | 'osim_department', targetId: string): boolean =>
+    currentUser ? hasScope(currentUser, scopeType, targetId) : false;
+  const checkHasPermission = (permission: Permission): boolean => currentUser ? hasPermission(currentUser, permission) : false;
+  const checkCanManageCash = (): boolean => currentUser ? canManageCash(currentUser) : false;
+  const checkCanReviewOsimProgram = (): boolean => currentUser ? canReviewOsimProgram(currentUser) : false;
+  const checkCanApproveOsimProgram = (): boolean => currentUser ? canApproveOsimProgram(currentUser) : false;
+  const checkCanManageExtracurricular = (ekskulId?: string): boolean => currentUser ? canManageExtracurricular(currentUser, ekskulId) : false;
+
+  // Legacy flags cleanly derived from canonical role & position (strictly requiring active currentUser)
+  const role = currentUser?.role || canonicalRole;
+  const isSuperAdmin = Boolean(currentUser && canonicalRole === 'super_admin');
+  const isWaka = Boolean(currentUser && canonicalRole === 'waka_kesiswaan');
+  const isWakaOrAdmin = Boolean(currentUser && (isSuperAdmin || isWaka));
+  const isGuruBK = Boolean(currentUser && canonicalRole === 'guru_bk');
+  const isPembinaOsim = Boolean(currentUser && canonicalRole === 'pembina_osim');
+  const isPembinaEkskul = Boolean(currentUser && canonicalRole === 'pembina_ekstrakurikuler');
+  const isPengurusOsim = Boolean(currentUser && canonicalRole === 'anggota_osim');
+
+  // Dukungan Multi-Assignment / Rangkap Jabatan: Guru BK yang juga membina ekstrakurikuler
+  const isAlsoPembinaEkskul = Boolean(
+    currentUser && (
+      isPembinaEkskul ||
+      (currentUser?.extracurricularIds && currentUser.extracurricularIds.length > 0) ||
+      (currentUser?.assignments?.some(a => a.type === 'extracurricular')) ||
+      ((currentUser as any)?.assignedExtracurriculars && (currentUser as any).assignedExtracurriculars.length > 0)
+    )
   );
 
-  const isPembina = isAlsoPembinaEkskul || isPembinaOsim;
+  const isPembina = Boolean(currentUser && (isAlsoPembinaEkskul || isPembinaOsim));
 
-  // Model A: Akun Fungsional Pengurus Inti OSIM (BPH)
-  const osimRole = currentUser?.osimRole;
-  const isOsimKetua = isPengurusOsim && (osimRole === 'ketua' || currentUser?.username === 'osim.ketua');
-  const isOsimWakil = isPengurusOsim && (osimRole === 'wakil' || currentUser?.username === 'osim.wakil');
-  const isOsimSekretaris = isPengurusOsim && (osimRole === 'sekretaris' || currentUser?.username === 'osim.sekretaris');
-  const isOsimBendahara = isPengurusOsim && (osimRole === 'bendahara' || currentUser?.username === 'osim.bendahara');
-  const isOsimBph = isPengurusOsim && (
-    isOsimKetua ||
-    isOsimWakil ||
-    isOsimSekretaris ||
-    isOsimBendahara ||
-    currentUser?.osimDepartmentCode === 'BPH' ||
-    currentUser?.osimDepartmentId === 'dept_bph'
+  // OSIM BPH Positions derived from Canonical Position
+  const isOsimKetua = Boolean(isPengurusOsim && osimPosition === 'ketua_osim');
+  const isOsimWakil = Boolean(isPengurusOsim && osimPosition === 'wakil_ketua_osim');
+  const isOsimSekretaris = Boolean(isPengurusOsim && osimPosition === 'sekretaris');
+  const isOsimBendahara = Boolean(isPengurusOsim && osimPosition === 'bendahara');
+  const isOsimBph = Boolean(
+    isPengurusOsim && (
+      isOsimKetua ||
+      isOsimWakil ||
+      isOsimSekretaris ||
+      isOsimBendahara ||
+      currentUser?.osimDepartmentCode === 'BPH' ||
+      currentUser?.osimDepartmentId === 'dept_bph'
+    )
   );
 
-  // Supervisi & Hak Veto Wewenang: Pembina OSIM, Waka Kesiswaan & Admin App
-  // Sesuai permintaan: "Supervisi & hak veto selain pembina osim & waka kesiswaan tambahkan admin app juga"
-  const isSupervisoryVetoAuthorized = isSuperAdmin || isWaka || isPembinaOsim;
+  // Supervisi & Hak Veto Wewenang: Pembina OSIM, Waka Kesiswaan & Super Admin
+  const isSupervisoryVetoAuthorized = Boolean(currentUser && (isSuperAdmin || isWaka || isPembinaOsim));
 
   const canAccessTab = (tabId: string): boolean => {
-    // Profile, Announcements Center, and Buku Tata Tertib Siswa are accessible by all authenticated users
-    if (tabId === 'profile' || tabId === 'announcements' || tabId === 'rules' || tabId === 'handbook' || tabId === 'tatib') return true;
+    // Unauthenticated visitors cannot access any internal tabs
+    if (!currentUser) return false;
+
+    // Dashboard, Profile, Announcements Center, and Buku Tata Tertib Siswa are accessible by all authenticated users
+    if (tabId === 'dashboard' || tabId === 'profile' || tabId === 'announcements' || tabId === 'rules' || tabId === 'handbook' || tabId === 'tatib') return true;
 
     // Super admin has unrestricted root access to all tabs including cpanel and root settings
     if (isSuperAdmin) return true;
@@ -1167,12 +1365,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return allowedEkskulTabs.includes(tabId);
     }
 
-    // Pengurus OSIM (Akun Fungsional Bidang/Departemen Siswa dan Pengurus Inti Model A)
+    // Anggota OSIM (Akun Fungsional Bidang/Departemen Siswa dan Pengurus Inti BPH)
     // Diberikan akses ke Dashboard OSIM, Pengurus & Proker OSIM, Agenda Kegiatan & Laporan OSIM, Pengumuman, Tatib
     // Kas hanya jika diamanahkan sebagai Bendahara / Cash Manager
     if (isPengurusOsim) {
       const allowedPengurusTabs = ['dashboard', 'osim', 'announcements', 'rules', 'tatib', 'activities', 'reports', 'profile'];
-      if (currentUser?.isCashManager || isOsimBendahara) {
+      if (checkCanManageCash() || isOsimBendahara) {
         allowedPengurusTabs.push('cash', 'cash_ledger');
       }
       return allowedPengurusTabs.includes(tabId);
@@ -1187,6 +1385,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         currentUser,
         allUsers,
         userRole: role,
+        canonicalRole,
+        osimPosition,
+        hasRole: checkHasRole,
+        hasPosition: checkHasPosition,
+        hasScope: checkHasScope,
+        hasPermission: checkHasPermission,
+        canManageCash: checkCanManageCash,
+        canReviewOsimProgram: checkCanReviewOsimProgram,
+        canApproveOsimProgram: checkCanApproveOsimProgram,
+        canManageExtracurricular: checkCanManageExtracurricular,
         isSuperAdmin,
         isWaka,
         isWakaOrAdmin,

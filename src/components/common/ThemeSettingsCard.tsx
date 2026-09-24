@@ -15,7 +15,8 @@ export const ThemeSettingsCard: React.FC = () => {
     setFontSize,
     setFontContrast,
     setFontFamily,
-    resetTheme
+    resetTheme,
+    isCloudSynced
   } = useTheme();
 
   return (
@@ -27,11 +28,18 @@ export const ThemeSettingsCard: React.FC = () => {
             <Palette className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100">
-              Pengaturan Mode Tampilan, Tema Warna & Ketajaman Visual
-            </h3>
+            <div className="flex items-center gap-2">
+              <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100">
+                Pengaturan Mode Tampilan, Tema Warna & Ketajaman Visual
+              </h3>
+              {isCloudSynced && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 dark:bg-emerald-950/70 border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1">
+                  ☁️ Sinkron ke Akun Cloud
+                </span>
+              )}
+            </div>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Pilih mode gelap/terang, nuansa palet warna, dan kalibrasi font agar teks selalu tajam, kontras tinggi, dan tidak buram.
+              Pilih mode gelap/terang, nuansa palet warna, dan kalibrasi font (otomatis tersinkronisasi ke akun Anda di semua perangkat).
             </p>
           </div>
         </div>

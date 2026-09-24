@@ -75,6 +75,7 @@ import {
   getInitialsColorTheme
 } from '../utils/initials';
 import { getDefaultOsimPassword } from '../services/seedData';
+import { getUserSlipCredentials } from '../utils/osimAccountHelper';
 import { getEkskulTheme } from '../utils/ekskulColors';
 import { getUserHierarchyClassification, sortUsersByHierarchy } from '../utils/syncUtils';
 
@@ -721,11 +722,9 @@ export const CPanelPage: React.FC = () => {
     const passToSet = customResetPassword.trim() || 'password';
     const res = await resetUserPassword(u.uid, passToSet);
     if (res.success) {
-      if (u.role === 'pengurus_osim') {
-        try {
-          await syncUserFromCPanel({ ...u, password: passToSet }, u);
-        } catch (e) {}
-      }
+      try {
+        await syncUserFromCPanel({ ...u, password: passToSet }, u);
+      } catch (e) {}
       showToast(`Kata sandi akun ${u.displayName} (${u.role}) berhasil diperbarui menjadi "${passToSet}". Password lama otomatis tidak berlaku dan tergantikan!`);
     } else {
       showToast(res.error || 'Gagal mengubah password.', 'error');
@@ -752,6 +751,7 @@ export const CPanelPage: React.FC = () => {
   };
 
   const handlePrintAccountSlip = (u: UserProfile) => {
+    const cred = getUserSlipCredentials(u, osimMembers);
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
       window.print();
@@ -762,18 +762,18 @@ export const CPanelPage: React.FC = () => {
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Kartu Login Akun SIM Kesiswaan - ${u.displayName}</title>
+          <title>Kartu Login Akun SIM Kesiswaan - ${cred.displayName}</title>
           <style>
             body { font-family: Arial, sans-serif; padding: 20px; background: #fff; color: #111; }
             .card { width: 380px; border: 2px solid #059669; border-radius: 8px; padding: 16px; margin: 20px auto; }
             .header { text-align: center; border-bottom: 2px solid #059669; padding-bottom: 8px; margin-bottom: 12px; }
-            .header h3 { margin: 0; font-size: 14px; color: #065f46; text-transform: uppercase; }
+            .header h3 { margin: 0; font-size: 14px; color: #065f46; text-transform: uppercase; font-weight: bold; }
             .header p { margin: 2px 0 0 0; font-size: 10px; color: #555; }
             .info-row { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 6px; padding: 4px 0; border-bottom: 1px dashed #e5e7eb; }
             .info-label { font-weight: bold; color: #374151; }
             .info-val { font-family: monospace; font-weight: bold; color: #111827; }
-            .highlight { background: #ecfdf5; padding: 6px 8px; border-radius: 4px; font-size: 12px; margin: 10px 0; border: 1px solid #a7f3d0; }
-            .footer { font-size: 9px; color: #6b7280; text-align: center; margin-top: 10px; }
+            .highlight { background: #ecfdf5; padding: 8px 10px; border-radius: 6px; font-size: 12px; margin: 12px 0; border: 1px solid #a7f3d0; }
+            .footer { font-size: 9px; color: #6b7280; text-align: center; margin-top: 10px; border-top: 1px dashed #d1d5db; padding-top: 6px; }
             @media print { body { padding: 0; } }
           </style>
         </head>
@@ -781,32 +781,36 @@ export const CPanelPage: React.FC = () => {
           <div class="card">
             <div class="header">
               <h3>KARTU AKUN LOGIN SIM KESISWAAN</h3>
-              <p>${schoolSetting?.name || 'MADRASAH ALIYAH NEGERI TELADAN'}</p>
+              <p>${schoolSetting?.name || 'MADRASAH ALIYAH NEGERI'}</p>
             </div>
             <div class="info-row">
               <span class="info-label">Nama Pengguna:</span>
-              <span>${u.displayName}</span>
+              <span class="info-val">${cred.displayName}</span>
             </div>
             <div class="info-row">
               <span class="info-label">Hak Akses (Role):</span>
-              <span class="info-val" style="color: #059669;">${u.role.toUpperCase()}</span>
+              <span class="info-val" style="color: #059669;">${cred.roleLabel}</span>
             </div>
             <div class="info-row">
-              <span class="info-label">NIP / NIK:</span>
-              <span class="info-val">${u.nip || '-'}</span>
+              <span class="info-label">NIP / NIS:</span>
+              <span class="info-val">${cred.nipOrNis}</span>
             </div>
             <div class="info-row">
-              <span class="info-label">Email / User:</span>
-              <span class="info-val">${u.email}</span>
+              <span class="info-label">Email Akun:</span>
+              <span class="info-val">${cred.email}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Username Login:</span>
+              <span class="info-val" style="color: #047857; font-size: 12px;">${cred.loginUsername}</span>
             </div>
             <div class="highlight">
-              <div style="font-size: 10px; color: #065f46; font-weight: bold;">KREDENSIAL LOGIN:</div>
-              <div style="font-size: 13px; font-family: monospace; margin-top: 2px;">
-                Password: <strong>${u.password || 'password'}</strong>
+              <div style="font-size: 10px; color: #065f46; font-weight: bold;">PASSWORD RESMI:</div>
+              <div style="font-size: 13px; font-family: monospace; margin-top: 2px; color: #065f46; font-weight: bold;">
+                ${cred.password}
               </div>
             </div>
             <div class="footer">
-              Portal SIM Kesiswaan • Simpan kartu akun ini dengan baik dan rahasiakan password Anda.
+              Tahun Ajaran: ${activeAcademicYear || '2026/2027'} • Simpan kartu akun ini dengan baik dan rahasiakan password Anda.
             </div>
           </div>
           <script>window.onload = function() { window.print(); }</script>
@@ -823,34 +827,41 @@ export const CPanelPage: React.FC = () => {
       return;
     }
 
-    const cardsHtml = allUsers.map(u => `
+    const cardsHtml = allUsers.map(u => {
+      const cred = getUserSlipCredentials(u, osimMembers);
+      return `
       <div class="card">
         <div class="header">
           <h3>KARTU AKUN SIM KESISWAAN</h3>
-          <p>${schoolSetting?.name || 'MADRASAH ALIYAH NEGERI TELADAN'}</p>
+          <p>${schoolSetting?.name || 'MADRASAH ALIYAH NEGERI'}</p>
         </div>
         <div class="info-row">
           <span class="info-label">Nama:</span>
-          <span>${u.displayName}</span>
+          <span>${cred.displayName}</span>
         </div>
         <div class="info-row">
           <span class="info-label">Peran:</span>
-          <span class="info-val" style="color: #059669;">${u.role.toUpperCase()}</span>
+          <span class="info-val" style="color: #059669;">${cred.roleLabel}</span>
         </div>
         <div class="info-row">
-          <span class="info-label">NIP:</span>
-          <span class="info-val">${u.nip || '-'}</span>
+          <span class="info-label">NIP / NIS:</span>
+          <span class="info-val">${cred.nipOrNis}</span>
         </div>
         <div class="info-row">
           <span class="info-label">Email:</span>
-          <span class="info-val">${u.email}</span>
+          <span class="info-val">${cred.email}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Username:</span>
+          <span class="info-val" style="color: #047857;">${cred.loginUsername}</span>
         </div>
         <div class="highlight">
           <span style="font-size: 10px; color: #065f46; font-weight: bold;">PASSWORD:</span>
-          <span style="font-size: 12px; font-family: monospace; font-weight: bold;"> ${u.password || 'password'}</span>
+          <span style="font-size: 12px; font-family: monospace; font-weight: bold; color: #065f46;"> ${cred.password}</span>
         </div>
       </div>
-    `).join('');
+    `;
+    }).join('');
 
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -916,7 +927,9 @@ export const CPanelPage: React.FC = () => {
       return;
     }
 
-    const cardsHtml = targetUsers.map(u => `
+    const cardsHtml = targetUsers.map(u => {
+      const cred = getUserSlipCredentials(u, osimMembers);
+      return `
       <div class="card">
         <div class="header">
           <h3>KARTU AKUN LOGIN RESMI SIM KESISWAAN</h3>
@@ -924,35 +937,36 @@ export const CPanelPage: React.FC = () => {
         </div>
         <div class="info-row">
           <span class="info-label">Nama Pengguna:</span>
-          <span class="info-val">${u.displayName}</span>
+          <span class="info-val">${cred.displayName}</span>
         </div>
         <div class="info-row">
           <span class="info-label">Hak Akses (Role):</span>
-          <span class="info-val" style="color: #059669;">${u.role.toUpperCase()}</span>
+          <span class="info-val" style="color: #059669;">${cred.roleLabel}</span>
         </div>
         <div class="info-row">
           <span class="info-label">NIP / NIS / NIK:</span>
-          <span class="info-val">${u.nip || '-'}</span>
+          <span class="info-val">${cred.nipOrNis}</span>
         </div>
         <div class="info-row">
           <span class="info-label">Email Akun:</span>
-          <span class="info-val">${u.email}</span>
+          <span class="info-val">${cred.email}</span>
         </div>
         <div class="info-row">
           <span class="info-label">Username Login:</span>
-          <span class="info-val">@${u.username || u.email.split('@')[0]}</span>
+          <span class="info-val" style="color: #047857; font-size: 12px;">${cred.loginUsername}</span>
         </div>
         <div class="highlight">
           <div style="font-size: 10px; color: #065f46; font-weight: bold;">PASSWORD RESMI:</div>
           <div style="font-size: 13px; font-family: monospace; font-weight: bold; color: #047857;">
-            ${printIncludePassword ? (u.password || 'password') : '••••••••'}
+            ${printIncludePassword ? cred.password : '••••••••'}
           </div>
         </div>
         <div class="footer">
           Tahun Ajaran: ${activeAcademicYear || '2026/2027'} • Rahasiakan kata sandi Anda dan ganti secara berkala.
         </div>
       </div>
-    `).join('');
+    `;
+    }).join('');
 
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -2553,6 +2567,7 @@ export const CPanelPage: React.FC = () => {
                 ? allUsers
                 : allUsers.filter(u => u.role === printFilterRole)
               ).slice(0, 6).map((u, pIdx) => {
+                const cred = getUserSlipCredentials(u, osimMembers);
                 const badge = getRoleBadge(u.role);
                 return (
                   <div
@@ -2572,27 +2587,27 @@ export const CPanelPage: React.FC = () => {
                     <div className="space-y-1 font-mono text-[11px]">
                       <div className="flex justify-between border-b border-dashed border-zinc-200 pb-0.5">
                         <span className="text-zinc-600 font-semibold">Nama:</span>
-                        <span className="font-bold text-zinc-950 font-sans truncate max-w-[170px]">{u.displayName}</span>
+                        <span className="font-bold text-zinc-950 font-sans truncate max-w-[170px]">{cred.displayName}</span>
                       </div>
                       <div className="flex justify-between border-b border-dashed border-zinc-200 pb-0.5">
                         <span className="text-zinc-600 font-semibold">NIP / NIS:</span>
-                        <span className="font-bold text-zinc-900">{u.nip || '-'}</span>
+                        <span className="font-bold text-zinc-900">{cred.nipOrNis}</span>
                       </div>
                       <div className="flex justify-between border-b border-dashed border-zinc-200 pb-0.5">
                         <span className="text-zinc-600 font-semibold">Email:</span>
-                        <span className="text-zinc-800 truncate max-w-[170px]">{u.email}</span>
+                        <span className="text-zinc-800 truncate max-w-[170px]">{cred.email}</span>
                       </div>
                     </div>
 
                     <div className="bg-emerald-50 border border-emerald-300 rounded-lg p-2 font-mono text-xs flex items-center justify-between">
                       <div>
                         <span className="text-[10px] text-zinc-500 block">USERNAME:</span>
-                        <strong className="text-emerald-950">@{u.username || u.email.split('@')[0]}</strong>
+                        <strong className="text-emerald-950">{cred.loginUsername}</strong>
                       </div>
                       <div className="text-right">
                         <span className="text-[10px] text-zinc-500 block">PASSWORD:</span>
                         <strong className="text-emerald-700">
-                          {printIncludePassword ? (u.password || 'password') : '••••••••'}
+                          {printIncludePassword ? cred.password : '••••••••'}
                         </strong>
                       </div>
                     </div>

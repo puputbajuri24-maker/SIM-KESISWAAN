@@ -25,6 +25,7 @@ import { AnnouncementsPage } from './pages/AnnouncementsPage';
 import { CashLedgerPage } from './pages/CashLedgerPage';
 import { TataTertibPage } from './pages/TataTertibPage';
 import { LoginPage } from './pages/LoginPage';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { Schedule, Violation } from './types';
 import { ShieldAlert, ArrowLeft, Lock } from 'lucide-react';
 
@@ -54,9 +55,10 @@ const VALID_TABS: NavTab[] = [
 const getInitialTab = (): NavTab => {
   try {
     // 1. Check URL hash first (e.g. #students, #profile, #osim)
-    const hash = window.location.hash.replace('#', '').trim() as NavTab;
-    if (hash && VALID_TABS.includes(hash)) {
-      return hash;
+    const rawHash = window.location.hash.replace('#', '').trim();
+    const cleanHash = rawHash.split('?')[0].split('&')[0].trim() as NavTab;
+    if (cleanHash && VALID_TABS.includes(cleanHash)) {
+      return cleanHash;
     }
     // 2. Check localStorage
     const saved = localStorage.getItem('simkesiswaan_active_tab') as NavTab;
@@ -72,7 +74,8 @@ const getInitialTab = (): NavTab => {
 const MainContent: React.FC = () => {
   const [activeTab, setActiveTabState] = useState<NavTab>(getInitialTab);
   const [targetScheduleForAttendance, setTargetScheduleForAttendance] = useState<Schedule | null>(null);
-  const { currentUser, userRole, canAccessTab, isPembinaOsim, isPembinaEkskul } = useAuth();
+  const [counselingReferralViolation, setCounselingReferralViolation] = useState<Violation | null>(null);
+  const { currentUser, userRole, canAccessTab, isPembinaOsim, isPembinaEkskul, isPengurusOsim } = useAuth();
 
   // Custom setter that syncs with URL hash & localStorage
   const setActiveTab = (tab: NavTab) => {
@@ -107,7 +110,9 @@ const MainContent: React.FC = () => {
   useEffect(() => {
     if (currentUser) {
       if (!canAccessTab(activeTab)) {
-        setActiveTab('dashboard');
+        if (activeTab !== 'dashboard') {
+          setActiveTab('dashboard');
+        }
         return;
       }
       try {
@@ -141,6 +146,7 @@ const MainContent: React.FC = () => {
   };
 
   const handleReferViolationToCounseling = (violation: Violation) => {
+    setCounselingReferralViolation(violation);
     setActiveTab('counseling');
   };
 
@@ -167,7 +173,7 @@ const MainContent: React.FC = () => {
             <ArrowLeft className="w-4 h-4" />
             <span>Kembali ke Dashboard</span>
           </button>
-          {isPembinaOsim && (
+          {(isPembinaOsim || isPengurusOsim) && (
             <button
               onClick={() => setActiveTab('osim')}
               className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs transition-colors"
@@ -219,7 +225,12 @@ const MainContent: React.FC = () => {
       case 'violations':
         return <ViolationsPage onReferToCounseling={handleReferViolationToCounseling} />;
       case 'counseling':
-        return <CounselingPage />;
+        return (
+          <CounselingPage
+            initialReferral={counselingReferralViolation}
+            onClearReferral={() => setCounselingReferralViolation(null)}
+          />
+        );
       case 'achievements':
         return <AchievementsPage />;
       case 'permissions':
@@ -241,21 +252,37 @@ const MainContent: React.FC = () => {
 
   return (
     <AppLayout activeTab={activeTab} setActiveTab={setActiveTab}>
-      {renderContent()}
+      <ErrorBoundary
+        fallbackTitle={`Kendala Memuat Halaman ${activeTab.toUpperCase()}`}
+        fallbackMessage="Terjadi kendala saat memuat modul ini. Anda dapat mencoba memulihkan modul atau beralih ke menu lain melalui sidebar."
+        onReset={() => setActiveTab('dashboard')}
+      >
+        {renderContent()}
+      </ErrorBoundary>
     </AppLayout>
   );
 };
 
 export default function App() {
   return (
-    <ThemeProvider>
+    <ErrorBoundary
+      fallbackTitle="Sistem SIM-KESISWAAN Terhenti Sementara"
+      fallbackMessage="Aplikasi mendeteksi kendala pada inisialisasi modul. Silakan muat ulang halaman atau bersihkan sesi login untuk masuk kembali."
+    >
       <AuthProvider>
-        <TimezoneProvider>
-          <SchoolProvider>
-            <MainContent />
-          </SchoolProvider>
-        </TimezoneProvider>
+        <ThemeProvider>
+          <TimezoneProvider>
+            <SchoolProvider>
+              <ErrorBoundary
+                fallbackTitle="Kendala Memuat Ruang Kerja Madrasah"
+                fallbackMessage="Terjadi gangguan saat memuat data sesi kerja. Klik tombol di bawah untuk menyegarkan tampilan."
+              >
+                <MainContent />
+              </ErrorBoundary>
+            </SchoolProvider>
+          </TimezoneProvider>
+        </ThemeProvider>
       </AuthProvider>
-    </ThemeProvider>
+    </ErrorBoundary>
   );
 }

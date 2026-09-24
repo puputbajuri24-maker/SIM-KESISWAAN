@@ -193,3 +193,69 @@ export const getDefaultOsimPasswordForMember = (member: OsimMember | Partial<Osi
 
   return getDefaultOsimPassword(member.sekbid || member.position || 'sekbid1');
 };
+
+export interface UserSlipCredentials {
+  displayName: string;
+  role: string;
+  roleLabel: string;
+  loginUsername: string; // e.g. "@osim.ketua"
+  rawUsername: string;   // e.g. "osim.ketua"
+  email: string;
+  password: string;      // verified effective active password
+  nipOrNis: string;
+  studentClass?: string;
+  position?: string;
+  department?: string;
+}
+
+/**
+ * Standardized single source of truth for slip credentials across CPanel and OSIM tabs.
+ * Guarantees username and password consistency between single slip and batch printing.
+ */
+export const getUserSlipCredentials = (
+  u: UserProfile,
+  osimMembers?: OsimMember[]
+): UserSlipCredentials => {
+  const rawUsername = (u.username ? u.username.replace(/^@/, '') : (u.email ? u.email.split('@')[0] : '')).trim();
+
+  // Find linked OSIM member if applicable
+  const linkedMem = (u.role === 'pengurus_osim' && osimMembers && osimMembers.length > 0)
+    ? osimMembers.find(m =>
+        m.id === u.uid ||
+        (m.loginUsername && rawUsername && m.loginUsername.toLowerCase() === rawUsername.toLowerCase()) ||
+        (m.username && rawUsername && m.username.toLowerCase() === rawUsername.toLowerCase()) ||
+        (m.studentNis && u.nip && m.studentNis === u.nip) ||
+        (m.fullName && u.displayName && m.fullName.toLowerCase().trim() === u.displayName.toLowerCase().replace(/\s*\(.*\)$/, '').trim())
+      )
+    : undefined;
+
+  let effectivePassword = (u.password && u.password.trim()) || '';
+
+  if (!effectivePassword || effectivePassword === 'password') {
+    if (linkedMem?.loginPassword && linkedMem.loginPassword.trim() && linkedMem.loginPassword !== 'password') {
+      effectivePassword = linkedMem.loginPassword.trim();
+    } else if (u.role === 'pengurus_osim') {
+      if (linkedMem) {
+        effectivePassword = getDefaultOsimPasswordForMember(linkedMem);
+      } else {
+        effectivePassword = getDefaultOsimPassword(u.osimDepartmentCode || u.osimRole || rawUsername);
+      }
+    } else {
+      effectivePassword = 'password';
+    }
+  }
+
+  return {
+    displayName: u.displayName,
+    role: u.role,
+    roleLabel: u.role.toUpperCase().replace(/_/g, ' '),
+    loginUsername: `@${rawUsername}`,
+    rawUsername,
+    email: u.email,
+    password: effectivePassword,
+    nipOrNis: u.nip || linkedMem?.studentNis || '-',
+    studentClass: linkedMem?.className || u.studentClass || '-',
+    position: linkedMem?.position || u.osimPosition,
+    department: linkedMem?.sekbid || u.osimDepartmentName
+  };
+};

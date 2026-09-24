@@ -19,19 +19,23 @@ import {
   Award,
   Filter,
   Calendar,
-  Layers
+  Layers,
+  Scale,
+  BookOpenCheck,
+  ShieldCheck
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
-import { ActivityReport, ReportStatus, StudentViolation, StudentCounseling } from '../types';
+import { ActivityReport, ReportStatus, StudentViolation, StudentCounseling, ParentCallLetter } from '../types';
 import { DataTable, Column } from '../components/common/DataTable';
 import { StatusBadge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { ExportActions } from '../components/common/ExportActions';
 import { SchoolLetterhead } from '../components/common/SchoolLetterhead';
+import { OFFICIAL_DISCIPLINE_TIERS, getDisciplineTier } from '../services/officialRulesData';
 
-type ReportTab = 'lpj' | 'violations' | 'counseling' | 'ekskul';
+type ReportTab = 'lpj' | 'violations' | 'discipline_sk380' | 'counseling' | 'ekskul';
 
 export const ReportsPage: React.FC = () => {
   const { isWakaOrAdmin, isGuruBK, isPembina, currentUser } = useAuth();
@@ -43,6 +47,7 @@ export const ReportsPage: React.FC = () => {
     members,
     students,
     teachers,
+    parentCallLetters,
     schoolSetting,
     activeAcademicYear,
     addActivityReport,
@@ -52,7 +57,7 @@ export const ReportsPage: React.FC = () => {
 
   // Active tab selection
   const [activeTab, setActiveTab] = useState<ReportTab>(() => {
-    if (isGuruBK) return 'counseling';
+    if (isGuruBK) return 'discipline_sk380';
     if (isPembina) return 'lpj';
     return 'lpj';
   });
@@ -67,6 +72,7 @@ export const ReportsPage: React.FC = () => {
   // Print Preview Modals
   const [isPrintLpjOpen, setIsPrintLpjOpen] = useState(false);
   const [isPrintViolationsOpen, setIsPrintViolationsOpen] = useState(false);
+  const [isPrintDisciplineSk380Open, setIsPrintDisciplineSk380Open] = useState(false);
   const [isPrintCounselingOpen, setIsPrintCounselingOpen] = useState(false);
 
   // Review state
@@ -90,6 +96,7 @@ export const ReportsPage: React.FC = () => {
 
   // Filter state for violations/counseling recap
   const [selectedClassFilter, setSelectedClassFilter] = useState<string>('all');
+  const [selectedDisciplineTierFilter, setSelectedDisciplineTierFilter] = useState<string>('all');
   const [dateFilterStart, setDateFilterStart] = useState<string>('');
   const [dateFilterEnd, setDateFilterEnd] = useState<string>('');
 
@@ -120,6 +127,117 @@ export const ReportsPage: React.FC = () => {
       return true;
     });
   }, [counseling, selectedClassFilter, dateFilterStart, dateFilterEnd]);
+
+  // Aggregation per student for SK B-380 Disciplinary Report
+  const disciplineStudentsSummary = useMemo(() => {
+    const studentMap = new Map<string, {
+      studentId: string;
+      studentName: string;
+      studentNis: string;
+      studentClass: string;
+      totalPoints: number;
+      violationCount: number;
+      lastDate: string;
+      violationsList: StudentViolation[];
+    }>();
+
+    violations.forEach(v => {
+      if (v.isDeleted || !v.studentId) return;
+      const existing = studentMap.get(v.studentId);
+      const pts = Number(v.points) || 0;
+      if (existing) {
+        existing.totalPoints += pts;
+        existing.violationCount += 1;
+        existing.violationsList.push(v);
+        if (v.date > existing.lastDate) existing.lastDate = v.date;
+      } else {
+        studentMap.set(v.studentId, {
+          studentId: v.studentId,
+          studentName: v.studentName,
+          studentNis: v.studentNis || '',
+          studentClass: v.studentClass || '',
+          totalPoints: pts,
+          violationCount: 1,
+          lastDate: v.date,
+          violationsList: [v]
+        });
+      }
+    });
+
+    const list = Array.from(studentMap.values()).map(item => {
+      const tier = getDisciplineTier(item.totalPoints);
+      const studentCalls = parentCallLetters.filter(p => p.studentId === item.studentId);
+      const highestCall = studentCalls.length > 0
+        ? Math.max(...studentCalls.map(c => Number(c.callNumber) || 0))
+        : 0;
+
+      return {
+        ...item,
+        tier,
+        tierNumber: tier ? tier.tier : 0,
+        parentCallsCount: studentCalls.length,
+        highestCall
+      };
+    });
+
+    return list.sort((a, b) => b.totalPoints - a.totalPoints);
+  }, [violations, parentCallLetters]);
+
+  // Filtered Disciplinary Students by class and tier
+  const filteredDisciplineStudents = useMemo(() => {
+    return disciplineStudentsSummary.filter(item => {
+      if (selectedClassFilter !== 'all' && item.studentClass !== selectedClassFilter) return false;
+      if (selectedDisciplineTierFilter !== 'all') {
+        if (String(item.tierNumber) !== selectedDisciplineTierFilter) return false;
+      }
+      return true;
+    });
+  }, [disciplineStudentsSummary, selectedClassFilter, selectedDisciplineTierFilter]);
+
+  // Overall SK B-380 Metrics
+  const sk380Metrics = useMemo(() => {
+    const totalViolations = violations.filter(v => !v.isDeleted).length;
+    const totalViolatingStudents = disciplineStudentsSummary.length;
+    const activeSanctionStudents = disciplineStudentsSummary.filter(s => s.totalPoints >= 10).length;
+
+    let countKelakuan = 0;
+    let countKerajinan = 0;
+    let countKerapian = 0;
+    let countIbadah = 0;
+    let countKhusus = 0;
+
+    violations.forEach(v => {
+      if (v.isDeleted) return;
+      const cat = (v.category || '').toLowerCase();
+      if (cat.includes('kelakuan')) countKelakuan++;
+      else if (cat.includes('kerajinan')) countKerajinan++;
+      else if (cat.includes('kerapian')) countKerapian++;
+      else if (cat.includes('ibadah')) countIbadah++;
+      else countKhusus++;
+    });
+
+    const tier1Count = disciplineStudentsSummary.filter(s => s.tierNumber === 1).length;
+    const tier2Count = disciplineStudentsSummary.filter(s => s.tierNumber === 2).length;
+    const tier3Count = disciplineStudentsSummary.filter(s => s.tierNumber === 3).length;
+    const tier4Count = disciplineStudentsSummary.filter(s => s.tierNumber === 4).length;
+    const tier5Count = disciplineStudentsSummary.filter(s => s.tierNumber === 5).length;
+
+    return {
+      totalViolations,
+      totalViolatingStudents,
+      activeSanctionStudents,
+      countKelakuan,
+      countKerajinan,
+      countKerapian,
+      countIbadah,
+      countKhusus,
+      tier1Count,
+      tier2Count,
+      tier3Count,
+      tier4Count,
+      tier5Count
+    };
+  }, [violations, disciplineStudentsSummary]);
 
   // Handlers for LPJ
   const handleOpenAdd = () => {
@@ -435,6 +553,89 @@ export const ReportsPage: React.FC = () => {
     }
   ];
 
+  // Columns for SK B-380 Disciplinary Recap
+  const disciplineColumns: Column<typeof disciplineStudentsSummary[0]>[] = [
+    {
+      header: 'Nama Siswa & Identitas',
+      accessorKey: 'studentName',
+      sortable: true,
+      cell: s => (
+        <div>
+          <p className="font-bold text-slate-900 dark:text-slate-100">{s.studentName}</p>
+          <p className="text-[11px] text-slate-400">NIS: {s.studentNis} • Kelas: {s.studentClass}</p>
+        </div>
+      )
+    },
+    {
+      header: 'Total Poin',
+      accessorKey: 'totalPoints',
+      sortable: true,
+      cell: s => (
+        <span className={`px-2 py-0.5 rounded font-mono font-bold text-xs ${
+          s.totalPoints >= 100 ? 'bg-red-600 text-white' :
+          s.totalPoints >= 76 ? 'bg-purple-600 text-white' :
+          s.totalPoints >= 41 ? 'bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/30' :
+          s.totalPoints >= 21 ? 'bg-orange-500/20 text-orange-600 dark:text-orange-400 border border-orange-500/30' :
+          s.totalPoints >= 10 ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30' :
+          'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
+        }`}>
+          {s.totalPoints} Poin
+        </span>
+      )
+    },
+    {
+      header: 'Tahapan Sanksi SK B-380',
+      accessorKey: 'tierNumber',
+      sortable: true,
+      cell: s => s.tier ? (
+        <span className={`text-[11px] font-bold px-2 py-0.5 rounded border ${
+          s.tier.tier === 1 ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30' :
+          s.tier.tier === 2 ? 'bg-orange-500/10 text-orange-700 dark:text-orange-300 border-orange-500/30' :
+          s.tier.tier === 3 ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300 border-rose-500/40' :
+          s.tier.tier === 4 ? 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/40' :
+          'bg-red-950 text-red-300 border-red-800 animate-pulse'
+        }`}>
+          {s.tier.name}
+        </span>
+      ) : (
+        <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
+          Di Bawah Ambang (&lt;10p)
+        </span>
+      )
+    },
+    {
+      header: 'Tindakan Wajib & Konsekuensi',
+      accessorKey: 'studentId',
+      cell: s => (
+        <div className="text-xs text-slate-700 dark:text-slate-300 max-w-xs leading-relaxed">
+          {s.tier ? s.tier.actionRequired : 'Pembinaan preventif wali kelas'}
+        </div>
+      )
+    },
+    {
+      header: 'Panggilan Ortu / SP',
+      accessorKey: 'highestCall',
+      sortable: true,
+      cell: s => s.highestCall > 0 ? (
+        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/15 text-blue-700 dark:text-blue-300 border border-blue-500/30 font-bold">
+          SP Terbit Ke-{s.highestCall} ({s.parentCallsCount} surat)
+        </span>
+      ) : (
+        <span className="text-[10px] text-slate-400 font-medium">Belum terbit SP</span>
+      )
+    },
+    {
+      header: 'Frekuensi Kasus',
+      accessorKey: 'violationCount',
+      sortable: true,
+      cell: s => (
+        <span className="text-xs font-semibold text-slate-600 dark:text-slate-400">
+          {s.violationCount} kasus (Terakhir: {s.lastDate})
+        </span>
+      )
+    }
+  ];
+
   return (
     <div className="space-y-6">
       {/* Header Halaman */}
@@ -445,12 +646,12 @@ export const ReportsPage: React.FC = () => {
             <span>Pusat Laporan & Rekapitulasi Kesiswaan</span>
           </h2>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Rekapitulasi resmi LPJ kegiatan, kedisiplinan poin siswa, layanan bimbingan konseling, dan cetak dokumen kedinasan.
+            Rekapitulasi resmi LPJ kegiatan, kedisiplinan poin siswa SK B-380, layanan bimbingan konseling, dan cetak dokumen kedinasan.
           </p>
         </div>
 
         {/* Tab Navigasi Laporan */}
-        <div className="flex items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700">
+        <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700">
           <button
             onClick={() => setActiveTab('lpj')}
             className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
@@ -472,6 +673,17 @@ export const ReportsPage: React.FC = () => {
           >
             <ShieldAlert className="w-3.5 h-3.5" />
             <span>Rekap Pelanggaran</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('discipline_sk380')}
+            className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
+              activeTab === 'discipline_sk380'
+                ? 'bg-white dark:bg-slate-900 text-amber-600 dark:text-amber-400 shadow-sm'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900'
+            }`}
+          >
+            <Scale className="w-3.5 h-3.5 text-amber-500" />
+            <span>Kedisiplinan SK B-380</span>
           </button>
           <button
             onClick={() => setActiveTab('counseling')}
@@ -648,7 +860,227 @@ export const ReportsPage: React.FC = () => {
       )}
 
       {/* ========================================================= */}
-      {/* TAB 3: REKAPITULASI LAYANAN BK */}
+      {/* TAB 3: REKAP KEDISIPLINAN & 5 TAHAP SANKSI SK B-380 */}
+      {/* ========================================================= */}
+      {activeTab === 'discipline_sk380' && (
+        <div className="space-y-4">
+          {/* Header Banner & Legal Rujukan */}
+          <div className="p-5 bg-gradient-to-r from-amber-950/40 via-[#131b2e] to-slate-900 border border-amber-500/30 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                  SK NO. B-380/Ma.25.06/PP.00.6/07/2024
+                </span>
+                <span className="text-[11px] text-slate-400">T.P. {activeAcademicYear}</span>
+              </div>
+              <h3 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+                <Scale className="w-5 h-5 text-amber-400" />
+                <span>Rekapitulasi Evaluasi Kedisiplinan & 5 Jenjang Sanksi</span>
+              </h3>
+              <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
+                Pemantauan komprehensif kepatuhan tata tertib madrasah, akumulasi poin individual siswa, dan status penerbitan sanksi bertingkat (Peringatan Lisan, SP 1, SP 2 Skorsing, SP 3 Sidang Pleno, hingga Pengembalian ke Orang Tua).
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <ExportActions
+                filename={`rekap_kedisiplinan_sk380_${activeAcademicYear?.replace('/', '_')}`}
+                title="Rekapitulasi Evaluasi Kedisiplinan Siswa SK B-380"
+                data={filteredDisciplineStudents.map(s => ({
+                  studentName: s.studentName,
+                  studentNis: s.studentNis,
+                  studentClass: s.studentClass,
+                  totalPoints: s.totalPoints,
+                  tierName: s.tier?.name || 'Di bawah ambang sanksi',
+                  tierLevel: s.tierNumber > 0 ? `Tahap ${s.tierNumber}` : '-',
+                  actionRequired: s.tier?.actionRequired || 'Pembinaan preventif',
+                  highestCall: s.highestCall > 0 ? `SP Ke-${s.highestCall}` : 'Belum SP',
+                  violationCount: s.violationCount,
+                  lastDate: s.lastDate
+                }))}
+                headers={[
+                  { header: 'Nama Siswa', key: 'studentName' },
+                  { header: 'NIS', key: 'studentNis' },
+                  { header: 'Kelas', key: 'studentClass' },
+                  { header: 'Total Poin', key: 'totalPoints' },
+                  { header: 'Jenjang Sanksi', key: 'tierName' },
+                  { header: 'Tingkat Sanksi', key: 'tierLevel' },
+                  { header: 'Tindakan Wajib', key: 'actionRequired' },
+                  { header: 'Status SP', key: 'highestCall' },
+                  { header: 'Frekuensi Kasus', key: 'violationCount' },
+                  { header: 'Kasus Terakhir', key: 'lastDate' }
+                ]}
+              />
+
+              <button
+                onClick={() => setIsPrintDisciplineSk380Open(true)}
+                className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shadow-md shadow-amber-600/20 flex items-center gap-2 transition-all hover:scale-105"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Cetak Rekap Resmi SK B-380 (A4)</span>
+              </button>
+            </div>
+          </div>
+
+          {/* 5 Jenjang Sanksi Threshold Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            <div className="p-3 bg-white dark:bg-slate-900 border border-amber-500/30 rounded-xl">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400">TAHAP 1 (10-20 P)</span>
+                <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500">
+                  {sk380Metrics.tier1Count} Siswa
+                </span>
+              </div>
+              <p className="text-xs font-bold text-slate-800 dark:text-slate-200 mt-1">Peringatan Lisan</p>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Wali kelas & BAP pembinaan</p>
+            </div>
+
+            <div className="p-3 bg-white dark:bg-slate-900 border border-orange-500/30 rounded-xl">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400">TAHAP 2 (21-40 P)</span>
+                <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-orange-500/10 text-orange-500">
+                  {sk380Metrics.tier2Count} Siswa
+                </span>
+              </div>
+              <p className="text-xs font-bold text-slate-800 dark:text-slate-200 mt-1">Peringatan I (SP 1)</p>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Panggilan orang tua ke madrasah</p>
+            </div>
+
+            <div className="p-3 bg-white dark:bg-slate-900 border border-rose-500/30 rounded-xl">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400">TAHAP 3 (41-75 P)</span>
+                <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-500">
+                  {sk380Metrics.tier3Count} Siswa
+                </span>
+              </div>
+              <p className="text-xs font-bold text-slate-800 dark:text-slate-200 mt-1">Peringatan II (SP 2)</p>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Skorsing edukatif 3 hari belajar di rumah</p>
+            </div>
+
+            <div className="p-3 bg-white dark:bg-slate-900 border border-purple-500/30 rounded-xl">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400">TAHAP 4 (76-99 P)</span>
+                <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-500">
+                  {sk380Metrics.tier4Count} Siswa
+                </span>
+              </div>
+              <p className="text-xs font-bold text-slate-800 dark:text-slate-200 mt-1">Peringatan III (SP 3)</p>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">Sidang pleno dewan kesiswaan</p>
+            </div>
+
+            <div className="p-3 bg-white dark:bg-slate-900 border border-red-500/40 rounded-xl">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-red-600 dark:text-red-400">TAHAP 5 (≥100 P)</span>
+                <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-red-600 text-white">
+                  {sk380Metrics.tier5Count} Siswa
+                </span>
+              </div>
+              <p className="text-xs font-bold text-slate-800 dark:text-slate-200 mt-1">Pengembalian Siswa</p>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">SK resmi Kepala Madrasah</p>
+            </div>
+          </div>
+
+          {/* Distribusi Pelanggaran Berdasarkan 5 Bab SK B-380 */}
+          <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm">
+            <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider mb-3 flex items-center gap-2">
+              <BookOpenCheck className="w-4 h-4 text-amber-500" />
+              <span>Distribusi Kasus Berdasarkan 5 Bab Tata Tertib SK B-380</span>
+            </h4>
+
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60">
+                <span className="text-[11px] text-slate-500 block">Bab I: Kelakuan</span>
+                <span className="text-lg font-bold text-slate-900 dark:text-slate-100">{sk380Metrics.countKelakuan}</span>
+                <span className="text-[10px] text-slate-400 block mt-0.5">16 butir pasal tata tertib</span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60">
+                <span className="text-[11px] text-slate-500 block">Bab II: Kerajinan</span>
+                <span className="text-lg font-bold text-slate-900 dark:text-slate-100">{sk380Metrics.countKerajinan}</span>
+                <span className="text-[10px] text-slate-400 block mt-0.5">11 butir pasal tata tertib</span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60">
+                <span className="text-[11px] text-slate-500 block">Bab III: Kerapian</span>
+                <span className="text-lg font-bold text-slate-900 dark:text-slate-100">{sk380Metrics.countKerapian}</span>
+                <span className="text-[10px] text-slate-400 block mt-0.5">9 butir pasal tata tertib</span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60">
+                <span className="text-[11px] text-slate-500 block">Bab IV: Ibadah</span>
+                <span className="text-lg font-bold text-slate-900 dark:text-slate-100">{sk380Metrics.countIbadah}</span>
+                <span className="text-[10px] text-slate-400 block mt-0.5">7 butir pasal tata tertib</span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60">
+                <span className="text-[11px] text-slate-500 block">Pelanggaran Khusus / Berat</span>
+                <span className="text-lg font-bold text-rose-600 dark:text-rose-400">{sk380Metrics.countKhusus}</span>
+                <span className="text-[10px] text-slate-400 block mt-0.5">12 butir larangan keras</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Filter Bar & Controls */}
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div className="flex flex-wrap items-center gap-2.5 text-xs">
+              <span className="font-semibold text-slate-600 dark:text-slate-400 flex items-center gap-1">
+                <Filter className="w-3.5 h-3.5" />
+                Filter Rombel:
+              </span>
+              <select
+                value={selectedClassFilter}
+                onChange={e => setSelectedClassFilter(e.target.value)}
+                className="px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-medium text-xs focus:ring-1 focus:ring-amber-500"
+              >
+                <option value="all">Semua Rombel ({students.length} Siswa)</option>
+                {classList.map(cls => (
+                  <option key={cls} value={cls}>Kelas {cls}</option>
+                ))}
+              </select>
+
+              <span className="font-semibold text-slate-600 dark:text-slate-400 ml-2">
+                Jenjang Sanksi:
+              </span>
+              <select
+                value={selectedDisciplineTierFilter}
+                onChange={e => setSelectedDisciplineTierFilter(e.target.value)}
+                className="px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-medium text-xs focus:ring-1 focus:ring-amber-500"
+              >
+                <option value="all">Semua Tingkat Sanksi</option>
+                <option value="1">Tahap 1: Peringatan Lisan (10-20 P)</option>
+                <option value="2">Tahap 2: SP 1 & Panggilan I (21-40 P)</option>
+                <option value="3">Tahap 3: SP 2 & Skorsing 3 Hari (41-75 P)</option>
+                <option value="4">Tahap 4: SP 3 & Sidang Pleno (76-99 P)</option>
+                <option value="5">Tahap 5: Pengembalian Siswa (≥100 P)</option>
+              </select>
+
+              {(selectedClassFilter !== 'all' || selectedDisciplineTierFilter !== 'all') && (
+                <button
+                  onClick={() => {
+                    setSelectedClassFilter('all');
+                    setSelectedDisciplineTierFilter('all');
+                  }}
+                  className="px-2 py-1 text-xs text-amber-600 dark:text-amber-400 hover:underline"
+                >
+                  Reset Filter
+                </button>
+              )}
+            </div>
+
+            <div className="text-xs text-slate-500 dark:text-slate-400">
+              Menampilkan <span className="font-bold text-amber-500">{filteredDisciplineStudents.length}</span> siswa terdaftar
+            </div>
+          </div>
+
+          {/* Table Data Rekap Disiplin Siswa */}
+          <DataTable
+            id="reports-discipline-sk380-table"
+            data={filteredDisciplineStudents}
+            columns={disciplineColumns}
+            searchPlaceholder="Cari siswa, NIS, kelas, jenjang sanksi, atau tindakan..."
+            searchableKeys={['studentName', 'studentNis', 'studentClass']}
+          />
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* TAB 4: REKAPITULASI LAYANAN BK */}
       {/* ========================================================= */}
       {activeTab === 'counseling' && (
         <div className="space-y-4">
@@ -978,21 +1410,188 @@ export const ReportsPage: React.FC = () => {
               </tbody>
             </table>
 
-            <div className="flex justify-between items-end pt-4 font-sans text-center text-xs">
-              <div>
-                <p>Mengetahui,</p>
-                <p className="font-bold">Kepala Madrasah</p>
-                <div className="h-16"></div>
-                <p className="font-bold underline">{schoolSetting?.principalName || 'Kepala Madrasah'}</p>
-                <p className="text-[10px] text-slate-600">NIP. {schoolSetting?.principalNip || '-'}</p>
-              </div>
-
+            <div className="grid grid-cols-3 gap-4 pt-4 font-sans text-center text-xs">
               <div>
                 <p>Bula, {new Date().toLocaleDateString('id-ID')}</p>
                 <p className="font-bold">Koordinator Guru BK</p>
                 <div className="h-16"></div>
                 <p className="font-bold underline">{currentUser?.displayName || 'Guru BK'}</p>
                 <p className="text-[10px] text-slate-600">Pamong Kedisiplinan</p>
+              </div>
+
+              <div>
+                <p>Menyetujui,</p>
+                <p className="font-bold">Waka Kesiswaan</p>
+                <div className="h-16"></div>
+                <p className="font-bold underline">{schoolSetting?.wakaName || schoolSetting?.wakaKesiswaanName || 'Puput Eka Bajuri, S.Pd., M.Or'}</p>
+                <p className="text-[10px] text-slate-600">NIP. {schoolSetting?.wakaNip || '198806082023211020'}</p>
+              </div>
+
+              <div>
+                <p>Mengetahui,</p>
+                <p className="font-bold">Kepala Madrasah</p>
+                <div className="h-16"></div>
+                <p className="font-bold underline">{schoolSetting?.principalName || 'Zakaria, S.Pd.I., M.Pd'}</p>
+                <p className="text-[10px] text-slate-600">NIP. {schoolSetting?.principalNip || '197808102005011007'}</p>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL PRINT RESMI: REKAP KEDISIPLINAN SK B-380 */}
+      {/* ========================================================= */}
+      {isPrintDisciplineSk380Open && (
+        <Modal
+          isOpen={isPrintDisciplineSk380Open}
+          onClose={() => setIsPrintDisciplineSk380Open(false)}
+          title="Pratinjau Dokumen Rekapitulasi Kedisiplinan SK B-380"
+          subtitle="Dokumen berita acara dan evaluasi penetapan sanksi peserta didik MAN 2 SBT"
+          maxWidth="xl"
+          footer={
+            <div className="flex items-center justify-between w-full">
+              <span className="text-xs text-slate-400">
+                Dokumen Resmi Evaluasi Kedisiplinan • {filteredDisciplineStudents.length} Siswa Terdata
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setIsPrintDisciplineSk380Open(false)}
+                  className="px-4 py-2 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700"
+                >
+                  Tutup
+                </button>
+                <button
+                  onClick={executeBrowserPrint}
+                  className="px-5 py-2 text-xs font-bold rounded-xl bg-amber-600 hover:bg-amber-500 text-white shadow-md flex items-center gap-2"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>Cetak Dokumen Resmi (A4)</span>
+                </button>
+              </div>
+            </div>
+          }
+        >
+          <div className="bg-white text-slate-900 p-6 rounded-lg font-serif text-[11px] leading-relaxed select-text shadow-sm border border-slate-300">
+            <SchoolLetterhead schoolInfo={schoolSetting} compact={true} />
+
+            <div className="text-center my-4 border-b pb-3 border-slate-400">
+              <h3 className="font-extrabold text-sm uppercase underline tracking-wide">
+                LAPORAN REKAPITULASI EVALUASI KEDISIPLINAN & PENETAPAN SANKSI TATA TERTIB
+              </h3>
+              <p className="text-[11px] font-sans font-semibold text-slate-800 mt-1">
+                BERDASARKAN KEPUTUSAN KEPALA MAN 2 SERAM BAGIAN TIMUR NOMOR: B-380/Ma.25.06/PP.00.6/07/2024
+              </p>
+              <p className="text-[10px] font-sans text-slate-600 mt-0.5">
+                Tahun Pelajaran: {activeAcademicYear} {selectedClassFilter !== 'all' ? `• Rombel: Kelas ${selectedClassFilter}` : '• Seluruh Rombongan Belajar'}
+              </p>
+            </div>
+
+            {/* Ringkasan Matriks Eksekutif */}
+            <div className="grid grid-cols-5 gap-2 font-sans text-[10px] mb-4">
+              <div className="p-2 border border-slate-300 rounded bg-slate-50 text-center">
+                <span className="text-slate-500 block text-[9px]">Total Kasus</span>
+                <span className="text-xs font-bold text-slate-900">{sk380Metrics.totalViolations} Kasus</span>
+              </div>
+              <div className="p-2 border border-slate-300 rounded bg-slate-50 text-center">
+                <span className="text-slate-500 block text-[9px]">Siswa Melanggar</span>
+                <span className="text-xs font-bold text-slate-900">{sk380Metrics.totalViolatingStudents} Siswa</span>
+              </div>
+              <div className="p-2 border border-slate-300 rounded bg-slate-50 text-center">
+                <span className="text-slate-500 block text-[9px]">Ambang Sanksi (≥10p)</span>
+                <span className="text-xs font-bold text-amber-700">{sk380Metrics.activeSanctionStudents} Siswa</span>
+              </div>
+              <div className="p-2 border border-slate-300 rounded bg-slate-50 text-center">
+                <span className="text-slate-500 block text-[9px]">SP 2 & Skorsing</span>
+                <span className="text-xs font-bold text-rose-700">{sk380Metrics.tier3Count} Siswa</span>
+              </div>
+              <div className="p-2 border border-slate-300 rounded bg-slate-50 text-center">
+                <span className="text-slate-500 block text-[9px]">SP 3 & Pleno / Dikeluarkan</span>
+                <span className="text-xs font-bold text-red-700">{sk380Metrics.tier4Count + sk380Metrics.tier5Count} Siswa</span>
+              </div>
+            </div>
+
+            {/* Tabel Daftar Siswa Terdata */}
+            <table className="w-full font-sans text-[10px] border-collapse border border-slate-400 mb-6">
+              <thead>
+                <tr className="bg-slate-100 text-slate-800">
+                  <th className="border border-slate-400 p-1 text-center w-7">No</th>
+                  <th className="border border-slate-400 p-1.5 text-left">Nama Siswa</th>
+                  <th className="border border-slate-400 p-1 text-center">NIS</th>
+                  <th className="border border-slate-400 p-1 text-center">Kelas</th>
+                  <th className="border border-slate-400 p-1 text-center">Total Poin</th>
+                  <th className="border border-slate-400 p-1.5 text-left">Jenjang Sanksi (SK B-380)</th>
+                  <th className="border border-slate-400 p-1.5 text-left">Tindakan Wajib / Sanksi Resmi</th>
+                  <th className="border border-slate-400 p-1 text-center">Status SP</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredDisciplineStudents.map((s, idx) => (
+                  <tr key={s.studentId} className="border-b border-slate-300 hover:bg-slate-50">
+                    <td className="border border-slate-300 p-1 text-center">{idx + 1}</td>
+                    <td className="border border-slate-300 p-1.5 font-bold text-slate-900">{s.studentName}</td>
+                    <td className="border border-slate-300 p-1 text-center font-mono">{s.studentNis}</td>
+                    <td className="border border-slate-300 p-1 text-center font-semibold">{s.studentClass}</td>
+                    <td className="border border-slate-300 p-1 text-center font-bold font-mono">
+                      <span className={s.totalPoints >= 41 ? 'text-red-700' : s.totalPoints >= 21 ? 'text-orange-700' : 'text-slate-800'}>
+                        {s.totalPoints} P
+                      </span>
+                    </td>
+                    <td className="border border-slate-300 p-1.5">
+                      {s.tier ? (
+                        <span className="font-semibold text-slate-800">
+                          {s.tier.name}
+                        </span>
+                      ) : (
+                        <span className="text-slate-500 italic">&lt;10 P (Preventif)</span>
+                      )}
+                    </td>
+                    <td className="border border-slate-300 p-1.5 text-[9.5px] leading-snug">
+                      {s.tier ? s.tier.actionRequired : 'Pembinaan preventif wali kelas'}
+                    </td>
+                    <td className="border border-slate-300 p-1 text-center">
+                      {s.highestCall > 0 ? (
+                        <span className="font-bold text-blue-800">SP {s.highestCall}</span>
+                      ) : (
+                        <span className="text-slate-400">-</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+                {filteredDisciplineStudents.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="p-4 text-center text-slate-500 font-sans">
+                      Tidak ada catatan pelanggaran kedisiplinan yang cocok dengan kriteria filter saat ini.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+
+            {/* Kolom Tanda Tangan 3 Pihak Kedinasan */}
+            <div className="grid grid-cols-3 gap-4 pt-4 font-sans text-center text-xs">
+              <div>
+                <p>Bula, {new Date().toLocaleDateString('id-ID')}</p>
+                <p className="font-bold">Koordinator Guru BK</p>
+                <div className="h-16"></div>
+                <p className="font-bold underline">{currentUser?.displayName || 'Guru BK'}</p>
+                <p className="text-[10px] text-slate-600">Pamong Kedisiplinan</p>
+              </div>
+
+              <div>
+                <p>Menyetujui,</p>
+                <p className="font-bold">Waka Kesiswaan</p>
+                <div className="h-16"></div>
+                <p className="font-bold underline">{schoolSetting?.wakaName || schoolSetting?.wakaKesiswaanName || 'Puput Eka Bajuri, S.Pd., M.Or'}</p>
+                <p className="text-[10px] text-slate-600">NIP. {schoolSetting?.wakaNip || '198806082023211020'}</p>
+              </div>
+
+              <div>
+                <p>Mengetahui,</p>
+                <p className="font-bold">Kepala Madrasah</p>
+                <div className="h-16"></div>
+                <p className="font-bold underline">{schoolSetting?.principalName || 'Zakaria, S.Pd.I., M.Pd'}</p>
+                <p className="text-[10px] text-slate-600">NIP. {schoolSetting?.principalNip || '197808102005011007'}</p>
               </div>
             </div>
           </div>

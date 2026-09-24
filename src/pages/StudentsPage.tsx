@@ -25,7 +25,12 @@ import {
   ArrowUpDown,
   Layers,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Printer,
+  Scale,
+  BookOpenCheck,
+  Crown,
+  Check
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -37,6 +42,8 @@ import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { ExportActions } from '../components/common/ExportActions';
 import { ClassGridFilter } from '../components/common/ClassGridFilter';
 import { ClassManagementModal } from '../components/common/ClassManagementModal';
+import { SchoolLetterhead } from '../components/common/SchoolLetterhead';
+import { OFFICIAL_DISCIPLINE_TIERS, getDisciplineTier } from '../services/officialRulesData';
 import { StudentsListTab, StudentsHomeroomTab } from './students/tabs';
 import * as XLSX from 'xlsx';
 import {
@@ -67,14 +74,27 @@ export const StudentsPage: React.FC = () => {
     clearAllStudents,
     assignHomeroomTeacher,
     addTeacher,
+    extracurriculars,
     members,
+    addMember,
+    removeMember,
+    updateMemberStatus,
+    osimMembers,
+    addOsimMember,
+    deleteOsimMember,
+    updateOsimMember,
+    osimDepartments,
     violations,
     counseling,
     achievements,
     attendance,
     activeAcademicYear,
-    schoolSetting
+    schoolSetting,
+    parentCallLetters
   } = useSchool();
+
+  // Disciplinary Card Print State
+  const [isPrintDisciplineCardOpen, setIsPrintDisciplineCardOpen] = useState(false);
 
   // Master Tab
   const [mainTab, setMainTab] = useState<'students' | 'homeroom'>('students');
@@ -123,7 +143,20 @@ export const StudentsPage: React.FC = () => {
   const [isClassManageOpen, setIsClassManageOpen] = useState(false);
   const [isClearAllStudentsOpen, setIsClearAllStudentsOpen] = useState(false);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
-  const [detailTab, setDetailTab] = useState<'profile' | 'ekskul' | 'prestasi' | 'pelanggaran' | 'presensi'>('profile');
+  const [detailTab, setDetailTab] = useState<'profile' | 'ekskul' | 'osim' | 'prestasi' | 'pelanggaran' | 'presensi'>('profile');
+
+  // Form states for multi-extracurricular and OSIM selection
+  const [formEkskulIds, setFormEkskulIds] = useState<string[]>([]);
+  const [formIsOsim, setFormIsOsim] = useState(false);
+  const [formOsimPosition, setFormOsimPosition] = useState<string>('Anggota');
+  const [formOsimSekbid, setFormOsimSekbid] = useState<string>('BPH (Badan Pengurus Harian)');
+
+  // Detail Modal inline management states
+  const [isManagingStudentEkskuls, setIsManagingStudentEkskuls] = useState(false);
+  const [manageEkskulSelectedIds, setManageEkskulSelectedIds] = useState<string[]>([]);
+  const [isAddingStudentToOsim, setIsAddingStudentToOsim] = useState(false);
+  const [quickOsimPosition, setQuickOsimPosition] = useState<string>('Anggota');
+  const [quickOsimSekbid, setQuickOsimSekbid] = useState<string>('BPH (Badan Pengurus Harian)');
 
   // Import State
   const [previewStudents, setPreviewStudents] = useState<ParsedImportStudent[]>([]);
@@ -275,6 +308,10 @@ export const StudentsPage: React.FC = () => {
       address: '',
       status: 'Aktif'
     });
+    setFormEkskulIds([]);
+    setFormIsOsim(false);
+    setFormOsimPosition('Anggota');
+    setFormOsimSekbid('BPH (Badan Pengurus Harian)');
     setIsFormOpen(true);
   };
 
@@ -282,12 +319,37 @@ export const StudentsPage: React.FC = () => {
     e?.stopPropagation();
     setSelectedStudent(student);
     setFormData(student);
+
+    // Populate active enrolled extracurriculars
+    const existingEkskuls = members
+      .filter(m => m.studentId === student.id && m.status === 'Aktif')
+      .map(m => m.extracurricularId);
+    setFormEkskulIds(existingEkskuls);
+
+    // Check OSIM membership
+    const existingOsim = osimMembers.find(o => 
+      (o.studentId && o.studentId === student.id) ||
+      (o.studentNis && o.studentNis === student.nis) ||
+      (o.fullName && o.fullName.toLowerCase() === student.fullName.toLowerCase())
+    );
+    if (existingOsim) {
+      setFormIsOsim(true);
+      setFormOsimPosition(existingOsim.position || 'Anggota');
+      setFormOsimSekbid(existingOsim.sekbid || 'BPH (Badan Pengurus Harian)');
+    } else {
+      setFormIsOsim(false);
+      setFormOsimPosition('Anggota');
+      setFormOsimSekbid('BPH (Badan Pengurus Harian)');
+    }
+
     setIsFormOpen(true);
   };
 
   const handleOpenDetail = (student: Student) => {
     setSelectedStudent(student);
     setDetailTab('profile');
+    setIsManagingStudentEkskuls(false);
+    setIsAddingStudentToOsim(false);
     setIsDetailOpen(true);
   };
 
@@ -306,6 +368,11 @@ export const StudentsPage: React.FC = () => {
 
     try {
       const targetClass = classes.find(c => c.id === formData.classId);
+      let targetStudentId = selectedStudent?.id;
+      const studentName = formData.fullName.trim();
+      const studentNis = formData.nis.trim();
+      const studentClass = targetClass?.name || formData.className || 'X';
+      const studentGender = (formData.gender as 'L' | 'P') || 'L';
 
       if (selectedStudent) {
         await updateStudent(selectedStudent.id, {
@@ -314,22 +381,87 @@ export const StudentsPage: React.FC = () => {
           major: targetClass?.major || formData.major
         });
       } else {
-        await addStudent({
-          nis: formData.nis!,
+        const created = await addStudent({
+          nis: studentNis,
           nisn: formData.nisn || '',
-          fullName: formData.fullName!,
-          gender: formData.gender as 'L' | 'P',
+          fullName: studentName,
+          gender: studentGender,
           birthPlace: formData.birthPlace || '',
           birthDate: formData.birthDate || '',
           classId: formData.classId!,
-          className: targetClass?.name || 'X RPL 1',
-          major: targetClass?.major || 'Rekayasa Perangkat Lunak',
+          className: studentClass,
+          major: targetClass?.major || 'Umum',
           phone: formData.phone || '',
           parentName: formData.parentName || '',
           parentPhone: formData.parentPhone || '',
           address: formData.address || '',
           status: (formData.status as any) || 'Aktif'
         });
+        if (created) {
+          targetStudentId = created.id;
+        }
+      }
+
+      // Handle multi-extracurricular enrollment
+      if (targetStudentId) {
+        const currentActiveMemberships = members.filter(
+          m => m.studentId === targetStudentId && m.status === 'Aktif'
+        );
+        const currentActiveEkskulIds = currentActiveMemberships.map(m => m.extracurricularId);
+
+        // Add newly selected extracurriculars
+        for (const ekskulId of formEkskulIds) {
+          if (!currentActiveEkskulIds.includes(ekskulId)) {
+            const ekskul = extracurriculars.find(e => e.id === ekskulId);
+            if (ekskul) {
+              await addMember({
+                extracurricularId: ekskul.id,
+                extracurricularName: ekskul.name,
+                studentId: targetStudentId,
+                studentName: studentName,
+                studentNis: studentNis,
+                studentClass: studentClass,
+                gender: studentGender,
+                role: 'Anggota',
+                joinDate: new Date().toISOString().split('T')[0],
+                status: 'Aktif',
+                academicYear: activeAcademicYear
+              });
+            }
+          }
+        }
+
+        // Handle OSIM Membership synchronization
+        const existingOsim = osimMembers.find(o => 
+          (o.studentId && o.studentId === targetStudentId) ||
+          (o.studentNis && o.studentNis === studentNis) ||
+          (o.fullName && o.fullName.toLowerCase() === studentName.toLowerCase())
+        );
+
+        if (formIsOsim) {
+          if (existingOsim) {
+            await updateOsimMember(existingOsim.id, {
+              position: formOsimPosition as any,
+              sekbid: formOsimSekbid as any,
+              status: 'Aktif',
+              className: studentClass,
+              studentNis: studentNis
+            });
+          } else {
+            await addOsimMember({
+              studentId: targetStudentId,
+              fullName: studentName,
+              studentNis: studentNis,
+              className: studentClass,
+              position: formOsimPosition as any,
+              sekbid: formOsimSekbid as any,
+              phone: formData.phone || '-',
+              photoUrl: '',
+              status: 'Aktif',
+              period: activeAcademicYear
+            });
+          }
+        }
       }
     } catch (err) {
       console.error('Error saving student:', err);
@@ -562,9 +694,18 @@ export const StudentsPage: React.FC = () => {
 
   // Student specific relations
   const studentMemberships = selectedStudent ? members.filter(m => m.studentId === selectedStudent.id) : [];
+  const studentOsimMembership = selectedStudent ? osimMembers.find(o => 
+    (o.studentId && o.studentId === selectedStudent.id) ||
+    (o.studentNis && o.studentNis === selectedStudent.nis) ||
+    (o.fullName && o.fullName.toLowerCase() === selectedStudent.fullName.toLowerCase())
+  ) : null;
   const studentAchievements = selectedStudent ? achievements.filter(a => a.studentId === selectedStudent.id) : [];
-  const studentViolations = selectedStudent ? violations.filter(v => v.studentId === selectedStudent.id) : [];
+  const studentViolations = selectedStudent ? violations.filter(v => v.studentId === selectedStudent.id && !v.isDeleted) : [];
   const studentCounselings = selectedStudent ? counseling.filter(c => c.studentId === selectedStudent.id) : [];
+  const studentParentCalls = selectedStudent ? parentCallLetters.filter(p => p.studentId === selectedStudent.id) : [];
+
+  const studentTotalPoints = studentViolations.reduce((acc, v) => acc + (Number(v.points) || 0), 0);
+  const studentTier = getDisciplineTier(studentTotalPoints);
 
   const columns: Column<Student>[] = [
     {
@@ -637,6 +778,44 @@ export const StudentsPage: React.FC = () => {
               )}
             </div>
             <p className="text-[11px] text-slate-400 truncate max-w-[150px]">{s.major}</p>
+          </div>
+        );
+      }
+    },
+    {
+      header: 'Kegiatan (OSIM & Ekskul)',
+      className: 'min-w-[170px]',
+      cell: s => {
+        const studentEkskuls = (members || []).filter(m => m.studentId === s.id && m.status === 'Aktif');
+        const osimEntry = (osimMembers || []).find(o => 
+          (o.studentId && o.studentId === s.id) ||
+          (o.studentNis && o.studentNis === s.nis) ||
+          (o.fullName && o.fullName.toLowerCase() === s.fullName.toLowerCase())
+        );
+
+        if (!osimEntry && studentEkskuls.length === 0) {
+          return <span className="text-[11px] text-slate-400 dark:text-slate-500 italic">Belum terdaftar</span>;
+        }
+
+        return (
+          <div className="flex flex-col gap-1 text-[11px]">
+            {osimEntry && (
+              <span className="inline-flex items-center gap-1 font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800/80 px-2 py-0.5 rounded-md w-fit text-[10px]">
+                <Crown className="w-3 h-3 text-amber-500" />
+                <span>OSIM ({osimEntry.position || 'Pengurus'})</span>
+              </span>
+            )}
+            {studentEkskuls.length > 0 && (
+              <span
+                className="inline-flex items-center gap-1 text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800/80 px-2 py-0.5 rounded-md w-fit text-[10px]"
+                title={studentEkskuls.map(e => e.extracurricularName).join(', ')}
+              >
+                <span>🎯 {studentEkskuls.length} Ekskul</span>
+                <span className="text-indigo-500 dark:text-indigo-400 max-w-[120px] truncate">
+                  ({studentEkskuls.map(e => e.extracurricularName).join(', ')})
+                </span>
+              </span>
+            )}
           </div>
         );
       }
@@ -1072,6 +1251,115 @@ export const StudentsPage: React.FC = () => {
               className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
             />
           </div>
+
+          {/* Pilihan Ekstrakurikuler yang Diminati (Bebas Pilih Lebih dari 1) */}
+          <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                <Compass className="w-3.5 h-3.5 text-indigo-600" />
+                Ekstrakurikuler yang Diikuti / Diminati (Bisa &gt; 1):
+              </label>
+              <span className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold">
+                {formEkskulIds.length} dipilih
+              </span>
+            </div>
+            {extracurriculars.length === 0 ? (
+              <p className="text-[11px] text-slate-400 italic">Belum ada data ekstrakurikuler terdaftar di sistem.</p>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-40 overflow-y-auto p-1.5 bg-slate-50 dark:bg-slate-800/40 rounded-xl border border-slate-200 dark:border-slate-700/60">
+                {extracurriculars.map(ekskul => {
+                  const isSelected = formEkskulIds.includes(ekskul.id);
+                  return (
+                    <button
+                      key={ekskul.id}
+                      type="button"
+                      onClick={() => {
+                        setFormEkskulIds(prev => 
+                          prev.includes(ekskul.id) ? prev.filter(id => id !== ekskul.id) : [...prev, ekskul.id]
+                        );
+                      }}
+                      className={`p-2 rounded-lg border text-left text-xs transition flex items-center justify-between gap-1.5 ${
+                        isSelected
+                          ? 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-500 text-indigo-900 dark:text-indigo-200 font-bold'
+                          : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+                      }`}
+                    >
+                      <span className="truncate">{ekskul.name}</span>
+                      <span className={`w-3.5 h-3.5 rounded flex items-center justify-center text-[9px] shrink-0 ${
+                        isSelected ? 'bg-indigo-600 text-white font-bold' : 'border border-slate-300 dark:border-slate-600'
+                      }`}>
+                        {isSelected && '✓'}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            <p className="text-[10px] text-slate-400">Centang ekskul yang digemari siswa. Siswa dapat mengikuti lebih dari 1 ekstrakurikuler sekaligus.</p>
+          </div>
+
+          {/* Pilihan Kepengurusan OSIM */}
+          <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={formIsOsim}
+                onChange={e => setFormIsOsim(e.target.checked)}
+                className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500/20"
+              />
+              <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                <Crown className="w-3.5 h-3.5 text-amber-500" />
+                Daftarkan Juga Sebagai Pengurus OSIM
+              </span>
+            </label>
+
+            {formIsOsim && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-amber-50/50 dark:bg-amber-950/20 rounded-xl border border-amber-200/80 dark:border-amber-900/40">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Jabatan Pengurus:
+                  </label>
+                  <select
+                    value={formOsimPosition}
+                    onChange={e => setFormOsimPosition(e.target.value)}
+                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-amber-200 dark:border-amber-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
+                  >
+                    <option value="Ketua Umum">Ketua Umum</option>
+                    <option value="Wakil Ketua">Wakil Ketua</option>
+                    <option value="Sekretaris 1">Sekretaris 1</option>
+                    <option value="Sekretaris 2">Sekretaris 2</option>
+                    <option value="Bendahara 1">Bendahara 1</option>
+                    <option value="Bendahara 2">Bendahara 2</option>
+                    <option value="Koordinator Sekbid">Koordinator Sekbid</option>
+                    <option value="Anggota Sekbid">Anggota Sekbid</option>
+                    <option value="Anggota">Anggota</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                    Seksi Bidang (Sekbid):
+                  </label>
+                  <select
+                    value={formOsimSekbid}
+                    onChange={e => setFormOsimSekbid(e.target.value)}
+                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-amber-200 dark:border-amber-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200"
+                  >
+                    <option value="BPH (Badan Pengurus Harian)">BPH (Badan Pengurus Harian)</option>
+                    <option value="Sekbid 1: Keimanan & Ketaqwaan">Sekbid 1: Keimanan & Ketaqwaan</option>
+                    <option value="Sekbid 2: Budi Pekerti & Karakter">Sekbid 2: Budi Pekerti & Karakter</option>
+                    <option value="Sekbid 3: Kepribadian Unggul & Wawasan Kebangsaan">Sekbid 3: Kepribadian Unggul & Wawasan Kebangsaan</option>
+                    <option value="Sekbid 4: Prestasi Akademik, Seni & Olahraga">Sekbid 4: Prestasi Akademik, Seni & Olahraga</option>
+                    <option value="Sekbid 5: Demokrasi, HAM & Lingkungan Hidup">Sekbid 5: Demokrasi, HAM & Lingkungan Hidup</option>
+                    <option value="Sekbid 6: Kreativitas, Keterampilan & Kewirausahaan">Sekbid 6: Kreativitas, Keterampilan & Kewirausahaan</option>
+                    <option value="Sekbid 7: Kualitas Jasmani, Kesehatan & Gizi">Sekbid 7: Kualitas Jasmani, Kesehatan & Gizi</option>
+                    <option value="Sekbid 8: Sastra, Budaya & Moderasi Beragama">Sekbid 8: Sastra, Budaya & Moderasi Beragama</option>
+                    <option value="Sekbid 9: Teknologi Informasi & Komunikasi">Sekbid 9: Teknologi Informasi & Komunikasi</option>
+                    <option value="Sekbid 10: Komunikasi Bahasa Asing & Kehumasan">Sekbid 10: Komunikasi Bahasa Asing & Kehumasan</option>
+                  </select>
+                </div>
+              </div>
+            )}
+          </div>
         </form>
       </Modal>
 
@@ -1111,6 +1399,20 @@ export const StudentsPage: React.FC = () => {
               Ekstrakurikuler ({studentMemberships.length})
             </button>
             <button
+              onClick={() => setDetailTab('osim')}
+              className={`px-3 py-2 rounded-t-xl transition-colors flex items-center gap-1.5 ${
+                detailTab === 'osim' ? 'bg-amber-50 dark:bg-amber-950 text-amber-600 border-b-2 border-amber-600' : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Crown className="w-3.5 h-3.5 text-amber-500" />
+              <span>OSIM</span>
+              {studentOsimMembership && (
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100">
+                  Pengurus
+                </span>
+              )}
+            </button>
+            <button
               onClick={() => setDetailTab('prestasi')}
               className={`px-3 py-2 rounded-t-xl transition-colors ${
                 detailTab === 'prestasi' ? 'bg-indigo-50 dark:bg-indigo-950 text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-500 hover:text-slate-800'
@@ -1120,11 +1422,21 @@ export const StudentsPage: React.FC = () => {
             </button>
             <button
               onClick={() => setDetailTab('pelanggaran')}
-              className={`px-3 py-2 rounded-t-xl transition-colors ${
+              className={`px-3 py-2 rounded-t-xl transition-colors flex items-center gap-1.5 ${
                 detailTab === 'pelanggaran' ? 'bg-indigo-50 dark:bg-indigo-950 text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-500 hover:text-slate-800'
               }`}
             >
-              Pelanggaran ({studentViolations.length})
+              <Scale className="w-3.5 h-3.5" />
+              <span>Buku Kedisiplinan SK B-380</span>
+              {studentViolations.length > 0 && (
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                  studentTotalPoints >= 41 ? 'bg-rose-600 text-white' :
+                  studentTotalPoints >= 10 ? 'bg-amber-600 text-white' :
+                  'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
+                }`}>
+                  {studentTotalPoints} P
+                </span>
+              )}
             </button>
           </div>
 
@@ -1156,19 +1468,361 @@ export const StudentsPage: React.FC = () => {
 
           {/* Tab 2: Ekskul */}
           {detailTab === 'ekskul' && (
-            <div className="space-y-3 pt-2">
-              {studentMemberships.length === 0 ? (
-                <p className="text-xs text-slate-400 py-6 text-center">Siswa belum terdaftar pada ekstrakurikuler manapun.</p>
-              ) : (
-                studentMemberships.map(m => (
-                  <div key={m.id} className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex items-center justify-between text-xs">
-                    <div>
-                      <p className="font-bold text-slate-900 dark:text-slate-100">{m.extracurricularName}</p>
-                      <p className="text-slate-400">No Anggota: {m.memberNumber || '-'} • Bergabung: {m.joinDate}</p>
-                    </div>
-                    <StatusBadge status={m.status} />
+            <div className="space-y-4 pt-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-indigo-50/50 dark:bg-indigo-950/30 rounded-xl border border-indigo-100 dark:border-indigo-900/40">
+                <div>
+                  <h4 className="font-bold text-xs text-indigo-950 dark:text-indigo-200">
+                    Ekstrakurikuler Terdaftar ({studentMemberships.length})
+                  </h4>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Siswa berhak mendaftar dan aktif di lebih dari 1 ekstrakurikuler yang digemarinya.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setManageEkskulSelectedIds(
+                      studentMemberships.filter(m => m.status === 'Aktif').map(m => m.extracurricularId)
+                    );
+                    setIsManagingStudentEkskuls(!isManagingStudentEkskuls);
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center gap-1.5 transition shadow-2xs cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>{isManagingStudentEkskuls ? 'Tutup Pilihan Ekskul' : '+ Tambah / Kelola Ekskul'}</span>
+                </button>
+              </div>
+
+              {/* Multi-selection picker for extracurriculars */}
+              {isManagingStudentEkskuls && (
+                <div className="p-4 rounded-xl border-2 border-indigo-300 dark:border-indigo-800 bg-white dark:bg-slate-900 space-y-3 shadow-md">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-indigo-600" />
+                      Centang Ekstrakurikuler untuk Siswa Ini:
+                    </span>
+                    <span className="text-[11px] text-indigo-600 dark:text-indigo-400 font-semibold">
+                      {manageEkskulSelectedIds.length} ekstrakurikuler dipilih
+                    </span>
                   </div>
-                ))
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-56 overflow-y-auto p-1">
+                    {extracurriculars.map(ekskul => {
+                      const isSelected = manageEkskulSelectedIds.includes(ekskul.id);
+                      return (
+                        <button
+                          key={ekskul.id}
+                          type="button"
+                          onClick={() => {
+                            setManageEkskulSelectedIds(prev => 
+                              prev.includes(ekskul.id) ? prev.filter(id => id !== ekskul.id) : [...prev, ekskul.id]
+                            );
+                          }}
+                          className={`p-2.5 rounded-xl border text-left flex items-start justify-between gap-2 transition-all cursor-pointer ${
+                            isSelected
+                              ? 'bg-indigo-50 dark:bg-indigo-950/60 border-indigo-500 text-indigo-950 dark:text-indigo-100 shadow-2xs'
+                              : 'bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700/80 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+                          }`}
+                        >
+                          <div>
+                            <p className="font-bold text-xs">{ekskul.name}</p>
+                            <p className="text-[10px] text-slate-400">{ekskul.category || 'Kesiswaan'}</p>
+                          </div>
+                          <div className={`w-4 h-4 rounded flex items-center justify-center text-[10px] ${
+                            isSelected ? 'bg-indigo-600 text-white font-bold' : 'border border-slate-300 dark:border-slate-600'
+                          }`}>
+                            {isSelected && '✓'}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setIsManagingStudentEkskuls(false)}
+                      className="px-3 py-1.5 text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 cursor-pointer"
+                    >
+                      Batal
+                    </button>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!selectedStudent) return;
+                        try {
+                          const currentActive = studentMemberships.filter(m => m.status === 'Aktif');
+                          const currentActiveIds = currentActive.map(m => m.extracurricularId);
+
+                          // Add newly checked
+                          for (const ekskulId of manageEkskulSelectedIds) {
+                            if (!currentActiveIds.includes(ekskulId)) {
+                              const eks = extracurriculars.find(e => e.id === ekskulId);
+                              if (eks) {
+                                await addMember({
+                                  extracurricularId: eks.id,
+                                  extracurricularName: eks.name,
+                                  studentId: selectedStudent.id,
+                                  studentName: selectedStudent.fullName,
+                                  studentNis: selectedStudent.nis,
+                                  studentClass: selectedStudent.className,
+                                  gender: selectedStudent.gender,
+                                  role: 'Anggota',
+                                  joinDate: new Date().toISOString().split('T')[0],
+                                  status: 'Aktif',
+                                  academicYear: activeAcademicYear
+                                });
+                              }
+                            }
+                          }
+
+                          // Remove unchecked
+                          for (const m of currentActive) {
+                            if (!manageEkskulSelectedIds.includes(m.extracurricularId)) {
+                              await removeMember(m.id);
+                            }
+                          }
+                        } catch (e) {
+                          console.error(e);
+                        } finally {
+                          setIsManagingStudentEkskuls(false);
+                        }
+                      }}
+                      className="px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-600/20 cursor-pointer"
+                    >
+                      Simpan Perubahan Ekstrakurikuler
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Memberships list */}
+              {studentMemberships.length === 0 ? (
+                <div className="text-center py-8 px-4 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
+                  <Compass className="w-8 h-8 text-slate-300 dark:text-slate-600 mx-auto mb-2" />
+                  <p className="text-xs font-semibold text-slate-600 dark:text-slate-400">Siswa belum terdaftar pada ekstrakurikuler manapun.</p>
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">
+                    Klik tombol "+ Tambah / Kelola Ekskul" di atas untuk mendaftarkan siswa ke ekstrakurikuler yang digemarinya.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {studentMemberships.map(m => (
+                    <div key={m.id} className="p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/50 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-bold text-slate-900 dark:text-slate-100">{m.extracurricularName}</span>
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-medium">
+                            {m.role || 'Anggota'}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          No Anggota: {m.memberNumber || '-'} • Bergabung: {m.joinDate || '-'}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <StatusBadge status={m.status} />
+                        <button
+                          type="button"
+                          onClick={() => updateMemberStatus(m.id, m.status === 'Aktif' ? 'Nonaktif' : 'Aktif')}
+                          className="px-2 py-1 rounded-lg border text-[11px] font-medium border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition cursor-pointer"
+                        >
+                          {m.status === 'Aktif' ? 'Nonaktifkan' : 'Aktifkan'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeMember(m.id)}
+                          className="p-1 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer"
+                          title="Hapus dari Ekskul Ini"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Tab 3: OSIM */}
+          {detailTab === 'osim' && (
+            <div className="space-y-4 pt-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-amber-500/10 rounded-xl border border-amber-500/20">
+                <div>
+                  <h4 className="font-bold text-xs text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                    <Crown className="w-4 h-4 text-amber-500" />
+                    Status Organisasi Siswa Intra Madrasah (OSIM)
+                  </h4>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Siswa dapat menjabat di kepengurusan OSIM sekaligus aktif di berbagai ekstrakurikuler madrasah.
+                  </p>
+                </div>
+              </div>
+
+              {studentOsimMembership ? (
+                <div className="p-4 rounded-2xl border border-amber-300 dark:border-amber-800 bg-gradient-to-br from-amber-50/60 to-orange-50/40 dark:from-amber-950/20 dark:to-orange-950/10 space-y-3 shadow-xs">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-3">
+                      <div className="w-11 h-11 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-500 font-bold text-xl shadow-2xs">
+                        👑
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold text-amber-700 dark:text-amber-300 uppercase tracking-wider bg-amber-500/15 px-2 py-0.5 rounded-full border border-amber-500/30">
+                          Pengurus OSIM {studentOsimMembership.period || activeAcademicYear}
+                        </span>
+                        <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100 mt-1">
+                          {studentOsimMembership.position}
+                        </h3>
+                        <p className="text-xs text-slate-600 dark:text-slate-400">
+                          {studentOsimMembership.sekbid || 'BPH (Badan Pengurus Harian)'}
+                        </p>
+                      </div>
+                    </div>
+                    <StatusBadge status={(studentOsimMembership.status as any) || 'Aktif'} />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-3 border-t border-amber-200/60 dark:border-amber-900/40 text-xs">
+                    <div>
+                      <span className="text-slate-400 block text-[10px]">Nama Terdaftar di OSIM:</span>
+                      <span className="font-semibold text-slate-800 dark:text-slate-200">{studentOsimMembership.fullName}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[10px]">Akun Login Pengurus:</span>
+                      <span className="font-mono text-slate-800 dark:text-slate-200">
+                        {studentOsimMembership.loginUsername || studentOsimMembership.username || 'Belum diaktifkan'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-amber-200/60 dark:border-amber-900/40">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (window.confirm(`Lepaskan ${studentOsimMembership.fullName} dari kepengurusan OSIM?`)) {
+                          await deleteOsimMember(studentOsimMembership.id);
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-lg text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Lepas dari OSIM</span>
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {!isAddingStudentToOsim ? (
+                    <div className="text-center py-8 px-4 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
+                      <Crown className="w-8 h-8 text-amber-400 mx-auto mb-2 opacity-50" />
+                      <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                        Siswa ini belum terdaftar di Kepengurusan OSIM
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-1 max-w-sm mx-auto">
+                        Anda dapat menetapkan siswa ini sebagai BPH atau Koordinator/Anggota Sekbid OSIM madrasah.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setIsAddingStudentToOsim(true)}
+                        className="mt-4 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs inline-flex items-center gap-1.5 transition shadow-md shadow-amber-600/20 cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>+ Tetapkan Sebagai Pengurus OSIM</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="p-4 rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50/40 dark:bg-amber-950/20 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h5 className="font-bold text-xs text-amber-900 dark:text-amber-200 flex items-center gap-1.5">
+                          <Crown className="w-4 h-4 text-amber-500" />
+                          Penetapan Jabatan OSIM:
+                        </h5>
+                        <button
+                          type="button"
+                          onClick={() => setIsAddingStudentToOsim(false)}
+                          className="text-xs text-slate-400 hover:text-slate-600 cursor-pointer"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                            Jabatan Pengurus:
+                          </label>
+                          <select
+                            value={quickOsimPosition}
+                            onChange={e => setQuickOsimPosition(e.target.value)}
+                            className="w-full px-3 py-2 rounded-xl border border-amber-200 dark:border-amber-800 bg-white dark:bg-slate-900 text-xs text-slate-800 dark:text-slate-200"
+                          >
+                            <option value="Ketua Umum">Ketua Umum</option>
+                            <option value="Wakil Ketua">Wakil Ketua</option>
+                            <option value="Sekretaris 1">Sekretaris 1</option>
+                            <option value="Sekretaris 2">Sekretaris 2</option>
+                            <option value="Bendahara 1">Bendahara 1</option>
+                            <option value="Bendahara 2">Bendahara 2</option>
+                            <option value="Koordinator Sekbid">Koordinator Sekbid</option>
+                            <option value="Anggota Sekbid">Anggota Sekbid</option>
+                            <option value="Anggota">Anggota</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[11px] font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                            Seksi Bidang (Sekbid) / Divisi:
+                          </label>
+                          <select
+                            value={quickOsimSekbid}
+                            onChange={e => setQuickOsimSekbid(e.target.value)}
+                            className="w-full px-3 py-2 rounded-xl border border-amber-200 dark:border-amber-800 bg-white dark:bg-slate-900 text-xs text-slate-800 dark:text-slate-200"
+                          >
+                            <option value="BPH (Badan Pengurus Harian)">BPH (Badan Pengurus Harian)</option>
+                            <option value="Sekbid 1: Keimanan & Ketaqwaan">Sekbid 1: Keimanan & Ketaqwaan</option>
+                            <option value="Sekbid 2: Budi Pekerti & Karakter">Sekbid 2: Budi Pekerti & Karakter</option>
+                            <option value="Sekbid 3: Kepribadian Unggul & Wawasan Kebangsaan">Sekbid 3: Kepribadian Unggul & Wawasan Kebangsaan</option>
+                            <option value="Sekbid 4: Prestasi Akademik, Seni & Olahraga">Sekbid 4: Prestasi Akademik, Seni & Olahraga</option>
+                            <option value="Sekbid 5: Demokrasi, HAM & Lingkungan Hidup">Sekbid 5: Demokrasi, HAM & Lingkungan Hidup</option>
+                            <option value="Sekbid 6: Kreativitas, Keterampilan & Kewirausahaan">Sekbid 6: Kreativitas, Keterampilan & Kewirausahaan</option>
+                            <option value="Sekbid 7: Kualitas Jasmani, Kesehatan & Gizi">Sekbid 7: Kualitas Jasmani, Kesehatan & Gizi</option>
+                            <option value="Sekbid 8: Sastra, Budaya & Moderasi Beragama">Sekbid 8: Sastra, Budaya & Moderasi Beragama</option>
+                            <option value="Sekbid 9: Teknologi Informasi & Komunikasi">Sekbid 9: Teknologi Informasi & Komunikasi</option>
+                            <option value="Sekbid 10: Komunikasi Bahasa Asing & Kehumasan">Sekbid 10: Komunikasi Bahasa Asing & Kehumasan</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div className="flex justify-end gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setIsAddingStudentToOsim(false)}
+                          className="px-3 py-1.5 text-xs text-slate-500 hover:text-slate-700 cursor-pointer"
+                        >
+                          Batal
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            if (!selectedStudent) return;
+                            await addOsimMember({
+                              studentId: selectedStudent.id,
+                              fullName: selectedStudent.fullName,
+                              studentNis: selectedStudent.nis,
+                              className: selectedStudent.className,
+                              position: quickOsimPosition as any,
+                              sekbid: quickOsimSekbid as any,
+                              phone: selectedStudent.phone || '-',
+                              photoUrl: '',
+                              status: 'Aktif',
+                              period: activeAcademicYear
+                            });
+                            setIsAddingStudentToOsim(false);
+                          }}
+                          className="px-4 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-md shadow-amber-600/20 cursor-pointer"
+                        >
+                          Simpan Sebagai Pengurus OSIM
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           )}
@@ -1193,27 +1847,317 @@ export const StudentsPage: React.FC = () => {
             </div>
           )}
 
-          {/* Tab 4: Pelanggaran */}
+          {/* Tab 4: Buku Kedisiplinan & SK B-380 */}
           {detailTab === 'pelanggaran' && (
-            <div className="space-y-3 pt-2">
-              {studentViolations.length === 0 ? (
-                <p className="text-xs text-slate-400 py-6 text-center text-emerald-600 font-semibold">
-                  ✨ Bersih dari catatan pelanggaran tata tertib sekolah.
-                </p>
-              ) : (
-                studentViolations.map(v => (
-                  <div key={v.id} className="p-3.5 rounded-xl border border-rose-200 dark:border-rose-900/50 bg-rose-50/40 dark:bg-rose-950/20 text-xs space-y-1">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-rose-800 dark:text-rose-300">{v.violationType}</span>
-                      <span className="font-bold text-rose-600">+{v.points} Poin ({v.category})</span>
+            <div className="space-y-4 pt-2">
+              {/* Disciplinary Summary Card */}
+              <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 text-white shadow-sm">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-11 h-11 rounded-xl flex items-center justify-center font-black text-lg border ${
+                      studentTotalPoints >= 100 ? 'bg-red-500/20 text-red-400 border-red-500/40' :
+                      studentTotalPoints >= 41 ? 'bg-rose-500/20 text-rose-400 border-rose-500/40' :
+                      studentTotalPoints >= 10 ? 'bg-amber-500/20 text-amber-400 border-amber-500/40' :
+                      'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                    }`}>
+                      {studentTotalPoints}P
                     </div>
-                    <p className="text-slate-600 dark:text-slate-300">Tindakan: {v.actionTaken}</p>
-                    <p className="text-[10px] text-slate-400">Dicatat oleh: {v.officerName} • {v.date}</p>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-200">
+                          {studentTier ? studentTier.name : 'STATUS: TERTIB & NORMAL'}
+                        </span>
+                        {studentTier && (
+                          <span className="text-[10px] px-2 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-semibold">
+                            Tahap {studentTier.tier}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        {studentTier ? studentTier.actionRequired : 'Tidak ada tindakan sanksi aktif (<10 poin)'}
+                      </p>
+                    </div>
                   </div>
-                ))
+
+                  <button
+                    onClick={() => setIsPrintDisciplineCardOpen(true)}
+                    className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-600/20 flex items-center gap-1.5 transition-all self-start sm:self-auto"
+                  >
+                    <Printer className="w-3.5 h-3.5" />
+                    <span>Cetak Kartu Kendali (Buku Saku)</span>
+                  </button>
+                </div>
+
+                {/* Point progression meter towards 5 tiers */}
+                <div className="pt-3">
+                  <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1.5">
+                    <span>Progres Akumulasi Poin Sanksi SK B-380:</span>
+                    <span className="font-mono text-slate-300 font-bold">{studentTotalPoints} / 100 P</span>
+                  </div>
+                  <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden relative">
+                    <div
+                      className={`h-full rounded-full transition-all ${
+                        studentTotalPoints >= 100 ? 'bg-red-500' :
+                        studentTotalPoints >= 76 ? 'bg-purple-500' :
+                        studentTotalPoints >= 41 ? 'bg-rose-500' :
+                        studentTotalPoints >= 21 ? 'bg-orange-500' :
+                        studentTotalPoints >= 10 ? 'bg-amber-500' :
+                        'bg-emerald-500'
+                      }`}
+                      style={{ width: `${Math.min(100, Math.max(4, (studentTotalPoints / 100) * 100))}%` }}
+                    />
+                  </div>
+                  <div className="grid grid-cols-5 gap-1 text-[9px] text-slate-400 mt-1 font-mono text-center">
+                    <span>10p Lisan</span>
+                    <span>21p SP1</span>
+                    <span>41p SP2</span>
+                    <span>76p SP3</span>
+                    <span>100p Drop</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Riwayat Surat Panggilan Orang Tua (SP) */}
+              {studentParentCalls.length > 0 && (
+                <div className="p-3.5 rounded-xl border border-blue-200 dark:border-blue-900/50 bg-blue-50/50 dark:bg-blue-950/30 text-xs space-y-2">
+                  <span className="font-bold text-blue-900 dark:text-blue-200 flex items-center gap-1.5 text-xs">
+                    <FileText className="w-3.5 h-3.5 text-blue-600" />
+                    Riwayat Surat Peringatan & Panggilan Orang Tua ({studentParentCalls.length} Surat)
+                  </span>
+                  <div className="space-y-1.5">
+                    {studentParentCalls.map(p => (
+                      <div key={p.id} className="p-2 rounded-lg bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800/60 flex items-center justify-between">
+                        <div>
+                          <span className="font-bold text-blue-700 dark:text-blue-300">
+                            Surat Peringatan / Panggilan Ke-{p.callNumber}
+                          </span>
+                          <p className="text-[11px] text-slate-500 mt-0.5">Tanggal Panggilan: {p.callDate} • Pukul: {p.callTime || '09:00 WIT'}</p>
+                          <p className="text-[11px] text-slate-600 dark:text-slate-400">Yth. {p.parentName || 'Orang Tua / Wali'}</p>
+                        </div>
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-300 font-bold border border-blue-500/20">
+                          {p.status || 'Diterbitkan'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
+
+              {/* Rincian Kasus Pelanggaran Individual */}
+              <div className="space-y-2">
+                <span className="font-bold text-xs text-slate-700 dark:text-slate-300 block">
+                  Catatan Kasus Pelanggaran ({studentViolations.length})
+                </span>
+
+                {studentViolations.length === 0 ? (
+                  <p className="text-xs text-slate-400 py-6 text-center text-emerald-600 font-semibold bg-emerald-50/50 dark:bg-emerald-950/20 rounded-xl border border-emerald-200 dark:border-emerald-900/50">
+                    ✨ Bersih dari catatan pelanggaran tata tertib madrasah.
+                  </p>
+                ) : (
+                  studentViolations.map(v => (
+                    <div key={v.id} className="p-3.5 rounded-xl border border-rose-200 dark:border-rose-900/50 bg-rose-50/40 dark:bg-rose-950/20 text-xs space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-rose-800 dark:text-rose-300">{v.violationType}</span>
+                        <span className="font-bold text-rose-600">+{v.points} Poin ({v.category})</span>
+                      </div>
+                      <p className="text-slate-600 dark:text-slate-300">Tindakan: {v.actionTaken || 'Pembinaan guru piket/wali kelas'}</p>
+                      <p className="text-[10px] text-slate-400">Dicatat oleh: {v.officerName} • Tanggal: {v.date}</p>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           )}
+        </Modal>
+      )}
+
+      {/* Modal Cetak Kartu Kendali Kedisiplinan Siswa (Format Buku Saku SK B-380) */}
+      {isPrintDisciplineCardOpen && selectedStudent && (
+        <Modal
+          isOpen={isPrintDisciplineCardOpen}
+          onClose={() => setIsPrintDisciplineCardOpen(false)}
+          title="Kartu Kendali Kedisiplinan Siswa (Buku Saku SK B-380)"
+          subtitle={`Dokumen rekam jejak karakter & kedisiplinan: ${selectedStudent.fullName}`}
+          maxWidth="xl"
+          footer={
+            <div className="flex items-center justify-between w-full">
+              <span className="text-xs text-slate-400">
+                Format Berita Acara Buku Kendali Pelanggaran Siswa
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setIsPrintDisciplineCardOpen(false)}
+                  className="px-4 py-2 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700"
+                >
+                  Tutup
+                </button>
+                <button
+                  onClick={() => window.print()}
+                  className="px-5 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md flex items-center gap-2"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>Cetak Kartu Sekarang (A4)</span>
+                </button>
+              </div>
+            </div>
+          }
+        >
+          <div className="bg-white text-slate-900 p-6 rounded-lg font-serif text-[11px] leading-relaxed select-text shadow-sm border border-slate-300">
+            <SchoolLetterhead schoolInfo={schoolSetting} compact={true} />
+
+            <div className="text-center my-4 border-b pb-3 border-slate-400">
+              <h3 className="font-extrabold text-sm uppercase underline tracking-wide">
+                KARTU KENDALI KEDISIPLINAN PESERTA DIDIK
+              </h3>
+              <p className="text-[11px] font-sans font-semibold text-slate-800 mt-1">
+                BERDASARKAN TATA TERTIB RESMI SK NOMOR: B-380/Ma.25.06/PP.00.6/07/2024
+              </p>
+              <p className="text-[10px] font-sans text-slate-600 mt-0.5">
+                Tahun Pelajaran: {activeAcademicYear}
+              </p>
+            </div>
+
+            {/* Biodata Siswa */}
+            <table className="w-full font-sans text-[10.5px] mb-4 border border-slate-300">
+              <tbody>
+                <tr className="border-b border-slate-300">
+                  <td className="p-1.5 bg-slate-100 font-bold w-36">Nama Peserta Didik</td>
+                  <td className="p-1.5 font-bold uppercase">{selectedStudent.fullName}</td>
+                  <td className="p-1.5 bg-slate-100 font-bold w-28">Kelas / Rombel</td>
+                  <td className="p-1.5 font-bold">{selectedStudent.className}</td>
+                </tr>
+                <tr className="border-b border-slate-300">
+                  <td className="p-1.5 bg-slate-100 font-bold">NIS / NISN</td>
+                  <td className="p-1.5 font-mono">{selectedStudent.nis} / {selectedStudent.nisn || '-'}</td>
+                  <td className="p-1.5 bg-slate-100 font-bold">Jenis Kelamin</td>
+                  <td className="p-1.5">{selectedStudent.gender === 'L' ? 'Laki-Laki' : 'Perempuan'}</td>
+                </tr>
+                <tr className="border-b border-slate-300">
+                  <td className="p-1.5 bg-slate-100 font-bold">Nama Orang Tua / Wali</td>
+                  <td className="p-1.5">{selectedStudent.parentName || '-'}</td>
+                  <td className="p-1.5 bg-slate-100 font-bold">No. HP Wali</td>
+                  <td className="p-1.5 font-mono">{selectedStudent.parentPhone || '-'}</td>
+                </tr>
+                <tr>
+                  <td className="p-1.5 bg-slate-100 font-bold">Total Akumulasi Poin</td>
+                  <td className="p-1.5 font-bold font-mono text-rose-700">
+                    {studentTotalPoints} Poin
+                  </td>
+                  <td className="p-1.5 bg-slate-100 font-bold">Jenjang Sanksi</td>
+                  <td className="p-1.5 font-bold text-slate-800">
+                    {studentTier ? studentTier.name : 'Tertib & Normal (<10 P)'}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+
+            {/* Riwayat Pelanggaran */}
+            <div className="mb-4">
+              <h4 className="font-sans font-bold text-xs uppercase mb-1 text-slate-800">
+                A. Catatan Pelanggaran Tata Tertib:
+              </h4>
+              <table className="w-full font-sans text-[10px] border-collapse border border-slate-400">
+                <thead>
+                  <tr className="bg-slate-100 text-slate-800">
+                    <th className="border border-slate-400 p-1 text-center w-7">No</th>
+                    <th className="border border-slate-400 p-1 text-center w-20">Tanggal</th>
+                    <th className="border border-slate-400 p-1.5 text-left">Bentuk Pelanggaran</th>
+                    <th className="border border-slate-400 p-1 text-center w-14">Kategori</th>
+                    <th className="border border-slate-400 p-1 text-center w-12">Poin</th>
+                    <th className="border border-slate-400 p-1.5 text-left">Tindakan / Sanksi</th>
+                    <th className="border border-slate-400 p-1 text-left w-24">Pencatat</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {studentViolations.map((v, idx) => (
+                    <tr key={v.id} className="border-b border-slate-300">
+                      <td className="border border-slate-300 p-1 text-center">{idx + 1}</td>
+                      <td className="border border-slate-300 p-1 text-center font-mono">{v.date}</td>
+                      <td className="border border-slate-300 p-1.5 font-semibold">{v.violationType}</td>
+                      <td className="border border-slate-300 p-1 text-center">{v.category}</td>
+                      <td className="border border-slate-300 p-1 text-center font-bold text-rose-700">+{v.points}</td>
+                      <td className="border border-slate-300 p-1.5">{v.actionTaken || '-'}</td>
+                      <td className="border border-slate-300 p-1 text-[9px]">{v.officerName}</td>
+                    </tr>
+                  ))}
+                  {studentViolations.length === 0 && (
+                    <tr>
+                      <td colSpan={7} className="p-3 text-center text-slate-500 italic">
+                        Tidak ada catatan pelanggaran tata tertib (Siswa berstatus tertib).
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Riwayat Surat Panggilan */}
+            {studentParentCalls.length > 0 && (
+              <div className="mb-4 font-sans">
+                <h4 className="font-bold text-xs uppercase mb-1 text-slate-800">
+                  B. Riwayat Surat Peringatan & Panggilan Orang Tua:
+                </h4>
+                <div className="space-y-1">
+                  {studentParentCalls.map(p => (
+                    <div key={p.id} className="p-1.5 border border-slate-300 rounded text-[9.5px] bg-slate-50 flex items-center justify-between">
+                      <span><strong>SP Ke-{p.callNumber}</strong> — Tanggal: {p.callDate} ({p.callTime || '09:00 WIT'})</span>
+                      <span>Yth. {p.parentName || 'Orang Tua / Wali'}</span>
+                      <span className="font-bold text-blue-800">{p.status}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Lembar Tanda Tangan */}
+            <div className="pt-4 border-t border-slate-300 font-sans text-xs">
+              <p className="text-center italic text-[10px] text-slate-600 mb-3">
+                Kartu ini merupakan dokumen resmi catatan kepatuhan tata tertib madrasah untuk keperluan pembinaan karakter dan evaluasi kenaikan kelas/kelulusan.
+              </p>
+
+              <div className="grid grid-cols-4 gap-2 text-center text-[10px]">
+                <div>
+                  <p>Peserta Didik,</p>
+                  <div className="h-14"></div>
+                  <p className="font-bold underline">{selectedStudent.fullName}</p>
+                  <p className="text-[9px] text-slate-600">Siswa Bersangkutan</p>
+                </div>
+
+                <div>
+                  <p>Orang Tua / Wali,</p>
+                  <div className="h-14"></div>
+                  <p className="font-bold underline">{selectedStudent.parentName || '..........................'}</p>
+                  <p className="text-[9px] text-slate-600">Wali Murid</p>
+                </div>
+
+                <div>
+                  <p>Wali Kelas {selectedStudent.className},</p>
+                  <div className="h-14"></div>
+                  <p className="font-bold underline">
+                    {classes.find(c => c.name === selectedStudent.className)?.homeroomTeacher || 'Wali Kelas'}
+                  </p>
+                  <p className="text-[9px] text-slate-600">Pembina Kelas</p>
+                </div>
+
+                <div>
+                  <p>Koordinator BK,</p>
+                  <div className="h-14"></div>
+                  <p className="font-bold underline">Guru BK / Konselor</p>
+                  <p className="text-[9px] text-slate-600">Pamong Karakter</p>
+                </div>
+              </div>
+
+              <div className="text-center pt-4 mt-2 border-t border-dashed border-slate-300">
+                <p className="text-[10px]">Mengetahui,</p>
+                <p className="font-bold text-[10.5px]">Waka Kesiswaan MAN 2 Seram Bagian Timur</p>
+                <div className="h-12"></div>
+                <p className="font-bold underline text-[10.5px]">
+                  {schoolSetting?.wakaName || schoolSetting?.wakaKesiswaanName || 'Puput Eka Bajuri, S.Pd., M.Or'}
+                </p>
+                <p className="text-[9px] text-slate-600">NIP. {schoolSetting?.wakaNip || '198806082023211020'}</p>
+              </div>
+            </div>
+          </div>
         </Modal>
       )}
 

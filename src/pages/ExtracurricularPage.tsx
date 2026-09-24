@@ -42,7 +42,7 @@ interface ExtracurricularPageProps {
 }
 
 export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavigateToMembers }) => {
-  const { isWakaOrAdmin, isPembina, currentUser } = useAuth();
+  const { isWakaOrAdmin, isPembina, currentUser, canManageExtracurricular } = useAuth();
   const canCrudPembinaEkstra = useCrudPermission('pembina_ekstra', currentUser?.role);
   const { extracurriculars, teachers, addExtracurricular, updateExtracurricular, deleteExtracurricular, members } = useSchool();
 
@@ -532,23 +532,23 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
                     >
                       <Eye className="w-4 h-4" />
                     </button>
-                    {canCrudPembinaEkstra && (
-                      <>
-                        <button
-                          onClick={e => handleOpenEdit(ekskul, e)}
-                          className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:hover:bg-amber-900 dark:text-amber-400 transition-colors"
-                          title="Edit Ekskul & Warna"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={e => handleOpenDelete(ekskul, e)}
-                          className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-400 transition-colors"
-                          title="Hapus Ekskul"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </>
+                    {(canCrudPembinaEkstra || canManageExtracurricular(ekskul.id)) && (
+                      <button
+                        onClick={e => handleOpenEdit(ekskul, e)}
+                        className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:hover:bg-amber-900 dark:text-amber-400 transition-colors"
+                        title="Edit Ekskul & Warna"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                    )}
+                    {(canCrudPembinaEkstra || isWakaOrAdmin) && (
+                      <button
+                        onClick={e => handleOpenDelete(ekskul, e)}
+                        className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-400 transition-colors"
+                        title="Hapus Ekskul"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     )}
                   </div>
                 </div>

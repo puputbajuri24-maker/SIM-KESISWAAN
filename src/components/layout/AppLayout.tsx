@@ -55,6 +55,7 @@ import {
   Palette,
   BookOpenCheck
 } from 'lucide-react';
+import { normalizeUserRole } from '../../permissions';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSchool } from '../../contexts/SchoolContext';
 import { useAppTimezone } from '../../contexts/TimezoneContext';
@@ -100,7 +101,28 @@ export interface AppLayoutProps {
 }
 
 export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, children }) => {
-  const { currentUser, allUsers, userRole, isWakaOrAdmin, isWaka, isSuperAdmin, isGuruBK, isPembinaOsim, isPembinaEkskul, isAlsoPembinaEkskul, isPembina, isPengurusOsim, isSimulatedFromAdmin, returnToAdminSession, logout, loginWithDemoRole, loginWithUser } = useAuth();
+  const {
+    currentUser,
+    allUsers,
+    userRole,
+    canonicalRole,
+    osimPosition,
+    canManageCash,
+    isWakaOrAdmin,
+    isWaka,
+    isSuperAdmin,
+    isGuruBK,
+    isPembinaOsim,
+    isPembinaEkskul,
+    isAlsoPembinaEkskul,
+    isPembina,
+    isPengurusOsim,
+    isSimulatedFromAdmin,
+    returnToAdminSession,
+    logout,
+    loginWithDemoRole,
+    loginWithUser
+  } = useAuth();
   const { schoolSetting, activeAcademicYear, activeSemester, notifications, markNotificationAsRead, markAllNotificationsAsRead, isSyncing, extracurriculars, announcements, markAnnouncementAsRead, markAllAnnouncementsAsReadForUser } = useSchool();
   const { timezoneMode, resolvedTimezone, timezoneAbbr, utcOffsetString, formattedTime, formattedDate } = useAppTimezone();
 
@@ -114,9 +136,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
   const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
   const [hasPromptedPopup, setHasPromptedPopup] = useState(false);
 
-  const bkUsers = useMemo(() => allUsers.filter(u => u.role === 'guru_bk'), [allUsers]);
-  const pembinaEkskulUsers = useMemo(() => allUsers.filter(u => u.role === 'pembina_ekskul' || u.role === 'pembina'), [allUsers]);
-  const wakaUsers = useMemo(() => allUsers.filter(u => u.role === 'waka_kesiswaan'), [allUsers]);
+  const bkUsers = useMemo(() => (allUsers || []).filter(u => u && normalizeUserRole(u.role) === 'guru_bk'), [allUsers]);
+  const pembinaEkskulUsers = useMemo(() => (allUsers || []).filter(u => u && normalizeUserRole(u.role) === 'pembina_ekstrakurikuler'), [allUsers]);
+  const wakaUsers = useMemo(() => (allUsers || []).filter(u => u && normalizeUserRole(u.role) === 'waka_kesiswaan'), [allUsers]);
 
   const { mode, resolvedMode, toggleMode, palette, currentPaletteInfo } = useTheme();
 
@@ -178,7 +200,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
 
   // Determine announcements targeted to current user
   const relevantAnnouncements = (announcements || []).filter(ann => {
-    if (ann.isActive === false) return false;
+    if (!ann || ann.isActive === false) return false;
 
     // 1. Specific User Target
     if (ann.targetType === 'specific_users' || ann.targetRole === 'Pengguna Spesifik') {
@@ -207,6 +229,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
       if (!isPembina && !isPembinaEkskul) return false;
       const targetEkskulIds = ann.targetExtracurricularIds || (ann.targetExtracurricularId ? [ann.targetExtracurricularId] : []);
       const matchesEkskul = (extracurriculars || []).some(e =>
+        e &&
         targetEkskulIds.includes(e.id) &&
         (userEkskulIds.includes(e.id) || e.coachName?.toLowerCase() === currentUser?.displayName?.toLowerCase() || !e.coachName)
       );
@@ -232,7 +255,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
   });
 
   // Check if announcement is read by either local state or doc readByUsers
-  const isAnnouncementRead = (ann: (typeof announcements)[0]) => {
+  const isAnnouncementRead = (ann: any) => {
+    if (!ann || !ann.id) return true;
     if (readAnnouncementIds.includes(ann.id)) return true;
     if (ann.readByUsers && ann.readByUsers[userKey]) return true;
     return false;
@@ -258,14 +282,14 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
       localStorage.setItem(userStorageKey, JSON.stringify(next));
     } catch {}
     await markAnnouncementAsRead(id, currentUser?.uid);
-    const remaining = unreadAnnouncements.filter(a => a.id !== id);
+    const remaining = unreadAnnouncements.filter(a => a && a.id !== id);
     if (remaining.length === 0) {
       setIsAnnouncementPopupOpen(false);
     }
   };
 
   const handleMarkAllAnnouncementsAsRead = async () => {
-    const allIds = relevantAnnouncements.map(a => a.id);
+    const allIds = relevantAnnouncements.filter(Boolean).map(a => a.id);
     const next = Array.from(new Set([...readAnnouncementIds, ...allIds]));
     setReadAnnouncementIds(next);
     try {
@@ -276,7 +300,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
   };
 
   const relevantNotifications = useMemo(() => {
-    return notifications.filter(n => {
+    return (notifications || []).filter(n => {
+      if (!n) return false;
       if (n.userId && n.userId === currentUser?.uid) return true;
       if (!n.targetRole) return true;
       if (n.targetRole === 'pembina_osim' && (isPembinaOsim || isWakaOrAdmin)) return true;
@@ -287,7 +312,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
     });
   }, [notifications, currentUser, isPembinaOsim, isWakaOrAdmin, isPengurusOsim]);
 
-  const unreadNotifs = relevantNotifications.filter(n => !n.isRead);
+  const unreadNotifs = relevantNotifications.filter(n => n && !n.isRead);
   const totalUnreadCount = unreadAnnouncements.length + unreadNotifs.length;
   const [notifTab, setNotifTab] = useState<'all' | 'announcements' | 'system'>('all');
 
@@ -452,7 +477,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
         {
           title: 'TRANSPARANSI & LAPORAN',
           items: [
-            { id: 'cash', label: 'Neraca Kas & Keuangan', icon: Wallet, tag: currentUser?.isCashManager ? (currentUser?.cashManagerTitle || 'BENDAHARA') : 'TRANSPARANSI' },
+            { id: 'cash', label: 'Neraca Kas & Keuangan', icon: Wallet, tag: canManageCash() ? 'BENDAHARA' : 'TRANSPARANSI' },
             { id: 'reports', label: 'Laporan & Rekap BK', icon: FileText, tag: 'DOC' }
           ]
         },
@@ -484,7 +509,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
         {
           title: 'TRANSPARANSI & KEUANGAN',
           items: [
-            { id: 'cash', label: 'Neraca Kas & Keuangan', icon: Wallet, tag: currentUser?.isCashManager ? (currentUser?.cashManagerTitle || 'BENDAHARA') : 'TRANSPARANSI' }
+            { id: 'cash', label: 'Neraca Kas & Keuangan', icon: Wallet, tag: canManageCash() ? 'BENDAHARA' : 'TRANSPARANSI' }
           ]
         },
         {
@@ -497,10 +522,27 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
     : isPengurusOsim
     ? [
         {
-          title: 'PORTAL BIDANG OSIM',
+          title: osimPosition === 'bendahara'
+            ? 'PORTAL BENDAHARA OSIM'
+            : osimPosition === 'sekretaris'
+            ? 'PORTAL SEKRETARIS OSIM'
+            : (osimPosition === 'ketua_osim' || osimPosition === 'wakil_ketua_osim')
+            ? 'PORTAL PIMPINAN BPH OSIM'
+            : `PORTAL BIDANG ${currentUser?.osimDepartmentCode || 'OSIM'}`,
           items: [
             { id: 'dashboard', label: 'Beranda Kemandirian', icon: Home },
-            { id: 'osim', label: 'Proker & Mandat Bidang', icon: Crown, tag: currentUser?.osimDepartmentCode || 'BIDANG' }
+            {
+              id: 'osim',
+              label: osimPosition === 'bendahara'
+                ? 'Mandat & Anggaran Proker'
+                : osimPosition === 'sekretaris'
+                ? 'Administrasi & Proker OSIM'
+                : (osimPosition === 'ketua_osim' || osimPosition === 'wakil_ketua_osim')
+                ? 'Pengurus & Seluruh Proker'
+                : 'Proker & Mandat Bidang',
+              icon: Crown,
+              tag: currentUser?.osimDepartmentCode || (osimPosition === 'bendahara' ? 'BENDAHARA' : 'BIDANG')
+            }
           ]
         },
         {
@@ -512,18 +554,18 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
             { id: 'reports', label: 'LPJ Kegiatan OSIM', icon: FileText }
           ]
         },
-        ...(currentUser?.isCashManager ? [
+        ...(canManageCash() || osimPosition === 'bendahara' || currentUser?.isCashManager ? [
           {
             title: 'TRANSPARANSI KEUANGAN',
             items: [
-              { id: 'cash', label: 'Neraca Kas & Keuangan', icon: Wallet, tag: currentUser.cashManagerTitle || 'BENDAHARA' }
+              { id: 'cash', label: 'Buku Kas & Transaksi OSIM', icon: Wallet, tag: 'BENDAHARA' }
             ]
           }
         ] : []),
         {
           title: 'AKUN PENGURUS',
           items: [
-            { id: 'profile', label: 'Profil Akun Bidang', icon: UserCog }
+            { id: 'profile', label: 'Profil Akun Pengurus', icon: UserCog }
           ]
         }
       ]
@@ -548,7 +590,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
         {
           title: 'PROPOSAL, LPJ & PRESTASI',
           items: [
-            { id: 'cash', label: 'Neraca Kas & Keuangan', icon: Wallet, tag: currentUser?.isCashManager ? (currentUser?.cashManagerTitle || 'BENDAHARA') : 'TRANSPARANSI' },
+            { id: 'cash', label: 'Neraca Kas & Keuangan', icon: Wallet, tag: canManageCash() ? 'BENDAHARA' : 'TRANSPARANSI' },
             { id: 'activities', label: 'Agenda & Lomba', icon: FileSpreadsheet },
             { id: 'reports', label: 'Laporan Pertanggungjawaban', icon: FileText },
             { id: 'achievements', label: 'Prestasi Siswa Ekskul', icon: Award }
@@ -625,13 +667,13 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
 
         {/* Navigation Sections */}
         <div className="flex-1 px-3 py-3 space-y-4 overflow-y-auto custom-scrollbar">
-          {navSections.map(sec => (
+          {(navSections || []).map(sec => (
             <div key={sec.title} className="space-y-1">
               <div className="px-3 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                 {sec.title}
               </div>
               <div className="space-y-0.5">
-                {sec.items.map(item => {
+                {(sec.items || []).map(item => {
                   const Icon = item.icon;
                   const isActive = activeTab === item.id;
                   return (
@@ -902,7 +944,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                     <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 dark:divide-[#1e293b] p-1.5 space-y-1">
                       {/* Tab 1: All or Announcements View */}
                       {(notifTab === 'all' || notifTab === 'announcements') &&
-                        relevantAnnouncements.slice(0, 5).map(ann => {
+                        (relevantAnnouncements || []).slice(0, 5).map(ann => {
+                          if (!ann) return null;
                           const isRead = isAnnouncementRead(ann);
                           return (
                             <div
@@ -955,7 +998,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
 
                       {/* Tab 2: System Notifications */}
                       {(notifTab === 'all' || notifTab === 'system') &&
-                        relevantNotifications.map(n => (
+                        (relevantNotifications || []).map(n => {
+                          if (!n) return null;
+                          return (
                           <div
                             key={`notif_${n.id}`}
                             onClick={() => {
@@ -983,7 +1028,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                             </div>
                             <p className="text-slate-600 dark:text-slate-400 text-[11px] leading-tight">{n.message}</p>
                           </div>
-                        ))}
+                        );
+                      })}
 
                       {/* Empty state */}
                       {((notifTab === 'announcements' && relevantAnnouncements.length === 0) ||
@@ -1217,7 +1263,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                             <select
                               value={currentUser.role === 'guru_bk' ? currentUser.uid : ''}
                               onChange={(e) => {
-                                const target = allUsers.find(u => u.uid === e.target.value);
+                                const target = (allUsers || []).find(u => u && u.uid === e.target.value);
                                 if (target) {
                                   loginWithUser(target);
                                   setIsProfileModalOpen(false);
@@ -1227,11 +1273,14 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                               className="w-full text-[11px] p-1.5 rounded-lg bg-white dark:bg-[#151c2c] border border-purple-200 dark:border-purple-900/60 text-slate-800 dark:text-slate-200 font-medium focus:outline-none focus:ring-1 focus:ring-purple-500"
                             >
                               <option value="" disabled>-- Pilih Akun Guru BK --</option>
-                              {bkUsers.map(u => (
-                                <option key={u.uid} value={u.uid}>
-                                  {u.displayName} ({u.counselorSpecialization || 'BK'})
-                                </option>
-                              ))}
+                              {(bkUsers || []).map(u => {
+                                if (!u) return null;
+                                return (
+                                  <option key={u.uid} value={u.uid}>
+                                    {u.displayName || 'Guru BK'} ({u.counselorSpecialization || 'BK'})
+                                  </option>
+                                );
+                              })}
                             </select>
                           </div>
 
@@ -1240,13 +1289,13 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                             <label className="text-[10px] text-emerald-700 dark:text-emerald-300 font-bold flex items-center justify-between mb-1">
                               <span className="flex items-center gap-1">
                                 <Compass className="w-3 h-3 text-emerald-500" />
-                                <span>Pilihan Pembina Ekstra ({pembinaEkskulUsers.length}):</span>
+                                <span>Pilihan Pembina Ekstra ({(pembinaEkskulUsers || []).length}):</span>
                               </span>
                             </label>
                             <select
                               value={(currentUser.role === 'pembina_ekskul' || currentUser.role === 'pembina') ? currentUser.uid : ''}
                               onChange={(e) => {
-                                const target = allUsers.find(u => u.uid === e.target.value);
+                                const target = (allUsers || []).find(u => u && u.uid === e.target.value);
                                 if (target) {
                                   loginWithUser(target);
                                   setIsProfileModalOpen(false);
@@ -1256,12 +1305,13 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                               className="w-full text-[11px] p-1.5 rounded-lg bg-white dark:bg-[#151c2c] border border-emerald-200 dark:border-emerald-900/60 text-slate-800 dark:text-slate-200 font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500"
                             >
                               <option value="" disabled>-- Pilih Akun Pembina Ekstra --</option>
-                              {pembinaEkskulUsers.map(u => {
-                                const matchedEkskul = extracurriculars.find(e => u.extracurricularIds?.includes(e.id));
+                              {(pembinaEkskulUsers || []).map(u => {
+                                if (!u) return null;
+                                const matchedEkskul = (extracurriculars || []).find(e => e && u.extracurricularIds?.includes(e.id));
                                 const label = matchedEkskul ? matchedEkskul.name : 'Ekskul';
                                 return (
                                   <option key={u.uid} value={u.uid}>
-                                    {u.displayName} ({label})
+                                    {u.displayName || 'Pembina'} ({label})
                                   </option>
                                 );
                               })}
@@ -1454,13 +1504,13 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                 </div>
 
                 <div className="py-3 space-y-4">
-                  {navSections.map(sec => (
+                  {(navSections || []).map(sec => (
                     <div key={sec.title} className="space-y-1">
                       <div className="px-2 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                         {sec.title}
                       </div>
                       <div className="space-y-0.5">
-                        {sec.items.map(item => {
+                        {(sec.items || []).map(item => {
                           const Icon = item.icon;
                           const isActive = activeTab === item.id;
                           return (

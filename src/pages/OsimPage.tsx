@@ -129,7 +129,7 @@ export const OsimPage: React.FC = () => {
   // Seluruh akun anggota OSIM (baik BPH maupun Sekbid) TIDAK memiliki akses untuk CRUD (Create, Read, Update, Delete)
   // pada tab menu "Struktur Kabinet & Bidang", hanya diizinkan untuk melihat saja (Read-Only).
   // Hak akses CRUD struktur kabinet & bidang eksklusif dikendalikan terpusat di cPanel Kesiswaan.
-  const isOsimMemberAccount = Boolean(isPengurusOsim || currentUser?.role === 'pengurus_osim');
+  const isOsimMemberAccount = Boolean(isPengurusOsim || currentUser?.role === 'pengurus_osim' || currentUser?.role === 'anggota_osim');
   const canManageCabinetStructure = !isOsimMemberAccount && Boolean(isSupervisoryVetoAuthorized || isPembinaOsim || isWakaOrAdmin) && canCrudMembers;
 
   const {
@@ -172,7 +172,7 @@ export const OsimPage: React.FC = () => {
 
   // OSIM Accounts state for Pembina OSIM & Admin management
   const osimAccounts = useMemo(() => {
-    return allUsers.filter(u => u.role === 'pengurus_osim');
+    return allUsers.filter(u => u.role === 'pengurus_osim' || u.role === 'anggota_osim');
   }, [allUsers]);
 
   const [selectedOsimAccount, setSelectedOsimAccount] = useState<UserProfile | null>(null);

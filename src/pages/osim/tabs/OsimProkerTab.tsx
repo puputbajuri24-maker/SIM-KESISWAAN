@@ -384,7 +384,7 @@ export const OsimProkerTab: React.FC<OsimProkerTabProps> = ({
                 </div>
 
                 <div className="flex items-center gap-1">
-                  {(hasSupervisionVeto || isOsimBph) && (
+                  {(hasSupervisionVeto || isOsimBph || ((proker.status === 'Draft' || proker.status === 'Revisi') && canManageOsim)) && (
                     <button
                       onClick={e => onOpenEditProker(proker, e)}
                       className="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-amber-400 transition"

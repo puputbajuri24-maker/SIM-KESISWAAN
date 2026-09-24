@@ -38,7 +38,7 @@ export interface StudentsListTabProps {
   handleOpenDetail: (student: Student) => void;
   selectedStudentIds: Set<string>;
   handleToggleSelectStudent: (id: string) => void;
-  handleToggleSelectAllStudents: (ids: string[]) => void;
+  handleToggleSelectAllStudents: (items: Student[]) => void;
   setIsBulkDeleteOpen: (open: boolean) => void;
   groupedStudents: { classObj: SchoolClass; students: Student[] }[];
   handleOpenEdit: (student: Student, e: React.MouseEvent) => void;

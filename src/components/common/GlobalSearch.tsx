@@ -168,6 +168,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onN
 
     // 2. Teachers / Dewan Guru & Pembina
     (teachers || []).forEach(t => {
+      if (!t) return;
       const matchName = (t.fullName || '').toLowerCase().includes(q);
       const matchNip = (t.nip || '').toLowerCase().includes(q);
       const matchRole = (t.role || '').toLowerCase().includes(q);
@@ -199,6 +200,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onN
 
     // 3. Students / Siswa
     (students || []).forEach(s => {
+      if (!s) return;
       const matchName = (s.fullName || '').toLowerCase().includes(q);
       const matchNis = (s.nis || '').toLowerCase().includes(q);
       const matchNisn = (s.nisn || '').toLowerCase().includes(q);
@@ -229,6 +231,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onN
 
     // 4. Extracurriculars
     (extracurriculars || []).forEach(e => {
+      if (!e) return;
       const matchName = (e.name || '').toLowerCase().includes(q);
       const matchCoach = (e.coachName || '').toLowerCase().includes(q);
       const matchCategory = (e.category || '').toLowerCase().includes(q);
@@ -259,6 +262,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onN
 
     // 5. Activities / Kegiatan
     (activities || []).forEach(a => {
+      if (!a) return;
       const matchTitle = (a.title || '').toLowerCase().includes(q);
       const matchLocation = (a.location || '').toLowerCase().includes(q);
       const matchDesc = (a.description || '').toLowerCase().includes(q);
@@ -288,6 +292,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onN
 
     // 6. Counseling / Layanan BK
     (counseling || []).forEach(c => {
+      if (!c) return;
       const matchStudent = (c.studentName || '').toLowerCase().includes(q);
       const matchCounselor = (c.counselorName || '').toLowerCase().includes(q);
       const matchTopic = (c.topic || '').toLowerCase().includes(q);
@@ -317,6 +322,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onN
 
     // 7. Violations / Pelanggaran
     (violations || []).forEach(v => {
+      if (!v) return;
       const matchStudent = (v.studentName || '').toLowerCase().includes(q);
       const matchClass = (v.studentClass || '').toLowerCase().includes(q);
       const matchType = (v.violationType || '').toLowerCase().includes(q);
@@ -346,6 +352,7 @@ export const GlobalSearch: React.FC<GlobalSearchProps> = ({ isOpen, onClose, onN
 
     // 8. Achievements / Prestasi
     (achievements || []).forEach(ach => {
+      if (!ach) return;
       const matchTitle = (ach.title || '').toLowerCase().includes(q);
       const matchStudent = (ach.studentName || '').toLowerCase().includes(q);
       const matchRank = (ach.rank || '').toLowerCase().includes(q);

@@ -61,7 +61,8 @@ export const AnnouncementListModal: React.FC<AnnouncementListModalProps> = ({
     return true;
   };
 
-  const filtered = announcements.filter(ann => {
+  const filtered = (announcements || []).filter(ann => {
+    if (!ann) return false;
     if (!isRelevantForUser(ann)) return false;
     if (selectedPriority !== 'all' && ann.priority !== selectedPriority) return false;
     if (searchTerm) {
@@ -74,7 +75,8 @@ export const AnnouncementListModal: React.FC<AnnouncementListModalProps> = ({
     return true;
   });
 
-  const unreadCount = filtered.filter(a => !readAnnouncementIds.includes(a.id)).length;
+  const safeReadIds = readAnnouncementIds || [];
+  const unreadCount = filtered.filter(a => a && !safeReadIds.includes(a.id)).length;
 
   const getPriorityBadge = (priority: string) => {
     switch (priority) {

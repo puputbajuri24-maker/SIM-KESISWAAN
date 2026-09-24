@@ -2,6 +2,7 @@ import React from 'react';
 import { Printer } from 'lucide-react';
 import { Modal } from '../../../components/common/Modal';
 import { OsimMember, UserProfile, SchoolSetting } from '../../../types';
+import { getUserSlipCredentials } from '../../../utils/osimAccountHelper';
 
 interface OsimPrintSlipsModalProps {
   isOpen: boolean;
@@ -30,15 +31,16 @@ export const OsimPrintSlipsModal: React.FC<OsimPrintSlipsModalProps> = ({
     const schoolAcademic = activeAcademicYear || '2026/2027';
 
     const cardsHtml = targetAccs.map(acc => {
+      const cred = getUserSlipCredentials(acc, osimMembers);
       const linkedMem = osimMembers.find(m =>
         m.id === acc.uid ||
-        (m.loginUsername && acc.username && m.loginUsername.toLowerCase() === acc.username.toLowerCase()) ||
-        (m.username && acc.username && m.username.toLowerCase() === acc.username.toLowerCase()) ||
+        (m.loginUsername && cred.rawUsername && m.loginUsername.toLowerCase() === cred.rawUsername.toLowerCase()) ||
+        (m.username && cred.rawUsername && m.username.toLowerCase() === cred.rawUsername.toLowerCase()) ||
         (m.studentNis && acc.nip && m.studentNis === acc.nip) ||
         (m.fullName.toLowerCase().trim() === acc.displayName.toLowerCase().replace(/\s*\(.*\)$/, '').trim())
       );
       const studentClass = linkedMem?.className || acc.studentClass || '-';
-      const studentNis = linkedMem?.studentNis || acc.nip || '-';
+      const studentNis = linkedMem?.studentNis || cred.nipOrNis;
       const position = linkedMem?.position || acc.osimPosition || 'Pengurus OSIM';
       const department = linkedMem?.sekbid || acc.osimDepartmentName || (acc.osimRole === 'ketua' || acc.osimRole === 'wakil' || acc.osimRole === 'sekretaris' || acc.osimRole === 'bendahara' ? 'BPH (Badan Pengurus Harian)' : 'Seksi Bidang OSIM');
 
@@ -59,7 +61,7 @@ export const OsimPrintSlipsModal: React.FC<OsimPrintSlipsModalProps> = ({
           <div class="student-info-grid">
             <div class="info-item full">
               <span class="label">Nama Pengurus:</span>
-              <span class="value-name">${acc.displayName}</span>
+              <span class="value-name">${cred.displayName}</span>
             </div>
             <div class="info-item">
               <span class="label">NIS / NISN:</span>
@@ -87,11 +89,11 @@ export const OsimPrintSlipsModal: React.FC<OsimPrintSlipsModalProps> = ({
             <div class="credentials-row">
               <div class="cred-col">
                 <span class="cred-label">USERNAME LOGIN</span>
-                <span class="cred-val username">@${acc.username}</span>
+                <span class="cred-val username">${cred.loginUsername}</span>
               </div>
               <div class="cred-col">
                 <span class="cred-label">KATA SANDI (PASSWORD)</span>
-                <span class="cred-val password">${acc.password || 'password'}</span>
+                <span class="cred-val password">${cred.password}</span>
               </div>
             </div>
             <div class="login-notice">Wewenang: Program Kerja, Agenda & Buku Kas OSIM</div>
@@ -474,15 +476,16 @@ export const OsimPrintSlipsModal: React.FC<OsimPrintSlipsModalProps> = ({
         {/* Pratinjau Lembar Kartu (Printable Canvas) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto p-1 bg-zinc-950/40 rounded-lg border border-zinc-800/60">
           {(printSlipTarget === 'all' ? osimAccounts : [printSlipTarget]).map(acc => {
+            const cred = getUserSlipCredentials(acc, osimMembers);
             const linkedMem = osimMembers.find(m =>
               m.id === acc.uid ||
-              (m.loginUsername && acc.username && m.loginUsername.toLowerCase() === acc.username.toLowerCase()) ||
-              (m.username && acc.username && m.username.toLowerCase() === acc.username.toLowerCase()) ||
+              (m.loginUsername && cred.rawUsername && m.loginUsername.toLowerCase() === cred.rawUsername.toLowerCase()) ||
+              (m.username && cred.rawUsername && m.username.toLowerCase() === cred.rawUsername.toLowerCase()) ||
               (m.studentNis && acc.nip && m.studentNis === acc.nip) ||
               (m.fullName.toLowerCase().trim() === acc.displayName.toLowerCase().replace(/\s*\(.*\)$/, '').trim())
             );
             const studentClass = linkedMem?.className || acc.studentClass || '-';
-            const studentNis = linkedMem?.studentNis || acc.nip || '-';
+            const studentNis = linkedMem?.studentNis || cred.nipOrNis;
             const position = linkedMem?.position || acc.osimPosition || 'Pengurus OSIM';
             const department = linkedMem?.sekbid || acc.osimDepartmentName || (acc.osimRole === 'ketua' || acc.osimRole === 'wakil' || acc.osimRole === 'sekretaris' || acc.osimRole === 'bendahara' ? 'BPH (Badan Pengurus Harian)' : 'Seksi Bidang OSIM');
 
@@ -506,7 +509,7 @@ export const OsimPrintSlipsModal: React.FC<OsimPrintSlipsModalProps> = ({
                 <div className="grid grid-cols-2 gap-2 text-[11px]">
                   <div className="col-span-2">
                     <span className="text-zinc-500 text-[10px] block">Nama Lengkap Siswa:</span>
-                    <span className="font-bold text-zinc-950 text-xs">{acc.displayName}</span>
+                    <span className="font-bold text-zinc-950 text-xs">{cred.displayName}</span>
                   </div>
                   <div>
                     <span className="text-zinc-500 text-[10px] block">NIS / NISN:</span>
@@ -533,11 +536,11 @@ export const OsimPrintSlipsModal: React.FC<OsimPrintSlipsModalProps> = ({
                     <div className="grid grid-cols-2 gap-2 font-mono">
                       <div>
                         <span className="text-zinc-600 text-[9px] block uppercase font-sans">Username Login:</span>
-                        <span className="font-bold text-zinc-950 text-xs">@{acc.username}</span>
+                        <span className="font-bold text-zinc-950 text-xs">{cred.loginUsername}</span>
                       </div>
                       <div>
                         <span className="text-zinc-600 text-[9px] block uppercase font-sans">Kata Sandi (Password):</span>
-                        <span className="font-bold text-amber-900 text-xs">{acc.password || 'password'}</span>
+                        <span className="font-bold text-amber-900 text-xs">{cred.password}</span>
                       </div>
                     </div>
                   </div>

@@ -141,7 +141,7 @@ interface SchoolContextType {
   refreshAuditLogs: () => Promise<void>;
   
   // Student operations
-  addStudent: (student: Omit<Student, 'id' | 'createdAt'>) => Promise<void>;
+  addStudent: (student: Omit<Student, 'id' | 'createdAt'>) => Promise<Student>;
   updateStudent: (id: string, data: Partial<Student>) => Promise<void>;
   deleteStudent: (id: string) => Promise<void>;
   deleteStudentsBulk: (ids: string[]) => Promise<number>;
@@ -778,7 +778,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          if (parsed.some((r: any) => r.code?.startsWith('KH-'))) {
+            return parsed;
+          }
+        }
       } catch (e) {}
     }
     return INITIAL_SCHOOL_RULES;
@@ -789,15 +793,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (parsed && parsed.decreeNumber) {
-          if (parsed.signedBy === 'Drs. H. M. Nur Latarissa, M.Pd.I.' || !parsed.signedBy) {
-            parsed.signedBy = 'Zakaria, S. Pd.I., M. Pd';
-            parsed.signedNip = '197808042003121008';
-          }
-          if (parsed.wakaName === 'Abdul Malik Kelian, S.Pd.I.' || !parsed.wakaName) {
-            parsed.wakaName = 'Puput Eka Bajuri, S. Pd., M. Or';
-            parsed.wakaNip = '198810052020121003';
-          }
+        if (parsed && parsed.decreeNumber === 'B-380/Ma.26.02/PP.00.6/09/2026') {
           return parsed;
         }
       } catch (e) {}
@@ -1313,9 +1309,29 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           if (!rulesSnap.empty) {
             const loadedRules: SchoolRuleArticle[] = [];
             rulesSnap.forEach(doc => loadedRules.push({ id: doc.id, ...doc.data() } as SchoolRuleArticle));
-            setSchoolRules(loadedRules);
+            if (loadedRules.some(r => r.code?.startsWith('KH-'))) {
+              setSchoolRules(loadedRules);
+              try {
+                localStorage.setItem('sim_school_rules', JSON.stringify(loadedRules));
+              } catch (e) {}
+            } else {
+              // Non-destructive update: seed official Decree B-380 rules
+              for (const r of INITIAL_SCHOOL_RULES) {
+                setDoc(doc(db, 'school_rules', r.id), r);
+              }
+              setSchoolRules(INITIAL_SCHOOL_RULES);
+              try {
+                localStorage.setItem('sim_school_rules', JSON.stringify(INITIAL_SCHOOL_RULES));
+              } catch (e) {}
+            }
+          } else {
+            // Seed official Decree B-380 rules
+            for (const r of INITIAL_SCHOOL_RULES) {
+              setDoc(doc(db, 'school_rules', r.id), r);
+            }
+            setSchoolRules(INITIAL_SCHOOL_RULES);
             try {
-              localStorage.setItem('sim_school_rules', JSON.stringify(loadedRules));
+              localStorage.setItem('sim_school_rules', JSON.stringify(INITIAL_SCHOOL_RULES));
             } catch (e) {}
           }
 
@@ -1324,9 +1340,23 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           const handbookDoc = handbookSnap.docs.find(d => d.id === 'handbook_meta');
           if (handbookDoc) {
             const loadedMeta = handbookDoc.data() as SchoolHandbookMeta;
-            setHandbookMeta(loadedMeta);
+            if (loadedMeta.decreeNumber === 'B-380/Ma.26.02/PP.00.6/09/2026') {
+              setHandbookMeta(loadedMeta);
+              try {
+                localStorage.setItem('sim_handbook_meta', JSON.stringify(loadedMeta));
+              } catch (e) {}
+            } else {
+              setDoc(doc(db, 'settings', 'handbook_meta'), INITIAL_HANDBOOK_META);
+              setHandbookMeta(INITIAL_HANDBOOK_META);
+              try {
+                localStorage.setItem('sim_handbook_meta', JSON.stringify(INITIAL_HANDBOOK_META));
+              } catch (e) {}
+            }
+          } else {
+            setDoc(doc(db, 'settings', 'handbook_meta'), INITIAL_HANDBOOK_META);
+            setHandbookMeta(INITIAL_HANDBOOK_META);
             try {
-              localStorage.setItem('sim_handbook_meta', JSON.stringify(loadedMeta));
+              localStorage.setItem('sim_handbook_meta', JSON.stringify(INITIAL_HANDBOOK_META));
             } catch (e) {}
           }
 
@@ -1959,7 +1989,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   // Student Operations
-  const addStudent = async (data: Omit<Student, 'id' | 'createdAt'>) => {
+  const addStudent = async (data: Omit<Student, 'id' | 'createdAt'>): Promise<Student> => {
     const matchedClass = findMatchingClass(data.classId || data.className, classes);
     const newStudent: Student = {
       id: `s_${Date.now()}`,
@@ -1976,6 +2006,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setDoc(doc(db, 'students', newStudent.id), newStudent);
     } catch (e) {}
     logAction('CREATE_STUDENT', 'Data Siswa', `Menambahkan data siswa baru: ${newStudent.fullName} (${newStudent.nis})`);
+    return newStudent;
   };
 
   const updateStudent = async (id: string, data: Partial<Student>) => {

@@ -1,16 +1,50 @@
-export type UserRole = 
+export type CanonicalUserRole = 
   | 'super_admin' 
-  | 'waka' 
   | 'waka_kesiswaan' 
   | 'guru_bk' 
+  | 'pembina_osim' 
+  | 'pembina_ekstrakurikuler' 
+  | 'anggota_osim';
+
+export type LegacyUserRole = 
+  | 'waka' 
   | 'pembina_ekstra' 
   | 'pembina_ekskul' 
   | 'pembina' 
-  | 'pembina_osim' 
-  | 'anggota_osim' 
   | 'pengurus_osim';
 
+export type UserRole = CanonicalUserRole | LegacyUserRole;
+
+export type CanonicalOsimPosition = 
+  | 'ketua_osim' 
+  | 'wakil_ketua_osim' 
+  | 'sekretaris' 
+  | 'bendahara' 
+  | 'ketua_sekbid' 
+  | 'anggota_sekbid';
+
+export type OsimPositionTitle =
+  | 'Ketua Umum OSIM'
+  | 'Wakil Ketua 1'
+  | 'Wakil Ketua 2'
+  | 'Sekretaris Umum'
+  | 'Wakil Sekretaris'
+  | 'Bendahara Umum'
+  | 'Wakil Bendahara'
+  | 'Ketua Sekbid'
+  | 'Anggota Sekbid'
+  | 'Pembina OSIM';
+
+export type OsimPosition = CanonicalOsimPosition | OsimPositionTitle;
+
 export type OsimRoleType = 'ketua' | 'wakil' | 'sekretaris' | 'bendahara' | 'sekbid';
+
+export interface UserAssignment {
+  type: 'extracurricular' | 'osim_department' | 'special_duty';
+  id: string; // ID of extracurricular, department, etc.
+  title?: string;
+  assignedAt?: string;
+}
 
 export interface UserProfile {
   uid: string;
@@ -19,12 +53,14 @@ export interface UserProfile {
   password?: string;
   displayName: string;
   role: UserRole;
+  position?: OsimPosition; // Canonical internal OSIM position
+  assignments?: UserAssignment[]; // Multi-assignment support (e.g. Guru BK + Pembina Ekskul)
   extracurricularIds?: string[]; // If pembina, club IDs they manage
   osimDepartmentId?: string; // ID of department/sekbid managed by this account, e.g. 'dept_sekbid_1' or 'dept_bph'
   osimDepartmentCode?: string; // e.g. 'SEKBID-1' or 'BPH'
   osimDepartmentName?: string; // e.g. 'Sekbid 1: Keimanan, Ketaqwaan & Moderasi Beragama'
-  osimRole?: OsimRoleType; // Model A: 'ketua' | 'wakil' | 'sekretaris' | 'bendahara' | 'sekbid'
-  osimPosition?: string; // e.g. "Ketua Umum OSIM", "Wakil Ketua 1", "Sekretaris Umum", "Bendahara Umum"
+  osimRole?: OsimRoleType; // Legacy fallback: 'ketua' | 'wakil' | 'sekretaris' | 'bendahara' | 'sekbid'
+  osimPosition?: string; // Human label e.g. "Ketua Umum OSIM", "Wakil Ketua 1", "Sekretaris Umum", "Bendahara Umum"
   studentNis?: string; // NIS siswa koordinator yang ditugaskan
   studentClass?: string; // Kelas siswa penanggung jawab
   phone?: string;
@@ -34,6 +70,14 @@ export interface UserProfile {
   isCashManager?: boolean; // Delegasi Hak Kelola Kas / Bendahara Amanah
   cashFundScopes?: string[]; // Daftar ID akun kas yang diamanahkan, e.g. ['all'] or ['kas_utama_kesiswaan', 'kas_bk', 'kas_osim']
   cashManagerTitle?: string; // Jabatan amanah kas, e.g. "Bendahara Kesiswaan", "Bendahara OSIM", "Bendahara BK"
+  themePreference?: {
+    mode?: 'dark' | 'light' | 'system';
+    palette?: 'navy' | 'emerald' | 'indigo' | 'sunset' | 'slate';
+    fontSize?: 'compact' | 'normal' | 'comfortable';
+    fontContrast?: 'standard' | 'high';
+    fontFamily?: 'jakarta' | 'inter' | 'system';
+    updatedAt?: string;
+  };
   status?: 'Aktif' | 'Nonaktif';
   lastLogin?: string;
   createdAt?: string;
@@ -432,26 +476,38 @@ export interface HomeVisitRecord {
 }
 
 // ==========================================
-// BK SUB-MODUL: SURAT PANGGILAN ORANG TUA / WALI
+// BK SUB-MODUL: SURAT PANGGILAN ORANG TUA / WALI & SURAT PERINGATAN (SP)
 // ==========================================
 export type CallLetterStatus = 'Draft' | 'Diterbitkan' | 'Terkirim' | 'Hadir' | 'Tidak Hadir' | 'Selesai';
+export type SanctionStageType = 1 | 2 | 3 | 4 | 5;
+export type SpLetterType = 'Peringatan Lisan' | 'SP 1' | 'SP 2' | 'SP 3' | 'Pengembalian Siswa';
 
 export interface ParentCallLetter {
   id: string;
-  letterNumber: string; // e.g. "421.3 / BK-084 / 2026"
+  letterNumber: string; // e.g. "B-380/Ma.26.02/PP.00.6/SP1/2026"
   studentId: string;
   studentNis: string;
   studentName: string;
   studentClass: string;
   parentName: string;
   callNumber: 1 | 2 | 3; // Panggilan Ke-1, Ke-2, Ke-3
+  sanctionStage?: SanctionStageType; // Tahap 1 s.d 5 (Buku Pedoman SK B-380)
+  spType?: SpLetterType; // Jenis Surat Peringatan
+  suspensionDays?: number; // Hari skorsing (untuk Tahap 3, default: 3 hari)
+  pointsAtIssuance?: number; // Akumulasi poin saat surat diterbitkan
+  studentViolationSummary?: string; // Ringkasan pelanggaran
+  homeroomTeacherName?: string;
+  homeroomTeacherNip?: string;
+  principalName?: string;
+  principalNip?: string;
   callDate: string; // Hari / Tanggal Menghadap
-  callTime: string; // Pukul 08:30 WIB
-  location: string; // Ruang Bimbingan Konseling (BK)
-  reason: string; // Keperluan Panggilan
+  callTime: string; // Pukul 08:30 WIT
+  location: string; // Ruang Pertemuan (BK / Ruang Waka / Ruang Kepala Madrasah)
+  reason: string; // Keperluan Panggilan / Konseling
   counselorName: string;
   counselorNip?: string;
   wakaName?: string;
+  wakaNip?: string;
   status: CallLetterStatus;
   notes?: string;
   attendanceNotes?: string;
@@ -716,17 +772,7 @@ export const DEFAULT_OSIM_DEPARTMENTS: OsimDepartment[] = [
 
 export type OsimSekbid = string;
 
-export type OsimPosition =
-  | 'Ketua Umum OSIM'
-  | 'Wakil Ketua 1'
-  | 'Wakil Ketua 2'
-  | 'Sekretaris Umum'
-  | 'Wakil Sekretaris'
-  | 'Bendahara Umum'
-  | 'Wakil Bendahara'
-  | 'Ketua Sekbid'
-  | 'Anggota Sekbid'
-  | 'Pembina OSIM';
+// OsimPosition is defined above as CanonicalOsimPosition | OsimPositionTitle
 
 export interface OsimMember {
   id: string;
@@ -915,21 +961,28 @@ export type RuleCategoryChapter =
   | 'Bab IV: Larangan Keras & Ketertiban Umum'
   | 'Bab V: Penggunaan Perangkat Elektronik & Medsos'
   | 'Bab VI: Kegiatan Ekstrakurikuler & Organisasi'
-  | 'Bab VII: Apresiasi, Prestasi & Pemulihan Disiplin';
+  | 'Bab VII: Apresiasi, Prestasi & Pemulihan Disiplin'
+  | 'A. Kedisiplinan Kehadiran, Waktu & Kerapian Pribadi'
+  | 'B. Nilai Akhlakul Karimah, Ibadah & Ketertiban Belajar'
+  | 'C. Pelanggaran Berat, Hukum, Asusila & Perlindungan Madrasah'
+  | 'Bab V: Penghargaan / Reward Prestasi & Pemutihan Poin'
+  | string;
 
 export interface SchoolRuleArticle {
   id: string;
+  code?: string; // e.g. "KH-01", "AK-01", "BR-01", "RW-01"
   chapter: RuleCategoryChapter;
-  articleNumber: string; // e.g. "Pasal 3 Ayat 1"
-  title: string; // e.g. "Keterlambatan Masuk Sekolah"
+  articleNumber: string; // e.g. "Pasal 4", "Pasal 6"
+  title: string; // e.g. "Terlambat datang ke madrasah < 15 menit"
   description: string; // Uraian bunyi aturan
-  points: number; // Bobot poin (5-100 untuk pelanggaran, atau positif untuk apresiasi)
+  points: number; // Bobot poin (2-100 untuk pelanggaran, atau negatif/positif untuk reward)
   severity: RuleSeverity;
   consequence: string; // Sanksi / Tindakan Pembinaan Edukatif
   authorizedOfficer: string; // Pihak berwenang menindak
   sopSteps?: string[];
   isMandatory?: boolean;
   academicYear?: string;
+  type?: 'pelanggaran' | 'penghargaan';
   updatedAt?: string;
   updatedBy?: string;
 }
@@ -940,10 +993,16 @@ export interface SchoolHandbookMeta {
   effectiveDate: string;
   academicYear: string;
   totalPoinMax: number;
-  thresholdSp1: number;
-  thresholdSp2: number;
-  thresholdSp3: number;
-  thresholdDrop: number;
+  thresholdTahap1?: number; // 10 - 20 Poin (Peringatan Lisan 1 & 2 - Wali Kelas)
+  thresholdTahap2?: number; // 21 - 40 Poin (SP 1 & Panggilan Ortu 1 - Wali Kelas & Guru BK)
+  thresholdTahap3?: number; // 41 - 75 Poin (SP 2 & Skorsing 3 Hari - Waka Kesiswaan & Guru BK)
+  thresholdTahap4?: number; // 76 - 99 Poin (SP 3 Terakhir - Kepala Madrasah, Waka Kesiswaan & Guru BK)
+  thresholdTahap5?: number; // >= 100 Poin (Dikembalikan ke Orang Tua - Kepala Madrasah)
+  thresholdSp1: number; // 21
+  thresholdSp2: number; // 41
+  thresholdSp3: number; // 76
+  thresholdDrop: number; // 100
+  mukadimah?: string;
   signedBy: string; // Mengetahui Kepala Madrasah / Sekolah
   signedNip?: string;
   wakaName?: string; // Yang menandatangani / Waka Kesiswaan

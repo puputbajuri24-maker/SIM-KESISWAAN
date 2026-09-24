@@ -19,7 +19,8 @@ import {
   GraduationCap,
   Sparkles,
   BookOpenCheck,
-  ArrowUpRight
+  ArrowUpRight,
+  Wallet
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSchool } from '../contexts/SchoolContext';
@@ -32,7 +33,19 @@ interface DashboardPageProps {
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpenAttendance }) => {
-  const { currentUser, isSuperAdmin, isWaka, isPembinaOsim, isPembinaEkskul, isPembina, isGuruBK, isPengurusOsim } = useAuth();
+  const {
+    currentUser,
+    isSuperAdmin,
+    isWaka,
+    isPembinaOsim,
+    isPembinaEkskul,
+    isPembina,
+    isGuruBK,
+    isPengurusOsim,
+    osimPosition,
+    canManageCash,
+    isOsimBendahara
+  } = useAuth();
   const {
     students,
     extracurriculars,
@@ -59,31 +72,51 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
 
   const [seedMsg, setSeedMsg] = useState<string | null>(null);
 
+  // Defensive Fallbacks for School-wide Data
+  const safeStudents = students || [];
+  const safeExtracurriculars = extracurriculars || [];
+  const safeTeachers = teachers || [];
+  const safeMembers = members || [];
+  const safeSchedules = schedules || [];
+  const safeAttendance = attendance || [];
+  const safeViolations = violations || [];
+  const safeAchievements = achievements || [];
+  const safeActivityReports = activityReports || [];
+  const safeOsimPrograms = osimPrograms || [];
+  const safeOsimMembers = osimMembers || [];
+  const safeOsimAspirations = osimAspirations || [];
+  const safeOsimMeetings = osimMeetings || [];
+  const safeCounseling = counseling || [];
+  const safeHomeVisits = homeVisits || [];
+  const safeParentCallLetters = parentCallLetters || [];
+  const safeCareerGuidances = careerGuidances || [];
+
   // Statistics calculation for School-wide
-  const totalStudents = students.filter(s => s.status === 'Aktif').length;
-  const totalEkskul = extracurriculars.filter(e => e.status === 'Aktif').length;
-  const totalAchievements = achievements.length;
-  const pendingViolations = violations.filter(v => v.status !== 'Selesai').length;
+  const totalStudents = safeStudents.filter(s => s && s.status === 'Aktif').length;
+  const totalEkskul = safeExtracurriculars.filter(e => e && e.status === 'Aktif').length;
+  const totalAchievements = safeAchievements.length;
+  const pendingViolations = safeViolations.filter(v => v && v.status !== 'Selesai').length;
 
   // Average attendance rate (0% if no attendance records exist yet)
-  const totalAttendanceRecords = attendance.reduce((acc, curr) => acc + (curr.totalMembers || 0), 0);
-  const totalPresentRecords = attendance.reduce((acc, curr) => acc + (curr.presentCount || 0), 0);
+  const totalAttendanceRecords = safeAttendance.reduce((acc, curr) => acc + (curr?.totalMembers || 0), 0);
+  const totalPresentRecords = safeAttendance.reduce((acc, curr) => acc + (curr?.presentCount || 0), 0);
   const avgAttendanceRate = totalAttendanceRecords > 0 ? Math.round((totalPresentRecords / totalAttendanceRecords) * 100) : 0;
 
-  // Real dynamic statistics for all 11+ registered extracurriculars (derived directly from state)
+  // Real dynamic statistics for all registered extracurriculars (derived directly from state)
   const realEkskulStats = useMemo(() => {
-    return extracurriculars.map((e) => {
-      const regMembers = members.filter(m => m.extracurricularId === e.id && m.status === 'Aktif').length;
+    return safeExtracurriculars.map((e) => {
+      if (!e) return null;
+      const regMembers = safeMembers.filter(m => m && m.extracurricularId === e.id && m.status === 'Aktif').length;
       const count = regMembers;
 
-      const ekskulAtt = attendance.filter(a => a.extracurricularId === e.id);
-      const totalAtt = ekskulAtt.reduce((sum, a) => sum + (a.totalMembers || 0), 0);
-      const presentAtt = ekskulAtt.reduce((sum, a) => sum + (a.presentCount || 0), 0);
+      const ekskulAtt = safeAttendance.filter(a => a && a.extracurricularId === e.id);
+      const totalAtt = ekskulAtt.reduce((sum, a) => sum + (a?.totalMembers || 0), 0);
+      const presentAtt = ekskulAtt.reduce((sum, a) => sum + (a?.presentCount || 0), 0);
 
       const pct = totalAtt > 0 ? Math.round((presentAtt / totalAtt) * 100) : 0;
 
       // Derive short readable label for bar chart
-      let shortLabel = e.name
+      let shortLabel = (e.name || 'Ekskul')
         .replace(/Pramuka Gugus Depan MAN 2 SBT/i, 'Pramuka')
         .replace(/Paskibra Pasukan Pengibar Bendera/i, 'Paskibra')
         .replace(/Palang Merah Remaja \(PMR\) Wira/i, 'PMR')
@@ -102,7 +135,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
 
       return {
         id: e.id,
-        fullName: e.name,
+        fullName: e.name || 'Ekstrakurikuler',
         label: shortLabel,
         pct: Math.min(100, Math.max(0, pct)),
         hasSessions: totalAtt > 0,
@@ -111,8 +144,18 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
         category: e.category,
         coachName: e.coachName || 'Belum Ditentukan'
       };
-    });
-  }, [extracurriculars, members, attendance]);
+    }).filter(Boolean) as Array<{
+      id: string;
+      fullName: string;
+      label: string;
+      pct: number;
+      hasSessions: boolean;
+      count: number;
+      quota: number;
+      category?: string;
+      coachName: string;
+    }>;
+  }, [safeExtracurriculars, safeMembers, safeAttendance]);
 
   // Dynamic Sector / Category distribution from real extracurricular data
   const categoryStats = useMemo(() => {
@@ -124,7 +167,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
     ];
 
     return cats.map(cat => {
-      const matchingEkskuls = realEkskulStats.filter(e => cat.filter(e.category));
+      const matchingEkskuls = realEkskulStats.filter(e => cat.filter(e.category || ''));
       const totalQuota = matchingEkskuls.reduce((sum, e) => sum + e.quota, 0) || 1;
       const totalCount = matchingEkskuls.reduce((sum, e) => sum + e.count, 0);
       const computedPct = totalQuota > 0 && totalCount > 0 ? Math.round((totalCount / totalQuota) * 100) : 0;
@@ -139,41 +182,45 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
 
   // Coach-specific data for Pembina Ekskul
   const myAssignedEkskuls = (isPembinaEkskul || isPembina)
-    ? extracurriculars.filter(e => 
-        currentUser?.extracurricularIds?.includes(e.id) || 
-        e.coachId === currentUser?.uid || 
-        (currentUser?.displayName && e.coachName?.toLowerCase().includes(currentUser.displayName.toLowerCase().split(' ')[0]))
-      )
+    ? safeExtracurriculars.filter(e => {
+        if (!e) return false;
+        const userEkskulIds = currentUser?.extracurricularIds || [];
+        const isMatchedId = userEkskulIds.includes(e.id);
+        const isMatchedCoachId = Boolean(currentUser?.uid && e.coachId === currentUser.uid);
+        const userFirstWord = (currentUser?.displayName || '').toLowerCase().trim().split(' ')[0];
+        const isMatchedName = Boolean(userFirstWord && e.coachName && e.coachName.toLowerCase().includes(userFirstWord));
+        return isMatchedId || isMatchedCoachId || isMatchedName;
+      })
     : [];
 
   const [selectedPembinaEkskulId, setSelectedPembinaEkskulId] = useState<string>('');
 
   const activeEkskul = (isPembinaEkskul || isPembina)
-    ? (myAssignedEkskuls.find(e => e.id === selectedPembinaEkskulId) || myAssignedEkskuls[0] || extracurriculars[0])
+    ? (myAssignedEkskuls.find(e => e.id === selectedPembinaEkskulId) || myAssignedEkskuls[0] || safeExtracurriculars[0] || null)
     : null;
 
   const mySchedules = (isPembinaEkskul || isPembina) && activeEkskul
-    ? schedules.filter(s => s.extracurricularId === activeEkskul.id)
-    : schedules;
+    ? safeSchedules.filter(s => s && s.extracurricularId === activeEkskul.id)
+    : safeSchedules;
 
   const myReports = (isPembinaEkskul || isPembina) && activeEkskul
-    ? activityReports.filter(r => r.extracurricularId === activeEkskul.id)
-    : activityReports;
+    ? safeActivityReports.filter(r => r && r.extracurricularId === activeEkskul.id)
+    : safeActivityReports;
 
   const myMembers = (isPembinaEkskul || isPembina) && activeEkskul
-    ? members.filter(m => m.extracurricularId === activeEkskul.id && m.status === 'Aktif')
+    ? safeMembers.filter(m => m && m.extracurricularId === activeEkskul.id && m.status === 'Aktif')
     : [];
 
   const myAchievements = (isPembinaEkskul || isPembina) && activeEkskul
-    ? achievements.filter(a => a.extracurricularId === activeEkskul.id || (activeEkskul.name && a.extracurricularName?.toLowerCase().includes(activeEkskul.name.toLowerCase())))
-    : achievements;
+    ? safeAchievements.filter(a => a && (a.extracurricularId === activeEkskul.id || (activeEkskul.name && a.extracurricularName?.toLowerCase().includes(activeEkskul.name.toLowerCase()))))
+    : safeAchievements;
 
   const myAttendanceRecords = (isPembinaEkskul || isPembina) && activeEkskul
-    ? attendance.filter(a => a.extracurricularId === activeEkskul.id)
+    ? safeAttendance.filter(a => a && a.extracurricularId === activeEkskul.id)
     : [];
 
-  const myTotalAttMembers = myAttendanceRecords.reduce((acc, curr) => acc + (curr.totalMembers || 0), 0);
-  const myTotalPresentMembers = myAttendanceRecords.reduce((acc, curr) => acc + (curr.presentCount || 0), 0);
+  const myTotalAttMembers = myAttendanceRecords.reduce((acc, curr) => acc + (curr?.totalMembers || 0), 0);
+  const myTotalPresentMembers = myAttendanceRecords.reduce((acc, curr) => acc + (curr?.presentCount || 0), 0);
   const myAvgAttendanceRate = myTotalAttMembers > 0 ? Math.round((myTotalPresentMembers / myTotalAttMembers) * 100) : 0;
 
   const handleSeedDatabase = async () => {
@@ -190,21 +237,26 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
     const deptCode = currentUser?.osimDepartmentCode || 'BIDANG';
 
     // Programs matching this department (or all for BPH)
-    const deptPrograms = osimPrograms.filter(p => {
+    const deptPrograms = safeOsimPrograms.filter(p => {
+      if (!p) return false;
       if (isBph) return true;
       if (!currentUser?.osimDepartmentName) return true;
-      const deptNormalized = currentUser.osimDepartmentName.toLowerCase().trim();
+      const deptNormalized = (currentUser.osimDepartmentName || '').toLowerCase().trim();
       const prokerSekbid = (p.sekbid || '').toLowerCase().trim();
-      return prokerSekbid.includes(deptNormalized) || deptNormalized.includes(prokerSekbid) || (currentUser?.osimDepartmentCode && prokerSekbid.includes(currentUser.osimDepartmentCode.toLowerCase()));
+      const deptCodeNorm = (currentUser?.osimDepartmentCode || '').toLowerCase().trim();
+      return (
+        (deptNormalized && (prokerSekbid.includes(deptNormalized) || deptNormalized.includes(prokerSekbid))) ||
+        (deptCodeNorm && prokerSekbid.includes(deptCodeNorm))
+      );
     });
 
-    const totalDeptBudgetEst = deptPrograms.reduce((sum, p) => sum + (Number(p.budgetEstimated) || 0), 0);
-    const totalDeptBudgetReal = deptPrograms.reduce((sum, p) => sum + (Number(p.budgetRealized) || 0), 0);
-    const completedDeptProker = deptPrograms.filter(p => p.status === 'Selesai').length;
-    const activeDeptProker = deptPrograms.filter(p => p.status === 'Berlangsung' || p.status === 'Disetujui').length;
-    const draftDeptProker = deptPrograms.filter(p => p.status === 'Draft' || p.status === 'Diajukan').length;
+    const totalDeptBudgetEst = deptPrograms.reduce((sum, p) => sum + (Number(p?.budgetEstimated) || 0), 0);
+    const totalDeptBudgetReal = deptPrograms.reduce((sum, p) => sum + (Number(p?.budgetRealized) || 0), 0);
+    const completedDeptProker = deptPrograms.filter(p => p && p.status === 'Selesai').length;
+    const activeDeptProker = deptPrograms.filter(p => p && (p.status === 'Berlangsung' || p.status === 'Disetujui')).length;
+    const draftDeptProker = deptPrograms.filter(p => p && (p.status === 'Draft' || p.status === 'Diajukan')).length;
     const avgDeptProgress = deptPrograms.length > 0 
-      ? Math.round(deptPrograms.reduce((acc, p) => acc + (p.progressPercentage || 0), 0) / deptPrograms.length)
+      ? Math.round(deptPrograms.reduce((acc, p) => acc + (p?.progressPercentage || 0), 0) / deptPrograms.length)
       : 0;
 
     return (
@@ -239,6 +291,15 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
           </div>
 
           <div className="flex flex-wrap items-center gap-2 font-mono">
+            {(canManageCash() || osimPosition === 'bendahara' || isOsimBendahara) && (
+              <button
+                onClick={() => onNavigate('cash')}
+                className="px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs flex items-center space-x-1.5 transition-all shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:scale-[1.02]"
+              >
+                <Wallet className="w-4 h-4" />
+                <span>BUKU KAS OSIM</span>
+              </button>
+            )}
             <button
               onClick={() => onNavigate('osim')}
               className="px-3 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-medium text-xs flex items-center space-x-1.5 transition-all shadow-[0_0_15px_rgba(6,182,212,0.3)] hover:scale-[1.02]"
@@ -285,7 +346,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
             value={deptPrograms.length}
             icon={Crown}
             subtitle={isBph ? 'Semua Sekbid Madrasah' : `Khusus ${deptCode}`}
-            colorTheme="cyan"
+            colorTheme="sky"
             onClick={() => onNavigate('osim')}
           />
           <StatCard
@@ -312,7 +373,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
             value={`Rp ${(totalDeptBudgetEst / 1000000).toFixed(1)}Jt`}
             icon={FileSpreadsheet}
             subtitle={`Realisasi: Rp ${(totalDeptBudgetReal / 1000000).toFixed(1)}Jt`}
-            colorTheme="blue"
+            colorTheme="indigo"
             onClick={() => onNavigate('osim')}
           />
         </div>
@@ -365,10 +426,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center space-x-2">
                         <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${statusBadge}`}>
-                          {p.status.toUpperCase()}
+                          {p.status?.toUpperCase() || 'DRAFT'}
                         </span>
                         <span className="text-[10px] text-zinc-400 font-mono">
-                          {p.startDate}
+                          {p.startDate || '-'}
                         </span>
                         {p.lpjNotes && (
                           <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
@@ -380,17 +441,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
                         {p.title}
                       </h4>
                       <p className="text-[11px] text-zinc-400 truncate mt-0.5">
-                        PJ: {p.personInCharge || 'Pengurus'} • Lokasi: {p.location} • RAB: Rp {Number(p.budgetEstimated).toLocaleString('id-ID')}
+                        PJ: {p.personInCharge || 'Pengurus'} • Lokasi: {p.location || '-'} • RAB: Rp {Number(p.budgetEstimated || 0).toLocaleString('id-ID')}
                       </p>
                     </div>
 
                     <div className="flex items-center space-x-3 shrink-0">
                       <div className="text-right hidden md:block">
                         <div className="text-[10px] text-zinc-400">Progres Kegiatan</div>
-                        <div className="text-xs font-bold text-cyan-400">{p.progressPercentage}%</div>
+                        <div className="text-xs font-bold text-cyan-400">{p.progressPercentage || 0}%</div>
                       </div>
                       <div className="w-16 bg-zinc-800 h-1.5 rounded-full overflow-hidden hidden md:block">
-                        <div className="bg-cyan-500 h-full rounded-full" style={{ width: `${p.progressPercentage}%` }} />
+                        <div className="bg-cyan-500 h-full rounded-full" style={{ width: `${p.progressPercentage || 0}%` }} />
                       </div>
                       <button
                         onClick={() => onNavigate('osim')}
@@ -413,9 +474,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
   // VIEW 1: PEMBINA OSIM DASHBOARD
   // ==========================================
   if (isPembinaOsim) {
-    const completedProker = osimPrograms.filter(p => p.status === 'Selesai').length;
-    const ongoingProker = osimPrograms.filter(p => p.status === 'Berlangsung' || p.status === 'Disetujui').length;
-    const answeredAspirations = osimAspirations.filter(a => a.status === 'Direalisasikan' || a.status === 'Sedang Dibahas').length;
+    const completedProker = safeOsimPrograms.filter(p => p && p.status === 'Selesai').length;
+    const ongoingProker = safeOsimPrograms.filter(p => p && (p.status === 'Berlangsung' || p.status === 'Disetujui')).length;
+    const answeredAspirations = safeOsimAspirations.filter(a => a && (a.status === 'Direalisasikan' || a.status === 'Sedang Dibahas')).length;
 
     return (
       <div className="space-y-3 font-sans text-xs select-none">
@@ -473,7 +534,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
           <StatCard
             id="kpi-osim-pengurus"
             title="PENGURUS_OSIM"
-            value={osimMembers.length}
+            value={safeOsimMembers.length}
             icon={Crown}
             subtitle="STRUKTUR RESMI TERDATA"
             colorTheme="amber"
@@ -482,7 +543,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
           <StatCard
             id="kpi-osim-proker"
             title="PROGRAM_KERJA"
-            value={osimPrograms.length}
+            value={safeOsimPrograms.length}
             icon={Compass}
             subtitle={`${completedProker} SELESAI / ${ongoingProker} AKTIF`}
             colorTheme="indigo"
@@ -491,7 +552,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
           <StatCard
             id="kpi-osim-aspirasi"
             title="KOTAK_ASPIRASI"
-            value={osimAspirations.length}
+            value={safeOsimAspirations.length}
             icon={MessageSquareQuote}
             subtitle={`${answeredAspirations} DITINDAKLANJUTI`}
             colorTheme="sky"
@@ -500,7 +561,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
           <StatCard
             id="kpi-osim-sidang"
             title="NOTULENSI_SIDANG"
-            value={osimMeetings.length}
+            value={safeOsimMeetings.length}
             icon={Calendar}
             subtitle="DOKUMEN SIDANG & RAPAT"
             colorTheme="emerald"
@@ -652,7 +713,34 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
   // VIEW 2: PEMBINA EKSTRAKURIKULER DASHBOARD
   // ==========================================
   if (isPembinaEkskul || isPembina) {
-    const quotaPct = activeEkskul && activeEkskul.quota > 0 
+    if (!activeEkskul) {
+      return (
+        <div className="space-y-4 font-sans text-xs select-none">
+          <AnnouncementDashboardWidget onNavigate={onNavigate} />
+          <div className="p-8 bg-[#0d0d0f] border border-[#27272a] rounded-2xl text-center max-w-xl mx-auto my-6 space-y-4">
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+              <Compass className="w-7 h-7" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-white">Unit Ekstrakurikuler Belum Ditetapkan</h3>
+              <p className="text-xs text-zinc-400 mt-1 max-w-md mx-auto">
+                Akun Pembina Anda (<strong>{currentUser?.displayName || 'Guru Pembina'}</strong>) belum dihubungkan ke unit ekstrakurikuler binaan atau data unit sedang disinkronisasi.
+              </p>
+            </div>
+            <div className="flex justify-center gap-2 pt-2">
+              <button
+                onClick={() => onNavigate('extracurriculars')}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition-colors"
+              >
+                Lihat Direktori Ekstrakurikuler
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    const quotaPct = (activeEkskul.quota && activeEkskul.quota > 0)
       ? Math.min(100, Math.round((myMembers.length / activeEkskul.quota) * 100)) 
       : 0;
 
@@ -737,7 +825,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
                     : 'bg-[#161618] text-zinc-400 border border-[#27272a] hover:text-zinc-200 hover:border-zinc-700'
                 }`}
               >
-                {ek.name} ({members.filter(m => m.extracurricularId === ek.id && m.status === 'Aktif').length} Siswa)
+                {ek.name} ({safeMembers.filter(m => m && m.extracurricularId === ek.id && m.status === 'Aktif').length} Siswa)
               </button>
             ))}
           </div>
@@ -1012,10 +1100,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
   // VIEW 3: GURU BK DASHBOARD (COMMAND CENTER BK)
   // ==========================================
   if (isGuruBK) {
-    const completedCounseling = counseling.filter(c => c.status === 'Selesai').length;
-    const followUpNeeded = counseling.filter(c => c.status === 'Perlu Tindak Lanjut').length;
-    const pendingHomeVisits = homeVisits.filter(h => h.status !== 'Terlaksana').length;
-    const activeParentCalls = parentCallLetters.filter(p => p.status === 'Diterbitkan').length;
+    const completedCounseling = safeCounseling.filter(c => c && c.status === 'Selesai').length;
+    const followUpNeeded = safeCounseling.filter(c => c && c.status === 'Perlu Tindak Lanjut').length;
+    const pendingHomeVisits = safeHomeVisits.filter(h => h && h.status !== 'Terlaksana').length;
+    const activeParentCalls = safeParentCallLetters.filter(p => p && p.status === 'Diterbitkan').length;
 
     return (
       <div className="space-y-3 font-sans text-xs select-none">
@@ -1080,16 +1168,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
           <StatCard
             id="kpi-bk-counseling"
             title="TOTAL_KONSELING"
-            value={counseling.length}
+            value={safeCounseling.length}
             icon={HeartHandshake}
             subtitle={`${completedCounseling} Selesai • ${followUpNeeded} Pantau`}
-            colorTheme="pink"
+            colorTheme="rose"
             onClick={() => onNavigate('counseling')}
           />
           <StatCard
             id="kpi-bk-homevisit"
             title="KUNJUNGAN_RUMAH"
-            value={homeVisits.length}
+            value={safeHomeVisits.length}
             icon={Home}
             subtitle={pendingHomeVisits > 0 ? `${pendingHomeVisits} Perlu Tindak Lanjut` : 'Semua Berita Acara Rapi'}
             colorTheme="purple"
@@ -1098,16 +1186,16 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
           <StatCard
             id="kpi-bk-parentcall"
             title="SURAT_PANGGILAN_ORTU"
-            value={parentCallLetters.length}
+            value={safeParentCallLetters.length}
             icon={Mail}
             subtitle={activeParentCalls > 0 ? `${activeParentCalls} Surat Aktif` : 'Selesai Dimediasi'}
-            colorTheme="blue"
+            colorTheme="sky"
             onClick={() => onNavigate('counseling')}
           />
           <StatCard
             id="kpi-bk-career"
             title="ASESMEN_KARIR_PEMINATAN"
-            value={careerGuidances.length}
+            value={safeCareerGuidances.length}
             icon={GraduationCap}
             subtitle="Peminatan PTN & Profesi"
             colorTheme="emerald"
@@ -1134,7 +1222,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
               </div>
 
               <div className="space-y-1.5">
-                {counseling.slice(0, 4).map(c => (
+                {safeCounseling.slice(0, 4).map(c => (
                   <div
                     key={c.id}
                     onClick={() => onNavigate('counseling')}
@@ -1161,7 +1249,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
                     </div>
                   </div>
                 ))}
-                {counseling.length === 0 && (
+                {safeCounseling.length === 0 && (
                   <div className="py-6 text-center text-zinc-600 font-mono text-xs">
                     Belum ada data sesi konseling terdata
                   </div>
@@ -1184,7 +1272,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
               </div>
 
               <div className="space-y-1.5">
-                {homeVisits.slice(0, 3).map(h => (
+                {safeHomeVisits.slice(0, 3).map(h => (
                   <div
                     key={h.id}
                     onClick={() => onNavigate('counseling')}
@@ -1204,7 +1292,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
                     </div>
                   </div>
                 ))}
-                {homeVisits.length === 0 && (
+                {safeHomeVisits.length === 0 && (
                   <div className="py-4 text-center text-zinc-600 font-mono text-xs">
                     Belum ada agenda home visit
                   </div>
@@ -1230,8 +1318,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
               </div>
 
               <div className="space-y-1.5">
-                {students
-                  .filter(s => (s.violationPoints || 0) > 0)
+                {safeStudents
+                  .filter(s => s && (s.violationPoints || 0) > 0)
                   .sort((a, b) => (b.violationPoints || 0) - (a.violationPoints || 0))
                   .slice(0, 4)
                   .map(st => (
@@ -1269,7 +1357,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
               </div>
 
               <div className="space-y-1.5">
-                {parentCallLetters.slice(0, 3).map(p => (
+                {safeParentCallLetters.slice(0, 3).map(p => (
                   <div
                     key={p.id}
                     onClick={() => onNavigate('counseling')}
@@ -1283,7 +1371,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
                     <div className="text-[9px] text-zinc-400 truncate">Yth. {p.parentName}</div>
                   </div>
                 ))}
-                {parentCallLetters.length === 0 && (
+                {safeParentCallLetters.length === 0 && (
                   <div className="py-4 text-center text-zinc-600 text-[10px]">
                     Belum ada surat panggilan diterbitkan
                   </div>
@@ -1384,7 +1472,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
           title="UNIT EKSTRAKURIKULER"
           value={totalEkskul}
           icon={Compass}
-          subtitle={`${teachers.filter(t => t.isPembina).length} GURU PEMBINA`}
+          subtitle={`${safeTeachers.filter(t => t && t.isPembina).length} GURU PEMBINA`}
           colorTheme="emerald"
           onClick={() => onNavigate('extracurriculars')}
         />

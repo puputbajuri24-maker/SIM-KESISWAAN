@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   HeartHandshake,
@@ -26,7 +26,8 @@ import {
   Building,
   GraduationCap,
   Lock,
-  Shield
+  Shield,
+  Scale
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -35,8 +36,12 @@ import {
   HomeVisitRecord,
   ParentCallLetter,
   CareerGuidanceRecord,
-  CallLetterStatus
+  CallLetterStatus,
+  SanctionStageType,
+  SpLetterType,
+  Violation
 } from '../types';
+import { OFFICIAL_DISCIPLINE_TIERS, getDisciplineTier } from '../services/officialRulesData';
 import { DataTable, Column } from '../components/common/DataTable';
 import { StatusBadge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
@@ -48,7 +53,12 @@ import { calculateRecordCountsByClass, isStudentInClass } from '../utils/classRe
 
 type ActiveBkTab = 'counseling' | 'home_visit' | 'parent_call' | 'career' | 'analytics';
 
-export const CounselingPage: React.FC = () => {
+interface CounselingPageProps {
+  initialReferral?: Violation | null;
+  onClearReferral?: () => void;
+}
+
+export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral, onClearReferral }) => {
   const { isWakaOrAdmin, isGuruBK, currentUser } = useAuth();
   const {
     counseling,
@@ -59,6 +69,7 @@ export const CounselingPage: React.FC = () => {
     classes,
     violations,
     schoolSetting,
+    handbookMeta,
     addCounseling,
     updateCounseling,
     deleteCounselingSession,
@@ -83,6 +94,25 @@ export const CounselingPage: React.FC = () => {
   const [counselingFieldFilter, setCounselingFieldFilter] = useState<string>('all');
   const [homeVisitStatusFilter, setHomeVisitStatusFilter] = useState<string>('all');
   const [parentCallStatusFilter, setParentCallStatusFilter] = useState<string>('all');
+  const [parentCallStageFilter, setParentCallStageFilter] = useState<string>('all');
+
+  // Helpers for SK B-380 Disciplinary Point & Tier Calculation
+  const getStudentViolationPoints = (studentId: string) => {
+    return violations
+      .filter(v => v.studentId === studentId && !v.isDeleted)
+      .reduce((sum, v) => sum + (Number(v.points) || 0), 0);
+  };
+
+  const getStudentViolationsList = (studentId: string) => {
+    return violations.filter(v => v.studentId === studentId && !v.isDeleted);
+  };
+
+  const generateLetterNumber = (stage: SanctionStageType) => {
+    const code = stage === 1 ? 'PL-01' : stage === 2 ? 'SP-1' : stage === 3 ? 'SP-2' : stage === 4 ? 'SP-3' : 'SK-MUT';
+    const year = new Date().getFullYear();
+    const rand = Math.floor(100 + Math.random() * 900);
+    return `B-380/Ma.26.02/PP.00.6/${code}/${year}/${rand}`;
+  };
 
   // Class counts for counseling
   const counselingCountsByClassId = useMemo(() => {
@@ -164,15 +194,25 @@ export const CounselingPage: React.FC = () => {
     studentClass: '',
     studentNis: '',
     parentName: '',
-    letterNumber: `421.3/BK-SP1/${new Date().getFullYear()}/${Math.floor(100 + Math.random() * 900)}`,
+    letterNumber: generateLetterNumber(2),
     callNumber: 1,
+    sanctionStage: 2,
+    spType: 'SP 1',
+    suspensionDays: 3,
+    pointsAtIssuance: 0,
+    studentViolationSummary: '',
+    homeroomTeacherName: '',
+    homeroomTeacherNip: '',
+    principalName: handbookMeta?.signedBy || 'Zakaria, S. Pd.I., M. Pd',
+    principalNip: handbookMeta?.signedNip || '197808042003121008',
     callDate: new Date().toISOString().split('T')[0],
-    callTime: '08:30 WIB',
+    callTime: '08:30 WIT',
     location: 'Ruang Bimbingan & Konseling (BK)',
     reason: '',
     counselorName: currentUser?.displayName || 'Guru BK',
     counselorNip: currentUser?.nip || '198509122010012008',
-    wakaName: schoolSetting?.wakaName || 'Waka Kesiswaan',
+    wakaName: handbookMeta?.wakaName || 'Puput Eka Bajuri, S. Pd., M. Or',
+    wakaNip: handbookMeta?.wakaNip || '198810052020121003',
     status: 'Diterbitkan',
     notes: ''
   });
@@ -368,36 +408,92 @@ export const CounselingPage: React.FC = () => {
   };
 
   // ==========================================
-  // PARENT CALL LETTER HANDLERS
+  // PARENT CALL LETTER & SP HANDLERS (SK B-380)
   // ==========================================
-  const handleOpenAddParentCall = () => {
+  const handleOpenAddParentCall = (targetStudentId?: string, forceStage?: SanctionStageType) => {
     setEditingParentCall(null);
-    const def = students[0];
+    const def = targetStudentId ? (students.find(s => s.id === targetStudentId) || students[0]) : students[0];
+    const pts = def ? getStudentViolationPoints(def.id) : 0;
+    const tier = getDisciplineTier(pts);
+    const stg = forceStage || (tier ? (tier.tier as SanctionStageType) : (pts >= 10 ? 1 : 2));
+    const cClass = classes.find(c => c.name === def?.className);
+    const viols = def ? getStudentViolationsList(def.id) : [];
+    const violSummary = viols.map(v => `${v.violationType} (+${v.points}p)`).slice(0, 3).join(', ');
+
+    const defaultCallNum = stg === 1 ? 1 : stg === 2 ? 1 : stg === 3 ? 2 : 3;
+    const defaultSpType: SpLetterType =
+      stg === 1 ? 'Peringatan Lisan' :
+      stg === 2 ? 'SP 1' :
+      stg === 3 ? 'SP 2' :
+      stg === 4 ? 'SP 3' : 'Pengembalian Siswa';
+
+    const defaultReason =
+      stg === 1 ? `Peringatan lisan dan pembinaan sikap atas akumulasi ${pts} poin pelanggaran tata tertib.` :
+      stg === 2 ? `Panggilan Orang Tua I dan penerbitan Surat Peringatan I (SP 1) atas akumulasi ${pts} poin pelanggaran.` :
+      stg === 3 ? `Panggilan Orang Tua II, penyampaian SP 2, dan penetapan Skorsing Edukatif 3 hari kerja (Akumulasi ${pts} poin).` :
+      stg === 4 ? `Panggilan Orang Tua III dan Sidang Kasus Kedisiplinan SP 3 (Peringatan Terakhir) atas akumulasi ${pts} poin.` :
+      `Pemberitahuan Keputusan Pengembalian Pembinaan Siswa kepada Orang Tua/Wali (Akumulasi ${pts} poin).`;
+
+    const defaultLocation =
+      stg === 1 ? 'Ruang Kelas / Ruang Wali Kelas' :
+      stg === 4 || stg === 5 ? 'Ruang Kepala Madrasah' : 'Ruang Bimbingan & Konseling (BK)';
+
     setParentCallForm({
       studentId: def?.id || '',
       studentName: def?.fullName || '',
       studentClass: def?.className || '',
       studentNis: def?.nis || '',
       parentName: def?.parentName || 'Bapak/Ibu Orang Tua Siswa',
-      letterNumber: `421.3/BK-SP1/${new Date().getFullYear()}/${Math.floor(100 + Math.random() * 900)}`,
-      callNumber: 1,
+      letterNumber: generateLetterNumber(stg),
+      callNumber: defaultCallNum as 1 | 2 | 3,
+      sanctionStage: stg,
+      spType: defaultSpType,
+      suspensionDays: stg === 3 ? 3 : undefined,
+      pointsAtIssuance: pts,
+      studentViolationSummary: violSummary,
+      homeroomTeacherName: cClass?.homeroomTeacher || '',
+      homeroomTeacherNip: '',
+      principalName: handbookMeta?.signedBy || 'Zakaria, S. Pd.I., M. Pd',
+      principalNip: handbookMeta?.signedNip || '197808042003121008',
       callDate: new Date().toISOString().split('T')[0],
-      callTime: '08:30 WIB',
-      location: 'Ruang Bimbingan & Konseling (BK)',
-      reason: 'Koordinasi pembinaan disiplin dan pemantauan perkembangan belajar ananda.',
+      callTime: '08:30 WIT',
+      location: defaultLocation,
+      reason: defaultReason,
       counselorName: currentUser?.displayName || 'Guru BK',
       counselorNip: currentUser?.nip || '198509122010012008',
-      wakaName: schoolSetting?.wakaName || 'Waka Kesiswaan',
+      wakaName: handbookMeta?.wakaName || 'Puput Eka Bajuri, S. Pd., M. Or',
+      wakaNip: handbookMeta?.wakaNip || '198810052020121003',
       status: 'Diterbitkan',
       notes: ''
     });
     setIsParentCallModalOpen(true);
   };
 
+  // Handle incoming referral from ViolationsPage
+  useEffect(() => {
+    if (initialReferral?.studentId) {
+      setActiveTab('parent_call');
+      handleOpenAddParentCall(initialReferral.studentId);
+      if (onClearReferral) {
+        onClearReferral();
+      }
+    }
+  }, [initialReferral]);
+
   const handleOpenEditParentCall = (item: ParentCallLetter, e?: React.MouseEvent) => {
     e?.stopPropagation();
     setEditingParentCall(item);
-    setParentCallForm(item);
+    setParentCallForm({
+      ...item,
+      sanctionStage: item.sanctionStage || (item.callNumber === 1 ? 2 : item.callNumber === 2 ? 3 : 4),
+      spType: item.spType || (item.callNumber === 1 ? 'SP 1' : item.callNumber === 2 ? 'SP 2' : 'SP 3'),
+      suspensionDays: item.suspensionDays || (item.callNumber === 2 ? 3 : undefined),
+      pointsAtIssuance: item.pointsAtIssuance ?? (item.studentId ? getStudentViolationPoints(item.studentId) : 0),
+      wakaName: item.wakaName || handbookMeta?.wakaName || 'Puput Eka Bajuri, S. Pd., M. Or',
+      wakaNip: item.wakaNip || handbookMeta?.wakaNip || '198810052020121003',
+      principalName: item.principalName || handbookMeta?.signedBy || 'Zakaria, S. Pd.I., M. Pd',
+      principalNip: item.principalNip || handbookMeta?.signedNip || '197808042003121008'
+    });
     setIsParentCallModalOpen(true);
   };
 
@@ -409,14 +505,25 @@ export const CounselingPage: React.FC = () => {
     }
     try {
       const student = students.find(s => s.id === parentCallForm.studentId);
+      const studentPts = student ? getStudentViolationPoints(student.id) : (parentCallForm.pointsAtIssuance || 0);
+      const payload: Partial<ParentCallLetter> = {
+        ...parentCallForm,
+        studentName: student?.fullName || parentCallForm.studentName,
+        studentClass: student?.className || parentCallForm.studentClass,
+        studentNis: student?.nis || parentCallForm.studentNis,
+        parentName: student?.parentName || parentCallForm.parentName,
+        pointsAtIssuance: parentCallForm.pointsAtIssuance ?? studentPts,
+        sanctionStage: parentCallForm.sanctionStage || 2,
+        spType: parentCallForm.spType || 'SP 1',
+        suspensionDays: parentCallForm.sanctionStage === 3 ? (parentCallForm.suspensionDays || 3) : undefined,
+        wakaName: parentCallForm.wakaName || handbookMeta?.wakaName || 'Puput Eka Bajuri, S. Pd., M. Or',
+        wakaNip: parentCallForm.wakaNip || handbookMeta?.wakaNip || '198810052020121003',
+        principalName: parentCallForm.principalName || handbookMeta?.signedBy || 'Zakaria, S. Pd.I., M. Pd',
+        principalNip: parentCallForm.principalNip || handbookMeta?.signedNip || '197808042003121008'
+      };
+
       if (editingParentCall) {
-        await updateParentCallLetter(editingParentCall.id, {
-          ...parentCallForm,
-          studentName: student?.fullName || parentCallForm.studentName,
-          studentClass: student?.className || parentCallForm.studentClass,
-          studentNis: student?.nis || parentCallForm.studentNis,
-          parentName: student?.parentName || parentCallForm.parentName
-        });
+        await updateParentCallLetter(editingParentCall.id, payload);
       } else {
         await addParentCallLetter({
           studentId: parentCallForm.studentId!,
@@ -426,13 +533,23 @@ export const CounselingPage: React.FC = () => {
           parentName: parentCallForm.parentName || student?.parentName || 'Orang Tua Siswa',
           letterNumber: parentCallForm.letterNumber!,
           callNumber: (parentCallForm.callNumber as any) || 1,
+          sanctionStage: payload.sanctionStage || 2,
+          spType: payload.spType || 'SP 1',
+          suspensionDays: payload.suspensionDays,
+          pointsAtIssuance: payload.pointsAtIssuance || 0,
+          studentViolationSummary: parentCallForm.studentViolationSummary || '',
+          homeroomTeacherName: parentCallForm.homeroomTeacherName || '',
+          homeroomTeacherNip: parentCallForm.homeroomTeacherNip || '',
+          principalName: payload.principalName,
+          principalNip: payload.principalNip,
           callDate: parentCallForm.callDate!,
-          callTime: parentCallForm.callTime || '08:30 WIB',
+          callTime: parentCallForm.callTime || '08:30 WIT',
           location: parentCallForm.location || 'Ruang BK',
           reason: parentCallForm.reason!,
           counselorName: parentCallForm.counselorName || currentUser?.displayName || 'Guru BK',
           counselorNip: parentCallForm.counselorNip,
-          wakaName: parentCallForm.wakaName || schoolSetting?.wakaName || 'Waka Kesiswaan',
+          wakaName: payload.wakaName,
+          wakaNip: payload.wakaNip,
           status: parentCallForm.status || 'Diterbitkan',
           notes: parentCallForm.notes || '',
           academicYear: activeAcademicYear
@@ -576,9 +693,13 @@ export const CounselingPage: React.FC = () => {
         if (!match) return false;
       }
       if (parentCallStatusFilter !== 'all' && p.status !== parentCallStatusFilter) return false;
+      if (parentCallStageFilter !== 'all') {
+        const stage = p.sanctionStage || (p.callNumber === 1 ? 2 : p.callNumber === 2 ? 3 : 4);
+        if (String(stage) !== parentCallStageFilter) return false;
+      }
       return true;
     });
-  }, [parentCallLetters, selectedClass, parentCallStatusFilter, classes, students]);
+  }, [parentCallLetters, selectedClass, parentCallStatusFilter, parentCallStageFilter, classes, students]);
 
   const filteredCareerGuidances = useMemo(() => {
     return careerGuidances.filter(cg => {
@@ -792,44 +913,96 @@ export const CounselingPage: React.FC = () => {
 
   const parentCallColumns: Column<ParentCallLetter>[] = [
     {
-      header: 'No. Surat & Panggilan Ke',
+      header: 'No. Surat & Tahapan Sanksi',
       accessorKey: 'letterNumber',
       sortable: true,
-      cell: p => (
-        <div>
-          <span className="font-mono text-xs font-bold text-blue-400">{p.letterNumber}</span>
-          <p className="text-[10px] font-mono text-amber-400">Surat Panggilan Ke-{p.callNumber}</p>
-        </div>
-      )
+      cell: p => {
+        const stage = p.sanctionStage || (p.callNumber === 1 ? 2 : p.callNumber === 2 ? 3 : 4);
+        const stageTier = OFFICIAL_DISCIPLINE_TIERS.find(t => t.tier === stage);
+        return (
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5">
+              <span className="font-mono text-xs font-bold text-blue-400">{p.letterNumber}</span>
+            </div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {stage === 1 && (
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                  Tahap 1: Lisan (10-20 Poin)
+                </span>
+              )}
+              {stage === 2 && (
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                  Tahap 2: SP 1 (21-40 Poin)
+                </span>
+              )}
+              {stage === 3 && (
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                  Tahap 3: SP 2 • Skorsing {p.suspensionDays || 3} Hari (41-75 Poin)
+                </span>
+              )}
+              {stage === 4 && (
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-red-600/25 text-red-300 border border-red-500/40">
+                  Tahap 4: SP 3 Terakhir (76-99 Poin)
+                </span>
+              )}
+              {stage === 5 && (
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-purple-600/25 text-purple-300 border border-purple-500/40">
+                  Tahap 5: Pengembalian (≥100 Poin)
+                </span>
+              )}
+            </div>
+          </div>
+        );
+      }
     },
     {
-      header: 'Siswa & Wali Murid',
+      header: 'Siswa & Akumulasi Poin',
       accessorKey: 'studentName',
       sortable: true,
-      cell: p => (
-        <div>
-          <p className="font-bold text-zinc-100">{p.studentName} ({p.studentClass})</p>
-          <p className="text-[11px] text-zinc-400">Yth. {p.parentName || 'Orang Tua'}</p>
-        </div>
-      )
+      cell: p => {
+        const studentPts = p.pointsAtIssuance ?? (p.studentId ? getStudentViolationPoints(p.studentId) : 0);
+        return (
+          <div>
+            <div className="flex items-center gap-1.5">
+              <p className="font-bold text-zinc-100">{p.studentName}</p>
+              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-300 border border-zinc-700">
+                {p.studentClass}
+              </span>
+              <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                {studentPts} Poin
+              </span>
+            </div>
+            <p className="text-[11px] text-zinc-400 mt-0.5">Yth. {p.parentName || 'Orang Tua / Wali'}</p>
+          </div>
+        );
+      }
     },
     {
-      header: 'Jadwal Panggilan',
+      header: 'Jadwal & Tempat',
       accessorKey: 'callDate',
       sortable: true,
       cell: p => (
         <div className="text-xs">
-          <span className="font-semibold text-zinc-200">📅 {p.callDate} - {p.callTime}</span>
-          <p className="text-[10px] text-zinc-500">📍 {p.location}</p>
+          <span className="font-semibold text-zinc-200">📅 {p.callDate} • {p.callTime}</span>
+          <p className="text-[10px] text-zinc-500 truncate max-w-[180px]">📍 {p.location}</p>
         </div>
       )
     },
     {
-      header: 'Perihal Panggilan',
-      accessorKey: 'reason',
-      cell: p => (
-        <p className="text-xs text-zinc-300 line-clamp-1">{p.reason}</p>
-      )
+      header: 'Penandatangan Dokumen',
+      accessorKey: 'wakaName',
+      cell: p => {
+        const stage = p.sanctionStage || (p.callNumber === 1 ? 2 : p.callNumber === 2 ? 3 : 4);
+        return (
+          <div className="text-[10px] font-mono text-zinc-400">
+            {stage === 1 && <span>Wali Kelas & Siswa</span>}
+            {stage === 2 && <span>Wali Kelas & Guru BK</span>}
+            {stage === 3 && <span className="text-rose-400 font-semibold">Waka Kesiswaan & BK</span>}
+            {stage === 4 && <span className="text-red-400 font-bold">Kepala Madrasah & Waka</span>}
+            {stage === 5 && <span className="text-purple-400 font-bold">Kepala MAN 2 SBT & Komite</span>}
+          </div>
+        );
+      }
     },
     {
       header: 'Status',
@@ -844,20 +1017,22 @@ export const CounselingPage: React.FC = () => {
           <button
             onClick={() => setPrintParentCallLetter(p)}
             className="px-2 py-1 rounded bg-blue-600/20 border border-blue-500/30 text-blue-300 hover:bg-blue-600/30 text-[10px] font-mono flex items-center gap-1"
-            title="Cetak Surat Panggilan Resmi"
+            title="Cetak Surat Resmi Sesuai SK B-380"
           >
             <Printer className="w-3 h-3" />
-            <span>CETAK_SP</span>
+            <span>CETAK_SURAT</span>
           </button>
           <button
-            onClick={() => setDetailParentCall(p)}
+            onClick={() => setPrintParentCallLetter(p)}
             className="p-1.5 rounded text-zinc-400 hover:text-blue-400 hover:bg-[#161618]"
+            title="Lihat Pratinjau Dokumen"
           >
             <Eye className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={e => handleOpenEditParentCall(p, e)}
             className="p-1.5 rounded text-zinc-400 hover:text-amber-400 hover:bg-[#161618]"
+            title="Edit Dokumen"
           >
             <Edit2 className="w-3.5 h-3.5" />
           </button>
@@ -867,6 +1042,7 @@ export const CounselingPage: React.FC = () => {
               setDeleteTarget({ type: 'parent_call', id: p.id, name: p.studentName });
             }}
             className="p-1.5 rounded text-zinc-400 hover:text-rose-400 hover:bg-[#161618]"
+            title="Hapus Surat"
           >
             <Trash2 className="w-3.5 h-3.5" />
           </button>
@@ -1271,9 +1447,77 @@ export const CounselingPage: React.FC = () => {
           transition={{ duration: 0.18, ease: 'easeOut' }}
           className="space-y-3"
         >
+          {/* Disciplinary Summary Banner SK B-380 */}
+          <div className="p-3 bg-[#0d0d0f] border border-[#27272a] rounded space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Scale className="w-4 h-4 text-amber-400" />
+                <span className="font-mono text-xs font-bold text-zinc-200">
+                  5 TAHAPAN SANKSI & PEMANGGILAN RESMI (SK KEPALA MADRASAH B-380)
+                </span>
+              </div>
+              <button
+                onClick={() => handleOpenAddParentCall()}
+                className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white font-mono text-xs font-bold flex items-center gap-1.5 shadow-[0_0_10px_rgba(59,130,246,0.3)] transition-all"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>TERBITKAN_SURAT_SP_BARU</span>
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 text-[11px] font-mono">
+              <div className="p-2 rounded bg-amber-950/20 border border-amber-800/40 text-amber-300">
+                <div className="font-bold text-amber-200">Tahap 1 (10-20 Poin)</div>
+                <div className="text-[10px] text-amber-400/80">Peringatan Lisan 1 & 2</div>
+                <div className="text-[9px] text-zinc-400 mt-1">Penandatangan: Wali Kelas</div>
+              </div>
+              <div className="p-2 rounded bg-blue-950/20 border border-blue-800/40 text-blue-300">
+                <div className="font-bold text-blue-200">Tahap 2 (21-40 Poin)</div>
+                <div className="text-[10px] text-blue-400/80">SP 1 & Panggilan I</div>
+                <div className="text-[9px] text-zinc-400 mt-1">Penandatangan: Wali Kelas & BK</div>
+              </div>
+              <div className="p-2 rounded bg-rose-950/20 border border-rose-800/40 text-rose-300">
+                <div className="font-bold text-rose-200">Tahap 3 (41-75 Poin)</div>
+                <div className="text-[10px] text-rose-400/80">SP 2 & Skorsing 3 Hari</div>
+                <div className="text-[9px] text-zinc-400 mt-1">Penandatangan: Waka Kesiswaan & BK</div>
+              </div>
+              <div className="p-2 rounded bg-red-950/20 border border-red-800/40 text-red-300">
+                <div className="font-bold text-red-200">Tahap 4 (76-99 Poin)</div>
+                <div className="text-[10px] text-red-400/80">SP 3 (Peringatan Terakhir)</div>
+                <div className="text-[9px] text-zinc-400 mt-1">Penandatangan: Kepala Madrasah & Waka</div>
+              </div>
+              <div className="p-2 rounded bg-purple-950/20 border border-purple-800/40 text-purple-300">
+                <div className="font-bold text-purple-200">Tahap 5 (≥100 Poin)</div>
+                <div className="text-[10px] text-purple-400/80">Pengembalian ke Ortu</div>
+                <div className="text-[9px] text-zinc-400 mt-1">SK Kepala MAN 2 SBT</div>
+              </div>
+            </div>
+          </div>
+
           <div className="p-2.5 bg-[#0d0d0f] border border-[#27272a] rounded flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2 font-mono text-[10px]">
-              <span className="text-zinc-500">STATUS_PANGGILAN:</span>
+            <div className="flex flex-wrap items-center gap-2 font-mono text-[10px]">
+              <span className="text-zinc-500">FILTER_TAHAP:</span>
+              {[
+                { id: 'all', label: 'SEMUA' },
+                { id: '1', label: 'TAHAP 1 (LISAN)' },
+                { id: '2', label: 'TAHAP 2 (SP 1)' },
+                { id: '3', label: 'TAHAP 3 (SP 2)' },
+                { id: '4', label: 'TAHAP 4 (SP 3)' },
+                { id: '5', label: 'TAHAP 5 (KELUAR)' }
+              ].map(stg => (
+                <button
+                  key={stg.id}
+                  onClick={() => setParentCallStageFilter(stg.id)}
+                  className={`px-2 py-0.5 rounded border transition-colors ${
+                    parentCallStageFilter === stg.id
+                      ? 'bg-amber-600/25 border-amber-500/50 text-amber-300 font-bold'
+                      : 'bg-[#161618] border-[#27272a] text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  {stg.label}
+                </button>
+              ))}
+
+              <span className="text-zinc-500 ml-2">STATUS:</span>
               {['all', 'Diterbitkan', 'Hadir', 'Tidak Hadir', 'Selesai'].map(st => (
                 <button
                   key={st}
@@ -1295,7 +1539,9 @@ export const CounselingPage: React.FC = () => {
               data={filteredParentCalls}
               headers={[
                 { header: 'No Surat', key: 'letterNumber' },
-                { header: 'Panggilan Ke', key: 'callNumber' },
+                { header: 'Tahap', key: 'sanctionStage' },
+                { header: 'Jenis SP', key: 'spType' },
+                { header: 'Poin Saat Terbit', key: 'pointsAtIssuance' },
                 { header: 'Nama Siswa', key: 'studentName' },
                 { header: 'Kelas', key: 'studentClass' },
                 { header: 'Orang Tua', key: 'parentName' },
@@ -1312,8 +1558,8 @@ export const CounselingPage: React.FC = () => {
             data={filteredParentCalls}
             columns={parentCallColumns}
             searchPlaceholder="Cari no surat, nama siswa, orang tua, atau perihal..."
-            searchableKeys={['letterNumber', 'studentName', 'parentName', 'reason']}
-            onRowClick={p => setDetailParentCall(p)}
+            searchableKeys={['letterNumber', 'studentName', 'parentName', 'reason', 'spType']}
+            onRowClick={p => setPrintParentCallLetter(p)}
           />
         </motion.div>
       )}
@@ -1880,9 +2126,9 @@ export const CounselingPage: React.FC = () => {
       <Modal
         isOpen={isParentCallModalOpen}
         onClose={() => setIsParentCallModalOpen(false)}
-        title={editingParentCall ? 'Edit Surat Panggilan Orang Tua' : 'Terbitkan Surat Panggilan Orang Tua (SP)'}
-        subtitle="Penerbitan surat resmi pemanggilan orang tua/wali murid ke sekolah"
-        maxWidth="lg"
+        title={editingParentCall ? 'Edit Surat Panggilan Orang Tua & SP' : 'Terbitkan Surat Panggilan / SP Resmi (SK B-380)'}
+        subtitle="Penerbitan surat keputusan pembinaan, peringatan (SP 1-3), dan pemanggilan orang tua"
+        maxWidth="2xl"
         footer={
           <>
             <button
@@ -1897,12 +2143,195 @@ export const CounselingPage: React.FC = () => {
               onClick={handleSaveParentCall}
               className="px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white font-mono text-xs font-bold shadow-[0_0_10px_rgba(59,130,246,0.3)]"
             >
-              TERBITKAN_SURAT_PANGGILAN
+              SIMPAN_&_TERBITKAN_DOKUMEN
             </button>
           </>
         }
       >
         <form onSubmit={handleSaveParentCall} className="space-y-3 font-sans text-xs">
+          {/* Pilih Siswa & Analisis Poin Otomatis */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div>
+              <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+                PILIH SISWA TERPANGGIL *
+              </label>
+              <select
+                value={parentCallForm.studentId}
+                onChange={e => {
+                  const st = students.find(s => s.id === e.target.value);
+                  if (!st) return;
+                  const pts = getStudentViolationPoints(st.id);
+                  const tier = getDisciplineTier(pts);
+                  const suggestedStage = (tier ? tier.tier : (pts >= 10 ? 1 : 2)) as SanctionStageType;
+                  const cClass = classes.find(c => c.name === st.className);
+                  const viols = getStudentViolationsList(st.id);
+                  const violSummary = viols.map(v => `${v.violationType} (+${v.points}p)`).slice(0, 3).join(', ');
+
+                  const callNum = suggestedStage === 1 ? 1 : suggestedStage === 2 ? 1 : suggestedStage === 3 ? 2 : 3;
+                  const spT: SpLetterType =
+                    suggestedStage === 1 ? 'Peringatan Lisan' :
+                    suggestedStage === 2 ? 'SP 1' :
+                    suggestedStage === 3 ? 'SP 2' :
+                    suggestedStage === 4 ? 'SP 3' : 'Pengembalian Siswa';
+
+                  const loc = suggestedStage === 1 ? 'Ruang Kelas / Ruang Wali Kelas' : suggestedStage === 4 || suggestedStage === 5 ? 'Ruang Kepala Madrasah' : 'Ruang Bimbingan & Konseling (BK)';
+                  const rsn =
+                    suggestedStage === 1 ? `Peringatan lisan dan pembinaan sikap atas akumulasi ${pts} poin pelanggaran tata tertib.` :
+                    suggestedStage === 2 ? `Panggilan Orang Tua I dan penerbitan Surat Peringatan I (SP 1) atas akumulasi ${pts} poin pelanggaran.` :
+                    suggestedStage === 3 ? `Panggilan Orang Tua II, penyampaian SP 2, dan penetapan Skorsing Edukatif 3 hari kerja (Akumulasi ${pts} poin).` :
+                    suggestedStage === 4 ? `Panggilan Orang Tua III dan Sidang Kasus Kedisiplinan SP 3 (Peringatan Terakhir) atas akumulasi ${pts} poin.` :
+                    `Pemberitahuan Keputusan Pengembalian Pembinaan Siswa kepada Orang Tua/Wali (Akumulasi ${pts} poin).`;
+
+                  setParentCallForm({
+                    ...parentCallForm,
+                    studentId: st.id,
+                    studentName: st.fullName || '',
+                    studentClass: st.className || '',
+                    studentNis: st.nis || '',
+                    parentName: st.parentName || parentCallForm.parentName || 'Orang Tua Siswa',
+                    pointsAtIssuance: pts,
+                    sanctionStage: suggestedStage,
+                    spType: spT,
+                    callNumber: callNum as 1 | 2 | 3,
+                    suspensionDays: suggestedStage === 3 ? 3 : undefined,
+                    letterNumber: generateLetterNumber(suggestedStage),
+                    homeroomTeacherName: cClass?.homeroomTeacher || parentCallForm.homeroomTeacherName || '',
+                    location: loc,
+                    reason: rsn,
+                    studentViolationSummary: violSummary
+                  });
+                }}
+                className="w-full px-2.5 py-1.5 rounded bg-[#161618] border border-[#27272a] text-zinc-200"
+              >
+                {students.map(s => {
+                  const pts = getStudentViolationPoints(s.id);
+                  return (
+                    <option key={s.id} value={s.id}>
+                      {s.fullName} ({s.className}) — {pts} Poin
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+
+            <div>
+              <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+                NAMA ORANG TUA / WALI
+              </label>
+              <input
+                type="text"
+                value={parentCallForm.parentName}
+                onChange={e => setParentCallForm({ ...parentCallForm, parentName: e.target.value })}
+                placeholder="Bapak/Ibu Orang Tua Siswa"
+                className="w-full px-2.5 py-1.5 rounded bg-[#161618] border border-[#27272a] text-zinc-200"
+              />
+            </div>
+          </div>
+
+          {/* Status Akumulasi Poin Real-time & Rekomendasi SK B-380 */}
+          {parentCallForm.studentId && (() => {
+            const pts = parentCallForm.pointsAtIssuance ?? getStudentViolationPoints(parentCallForm.studentId);
+            const tier = getDisciplineTier(pts);
+            return (
+              <div className="p-2.5 rounded bg-blue-950/30 border border-blue-800/50 space-y-1">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Scale className="w-4 h-4 text-blue-400" />
+                    <span className="font-mono text-[11px] font-bold text-blue-200">
+                      STATUS KEDISIPLINAN: AKUMULASI {pts} POIN
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 font-bold border border-blue-500/30">
+                    {tier ? tier.name : (pts < 10 ? 'Di Bawah Ambang Peringatan (<10 Poin)' : 'Tahap Pembinaan')}
+                  </span>
+                </div>
+                <p className="text-[10px] text-zinc-400">
+                  {tier ? tier.actionRequired : 'Siswa belum melampaui batas minimum sanksi (10 poin), namun bimbingan preventif tetap dapat dilaksanakan.'}
+                </p>
+                {parentCallForm.studentViolationSummary && (
+                  <div className="text-[10px] font-mono text-zinc-400 truncate">
+                    Pelanggaran tercatat: <span className="text-zinc-300">{parentCallForm.studentViolationSummary}</span>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Pilihan Tahapan Sanksi (1 s.d 5) */}
+          <div>
+            <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1.5">
+              KLASIFIKASI TAHAPAN SANKSI RESMI (SK B-380) *
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-5 gap-1.5 font-mono text-[10px]">
+              {[
+                { stage: 1, label: 'Tahap 1: Lisan', range: '10-20 Poin', sp: 'Peringatan Lisan', call: 1, loc: 'Ruang Kelas / Wali Kelas' },
+                { stage: 2, label: 'Tahap 2: SP 1', range: '21-40 Poin', sp: 'SP 1', call: 1, loc: 'Ruang BK' },
+                { stage: 3, label: 'Tahap 3: SP 2', range: '41-75 Poin (Skorsing)', sp: 'SP 2', call: 2, loc: 'Ruang Waka Kesiswaan & BK' },
+                { stage: 4, label: 'Tahap 4: SP 3', range: '76-99 Poin (Terakhir)', sp: 'SP 3', call: 3, loc: 'Ruang Kepala Madrasah' },
+                { stage: 5, label: 'Tahap 5: Pengembalian', range: '≥100 Poin (DO/Mutasi)', sp: 'Pengembalian Siswa', call: 3, loc: 'Ruang Kepala Madrasah' }
+              ].map(opt => {
+                const isSelected = parentCallForm.sanctionStage === opt.stage;
+                return (
+                  <button
+                    key={opt.stage}
+                    type="button"
+                    onClick={() => {
+                      const pts = parentCallForm.pointsAtIssuance || 0;
+                      const rsn =
+                        opt.stage === 1 ? `Peringatan lisan dan pembinaan sikap atas akumulasi ${pts} poin pelanggaran tata tertib.` :
+                        opt.stage === 2 ? `Panggilan Orang Tua I dan penerbitan Surat Peringatan I (SP 1) atas akumulasi ${pts} poin pelanggaran.` :
+                        opt.stage === 3 ? `Panggilan Orang Tua II, penyampaian SP 2, dan penetapan Skorsing Edukatif 3 hari kerja (Akumulasi ${pts} poin).` :
+                        opt.stage === 4 ? `Panggilan Orang Tua III dan Sidang Kasus Kedisiplinan SP 3 (Peringatan Terakhir) atas akumulasi ${pts} poin.` :
+                        `Pemberitahuan Keputusan Pengembalian Pembinaan Siswa kepada Orang Tua/Wali (Akumulasi ${pts} poin).`;
+
+                      setParentCallForm({
+                        ...parentCallForm,
+                        sanctionStage: opt.stage as SanctionStageType,
+                        spType: opt.sp as SpLetterType,
+                        callNumber: opt.call as 1 | 2 | 3,
+                        suspensionDays: opt.stage === 3 ? (parentCallForm.suspensionDays || 3) : undefined,
+                        letterNumber: generateLetterNumber(opt.stage as SanctionStageType),
+                        location: opt.loc,
+                        reason: rsn
+                      });
+                    }}
+                    className={`p-2 rounded text-left border transition-all ${
+                      isSelected
+                        ? 'bg-blue-600/25 border-blue-500 text-blue-300 font-bold shadow-[0_0_8px_rgba(59,130,246,0.3)]'
+                        : 'bg-[#161618] border-[#27272a] text-zinc-400 hover:text-zinc-200'
+                    }`}
+                  >
+                    <div className="font-bold">{opt.label}</div>
+                    <div className="text-[9px] text-zinc-500">{opt.range}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Sanksi Khusus Skorsing jika Tahap 3 */}
+          {parentCallForm.sanctionStage === 3 && (
+            <div className="p-2.5 rounded bg-rose-950/25 border border-rose-800/40 space-y-1">
+              <label className="block font-mono text-[10px] text-rose-300 uppercase tracking-widest font-bold">
+                DURASI SKORSING EDUKATIF (HARI KERJA) *
+              </label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  min={1}
+                  max={7}
+                  value={parentCallForm.suspensionDays || 3}
+                  onChange={e => setParentCallForm({ ...parentCallForm, suspensionDays: Number(e.target.value) })}
+                  className="w-24 px-2.5 py-1.5 rounded bg-[#161618] border border-rose-700/60 text-rose-200 font-mono font-bold text-center"
+                />
+                <span className="text-zinc-300 text-xs">
+                  Hari Kerja (Standar SK B-380: <strong>3 Hari Kerja</strong> belajar mandiri di rumah di bawah pengawasan orang tua)
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Nomor Surat & Jadwal Pertemuan */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
               <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
@@ -1918,57 +2347,18 @@ export const CounselingPage: React.FC = () => {
             </div>
             <div>
               <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
-                PANGGILAN KE
+                STATUS SURAT
               </label>
               <select
-                value={parentCallForm.callNumber}
-                onChange={e => setParentCallForm({ ...parentCallForm, callNumber: Number(e.target.value) as any })}
+                value={parentCallForm.status}
+                onChange={e => setParentCallForm({ ...parentCallForm, status: e.target.value as CallLetterStatus })}
                 className="w-full px-2.5 py-1.5 rounded bg-[#161618] border border-[#27272a] text-zinc-200"
               >
-                <option value={1}>Surat Panggilan Ke-1 (SP 1)</option>
-                <option value={2}>Surat Panggilan Ke-2 (SP 2)</option>
-                <option value={3}>Surat Panggilan Ke-3 (SP 3 / Peringatan Terakhir)</option>
+                <option value="Diterbitkan">Diterbitkan (Menunggu Kehadiran)</option>
+                <option value="Hadir">Orang Tua Hadir</option>
+                <option value="Tidak Hadir">Tidak Hadir</option>
+                <option value="Selesai">Selesai</option>
               </select>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <div>
-              <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
-                PILIH SISWA *
-              </label>
-              <select
-                value={parentCallForm.studentId}
-                onChange={e => {
-                  const st = students.find(s => s.id === e.target.value);
-                  setParentCallForm({
-                    ...parentCallForm,
-                    studentId: e.target.value,
-                    studentName: st?.fullName || '',
-                    studentClass: st?.className || '',
-                    studentNis: st?.nis || '',
-                    parentName: st?.parentName || 'Orang Tua Siswa'
-                  });
-                }}
-                className="w-full px-2.5 py-1.5 rounded bg-[#161618] border border-[#27272a] text-zinc-200"
-              >
-                {students.map(s => (
-                  <option key={s.id} value={s.id}>
-                    {s.fullName} ({s.className})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
-                NAMA ORANG TUA / WALI
-              </label>
-              <input
-                type="text"
-                value={parentCallForm.parentName}
-                onChange={e => setParentCallForm({ ...parentCallForm, parentName: e.target.value })}
-                className="w-full px-2.5 py-1.5 rounded bg-[#161618] border border-[#27272a] text-zinc-200"
-              />
             </div>
           </div>
 
@@ -1993,7 +2383,7 @@ export const CounselingPage: React.FC = () => {
                 type="text"
                 value={parentCallForm.callTime}
                 onChange={e => setParentCallForm({ ...parentCallForm, callTime: e.target.value })}
-                placeholder="08:30 WIB"
+                placeholder="08:30 WIT"
                 className="w-full px-2.5 py-1.5 rounded bg-[#161618] border border-[#27272a] text-zinc-200"
               />
             </div>
@@ -2020,25 +2410,56 @@ export const CounselingPage: React.FC = () => {
               required
               value={parentCallForm.reason}
               onChange={e => setParentCallForm({ ...parentCallForm, reason: e.target.value })}
-              placeholder="Contoh: Membicarakan perkembangan kedisiplinan dan absensi ananda di sekolah..."
+              placeholder="Perihal pemanggilan dan tindak lanjut pembinaan..."
               className="w-full px-2.5 py-1.5 rounded bg-[#161618] border border-[#27272a] text-zinc-200"
             />
           </div>
 
-          <div>
-            <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
-              STATUS SURAT PANGGILAN
-            </label>
-            <select
-              value={parentCallForm.status}
-              onChange={e => setParentCallForm({ ...parentCallForm, status: e.target.value as CallLetterStatus })}
-              className="w-full px-2.5 py-1.5 rounded bg-[#161618] border border-[#27272a] text-zinc-200"
-            >
-              <option value="Diterbitkan">Diterbitkan (Menunggu Kehadiran)</option>
-              <option value="Hadir">Orang Tua Hadir</option>
-              <option value="Tidak Hadir">Tidak Hadir</option>
-              <option value="Selesai">Selesai</option>
-            </select>
+          {/* Pejabat Penandatangan Resmi Sesuai SK B-380 */}
+          <div className="pt-2 border-t border-[#27272a] space-y-2">
+            <h4 className="font-mono text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+              PEJABAT PENANDATANGAN RESMI (SK KEPALA MADRASAH B-380)
+            </h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+              <div>
+                <label className="block font-mono text-[10px] text-zinc-500 mb-0.5">Wali Kelas</label>
+                <input
+                  type="text"
+                  value={parentCallForm.homeroomTeacherName || ''}
+                  onChange={e => setParentCallForm({ ...parentCallForm, homeroomTeacherName: e.target.value })}
+                  placeholder="Nama Wali Kelas"
+                  className="w-full px-2 py-1 rounded bg-[#161618] border border-[#27272a] text-zinc-200"
+                />
+              </div>
+              <div>
+                <label className="block font-mono text-[10px] text-zinc-500 mb-0.5">Guru Bimbingan Konseling (BK)</label>
+                <input
+                  type="text"
+                  value={parentCallForm.counselorName || ''}
+                  onChange={e => setParentCallForm({ ...parentCallForm, counselorName: e.target.value })}
+                  placeholder="Nama Guru BK"
+                  className="w-full px-2 py-1 rounded bg-[#161618] border border-[#27272a] text-zinc-200"
+                />
+              </div>
+              <div>
+                <label className="block font-mono text-[10px] text-zinc-500 mb-0.5">Waka Kesiswaan</label>
+                <input
+                  type="text"
+                  value={parentCallForm.wakaName || 'Puput Eka Bajuri, S. Pd., M. Or'}
+                  onChange={e => setParentCallForm({ ...parentCallForm, wakaName: e.target.value })}
+                  className="w-full px-2 py-1 rounded bg-[#161618] border border-[#27272a] text-zinc-200"
+                />
+              </div>
+              <div>
+                <label className="block font-mono text-[10px] text-zinc-500 mb-0.5">Kepala MAN 2 Seram Bagian Timur</label>
+                <input
+                  type="text"
+                  value={parentCallForm.principalName || 'Zakaria, S. Pd.I., M. Pd'}
+                  onChange={e => setParentCallForm({ ...parentCallForm, principalName: e.target.value })}
+                  className="w-full px-2 py-1 rounded bg-[#161618] border border-[#27272a] text-zinc-200"
+                />
+              </div>
+            </div>
           </div>
         </form>
       </Modal>
@@ -2180,12 +2601,18 @@ export const CounselingPage: React.FC = () => {
         <Modal
           isOpen={Boolean(printParentCallLetter)}
           onClose={() => setPrintParentCallLetter(null)}
-          title="Format Cetak Resmi: Surat Panggilan Orang Tua"
-          subtitle="Standar dokumen resmi bimbingan konseling dan kesiswaan"
-          maxWidth="lg"
+          title={`Format Cetak Resmi: ${
+            printParentCallLetter.sanctionStage === 1 ? 'Surat Peringatan Lisan (Tahap 1)' :
+            printParentCallLetter.sanctionStage === 2 ? 'Surat Panggilan Orang Tua I & SP 1 (Tahap 2)' :
+            printParentCallLetter.sanctionStage === 3 ? 'Surat Panggilan II, SP 2 & Skorsing (Tahap 3)' :
+            printParentCallLetter.sanctionStage === 4 ? 'Surat Panggilan III & SP 3 Terakhir (Tahap 4)' :
+            'SK Pengembalian Pembinaan Siswa (Tahap 5)'
+          }`}
+          subtitle="Dokumen resmi kesiswaan sesuai Keputusan Kepala Madrasah SK Nomor B-380"
+          maxWidth="2xl"
           footer={
             <div className="flex items-center justify-between w-full">
-              <span className="text-[10px] font-mono text-zinc-500">SIAP DICETAK PADA KERTAS A4</span>
+              <span className="text-[10px] font-mono text-zinc-500">FORMAT RESMI A4 • MAN 2 SERAM BAGIAN TIMUR</span>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setPrintParentCallLetter(null)}
@@ -2198,76 +2625,344 @@ export const CounselingPage: React.FC = () => {
                   className="px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white font-mono text-xs font-bold flex items-center gap-1.5 shadow-[0_0_10px_rgba(59,130,246,0.3)]"
                 >
                   <Printer className="w-3.5 h-3.5" />
-                  <span>CETAK_DOKUMEN</span>
+                  <span>CETAK_DOKUMEN_RESMI</span>
                 </button>
               </div>
             </div>
           }
         >
-          <div className="bg-white text-black p-6 rounded font-serif text-[11px] leading-relaxed shadow-lg select-text border border-zinc-300">
-            {/* Kop Surat Resmi */}
-            <div className="mb-4">
-              <SchoolLetterhead schoolInfo={schoolSetting} compact={true} />
-            </div>
+          {(() => {
+            const stage = printParentCallLetter.sanctionStage || (printParentCallLetter.callNumber === 1 ? 2 : printParentCallLetter.callNumber === 2 ? 3 : 4);
+            const suspensionDays = printParentCallLetter.suspensionDays || 3;
+            const studentPts = printParentCallLetter.pointsAtIssuance ?? (printParentCallLetter.studentId ? getStudentViolationPoints(printParentCallLetter.studentId) : 0);
+            const wakaName = printParentCallLetter.wakaName || handbookMeta?.wakaName || 'Puput Eka Bajuri, S. Pd., M. Or';
+            const wakaNip = printParentCallLetter.wakaNip || handbookMeta?.wakaNip || '198810052020121003';
+            const principalName = printParentCallLetter.principalName || handbookMeta?.signedBy || 'Zakaria, S. Pd.I., M. Pd';
+            const principalNip = printParentCallLetter.principalNip || handbookMeta?.signedNip || '197808042003121008';
+            const homeroomTeacher = printParentCallLetter.homeroomTeacherName || 'Wali Kelas';
+            const counselor = printParentCallLetter.counselorName || 'Guru BK';
+            const counselorNip = printParentCallLetter.counselorNip || '198509122010012008';
 
-            {/* Nomor & Perihal */}
-            <div className="flex justify-between mb-4 font-sans text-[11px]">
-              <div>
-                <p><strong>Nomor</strong> : {printParentCallLetter.letterNumber}</p>
-                <p><strong>Lampiran</strong> : -</p>
-                <p><strong>Perihal</strong> : <u>Surat Panggilan Orang Tua Ke-{printParentCallLetter.callNumber}</u></p>
+            return (
+              <div className="bg-white text-black p-6 rounded font-serif text-[11px] leading-relaxed shadow-lg select-text border border-zinc-300 space-y-4">
+                {/* Kop Surat Resmi */}
+                <SchoolLetterhead schoolInfo={schoolSetting} compact={true} />
+
+                {/* TAHAP 1: PERINGATAN LISAN & BUKU KASUS */}
+                {stage === 1 && (
+                  <>
+                    <div className="text-center font-sans border-b border-black pb-2">
+                      <h3 className="font-bold text-sm tracking-wide uppercase">
+                        SURAT PERINGATAN LISAN & PERNYATAAN PEMBINAAN SISWA
+                      </h3>
+                      <p className="text-[10px] text-gray-700">Nomor: {printParentCallLetter.letterNumber}</p>
+                    </div>
+
+                    <div className="space-y-2 text-justify">
+                      <p>
+                        Berdasarkan Buku Pedoman Tata Tertib Kesiswaan MAN 2 Seram Bagian Timur (Keputusan Kepala Madrasah Nomor B-380/Ma.26.02/PP.00.6/09/2026), pada hari ini telah dilakukan pembinaan dan pemberian <strong>Peringatan Lisan (Tahap 1)</strong> kepada:
+                      </p>
+                      <div className="pl-6 space-y-0.5 font-sans">
+                        <p><strong>Nama Siswa</strong> : {printParentCallLetter.studentName}</p>
+                        <p><strong>Kelas / NIS</strong> : {printParentCallLetter.studentClass} / {printParentCallLetter.studentNis || '-'}</p>
+                        <p><strong>Akumulasi Poin</strong> : <span className="font-bold text-red-700">{studentPts} Poin</span> (Ambang Batas Tahap 1: 10 - 20 Poin)</p>
+                        <p><strong>Bentuk Pelanggaran</strong> : {printParentCallLetter.studentViolationSummary || printParentCallLetter.reason}</p>
+                      </div>
+
+                      <p>
+                        Peserta didik telah diberikan bimbingan persuasif oleh Wali Kelas, dicatat dalam Buku Kasus Siswa, dan berjanji dengan sungguh-sungguh untuk mentaati seluruh tata tertib madrasah serta tidak mengulangi perbuatan pelanggaran di kemudian hari.
+                      </p>
+                    </div>
+
+                    <div className="flex justify-between items-end pt-6 font-sans text-center">
+                      <div className="w-56">
+                        <p>Siswa Yang Bersangkutan,</p>
+                        <div className="h-16"></div>
+                        <p className="font-bold underline">{printParentCallLetter.studentName}</p>
+                        <p className="text-[9px] text-gray-600">NIS: {printParentCallLetter.studentNis || '-'}</p>
+                      </div>
+                      <div className="w-56">
+                        <p>Wali Kelas {printParentCallLetter.studentClass},</p>
+                        <div className="h-16"></div>
+                        <p className="font-bold underline">{homeroomTeacher}</p>
+                        <p className="text-[9px] text-gray-600">NIP. {printParentCallLetter.homeroomTeacherNip || '....................................'}</p>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* TAHAP 2: SP 1 & SURAT PANGGILAN ORTU I */}
+                {stage === 2 && (
+                  <>
+                    <div className="flex justify-between mb-2 font-sans text-[11px]">
+                      <div>
+                        <p><strong>Nomor</strong> : {printParentCallLetter.letterNumber}</p>
+                        <p><strong>Lampiran</strong> : 1 (Satu) Berkas Rekapitulasi Poin Disiplin</p>
+                        <p><strong>Perihal</strong> : <u><strong>Surat Panggilan Orang Tua I & Surat Peringatan Pertama (SP 1)</strong></u></p>
+                      </div>
+                      <div className="text-right">
+                        <p>Geser, {printParentCallLetter.callDate}</p>
+                        <p className="mt-1">Kepada Yth:</p>
+                        <p className="font-bold">Bapak/Ibu Orang Tua/Wali dari:</p>
+                        <p><strong>{printParentCallLetter.studentName}</strong> (Kelas {printParentCallLetter.studentClass})</p>
+                        <p>Di Tempat</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 text-justify">
+                      <p><i>Assalamu’alaikum Warahmatullahi Wabarakatuh,</i></p>
+                      <p>
+                        Sehubungan dengan catatan monitoring kedisiplinan peserta didik pada SIM Kesiswaan MAN 2 Seram Bagian Timur, bahwa ananda telah mencapai akumulasi <strong>{studentPts} Poin Pelanggaran</strong> (Ambang Batas Tahap 2: 21 - 40 Poin), dengan ini madrasah menerbitkan <strong>Surat Peringatan Pertama (SP 1)</strong> dan mengharapkan kehadiran Bapak/Ibu Orang Tua/Wali pada:
+                      </p>
+
+                      <div className="pl-6 space-y-1 font-sans my-2">
+                        <p><strong>Hari / Tanggal</strong> : {printParentCallLetter.callDate}</p>
+                        <p><strong>Waktu</strong> : {printParentCallLetter.callTime}</p>
+                        <p><strong>Tempat</strong> : {printParentCallLetter.location}</p>
+                        <p><strong>Menghadap</strong> : Wali Kelas & Guru Bimbingan Konseling (BK)</p>
+                        <p><strong>Keperluan</strong> : {printParentCallLetter.reason}</p>
+                      </div>
+
+                      <p>
+                        Mengingat pentingnya pembinaan karakter dan masa depan belajar ananda, kehadiran Bapak/Ibu tepat waktu sangat kami harapkan.
+                      </p>
+                      <p><i>Wassalamu’alaikum Warahmatullahi Wabarakatuh.</i></p>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 pt-6 font-sans text-center text-[10px]">
+                      <div>
+                        <p>Wali Kelas,</p>
+                        <div className="h-14"></div>
+                        <p className="font-bold underline">{homeroomTeacher}</p>
+                        <p className="text-[9px] text-gray-600">NIP. {printParentCallLetter.homeroomTeacherNip || '........................'}</p>
+                      </div>
+                      <div>
+                        <p>Mengetahui,</p>
+                        <p>Orang Tua / Wali Siswa</p>
+                        <div className="h-12"></div>
+                        <p className="font-bold underline">({printParentCallLetter.parentName || '...................................'})</p>
+                      </div>
+                      <div>
+                        <p>Guru BK,</p>
+                        <div className="h-14"></div>
+                        <p className="font-bold underline">{counselor}</p>
+                        <p className="text-[9px] text-gray-600">NIP. {counselorNip}</p>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* TAHAP 3: SP 2, PANGGILAN II & SKORSING 3 HARI KERJA */}
+                {stage === 3 && (
+                  <>
+                    <div className="flex justify-between mb-2 font-sans text-[11px]">
+                      <div>
+                        <p><strong>Nomor</strong> : {printParentCallLetter.letterNumber}</p>
+                        <p><strong>Lampiran</strong> : Berita Acara Pelanggaran & Lembar Skorsing</p>
+                        <p><strong>Perihal</strong> : <u><strong>Panggilan Orang Tua II, SP 2 & Penetapan Skorsing {suspensionDays} Hari</strong></u></p>
+                      </div>
+                      <div className="text-right">
+                        <p>Geser, {printParentCallLetter.callDate}</p>
+                        <p className="mt-1">Kepada Yth:</p>
+                        <p className="font-bold">Bapak/Ibu Orang Tua/Wali dari:</p>
+                        <p><strong>{printParentCallLetter.studentName}</strong> (Kelas {printParentCallLetter.studentClass})</p>
+                        <p>Di Tempat</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 text-justify">
+                      <p><i>Assalamu’alaikum Warahmatullahi Wabarakatuh,</i></p>
+                      <p>
+                        Berdasarkan Pasal 10 Bab IV dan Matriks Sanksi SK Kepala Madrasah Nomor B-380/Ma.26.02/PP.00.6/09/2026, akumulasi pelanggaran ananda telah mencapai <strong>{studentPts} Poin</strong> (Ambang Batas Tahap 3: 41 - 75 Poin). Dengan ini disampaikan bahwa ananda dijatuhi:
+                      </p>
+
+                      <div className="p-2.5 bg-zinc-100 border border-zinc-300 font-sans my-1 space-y-1">
+                        <p className="font-bold text-red-700 uppercase">1. SURAT PERINGATAN KEDUA (SP 2)</p>
+                        <p className="font-bold text-red-700 uppercase">
+                          2. SANKSI SKORSING EDUKATIF BELAJAR MANDIRI DI RUMAH SELAMA {suspensionDays} (TIGA) HARI KERJA
+                        </p>
+                        <p className="text-[10px] text-zinc-700">
+                          Pelaksanaan belajar mandiri di rumah wajib di bawah pengawasan langsung Orang Tua/Wali, disertai penugasan terbimbing dari para guru mata pelajaran.
+                        </p>
+                      </div>
+
+                      <p>
+                        Sehubungan dengan hal tersebut, Bapak/Ibu Orang Tua/Wali Murid diwajibkan hadir pada:
+                      </p>
+
+                      <div className="pl-6 space-y-0.5 font-sans">
+                        <p><strong>Hari / Tanggal</strong> : {printParentCallLetter.callDate}</p>
+                        <p><strong>Waktu</strong> : {printParentCallLetter.callTime}</p>
+                        <p><strong>Tempat</strong> : {printParentCallLetter.location}</p>
+                        <p><strong>Menghadap</strong> : Waka Kesiswaan & Guru Bimbingan Konseling (BK)</p>
+                        <p><strong>Agenda</strong> : {printParentCallLetter.reason} dan Penandatanganan Pakta Integritas</p>
+                      </div>
+
+                      <p><i>Wassalamu’alaikum Warahmatullahi Wabarakatuh.</i></p>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 pt-6 font-sans text-center text-[10px]">
+                      <div>
+                        <p>Menyetujui,</p>
+                        <p className="font-semibold">Waka Kesiswaan</p>
+                        <div className="h-12"></div>
+                        <p className="font-bold underline">{wakaName}</p>
+                        <p className="text-[9px] text-gray-600">NIP. {wakaNip}</p>
+                      </div>
+                      <div>
+                        <p>Orang Tua / Wali Siswa,</p>
+                        <div className="h-14"></div>
+                        <p className="font-bold underline">({printParentCallLetter.parentName || '...................................'})</p>
+                      </div>
+                      <div>
+                        <p>Guru Bimbingan Konseling,</p>
+                        <div className="h-14"></div>
+                        <p className="font-bold underline">{counselor}</p>
+                        <p className="text-[9px] text-gray-600">NIP. {counselorNip}</p>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* TAHAP 4: SP 3 - PERINGATAN TERAKHIR */}
+                {stage === 4 && (
+                  <>
+                    <div className="flex justify-between mb-2 font-sans text-[11px]">
+                      <div>
+                        <p><strong>Nomor</strong> : {printParentCallLetter.letterNumber}</p>
+                        <p><strong>Lampiran</strong> : Berkas Kasus Sidang Pleno Kesiswaan</p>
+                        <p><strong>Perihal</strong> : <u><strong>Peringatan Terakhir (SP 3) & Panggilan Sidang Kasus Disiplin</strong></u></p>
+                      </div>
+                      <div className="text-right">
+                        <p>Geser, {printParentCallLetter.callDate}</p>
+                        <p className="mt-1">Kepada Yth:</p>
+                        <p className="font-bold">Bapak/Ibu Orang Tua/Wali dari:</p>
+                        <p><strong>{printParentCallLetter.studentName}</strong> (Kelas {printParentCallLetter.studentClass})</p>
+                        <p>Di Tempat</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 text-justify">
+                      <p><i>Assalamu’alaikum Warahmatullahi Wabarakatuh,</i></p>
+                      <p>
+                        Berdasarkan evaluasi kedisiplinan dan rekapitulasi poin pelanggaran yang telah mencapai <strong>{studentPts} Poin</strong> (Ambang Batas Tahap 4: 76 - 99 Poin), dengan ini Kepala MAN 2 Seram Bagian Timur menerbitkan:
+                      </p>
+
+                      <div className="p-2.5 bg-red-50 border-2 border-red-600 text-center font-sans my-1">
+                        <h4 className="font-bold text-red-800 text-xs tracking-wider">
+                          SURAT PERINGATAN KETIGA (SP 3) — PERINGATAN TERAKHIR
+                        </h4>
+                        <p className="text-[10px] text-red-900 mt-1">
+                          <strong>PERINGATAN MUTLAK:</strong> Apabila peserta didik kembali melakukan pelanggaran hingga mencapai batas <strong>100 Poin</strong>, maka hak pembinaannya secara otomatis akan <strong>DIKEMBALIKAN KEPADA ORANG TUA / DIKELUARKAN DARI MADRASAH</strong>.
+                        </p>
+                      </div>
+
+                      <p>
+                        Sehubungan dengan status darurat kedisiplinan ini, Orang Tua/Wali <strong>WAJIB HADIR</strong> dalam Sidang Kasus Pleno bersama Pimpinan Madrasah pada:
+                      </p>
+
+                      <div className="pl-6 space-y-0.5 font-sans">
+                        <p><strong>Hari / Tanggal</strong> : {printParentCallLetter.callDate}</p>
+                        <p><strong>Waktu</strong> : {printParentCallLetter.callTime}</p>
+                        <p><strong>Tempat</strong> : {printParentCallLetter.location}</p>
+                        <p><strong>Pimpinan Sidang</strong> : Kepala Madrasah, Waka Kesiswaan, Tim BK & Wali Kelas</p>
+                        <p><strong>Keperluan</strong> : Sidang Pleno Terakhir Penentuan Hak Status Kesiswaan</p>
+                      </div>
+                    </div>
+
+                    <div className="pt-4 font-sans text-center text-[10px]">
+                      <p>Mengetahui & Menyetujui,</p>
+                      <p className="font-bold text-xs">Kepala MAN 2 Seram Bagian Timur</p>
+                      <div className="h-12"></div>
+                      <p className="font-bold underline text-xs">{principalName}</p>
+                      <p className="text-[9px] text-gray-600">NIP. {principalNip}</p>
+
+                      <div className="grid grid-cols-3 gap-2 pt-4">
+                        <div>
+                          <p>Waka Kesiswaan,</p>
+                          <div className="h-10"></div>
+                          <p className="font-bold underline">{wakaName}</p>
+                          <p className="text-[9px] text-gray-600">NIP. {wakaNip}</p>
+                        </div>
+                        <div>
+                          <p>Orang Tua / Wali Siswa,</p>
+                          <div className="h-10"></div>
+                          <p className="font-bold underline">({printParentCallLetter.parentName || '..............................'})</p>
+                        </div>
+                        <div>
+                          <p>Guru BK,</p>
+                          <div className="h-10"></div>
+                          <p className="font-bold underline">{counselor}</p>
+                          <p className="text-[9px] text-gray-600">NIP. {counselorNip}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* TAHAP 5: SK PENGEMBALIAN PEMBINAAN KEPADA ORANG TUA (≥100 POIN) */}
+                {stage === 5 && (
+                  <>
+                    <div className="text-center font-sans border-b-2 border-black pb-2">
+                      <h3 className="font-bold text-xs tracking-wide uppercase">
+                        KEPUTUSAN KEPALA MADRASAH ALIYAH NEGERI 2 SERAM BAGIAN TIMUR
+                      </h3>
+                      <p className="text-[10px] font-mono">Nomor: {printParentCallLetter.letterNumber}</p>
+                      <p className="text-[11px] font-bold uppercase mt-1">TENTANG</p>
+                      <p className="font-bold text-xs uppercase text-red-800">
+                        PENGEMBALIAN PEMBINAAN PESERTA DIDIK KEPADA ORANG TUA / WALI
+                      </p>
+                    </div>
+
+                    <div className="space-y-2 text-justify text-[10px]">
+                      <p>
+                        <strong>Menimbang:</strong> Bahwa peserta didik atas nama <strong>{printParentCallLetter.studentName}</strong> (Kelas {printParentCallLetter.studentClass} / NIS {printParentCallLetter.studentNis || '-'}) telah mencapai akumulasi <strong>{studentPts} Poin Pelanggaran (≥100 Poin)</strong> dan telah melampaui tahapan pembinaan SP 1, SP 2, serta SP 3 Peringatan Terakhir.
+                      </p>
+                      <p>
+                        <strong>Mengingat:</strong> Keputusan Kepala MAN 2 Seram Bagian Timur Nomor B-380/Ma.26.02/PP.00.6/09/2026 tentang Buku Pedoman Tata Tertib & Kode Etik Peserta Didik Bab V Pasal 11 tentang Sanksi Maksimal Pengembalian Siswa.
+                      </p>
+                      <p>
+                        <strong>Memutuskan:</strong> Mengembalikan sepenuhnya hak pembinaan peserta didik tersebut kepada Orang Tua / Wali serta merekomendasikan mutasi/pemindahan sekolah demi kelanjutan pendidikan yang bersangkutan.
+                      </p>
+                    </div>
+
+                    <div className="pt-4 font-sans text-center text-[10px]">
+                      <div className="inline-block text-left mb-3">
+                        <p>Ditetapkan di : Geser</p>
+                        <p>Pada Tanggal : {printParentCallLetter.callDate}</p>
+                      </div>
+
+                      <p className="font-bold">Kepala MAN 2 Seram Bagian Timur,</p>
+                      <div className="h-14"></div>
+                      <p className="font-bold underline text-xs">{principalName}</p>
+                      <p className="text-[9px] text-gray-600">NIP. {principalNip}</p>
+
+                      <div className="pt-4 border-t border-zinc-300 mt-4 text-left">
+                        <p className="font-bold text-[9px] uppercase tracking-wider mb-2">Saksi-saksi Musyawarah Dewan:</p>
+                        <div className="grid grid-cols-3 gap-2 text-center text-[9px]">
+                          <div>
+                            <p>Komite Madrasah</p>
+                            <div className="h-8"></div>
+                            <p className="font-bold underline">(...................................)</p>
+                          </div>
+                          <div>
+                            <p>Waka Kesiswaan</p>
+                            <div className="h-8"></div>
+                            <p className="font-bold underline">{wakaName}</p>
+                          </div>
+                          <div>
+                            <p>Orang Tua / Wali Siswa</p>
+                            <div className="h-8"></div>
+                            <p className="font-bold underline">({printParentCallLetter.parentName || '...................................'})</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
-              <div className="text-right">
-                <p>{printParentCallLetter.callDate}</p>
-                <p className="mt-1">Kepada Yth:</p>
-                <p className="font-bold">Bapak/Ibu Orang Tua/Wali dari:</p>
-                <p><strong>{printParentCallLetter.studentName}</strong> (Kelas {printParentCallLetter.studentClass})</p>
-                <p>Di Tempat</p>
-              </div>
-            </div>
-
-            {/* Isi Surat */}
-            <div className="space-y-2 mb-6 text-justify">
-              <p><i>Assalamu’alaikum Warahmatullahi Wabarakatuh / Dengan hormat,</i></p>
-              <p>
-                Sehubungan dengan program pembinaan kedisiplinan dan monitoring perkembangan belajar peserta didik di lingkungan {schoolSetting?.name}, bersama surat ini kami mengharap kehadiran Bapak/Ibu Orang Tua/Wali Murid pada:
-              </p>
-
-              <div className="pl-6 space-y-1 font-sans my-2">
-                <p><strong>Hari / Tanggal</strong> : {printParentCallLetter.callDate}</p>
-                <p><strong>Waktu</strong> : {printParentCallLetter.callTime}</p>
-                <p><strong>Tempat</strong> : {printParentCallLetter.location}</p>
-                <p><strong>Bertemu dengan</strong> : {printParentCallLetter.counselorName} (Guru BK) & Tim Kesiswaan</p>
-                <p><strong>Keperluan</strong> : {printParentCallLetter.reason}</p>
-              </div>
-
-              <p>
-                Mengingat pentingnya hal tersebut demi kebaikan dan masa depan ananda, kami sangat mengharapkan kehadiran Bapak/Ibu tepat pada waktu yang telah ditentukan.
-              </p>
-              <p>
-                Demikian surat panggilan ini kami sampaikan. Atas perhatian dan kerja sama yang baik, kami ucapkan terima kasih.
-              </p>
-              <p><i>Wassalamu’alaikum Warahmatullahi Wabarakatuh.</i></p>
-            </div>
-
-            {/* Tanda Tangan */}
-            <div className="flex justify-between items-end pt-4 font-sans text-center">
-              <div>
-                <p>Mengetahui,</p>
-                <p>Waka Kesiswaan</p>
-                <div className="h-14"></div>
-                <p className="font-bold underline">{schoolSetting?.wakaName || 'Drs. H. Ahmad Fauzi, M.Pd'}</p>
-                <p className="text-[9px] text-gray-600">NIP. {schoolSetting?.wakaNip || '197804152003121002'}</p>
-              </div>
-
-              <div>
-                <p>Guru Bimbingan Konseling (BK)</p>
-                <div className="h-14"></div>
-                <p className="font-bold underline">{printParentCallLetter.counselorName}</p>
-                <p className="text-[9px] text-gray-600">NIP. {printParentCallLetter.counselorNip || '198509122010012008'}</p>
-              </div>
-            </div>
-          </div>
+            );
+          })()}
         </Modal>
       )}
 

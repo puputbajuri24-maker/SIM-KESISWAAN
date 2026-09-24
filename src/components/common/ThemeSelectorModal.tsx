@@ -21,7 +21,8 @@ export const ThemeSelectorModal: React.FC<ThemeSelectorModalProps> = ({ isOpen, 
     setFontSize,
     setFontContrast,
     setFontFamily,
-    resetTheme
+    resetTheme,
+    isCloudSynced
   } = useTheme();
 
   if (!isOpen || typeof document === 'undefined') return null;
@@ -45,11 +46,18 @@ export const ThemeSelectorModal: React.FC<ThemeSelectorModalProps> = ({ isOpen, 
               <Palette className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-bold text-sm text-white light:text-slate-900 leading-tight">
-                Pusat Tema & Visualisasi Tampilan
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-sm text-white light:text-slate-900 leading-tight">
+                  Pusat Tema & Visualisasi Tampilan
+                </h3>
+                {isCloudSynced && (
+                  <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
+                    ☁️ Cloud Synced
+                  </span>
+                )}
+              </div>
               <p className="text-[11px] text-slate-400 light:text-slate-600">
-                Sesuaikan mode gelap/terang, palet warna nuansa, dan ketajaman teks anti-buram.
+                Sesuaikan mode gelap/terang, palet warna, dan ketajaman teks (tersinkronisasi ke akun Anda di semua perangkat).
               </p>
             </div>
           </div>

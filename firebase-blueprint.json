@@ -2,107 +2,164 @@
   "entities": {
     "users": {
       "title": "User Profiles & RBAC",
-      "description": "User profiles with roles: super_admin, admin_kesiswaan, waka_kesiswaan, pembina"
+      "description": "User profiles with canonical roles: super_admin, waka_kesiswaan, guru_bk, pembina_ekstrakurikuler, pembina_osim, anggota_osim",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 256 },
+        "displayName": { "type": "string", "maxLength": 128 },
+        "role": { "type": "string", "enum": ["super_admin", "waka_kesiswaan", "guru_bk", "pembina_ekstrakurikuler", "pembina_osim", "anggota_osim", "admin_kesiswaan", "pembina", "pembina_ekskul", "pengurus_osim"] },
+        "status": { "type": "string", "enum": ["Aktif", "Nonaktif", "Pending"] },
+        "photoURL": { "type": "string", "maxLength": 1024 },
+        "osimPosition": { "type": "string", "maxLength": 64 },
+        "osimDepartmentCode": { "type": "string", "maxLength": 32 },
+        "isCashManager": { "type": "boolean" },
+        "cashManagerTitle": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["uid", "email", "role"]
     },
     "schools": {
       "title": "School Settings",
-      "description": "School metadata and identity"
-    },
-    "academic_years": {
-      "title": "Academic Years",
-      "description": "Academic years and active semesters"
-    },
-    "classes": {
-      "title": "Classes",
-      "description": "Grade levels and class lists"
+      "description": "Madrasah identity and institutional metadata",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "name": { "type": "string", "maxLength": 256 },
+        "address": { "type": "string", "maxLength": 512 },
+        "phone": { "type": "string", "maxLength": 64 },
+        "email": { "type": "string", "maxLength": 128 },
+        "principalName": { "type": "string", "maxLength": 128 },
+        "principalNip": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["name"]
     },
     "students": {
-      "title": "Students",
-      "description": "Comprehensive student database"
-    },
-    "teachers": {
-      "title": "Teachers & Staff",
-      "description": "Teachers and extracurricular coaches"
-    },
-    "extracurriculars": {
-      "title": "Extracurriculars",
-      "description": "Extracurricular clubs, coaches and schedules"
-    },
-    "extracurricular_members": {
-      "title": "Extracurricular Members",
-      "description": "Roster of student club members"
-    },
-    "schedules": {
-      "title": "Schedules & Calendar",
-      "description": "Activities schedules and conflict prevention"
-    },
-    "attendance": {
-      "title": "Attendance Records",
-      "description": "Attendance sessions and student statuses"
-    },
-    "activities": {
-      "title": "Activities",
-      "description": "School and club activities"
-    },
-    "activity_reports": {
-      "title": "Activity Reports",
-      "description": "Formal activity reporting and administration"
+      "title": "Students Database",
+      "description": "Student roster with academic, violation, and achievement points",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 128 },
+        "nis": { "type": "string", "maxLength": 64 },
+        "nisn": { "type": "string", "maxLength": 64 },
+        "className": { "type": "string", "maxLength": 64 },
+        "gender": { "type": "string", "enum": ["L", "P"] },
+        "totalViolationPoints": { "type": "number" },
+        "totalAchievementPoints": { "type": "number" },
+        "status": { "type": "string", "maxLength": 32 }
+      },
+      "required": ["name", "nis"]
     },
     "violations": {
       "title": "Student Violations",
-      "description": "Disciplinary incidents and points"
+      "description": "Student disciplinary infractions and sanctions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "studentId": { "type": "string", "maxLength": 128 },
+        "studentName": { "type": "string", "maxLength": 128 },
+        "violationType": { "type": "string", "maxLength": 256 },
+        "category": { "type": "string", "enum": ["Ringan", "Sedang", "Berat"] },
+        "points": { "type": "number" },
+        "date": { "type": "string" },
+        "status": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["studentId", "violationType", "points", "date"]
     },
     "counseling": {
-      "title": "Student Counseling",
-      "description": "Guidance and counseling interventions"
-    },
-    "achievements": {
-      "title": "Student Achievements",
-      "description": "Academic, sports, arts and competitions achievements"
-    },
-    "permissions": {
-      "title": "Student Permissions",
-      "description": "Leave requests and dispensations"
-    },
-    "needs_requests": {
-      "title": "Needs & Budget Requests",
-      "description": "Budget and equipment proposals from club coaches"
-    },
-    "announcements": {
-      "title": "Announcements",
-      "description": "Broadcast announcements for student affairs and coaches"
-    },
-    "notifications": {
-      "title": "Notifications",
-      "description": "System alerts and notifications"
-    },
-    "audit_logs": {
-      "title": "Audit Logs",
-      "description": "System audit trails for security and traceability"
-    },
-    "osim_members": {
-      "title": "OSIM Cabinet Members",
-      "description": "Student organization executive board and division members"
+      "title": "Student Counseling Records",
+      "description": "Confidential counseling interventions conducted by Guru BK",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "studentId": { "type": "string", "maxLength": 128 },
+        "counselorId": { "type": "string", "maxLength": 128 },
+        "problemSummary": { "type": "string", "maxLength": 2048 },
+        "actionPlan": { "type": "string", "maxLength": 2048 },
+        "status": { "type": "string", "maxLength": 64 },
+        "date": { "type": "string" }
+      },
+      "required": ["studentId", "counselorId", "date"]
     },
     "osim_programs": {
       "title": "OSIM Work Programs",
-      "description": "Intracurricular work programs, budget, and progress"
-    },
-    "osim_aspirations": {
-      "title": "OSIM Aspirations",
-      "description": "Student voice and feedback channels with upvotes and responses"
-    },
-    "osim_meetings": {
-      "title": "OSIM Meetings & Minutes",
-      "description": "Plenary sessions, deliberations, and formal meeting records"
-    },
-    "cash_accounts": {
-      "title": "Cash Accounts & Funds",
-      "description": "Ledger cash funds (Kesiswaan, OSIM, BK, Ekstrakurikuler) with delegated managers"
+      "description": "Cabinet work programs, budget planning, LPJ, and supervisory approvals",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 256 },
+        "sekbid": { "type": "string", "maxLength": 64 },
+        "budget": { "type": "number" },
+        "status": { "type": "string", "enum": ["Draft", "Diajukan", "Revisi", "Disetujui", "Berlangsung", "Menunggu Verifikasi LPJ", "Selesai & Disahkan", "Dibatalkan"] },
+        "progressPercentage": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["title", "status"]
     },
     "cash_transactions": {
       "title": "Cash Ledger Transactions",
-      "description": "Debit and credit financial transactions, receipts, and mutations"
+      "description": "Debit and credit financial transactions for madrasah student affairs",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "accountId": { "type": "string", "maxLength": 128 },
+        "type": { "type": "string", "enum": ["MASUK", "KELUAR"] },
+        "amount": { "type": "number" },
+        "title": { "type": "string", "maxLength": 256 },
+        "date": { "type": "string" },
+        "recordedBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["accountId", "type", "amount", "title", "date"]
+    },
+    "audit_logs": {
+      "title": "System Audit Logs",
+      "description": "Immutable security and activity audit trails",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "action": { "type": "string", "maxLength": 128 },
+        "module": { "type": "string", "maxLength": 128 },
+        "details": { "type": "string", "maxLength": 2048 },
+        "actorUid": { "type": "string", "maxLength": 128 },
+        "timestamp": { "type": "string" }
+      },
+      "required": ["action", "module", "details", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "users",
+      "description": "User profiles and RBAC directory"
+    },
+    "/schools/{schoolId}": {
+      "schema": "schools",
+      "description": "School institutional profile and configuration"
+    },
+    "/students/{studentId}": {
+      "schema": "students",
+      "description": "Student records and discipline telemetry"
+    },
+    "/violations/{violationId}": {
+      "schema": "violations",
+      "description": "Student infractions recorded by BK and discipline officers"
+    },
+    "/counseling/{counselingId}": {
+      "schema": "counseling",
+      "description": "Confidential BK counseling documentation"
+    },
+    "/osim_programs/{programId}": {
+      "schema": "osim_programs",
+      "description": "OSIM work programs and supervisory workflows"
+    },
+    "/cash_transactions/{transactionId}": {
+      "schema": "cash_transactions",
+      "description": "Ledger financial transactions"
+    },
+    "/audit_logs/{logId}": {
+      "schema": "audit_logs",
+      "description": "Immutable system audit trail"
     }
   }
 }

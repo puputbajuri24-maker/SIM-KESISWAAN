@@ -37,6 +37,7 @@ export const TimezoneSelectorModal: React.FC<TimezoneSelectorModalProps> = ({ is
 
   const [customIana, setCustomIana] = useState('');
   const [showCustomInput, setShowCustomInput] = useState(false);
+  const [customError, setCustomError] = useState<string | null>(null);
 
   if (!isOpen || typeof document === 'undefined') return null;
 
@@ -61,6 +62,7 @@ export const TimezoneSelectorModal: React.FC<TimezoneSelectorModalProps> = ({ is
 
   const handleApplyCustom = (e: React.FormEvent) => {
     e.preventDefault();
+    setCustomError(null);
     if (customIana.trim()) {
       try {
         // test validity
@@ -69,7 +71,7 @@ export const TimezoneSelectorModal: React.FC<TimezoneSelectorModalProps> = ({ is
         setShowCustomInput(false);
         setCustomIana('');
       } catch (err) {
-        alert(`Zona waktu "${customIana}" tidak valid. Contoh valid: Asia/Bangkok, America/New_York, Europe/London`);
+        setCustomError(`Zona waktu "${customIana}" tidak valid. Contoh valid: Asia/Bangkok, America/New_York, Europe/London`);
       }
     }
   };
@@ -291,7 +293,10 @@ export const TimezoneSelectorModal: React.FC<TimezoneSelectorModalProps> = ({ is
                   <input
                     type="text"
                     value={customIana}
-                    onChange={(e) => setCustomIana(e.target.value)}
+                    onChange={(e) => {
+                      setCustomIana(e.target.value);
+                      if (customError) setCustomError(null);
+                    }}
                     placeholder="Contoh: Asia/Bangkok, Asia/Tokyo, Europe/London"
                     className="flex-1 px-3 py-1.5 rounded-lg bg-[#101013] border border-[#2d2d34] text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-blue-500 font-mono"
                   />
@@ -302,6 +307,9 @@ export const TimezoneSelectorModal: React.FC<TimezoneSelectorModalProps> = ({ is
                     Terapkan
                   </button>
                 </div>
+                {customError && (
+                  <p className="text-[11px] text-red-400 mt-1 font-medium">{customError}</p>
+                )}
               </form>
             )}
           </div>

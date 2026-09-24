@@ -62,7 +62,16 @@ const TRANSACTION_CATEGORIES = [
 ];
 
 export const CashLedgerPage: React.FC = () => {
-  const { isWakaOrAdmin, isSuperAdmin, isWaka, currentUser, allUsers } = useAuth();
+  const {
+    isWakaOrAdmin,
+    isSuperAdmin,
+    isWaka,
+    currentUser,
+    allUsers,
+    canManageCash,
+    isOsimBendahara,
+    osimPosition
+  } = useAuth();
   const {
     cashAccounts,
     cashTransactions,
@@ -130,18 +139,25 @@ export const CashLedgerPage: React.FC = () => {
 
   // Check if current user has cash management privilege (Admin, Waka, or Designated Cash Manager / Bendahara)
   const isUserDelegatedCashManager = useMemo(() => {
-    if (isSuperAdmin || isWaka) return true;
+    if (canManageCash && canManageCash()) return true;
+    if (isSuperAdmin || isWaka || isOsimBendahara || osimPosition === 'bendahara') return true;
     if (!currentUser) return false;
     if (currentUser.isCashManager) return true;
     return cashAccounts.some(acc => acc.assignedManagerUserIds?.includes(currentUser.uid));
-  }, [isSuperAdmin, isWaka, currentUser, cashAccounts]);
+  }, [canManageCash, isSuperAdmin, isWaka, isOsimBendahara, osimPosition, currentUser, cashAccounts]);
 
   // List of accounts user can manage
   const managedAccounts = useMemo(() => {
-    if (isSuperAdmin || isWaka || currentUser?.isCashManager) return cashAccounts;
+    if (isSuperAdmin || isWaka) return cashAccounts;
     if (!currentUser) return [];
+    if (isOsimBendahara || osimPosition === 'bendahara') {
+      const osimAccs = cashAccounts.filter(acc => acc.category === 'OSIM' || acc.name.toLowerCase().includes('osim'));
+      if (osimAccs.length > 0) return osimAccs;
+      return cashAccounts;
+    }
+    if (currentUser.isCashManager) return cashAccounts;
     return cashAccounts.filter(acc => acc.assignedManagerUserIds?.includes(currentUser.uid));
-  }, [isSuperAdmin, isWaka, currentUser, cashAccounts]);
+  }, [isSuperAdmin, isWaka, currentUser, isOsimBendahara, osimPosition, cashAccounts]);
 
   // Account lookup helper
   const accountMap = useMemo(() => {
