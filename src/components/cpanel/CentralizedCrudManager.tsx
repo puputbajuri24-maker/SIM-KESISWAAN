@@ -535,7 +535,7 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
       studentId: m.studentId,
       extracurricularId: m.extracurricularId,
       role: (m as any).role || 'Anggota',
-      status: m.status || 'Aktif',
+      status: (m.status === 'Nonaktif' ? 'Nonaktif' : 'Aktif'),
       notes: m.notes || ''
     });
     setIsMemberModalOpen(true);

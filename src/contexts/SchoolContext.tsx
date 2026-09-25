@@ -1687,9 +1687,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // 9. Real-time Activities Listener
     try {
       const unsub = onSnapshot(collection(db, 'activities'), (snapshot) => {
-        const loaded: ActivityItem[] = [];
+        const loaded: Activity[] = [];
         snapshot.forEach(docSnap => {
-          loaded.push({ id: docSnap.id, ...docSnap.data() } as ActivityItem);
+          loaded.push({ id: docSnap.id, ...docSnap.data() } as Activity);
         });
         setActivities(loaded);
         try {
@@ -1741,9 +1741,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // 12. Real-time Violations Listener
     try {
       const unsub = onSnapshot(collection(db, 'violations'), (snapshot) => {
-        const loaded: ViolationRecord[] = [];
+        const loaded: Violation[] = [];
         snapshot.forEach(docSnap => {
-          loaded.push({ id: docSnap.id, ...docSnap.data() } as ViolationRecord);
+          loaded.push({ id: docSnap.id, ...docSnap.data() } as Violation);
         });
         setViolations(loaded);
         try {
@@ -1775,9 +1775,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // 14. Real-time Achievements Listener
     try {
       const unsub = onSnapshot(collection(db, 'achievements'), (snapshot) => {
-        const loaded: AchievementRecord[] = [];
+        const loaded: Achievement[] = [];
         snapshot.forEach(docSnap => {
-          loaded.push({ id: docSnap.id, ...docSnap.data() } as AchievementRecord);
+          loaded.push({ id: docSnap.id, ...docSnap.data() } as Achievement);
         });
         setAchievements(loaded);
         try {
@@ -1831,9 +1831,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // 17. Real-time OSIM Programs Listener
     try {
       const unsub = onSnapshot(collection(db, 'osim_programs'), (snapshot) => {
-        const loaded: OsimProgram[] = [];
+        const loaded: OsimWorkProgram[] = [];
         snapshot.forEach(docSnap => {
-          loaded.push({ id: docSnap.id, ...docSnap.data() } as OsimProgram);
+          loaded.push({ id: docSnap.id, ...docSnap.data() } as OsimWorkProgram);
         });
         setOsimPrograms(loaded);
         try {
