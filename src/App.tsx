@@ -269,8 +269,8 @@ export default function App() {
       fallbackTitle="Sistem SIM-KESISWAAN Terhenti Sementara"
       fallbackMessage="Aplikasi mendeteksi kendala pada inisialisasi modul. Silakan muat ulang halaman atau bersihkan sesi login untuk masuk kembali."
     >
-      <AuthProvider>
-        <ThemeProvider>
+      <ThemeProvider>
+        <AuthProvider>
           <TimezoneProvider>
             <SchoolProvider>
               <ErrorBoundary
@@ -281,8 +281,8 @@ export default function App() {
               </ErrorBoundary>
             </SchoolProvider>
           </TimezoneProvider>
-        </ThemeProvider>
-      </AuthProvider>
+        </AuthProvider>
+      </ThemeProvider>
     </ErrorBoundary>
   );
 }

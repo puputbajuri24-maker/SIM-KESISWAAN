@@ -127,6 +127,7 @@ export interface SchoolClass {
   grade: 'X' | 'XI' | 'XII';
   major: string; // e.g. "Rekayasa Perangkat Lunak"
   homeroomTeacher: string;
+  homeroomTeacherName?: string;
   studentCount?: number;
 }
 
@@ -161,6 +162,7 @@ export interface Teacher {
   code?: string; // Kode Guru Standar e.g. G01-BS, G02-SN
   nip: string;
   fullName: string;
+  name?: string;
   gender?: 'L' | 'P';
   subject?: string;
   phone: string;
@@ -226,7 +228,7 @@ export interface ExtracurricularMember {
   gender: 'L' | 'P';
   joinDate: string;
   memberNumber?: string;
-  status: 'Aktif' | 'Nonaktif';
+  status: 'Aktif' | 'Nonaktif' | 'Keluar' | 'Cuti' | string;
   role?: string;
   notes?: string;
   academicYear?: string;
@@ -243,14 +245,19 @@ export interface ScheduleEvent {
   startTime: string; // HH:mm
   endTime: string; // HH:mm
   location: string;
-  type?: 'Latihan Rutin' | 'Pertandingan' | 'Event' | 'Rapat' | 'Ujian Kenaikan Tingkat';
+  type?: 'Latihan Rutin' | 'Pertandingan' | 'Event' | 'Rapat' | 'Ujian Kenaikan Tingkat' | string;
+  description?: string;
   notes?: string;
-  status: 'Dijadwalkan' | 'Berlangsung' | 'Selesai' | 'Dibatalkan';
+  status: 'Dijadwalkan' | 'Berlangsung' | 'Selesai' | 'Dibatalkan' | string;
   academicYear: string;
 }
 
 export type Schedule = ScheduleEvent;
 export type ScheduleType = 'Latihan Rutin' | 'Pertandingan' | 'Event' | 'Rapat' | 'Ujian Kenaikan Tingkat';
+export type ActivityItem = SchoolActivity;
+export type ViolationRecord = StudentViolation;
+export type AchievementRecord = StudentAchievement;
+export type OsimProgram = OsimWorkProgram;
 
 export type AttendanceStatus = 'Hadir' | 'Izin' | 'Sakit' | 'Alpa';
 
@@ -379,7 +386,7 @@ export interface ActivityReport {
 }
 
 export type ViolationCategory = 'Ringan' | 'Sedang' | 'Berat' | 'Sangat Berat';
-export type ViolationStatus = 'Tercatat' | 'Diproses' | 'Dalam Proses' | 'Dalam Pembinaan' | 'Selesai';
+export type ViolationStatus = 'Tercatat' | 'Diproses' | 'Dalam Proses' | 'Dalam Pembinaan' | 'Selesai' | 'Dibatalkan';
 
 export interface StudentViolation {
   id: string;
@@ -790,6 +797,9 @@ export interface OsimMember {
   vision?: string;
   flagshipProgram?: string;
   period: string; // e.g. "2026/2027"
+  academicPeriod?: string;
+  academicYear?: string;
+  nis?: string;
   loginUsername?: string;
   loginPassword?: string;
   username?: string;
@@ -832,6 +842,8 @@ export interface OsimWorkProgram {
   guidanceNotes?: string; // Catatan bimbingan & arahan pembina OSIM
   guidanceDate?: string; // Tanggal catatan bimbingan atau persetujuan
   verifiedBy?: string; // Pembina OSIM / Waka yang memverifikasi / memberikan bimbingan
+  validatedAt?: string; // Tanggal validasi
+  validatedBy?: string; // Petugas yang memvalidasi
   finalApprovedAt?: string; // Tanggal pengesahan akhir & penguncian arsip
   finalApprovedBy?: string; // Pembina OSIM / Waka / Admin App yang mengesahkan akhir
   isArchivedForYearEndReport?: boolean; // Apakah otomatis terakumulasi dalam rekap tahunan kesiswaan untuk laporan kepala madrasah

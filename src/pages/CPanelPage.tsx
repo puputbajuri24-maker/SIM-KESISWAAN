@@ -1713,7 +1713,7 @@ export const CPanelPage: React.FC = () => {
                 <div className="bg-emerald-950/30 border border-emerald-500/50 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-800 text-white font-black text-sm font-mono flex items-center justify-center shrink-0 border border-emerald-400/40 shadow-xs">
-                      {getTeacherInitials(selectedTeacherForAccount.name)}
+                      {getTeacherInitials(selectedTeacherForAccount.fullName || selectedTeacherForAccount.name || '')}
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
@@ -1725,7 +1725,7 @@ export const CPanelPage: React.FC = () => {
                           NIP: {selectedTeacherForAccount.nip || '-'}
                         </span>
                       </div>
-                      <h4 className="font-bold text-sm text-white mt-1 truncate">{selectedTeacherForAccount.name}</h4>
+                      <h4 className="font-bold text-sm text-white mt-1 truncate">{selectedTeacherForAccount.fullName || selectedTeacherForAccount.name}</h4>
                       <p className="text-[11px] text-zinc-400 font-mono mt-0.5">
                         Email: {selectedTeacherForAccount.email || '-'} • Kontak: {selectedTeacherForAccount.phone || '-'}
                       </p>
@@ -1767,7 +1767,7 @@ export const CPanelPage: React.FC = () => {
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-52 overflow-y-auto p-1 bg-[#101013] rounded-xl border border-[#222226]">
                     {filteredTeachersForAdd.map(t => {
                       const isSelected = selectedTeacherForAccount?.id === t.id;
-                      const initials = getTeacherInitials(t.name);
+                      const initials = getTeacherInitials(t.fullName || t.name || '');
                       return (
                         <button
                           key={t.id}
@@ -1783,7 +1783,7 @@ export const CPanelPage: React.FC = () => {
                             {initials}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <h5 className="font-bold text-xs truncate text-white">{t.name}</h5>
+                            <h5 className="font-bold text-xs truncate text-white">{t.fullName || t.name}</h5>
                             <p className="text-[10px] text-zinc-400 font-mono truncate">NIP: {t.nip || '-'}</p>
                             <span className="text-[9px] text-emerald-400 font-medium">Klik untuk pilih</span>
                           </div>

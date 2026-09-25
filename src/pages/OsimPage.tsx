@@ -1243,7 +1243,7 @@ export const OsimPage: React.FC = () => {
             displayName: memberForm.fullName || existingAccount.displayName,
             username: effectiveUsername,
             password: passToSet,
-            status: memberForm.status || 'Aktif',
+            status: memberForm.status === 'Nonaktif' || memberForm.status === 'Demisioner' ? 'Nonaktif' : 'Aktif',
             osimRole: osimRoleVal,
             osimPosition: memberForm.position,
             osimDepartmentName: memberForm.sekbid,
@@ -1269,7 +1269,7 @@ export const OsimPage: React.FC = () => {
             osimPosition: memberForm.position,
             osimDepartmentName: memberForm.sekbid,
             osimDepartmentCode: sekbidNum ? `SEKBID-${sekbidNum}` : (isBph ? 'BPH' : undefined),
-            status: memberForm.status || 'Aktif',
+            status: memberForm.status === 'Nonaktif' || memberForm.status === 'Demisioner' ? 'Nonaktif' : 'Aktif',
             isCashManager: pos.includes('bendahara'),
             cashManagerTitle: pos.includes('bendahara') ? 'Bendahara OSIM' : undefined,
             createdAt: new Date().toISOString()

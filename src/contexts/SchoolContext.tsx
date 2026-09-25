@@ -81,7 +81,7 @@ import {
   uploadAllStateToFirebase
 } from '../services/seedData';
 import { db } from '../services/firebase';
-import { collection, getDocs, getDoc, doc, setDoc, updateDoc, deleteDoc, addDoc, writeBatch } from 'firebase/firestore';
+import { collection, getDocs, getDoc, doc, setDoc, updateDoc, deleteDoc, addDoc, writeBatch, onSnapshot } from 'firebase/firestore';
 import { useAuth } from './AuthContext';
 import { findMatchingClass, resolveStudentClass, isStudentInClass } from '../utils/classResolver';
 import { normalizeTeacherCode, formatTeacherCode, formatStudentCode } from '../utils/idGenerator';
@@ -316,6 +316,8 @@ interface SchoolContextType {
   exportFullDatabaseJSON: () => void;
   importFullDatabaseJSON: (bundle: any) => Promise<{ success: boolean; message: string }>;
   isSyncing: boolean;
+  isRealTimeConnected: boolean;
+  syncLocalChangesToFirestore: () => Promise<void>;
 }
 
 const SchoolContext = createContext<SchoolContextType | undefined>(undefined);
@@ -332,6 +334,7 @@ export const sortStudentsAlphabetically = <T extends { fullName?: string; studen
 export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { currentUser, syncUsersFromTeachers, deleteUser, allUsers } = useAuth();
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [isRealTimeConnected, setIsRealTimeConnected] = useState<boolean>(true);
 
   // States initialized with clean defaults and synced with localStorage / Firestore
   const [schoolSetting, setSchoolSetting] = useState<SchoolSetting>(() => {
@@ -1401,8 +1404,469 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
+  // Bidirectionally synchronize any local device data up to Firestore so that neither HP nor tablet data is lost
+  const syncLocalChangesToFirestore = async () => {
+    try {
+      // 1. Sync students from local cache
+      const savedStudents = localStorage.getItem('sim_students');
+      if (savedStudents) {
+        try {
+          const parsed: Student[] = JSON.parse(savedStudents);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const valid = parsed.filter(s => s && s.id && !s.isDeleted && s.id !== 's01');
+            await Promise.allSettled(
+              valid.map(s => setDoc(doc(db, 'students', s.id), s, { merge: true }))
+            );
+          }
+        } catch (e) {}
+      }
+
+      // 2. Sync extracurricular members from local cache
+      const savedMembers = localStorage.getItem('sim_members');
+      if (savedMembers) {
+        try {
+          const parsed: ExtracurricularMember[] = JSON.parse(savedMembers);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const valid = parsed.filter(m => m && m.id && m.id !== 'm1' && !isPurgedExtracurricular(m.extracurricularId));
+            await Promise.allSettled(
+              valid.map(m => setDoc(doc(db, 'extracurricular_members', m.id), m, { merge: true }))
+            );
+          }
+        } catch (e) {}
+      }
+
+      // 3. Sync extracurriculars from local cache
+      const savedEkskuls = localStorage.getItem('sim_extracurriculars');
+      if (savedEkskuls) {
+        try {
+          const parsed: Extracurricular[] = JSON.parse(savedEkskuls);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const valid = parsed.filter(e => e && e.id && !isPurgedExtracurricular(e.id) && !isPurgedExtracurricular(e.name));
+            await Promise.allSettled(
+              valid.map(e => setDoc(doc(db, 'extracurriculars', e.id), e, { merge: true }))
+            );
+          }
+        } catch (e) {}
+      }
+
+      // 4. Sync classes from local cache
+      const savedClasses = localStorage.getItem('sim_classes');
+      if (savedClasses) {
+        try {
+          const parsed: SchoolClass[] = JSON.parse(savedClasses);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            await Promise.allSettled(
+              parsed.map(c => setDoc(doc(db, 'classes', c.id), c, { merge: true }))
+            );
+          }
+        } catch (e) {}
+      }
+
+      // 5. Sync teachers from local cache
+      const savedTeachers = localStorage.getItem('sim_teachers');
+      if (savedTeachers) {
+        try {
+          const parsed: Teacher[] = JSON.parse(savedTeachers);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const valid = parsed.filter(t => t && t.id && !isDeletedUid(t.id));
+            await Promise.allSettled(
+              valid.map(t => setDoc(doc(db, 'teachers', t.id), t, { merge: true }))
+            );
+          }
+        } catch (e) {}
+      }
+
+      // 6. Sync OSIM members from local cache
+      const savedOsim = localStorage.getItem('sim_osim_members');
+      if (savedOsim) {
+        try {
+          const parsed: OsimMember[] = JSON.parse(savedOsim);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const valid = parsed.filter(o => o && o.id && !isDeletedUid(o.id));
+            await Promise.allSettled(
+              valid.map(o => setDoc(doc(db, 'osim_members', o.id), o, { merge: true }))
+            );
+          }
+        } catch (e) {}
+      }
+    } catch (err) {
+      console.warn('Sync local changes notice:', err);
+    }
+  };
+
+  // Real-time synchronization across all devices via Firestore onSnapshot
   useEffect(() => {
+    const unsubscribers: (() => void)[] = [];
+
+    // Trigger initial load and ensure local device changes are reconciled to Firestore
     syncWithFirebase();
+    syncLocalChangesToFirestore().catch(() => {});
+
+    // 1. Real-time Students Listener
+    try {
+      const unsub = onSnapshot(collection(db, 'students'), (snapshot) => {
+        if (!snapshot.empty) {
+          const loaded: Student[] = [];
+          snapshot.forEach(docSnap => {
+            const data = docSnap.data() as Student;
+            const id = docSnap.id;
+            if (data.isDeleted) return;
+            removeDeletedUid(id);
+            if (data.nis) removeDeletedUid(cleanDigits(data.nis));
+            loaded.push({ id, ...data });
+          });
+          const sorted = sortStudentsAlphabetically(loaded);
+          setStudents(sorted);
+          try {
+            localStorage.setItem('sim_students', JSON.stringify(sorted));
+          } catch (e) {}
+        }
+      }, (err) => {
+        console.warn('Real-time students listener notice:', err);
+      });
+      unsubscribers.push(unsub);
+    } catch (e) {}
+
+    // 2. Real-time Extracurricular Members Listener
+    try {
+      const unsub = onSnapshot(collection(db, 'extracurricular_members'), (snapshot) => {
+        const loaded: ExtracurricularMember[] = [];
+        snapshot.forEach(docSnap => {
+          const data = docSnap.data() as ExtracurricularMember;
+          const id = docSnap.id;
+          if (id === 'm1' || data.studentNis === '24251001') return;
+          if (isPurgedExtracurricular(data.extracurricularId) || isPurgedExtracurricular(data.extracurricularName || '')) return;
+          loaded.push({ id, ...data });
+        });
+        setMembers(loaded);
+        try {
+          localStorage.setItem('sim_members', JSON.stringify(loaded));
+        } catch (e) {}
+
+        // Keep extracurricular member counts synced
+        setExtracurriculars(prev => prev.map(ekskul => {
+          const count = loaded.filter(m => m.extracurricularId === ekskul.id && m.status !== 'Nonaktif' && m.status !== 'Keluar').length;
+          return { ...ekskul, memberCount: count };
+        }));
+      }, (err) => {
+        console.warn('Real-time members listener notice:', err);
+      });
+      unsubscribers.push(unsub);
+    } catch (e) {}
+
+    // 3. Real-time Extracurriculars Listener
+    try {
+      const unsub = onSnapshot(collection(db, 'extracurriculars'), (snapshot) => {
+        if (!snapshot.empty) {
+          const loaded: Extracurricular[] = [];
+          snapshot.forEach(docSnap => {
+            const data = docSnap.data() as Extracurricular;
+            const id = docSnap.id;
+            if (isPurgedExtracurricular(data.name) || isPurgedExtracurricular(id)) return;
+            loaded.push({ id, ...data });
+          });
+          setExtracurriculars(loaded);
+          try {
+            localStorage.setItem('sim_extracurriculars', JSON.stringify(loaded));
+          } catch (e) {}
+        }
+      }, (err) => {
+        console.warn('Real-time extracurriculars listener notice:', err);
+      });
+      unsubscribers.push(unsub);
+    } catch (e) {}
+
+    // 4. Real-time Classes Listener
+    try {
+      const unsub = onSnapshot(collection(db, 'classes'), (snapshot) => {
+        if (!snapshot.empty) {
+          const loaded: SchoolClass[] = [];
+          snapshot.forEach(docSnap => {
+            loaded.push({ id: docSnap.id, ...docSnap.data() } as SchoolClass);
+          });
+          setClasses(loaded);
+          try {
+            localStorage.setItem('sim_classes', JSON.stringify(loaded));
+          } catch (e) {}
+        }
+      }, (err) => {
+        console.warn('Real-time classes listener notice:', err);
+      });
+      unsubscribers.push(unsub);
+    } catch (e) {}
+
+    // 5. Real-time Teachers Listener
+    try {
+      const unsub = onSnapshot(collection(db, 'teachers'), (snapshot) => {
+        if (!snapshot.empty) {
+          const raw: Teacher[] = [];
+          snapshot.forEach(docSnap => {
+            const data = docSnap.data() as Teacher;
+            const id = docSnap.id;
+            if (
+              isBlacklistedDemoName(data.fullName || (data as any).name) ||
+              isDeletedUid(id) ||
+              isDeletedUid(cleanDigits(data.nip))
+            ) {
+              return;
+            }
+            raw.push({ id, ...data });
+          });
+          const loaded = deduplicateTeachersList(raw);
+          setTeachers(loaded);
+          try {
+            localStorage.setItem('sim_teachers', JSON.stringify(loaded));
+          } catch (e) {}
+        }
+      }, (err) => {
+        console.warn('Real-time teachers listener notice:', err);
+      });
+      unsubscribers.push(unsub);
+    } catch (e) {}
+
+    // 6. Real-time Schools (Settings) Listener
+    try {
+      const unsub = onSnapshot(collection(db, 'schools'), (snapshot) => {
+        if (!snapshot.empty) {
+          const loadedSchool = snapshot.docs[0].data() as SchoolSetting;
+          if (loadedSchool && loadedSchool.name) {
+            setSchoolSetting(prev => ({ ...prev, ...loadedSchool }));
+            if (loadedSchool.currentAcademicYear) {
+              setActiveAcademicYearState(loadedSchool.currentAcademicYear);
+            }
+            if (loadedSchool.currentSemester) {
+              setActiveSemesterState(loadedSchool.currentSemester);
+            }
+            try {
+              localStorage.setItem('sim_school_setting', JSON.stringify(loadedSchool));
+            } catch (e) {}
+          }
+        }
+      }, (err) => {
+        console.warn('Real-time schools listener notice:', err);
+      });
+      unsubscribers.push(unsub);
+    } catch (e) {}
+
+    // 7. Real-time Academic Years Listener
+    try {
+      const unsub = onSnapshot(collection(db, 'academic_years'), (snapshot) => {
+        if (!snapshot.empty) {
+          const loaded: AcademicYear[] = [];
+          snapshot.forEach(docSnap => {
+            loaded.push({ id: docSnap.id, ...docSnap.data() } as AcademicYear);
+          });
+          setAcademicYears(loaded);
+          try {
+            localStorage.setItem('sim_academic_years', JSON.stringify(loaded));
+          } catch (e) {}
+        }
+      }, (err) => {
+        console.warn('Real-time academic_years listener notice:', err);
+      });
+      unsubscribers.push(unsub);
+    } catch (e) {}
+
+    // 8. Real-time Attendance Listener
+    try {
+      const unsub = onSnapshot(collection(db, 'attendance'), (snapshot) => {
+        const loaded: AttendanceRecord[] = [];
+        snapshot.forEach(docSnap => {
+          loaded.push({ id: docSnap.id, ...docSnap.data() } as AttendanceRecord);
+        });
+        setAttendance(loaded);
+        try {
+          localStorage.setItem('sim_attendance', JSON.stringify(loaded));
+        } catch (e) {}
+      }, (err) => {
+        console.warn('Real-time attendance listener notice:', err);
+      });
+      unsubscribers.push(unsub);
+    } catch (e) {}
+
+    // 9. Real-time Activities Listener
+    try {
+      const unsub = onSnapshot(collection(db, 'activities'), (snapshot) => {
+        const loaded: ActivityItem[] = [];
+        snapshot.forEach(docSnap => {
+          loaded.push({ id: docSnap.id, ...docSnap.data() } as ActivityItem);
+        });
+        setActivities(loaded);
+        try {
+          localStorage.setItem('sim_activities', JSON.stringify(loaded));
+        } catch (e) {}
+      }, (err) => {
+        console.warn('Real-time activities listener notice:', err);
+      });
+      unsubscribers.push(unsub);
+    } catch (e) {}
+
+    // 10. Real-time Activity Reports Listener
+    try {
+      const unsub = onSnapshot(collection(db, 'activity_reports'), (snapshot) => {
+        const loaded: ActivityReport[] = [];
+        snapshot.forEach(docSnap => {
+          loaded.push({ id: docSnap.id, ...docSnap.data() } as ActivityReport);
+        });
+        setActivityReports(loaded);
+        try {
+          localStorage.setItem('sim_activity_reports', JSON.stringify(loaded));
+        } catch (e) {}
+      }, (err) => {
+        console.warn('Real-time activity_reports listener notice:', err);
+      });
+      unsubscribers.push(unsub);
+    } catch (e) {}
+
+    // 11. Real-time Schedules Listener
+    try {
+      const unsub = onSnapshot(collection(db, 'schedules'), (snapshot) => {
+        const loaded: ScheduleEvent[] = [];
+        snapshot.forEach(docSnap => {
+          const data = docSnap.data() as ScheduleEvent;
+          const id = docSnap.id;
+          if (id === 'sch_1' || isPurgedExtracurricular(data.extracurricularId) || isPurgedExtracurricular(data.title || '')) return;
+          loaded.push({ id, ...data });
+        });
+        setSchedules(loaded);
+        try {
+          localStorage.setItem('sim_schedules', JSON.stringify(loaded));
+        } catch (e) {}
+      }, (err) => {
+        console.warn('Real-time schedules listener notice:', err);
+      });
+      unsubscribers.push(unsub);
+    } catch (e) {}
+
+    // 12. Real-time Violations Listener
+    try {
+      const unsub = onSnapshot(collection(db, 'violations'), (snapshot) => {
+        const loaded: ViolationRecord[] = [];
+        snapshot.forEach(docSnap => {
+          loaded.push({ id: docSnap.id, ...docSnap.data() } as ViolationRecord);
+        });
+        setViolations(loaded);
+        try {
+          localStorage.setItem('sim_violations', JSON.stringify(loaded));
+        } catch (e) {}
+      }, (err) => {
+        console.warn('Real-time violations listener notice:', err);
+      });
+      unsubscribers.push(unsub);
+    } catch (e) {}
+
+    // 13. Real-time Counseling Listener
+    try {
+      const unsub = onSnapshot(collection(db, 'counseling'), (snapshot) => {
+        const loaded: CounselingSession[] = [];
+        snapshot.forEach(docSnap => {
+          loaded.push({ id: docSnap.id, ...docSnap.data() } as CounselingSession);
+        });
+        setCounseling(loaded);
+        try {
+          localStorage.setItem('sim_counseling', JSON.stringify(loaded));
+        } catch (e) {}
+      }, (err) => {
+        console.warn('Real-time counseling listener notice:', err);
+      });
+      unsubscribers.push(unsub);
+    } catch (e) {}
+
+    // 14. Real-time Achievements Listener
+    try {
+      const unsub = onSnapshot(collection(db, 'achievements'), (snapshot) => {
+        const loaded: AchievementRecord[] = [];
+        snapshot.forEach(docSnap => {
+          loaded.push({ id: docSnap.id, ...docSnap.data() } as AchievementRecord);
+        });
+        setAchievements(loaded);
+        try {
+          localStorage.setItem('sim_achievements', JSON.stringify(loaded));
+        } catch (e) {}
+      }, (err) => {
+        console.warn('Real-time achievements listener notice:', err);
+      });
+      unsubscribers.push(unsub);
+    } catch (e) {}
+
+    // 15. Real-time Permissions Listener
+    try {
+      const unsub = onSnapshot(collection(db, 'permissions'), (snapshot) => {
+        const loaded: StudentPermission[] = [];
+        snapshot.forEach(docSnap => {
+          loaded.push({ id: docSnap.id, ...docSnap.data() } as StudentPermission);
+        });
+        setPermissions(loaded);
+        try {
+          localStorage.setItem('sim_permissions', JSON.stringify(loaded));
+        } catch (e) {}
+      }, (err) => {
+        console.warn('Real-time permissions listener notice:', err);
+      });
+      unsubscribers.push(unsub);
+    } catch (e) {}
+
+    // 16. Real-time OSIM Members Listener
+    try {
+      const unsub = onSnapshot(collection(db, 'osim_members'), (snapshot) => {
+        const raw: OsimMember[] = [];
+        snapshot.forEach(docSnap => {
+          const data = docSnap.data() as OsimMember;
+          const id = docSnap.id;
+          const memberNis = data.studentNis || (data as any).nis;
+          if (isDeletedUid(id) || (memberNis && isDeletedUid(cleanDigits(memberNis)))) return;
+          raw.push({ id, ...data });
+        });
+        const deduplicated = deduplicateOsimMembersList(raw);
+        setOsimMembers(deduplicated);
+        try {
+          localStorage.setItem('sim_osim_members', JSON.stringify(deduplicated));
+        } catch (e) {}
+      }, (err) => {
+        console.warn('Real-time osim_members listener notice:', err);
+      });
+      unsubscribers.push(unsub);
+    } catch (e) {}
+
+    // 17. Real-time OSIM Programs Listener
+    try {
+      const unsub = onSnapshot(collection(db, 'osim_programs'), (snapshot) => {
+        const loaded: OsimProgram[] = [];
+        snapshot.forEach(docSnap => {
+          loaded.push({ id: docSnap.id, ...docSnap.data() } as OsimProgram);
+        });
+        setOsimPrograms(loaded);
+        try {
+          localStorage.setItem('sim_osim_programs', JSON.stringify(loaded));
+        } catch (e) {}
+      }, (err) => {
+        console.warn('Real-time osim_programs listener notice:', err);
+      });
+      unsubscribers.push(unsub);
+    } catch (e) {}
+
+    // 18. Real-time Announcements Listener
+    try {
+      const unsub = onSnapshot(collection(db, 'announcements'), (snapshot) => {
+        const loaded: Announcement[] = [];
+        snapshot.forEach(docSnap => {
+          loaded.push({ id: docSnap.id, ...docSnap.data() } as Announcement);
+        });
+        setAnnouncements(loaded);
+        try {
+          localStorage.setItem('sim_announcements', JSON.stringify(loaded));
+        } catch (e) {}
+      }, (err) => {
+        console.warn('Real-time announcements listener notice:', err);
+      });
+      unsubscribers.push(unsub);
+    } catch (e) {}
+
+    setIsRealTimeConnected(true);
+
+    return () => {
+      unsubscribers.forEach(unsub => unsub());
+    };
   }, []);
 
   const seedFirebaseDatabase = async () => {
@@ -1602,7 +2066,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
-  const logAction = (action: string, module: string, details: string) => {
+  const logAction = async (action: string, module: string, details: string): Promise<void> => {
     const newLog: AuditLogItem = {
       id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       userId: currentUser?.uid || 'system',
@@ -5039,7 +5503,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         exportFullDatabaseJSON,
         importFullDatabaseJSON,
         importClassesBulk,
-        isSyncing
+        isSyncing,
+        isRealTimeConnected,
+        syncLocalChangesToFirestore
       }}
     >
       {children}

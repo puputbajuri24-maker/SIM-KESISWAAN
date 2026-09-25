@@ -1096,7 +1096,7 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
                   <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold ${
                     selectedMember.status === 'Aktif'
                       ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                      : selectedMember.status === 'Cuti'
+                      : (selectedMember.status as string) === 'Cuti'
                       ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
                       : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
                   }`}>

@@ -58,12 +58,12 @@ export interface CPanelUserTabProps {
   setSearchTerm: (term: string) => void;
   roleFilter: string;
   setRoleFilter: (filter: string) => void;
-  userViewMode: 'grid' | 'table';
-  setUserViewMode: (mode: 'grid' | 'table') => void;
+  userViewMode: 'grid' | 'table' | 'cards' | string;
+  setUserViewMode: (mode: any) => void;
   allUsers: UserProfile[];
   filteredUsers: UserProfile[];
   handleOpenPrintModal: (user: UserProfile | 'all') => void;
-  getRoleBadge: (user: UserProfile) => { label: string; color: string; border: string; bg: string; number: number };
+  getRoleBadge: (user: any) => { label: string; color: string; border?: string; bg?: string; number?: number };
   showPasswordMap: Record<string, boolean>;
   togglePasswordVisibility: (uid: string) => void;
   getTeacherInitials: (name: string) => string;

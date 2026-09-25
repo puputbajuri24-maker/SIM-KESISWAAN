@@ -1,6 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, useMemo, useRef } from 'react';
-import { useAuth } from './AuthContext';
-import { db } from '../services/firebase';
+import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import { auth, db } from '../services/firebase';
 import { doc, setDoc, onSnapshot } from 'firebase/firestore';
 
 export type ThemeMode = 'dark' | 'light' | 'system';
@@ -94,23 +93,13 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Safe authentication context hook (since AuthProvider wraps ThemeProvider)
-  let authContext: ReturnType<typeof useAuth> | null = null;
-  try {
-    authContext = useAuth();
-  } catch {
-    authContext = null;
-  }
-  const currentUser = authContext?.currentUser || null;
-  const updateProfileState = authContext?.updateProfileState;
-
-  // 1. Initial State from localStorage (instant rendering on boot/offline)
+  // 1. Initial State from localStorage (strictly dark mode across all devices by default)
   const [mode, setModeState] = useState<ThemeMode>(() => {
     try {
       const saved = localStorage.getItem('simkesiswaan_theme_mode') as ThemeMode;
-      if (saved === 'dark' || saved === 'light' || saved === 'system') return saved;
+      if (saved === 'dark' || saved === 'light') return saved;
     } catch (e) {}
-    return 'dark'; // Default dark mode
+    return 'dark'; // Strictly dark mode by default
   });
 
   const [palette, setPaletteState] = useState<ThemePalette>(() => {
@@ -145,23 +134,19 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return 'jakarta';
   });
 
-  // 2. Track System Color Scheme
-  const [systemIsDark, setSystemIsDark] = useState<boolean>(() => {
-    if (typeof window !== 'undefined' && window.matchMedia) {
-      return window.matchMedia('(prefers-color-scheme: dark)').matches;
-    }
-    return true;
-  });
+  // 2. Track System Color Scheme (only used if user explicitly selects 'system')
+  const [systemIsDark, setSystemIsDark] = useState<boolean>(true);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return;
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    setSystemIsDark(mediaQuery.matches);
     const handler = (e: MediaQueryListEvent) => setSystemIsDark(e.matches);
     mediaQuery.addEventListener('change', handler);
     return () => mediaQuery.removeEventListener('change', handler);
   }, []);
 
-  // 3. Resolve Dark vs Light
+  // 3. Resolve Dark vs Light: Guarantee dark mode unless explicitly set to light
   const resolvedMode: 'dark' | 'light' = useMemo(() => {
     if (mode === 'system') {
       return systemIsDark ? 'dark' : 'light';
@@ -199,75 +184,42 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch (e) {}
   }, [mode, resolvedMode, palette, fontSize, fontContrast, fontFamily]);
 
-  // 5. Cloud Profile Preference Sync: Real-time Listener from Firestore
+  // 5. Global Real-Time Theme Listener (doc: settings/theme_config)
+  // Ensures ALL devices (HP, Tablet, Desktop) immediately display identical theme
   useEffect(() => {
-    if (!currentUser?.uid) return;
-
-    // A. Apply in-memory user preference immediately upon login
-    if (currentUser.themePreference) {
-      const pref = currentUser.themePreference;
-      if (pref.mode && (pref.mode === 'dark' || pref.mode === 'light' || pref.mode === 'system')) {
-        setModeState(pref.mode);
-      }
-      if (pref.palette && THEME_PALETTES.some(p => p.id === pref.palette)) {
-        setPaletteState(pref.palette);
-      }
-      if (pref.fontSize && ['compact', 'normal', 'comfortable'].includes(pref.fontSize)) {
-        setFontSizeState(pref.fontSize);
-      }
-      if (pref.fontContrast && ['standard', 'high'].includes(pref.fontContrast)) {
-        setFontContrastState(pref.fontContrast);
-      }
-      if (pref.fontFamily && ['jakarta', 'inter', 'system'].includes(pref.fontFamily)) {
-        setFontFamilyState(pref.fontFamily);
-      }
-    }
-
-    // B. Attach real-time Firestore listener for cross-device synchronization
-    const unsubscribe = onSnapshot(doc(db, 'users', currentUser.uid), (docSnap) => {
+    const unsubscribe = onSnapshot(doc(db, 'settings', 'theme_config'), (docSnap) => {
       if (!docSnap.exists()) return;
       const data = docSnap.data();
-      if (data?.themePreference) {
-        const {
-          mode: cloudMode,
-          palette: cloudPalette,
-          fontSize: cloudFontSize,
-          fontContrast: cloudFontContrast,
-          fontFamily: cloudFontFamily
-        } = data.themePreference;
-
-        if (cloudMode && (cloudMode === 'dark' || cloudMode === 'light' || cloudMode === 'system')) {
-          setModeState(prev => (prev !== cloudMode ? cloudMode : prev));
-        }
-        if (cloudPalette && THEME_PALETTES.some(p => p.id === cloudPalette)) {
-          setPaletteState(prev => (prev !== cloudPalette ? cloudPalette : prev));
-        }
-        if (cloudFontSize && ['compact', 'normal', 'comfortable'].includes(cloudFontSize)) {
-          setFontSizeState(prev => (prev !== cloudFontSize ? cloudFontSize : prev));
-        }
-        if (cloudFontContrast && ['standard', 'high'].includes(cloudFontContrast)) {
-          setFontContrastState(prev => (prev !== cloudFontContrast ? cloudFontContrast : prev));
-        }
-        if (cloudFontFamily && ['jakarta', 'inter', 'system'].includes(cloudFontFamily)) {
-          setFontFamilyState(prev => (prev !== cloudFontFamily ? cloudFontFamily : prev));
-        }
+      if (data?.mode && (data.mode === 'dark' || data.mode === 'light' || data.mode === 'system')) {
+        setModeState(prev => (prev !== data.mode ? data.mode : prev));
+      }
+      if (data?.palette && THEME_PALETTES.some(p => p.id === data.palette)) {
+        setPaletteState(prev => (prev !== data.palette ? data.palette : prev));
+      }
+      if (data?.fontSize && ['compact', 'normal', 'comfortable'].includes(data.fontSize)) {
+        setFontSizeState(prev => (prev !== data.fontSize ? data.fontSize : prev));
+      }
+      if (data?.fontContrast && ['standard', 'high'].includes(data.fontContrast)) {
+        setFontContrastState(prev => (prev !== data.fontContrast ? data.fontContrast : prev));
+      }
+      if (data?.fontFamily && ['jakarta', 'inter', 'system'].includes(data.fontFamily)) {
+        setFontFamilyState(prev => (prev !== data.fontFamily ? data.fontFamily : prev));
       }
     }, (err) => {
-      console.warn('Firestore theme onSnapshot notice:', err);
+      console.warn('Global theme onSnapshot notice:', err);
     });
 
     return () => unsubscribe();
-  }, [currentUser?.uid]);
+  }, []);
 
-  // Helper to persist preference to Cloud (Firestore users collection)
-  const saveCloudPreference = async (partialPref: {
+  // Helper to persist preference to Cloud Firestore in background
+  const saveCloudPreference = (partialPref: {
     mode?: ThemeMode;
     palette?: ThemePalette;
     fontSize?: FontSize;
     fontContrast?: FontContrast;
     fontFamily?: FontFamily;
   }) => {
-    if (!currentUser?.uid) return;
     try {
       const updatedPref = {
         mode: partialPref.mode ?? mode,
@@ -278,12 +230,25 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         updatedAt: new Date().toISOString()
       };
 
-      await setDoc(doc(db, 'users', currentUser.uid), {
-        themePreference: updatedPref
-      }, { merge: true });
+      // 1. Save to global theme config in Firestore so all devices match immediately
+      setDoc(doc(db, 'settings', 'theme_config'), updatedPref, { merge: true }).catch(() => {});
 
-      if (updateProfileState) {
-        updateProfileState({ themePreference: updatedPref });
+      // 2. Also save to user doc if logged in
+      let uid: string | null = null;
+      try {
+        const sessionUser = sessionStorage.getItem('sim_kesiswaan_session_user');
+        if (sessionUser) {
+          const parsed = JSON.parse(sessionUser);
+          uid = parsed?.uid || null;
+        }
+      } catch {}
+      if (!uid && auth.currentUser) {
+        uid = auth.currentUser.uid;
+      }
+      if (uid) {
+        setDoc(doc(db, 'users', uid), {
+          themePreference: updatedPref
+        }, { merge: true }).catch(() => {});
       }
     } catch (err) {
       console.warn('Failed to sync theme preference to cloud:', err);
@@ -295,13 +260,12 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     saveCloudPreference({ mode: newMode });
   };
 
+  // Pure state updater without synchronous side-effects during render
   const toggleMode = () => {
-    setModeState(prev => {
-      const current = prev === 'system' ? (systemIsDark ? 'dark' : 'light') : prev;
-      const next: ThemeMode = current === 'dark' ? 'light' : 'dark';
-      saveCloudPreference({ mode: next });
-      return next;
-    });
+    const current = mode === 'system' ? (systemIsDark ? 'dark' : 'light') : mode;
+    const next: ThemeMode = current === 'dark' ? 'light' : 'dark';
+    setModeState(next);
+    saveCloudPreference({ mode: next });
   };
 
   const setPalette = (newPalette: ThemePalette) => {
@@ -360,7 +324,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         setFontFamily,
         resetTheme,
         currentPaletteInfo,
-        isCloudSynced: Boolean(currentUser?.uid)
+        isCloudSynced: true
       }}
     >
       {children}

@@ -1162,7 +1162,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
             <span>+ HOME_VISIT</span>
           </button>
           <button
-            onClick={handleOpenAddParentCall}
+            onClick={() => handleOpenAddParentCall()}
             className="px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white font-medium text-[11px] flex items-center space-x-1.5 transition-colors"
           >
             <Mail className="w-3.5 h-3.5" />

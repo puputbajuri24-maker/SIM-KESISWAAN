@@ -29,7 +29,7 @@ export interface CPanelBackupRestoreTabProps {
   isImportingJSON: boolean;
   isSeeding: boolean;
   setIsSeeding: (seeding: boolean) => void;
-  seedFirebaseDatabase: () => Promise<void>;
+  seedFirebaseDatabase: () => Promise<void> | Promise<any>;
   uploadAllDataToFirestore?: () => Promise<{ success: boolean; message: string; count: number }>;
   studentsCount?: number;
   classesCount?: number;

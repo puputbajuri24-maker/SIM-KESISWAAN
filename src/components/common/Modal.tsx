@@ -10,6 +10,7 @@ interface ModalProps {
   children: React.ReactNode;
   footer?: React.ReactNode;
   maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl' | '5xl' | string;
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl' | '5xl' | string;
 }
 
 export const Modal: React.FC<ModalProps> = ({
@@ -19,8 +20,10 @@ export const Modal: React.FC<ModalProps> = ({
   subtitle,
   children,
   footer,
-  maxWidth = 'lg'
+  maxWidth,
+  size
 }) => {
+  const resolvedMaxWidth = maxWidth || size || 'lg';
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && isOpen) {
@@ -50,7 +53,7 @@ export const Modal: React.FC<ModalProps> = ({
     '5xl': 'max-w-5xl'
   };
 
-  const maxWidthClass = maxWidthMap[maxWidth] || (maxWidth.startsWith('max-w-') ? maxWidth : 'max-w-lg');
+  const maxWidthClass = maxWidthMap[resolvedMaxWidth] || (resolvedMaxWidth.startsWith('max-w-') ? resolvedMaxWidth : 'max-w-lg');
 
   return createPortal(
     <div className="fixed inset-0 z-[9999] overflow-y-auto font-sans">

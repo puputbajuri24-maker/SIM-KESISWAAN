@@ -4,8 +4,9 @@ import { Modal } from './Modal';
 
 interface ConfirmDialogProps {
   isOpen: boolean;
-  onClose: () => void;
-  onConfirm: () => void;
+  onClose?: () => void;
+  onCancel?: () => void;
+  onConfirm: () => void | Promise<void>;
   title: string;
   message: string;
   confirmText?: string;
@@ -13,12 +14,16 @@ interface ConfirmDialogProps {
   cancelText?: string;
   cancelLabel?: string;
   variant?: 'danger' | 'warning' | 'info' | 'success';
+  confirmVariant?: 'danger' | 'warning' | 'info' | 'success' | string;
+  danger?: boolean;
+  type?: string;
   isLoading?: boolean;
 }
 
 export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   isOpen,
   onClose,
+  onCancel,
   onConfirm,
   title,
   message,
@@ -26,9 +31,19 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   confirmLabel,
   cancelText,
   cancelLabel,
-  variant = 'danger',
+  variant,
+  confirmVariant,
+  danger,
+  type,
   isLoading = false
 }) => {
+  const handleClose = onCancel || onClose || (() => {});
+  const resolvedVariant: 'danger' | 'warning' | 'info' | 'success' =
+    variant ||
+    (confirmVariant === 'danger' || confirmVariant === 'warning' || confirmVariant === 'info' || confirmVariant === 'success' ? confirmVariant : undefined) ||
+    (danger ? 'danger' : undefined) ||
+    (type === 'danger' || type === 'warning' || type === 'info' || type === 'success' ? type : undefined) ||
+    'danger';
   const finalConfirmText = confirmLabel || confirmText || 'Konfirmasi';
   const finalCancelText = cancelLabel || cancelText || 'Batal';
 
@@ -37,21 +52,21 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
     warning: { icon: AlertTriangle, color: 'text-amber-400 bg-amber-500/15 border-amber-500/30' },
     info: { icon: HelpCircle, color: 'text-blue-400 bg-blue-500/15 border-blue-500/30' },
     success: { icon: CheckCircle2, color: 'text-emerald-400 bg-emerald-500/15 border-emerald-500/30' }
-  }[variant];
+  }[resolvedVariant];
 
   const btnColor = {
     danger: 'bg-rose-600 hover:bg-rose-700 text-white shadow-rose-600/20 shadow-md',
     warning: 'bg-amber-600 hover:bg-amber-700 text-white shadow-amber-600/20 shadow-md',
     info: 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-600/20 shadow-md',
     success: 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20 shadow-md'
-  }[variant];
+  }[resolvedVariant];
 
   const IconComponent = iconConfig.icon;
 
   return (
     <Modal
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={handleClose}
       title={title}
       maxWidth="sm"
       footer={

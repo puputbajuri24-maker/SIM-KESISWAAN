@@ -26,16 +26,19 @@ import { useSchool } from '../../contexts/SchoolContext';
 interface AnnouncementModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (data: Omit<Announcement, 'id' | 'createdAt'>, id?: string) => Promise<void>;
+  onSave?: (data: Omit<Announcement, 'id' | 'createdAt'>, id?: string) => Promise<void>;
   initialData?: Announcement | null;
+  announcement?: Announcement | null;
 }
 
 export const AnnouncementModal: React.FC<AnnouncementModalProps> = ({
   isOpen,
   onClose,
   onSave,
-  initialData
+  initialData,
+  announcement
 }) => {
+  const effectiveInitialData = initialData || announcement;
   const { currentUser, allUsers } = useAuth();
   const { extracurriculars } = useSchool();
 
@@ -60,12 +63,13 @@ export const AnnouncementModal: React.FC<AnnouncementModalProps> = ({
   const otherStaffUsers = allUsers.filter(u => u.role !== 'super_admin');
 
   useEffect(() => {
-    if (initialData) {
-      setTitle(initialData.title || '');
-      setContent(initialData.content || '');
-      const tRole = (initialData.targetRole as AnnouncementTargetRole) || 'Semua';
+    const currentData = effectiveInitialData;
+    if (currentData) {
+      setTitle(currentData.title || '');
+      setContent(currentData.content || '');
+      const tRole = (currentData.targetRole as AnnouncementTargetRole) || 'Semua';
       setTargetRole(tRole);
-      setTargetType(initialData.targetType || (
+      setTargetType(currentData.targetType || (
         tRole === 'Guru BK Tertentu' ? 'specific_bk' :
         tRole === 'Pembina Ekstra Tertentu' ? 'specific_ekskul' :
         tRole === 'Pengguna Spesifik' ? 'specific_users' :
@@ -73,15 +77,15 @@ export const AnnouncementModal: React.FC<AnnouncementModalProps> = ({
         tRole === 'Guru Pembina' ? 'all_pembina' :
         tRole === 'Waka & Admin' ? 'waka_admin' : 'all'
       ));
-      setSelectedUserIds(initialData.targetUserIds || []);
-      setSelectedEkskulIds(initialData.targetExtracurricularIds || (initialData.targetExtracurricularId ? [initialData.targetExtracurricularId] : []));
-      setPriority(initialData.priority || 'Biasa');
-      setPublishDate(initialData.publishDate || new Date().toISOString().split('T')[0]);
-      setExpiryDate(initialData.expiryDate || '2026-12-31');
-      setIsPinned(Boolean(initialData.isPinned));
-      setIsActive(initialData.isActive !== false);
-      setAttachmentUrl(initialData.attachmentUrl || '');
-      setAttachmentName(initialData.attachmentName || '');
+      setSelectedUserIds(currentData.targetUserIds || []);
+      setSelectedEkskulIds(currentData.targetExtracurricularIds || (currentData.targetExtracurricularId ? [currentData.targetExtracurricularId] : []));
+      setPriority(currentData.priority || 'Biasa');
+      setPublishDate(currentData.publishDate || new Date().toISOString().split('T')[0]);
+      setExpiryDate(currentData.expiryDate || '2026-12-31');
+      setIsPinned(Boolean(currentData.isPinned));
+      setIsActive(currentData.isActive !== false);
+      setAttachmentUrl(currentData.attachmentUrl || '');
+      setAttachmentName(currentData.attachmentName || '');
     } else {
       setTitle('');
       setContent('');
