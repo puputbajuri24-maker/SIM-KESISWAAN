@@ -9,7 +9,9 @@ import {
   CheckCircle2,
   Clock,
   Layers,
-  ArrowRight
+  ArrowRight,
+  Wallet,
+  ExternalLink
 } from 'lucide-react';
 import { OsimWorkProgram } from '../../../types';
 
@@ -18,13 +20,19 @@ export interface OsimMatriksTabProps {
   activeAcademicYear: string;
   getStatusBadge: (status: any) => React.ReactNode;
   onOpenDetailProker?: (proker: OsimWorkProgram) => void;
+  osimCashBalance?: number;
+  osimCashAccountName?: string;
+  onNavigateToCashLedger?: () => void;
 }
 
 export const OsimMatriksTab: React.FC<OsimMatriksTabProps> = ({
   osimPrograms,
   activeAcademicYear,
   getStatusBadge,
-  onOpenDetailProker
+  onOpenDetailProker,
+  osimCashBalance = 0,
+  osimCashAccountName,
+  onNavigateToCashLedger
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterSekbid, setFilterSekbid] = useState<string>('all');
@@ -147,6 +155,43 @@ export const OsimMatriksTab: React.FC<OsimMatriksTabProps> = ({
               <span className="text-[10px] text-zinc-400 font-sans">Target Tercapai</span>
             </div>
           </div>
+        </div>
+
+        {/* Transparansi Buku Kas OSIM (Cash Ledger Integration) */}
+        <div className="mt-3 pt-3 border-t border-zinc-800/80 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-zinc-900/40 p-3 rounded border border-zinc-800">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+              <Wallet className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-zinc-200 uppercase font-mono tracking-wide">
+                  {osimCashAccountName || 'Rekening Kas OSIM & Intrakurikuler'}
+                </span>
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                  REAL-TIME SYNC
+                </span>
+              </div>
+              <p className="text-[11px] text-zinc-400 mt-0.5">
+                Saldo kas riil saat ini:{' '}
+                <strong className="text-emerald-400 font-mono">
+                  Rp {osimCashBalance.toLocaleString('id-ID')}
+                </strong>
+                {' '}• Terhubung dengan Buku Kas Kesiswaan untuk pencatatan LPJ Sah otomatis.
+              </p>
+            </div>
+          </div>
+
+          {onNavigateToCashLedger && (
+            <button
+              type="button"
+              onClick={onNavigateToCashLedger}
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 rounded text-xs font-semibold tracking-wide transition shrink-0"
+            >
+              <span>Buka Buku Kas Kesiswaan</span>
+              <ExternalLink className="w-3.5 h-3.5 text-zinc-400" />
+            </button>
+          )}
         </div>
       </div>
 

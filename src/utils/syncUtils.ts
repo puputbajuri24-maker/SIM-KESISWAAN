@@ -75,8 +75,15 @@ export const getDeletedUids = (): Set<string> => {
     if (raw) {
       const arr = JSON.parse(raw);
       if (Array.isArray(arr)) {
-        // Filter out any protected functional UIDs so they are unblocked automatically
-        const valid = arr.filter(id => !isProtectedFunctionalUid(id));
+        // Filter out any protected functional UIDs and student NIS numbers (numeric <= 10 digits)
+        const valid = arr.filter(id => {
+          if (!id) return false;
+          if (isProtectedFunctionalUid(id)) return false;
+          // Never tombstone student NIS numbers (pure digits <= 10 digits, e.g. 24251001)
+          if (/^\d{4,10}$/.test(id)) return false;
+          if (/^user_\d{4,10}$/.test(id)) return false;
+          return true;
+        });
         if (valid.length !== arr.length) {
           localStorage.setItem(DELETED_UIDS_KEY, JSON.stringify(valid));
         }
@@ -89,13 +96,17 @@ export const getDeletedUids = (): Set<string> => {
 
 export const addDeletedUid = (uid: string) => {
   if (!uid || isProtectedFunctionalUid(uid)) return;
+  // Never tombstone student NIS numbers (pure numeric <= 10 digits)
+  const cleanTrimmed = uid.trim();
+  if (/^\d{4,10}$/.test(cleanTrimmed) || /^user_\d{4,10}$/.test(cleanTrimmed)) return;
+
   try {
     const set = getDeletedUids();
     set.add(uid);
     // Also add related prefix variations if applicable
     if (uid.startsWith('user_')) {
       const clean = uid.replace(/^user_/, '');
-      if (!isProtectedFunctionalUid(clean)) {
+      if (!isProtectedFunctionalUid(clean) && !/^\d{4,10}$/.test(clean)) {
         set.add(clean);
       }
     }
@@ -696,5 +707,163 @@ export const sortTeachersByHierarchy = (teachersList: Teacher[]): Teacher[] => {
 
     return (a.fullName || '').localeCompare(b.fullName || '');
   });
+};
+
+// ==========================================
+// CLASS TOMBSTONE & PERMANENT PURGE ENGINE
+// ==========================================
+
+const DELETED_CLASS_IDS_KEY = 'sim_kesiswaan_deleted_class_ids';
+
+export const PURGED_DEMO_CLASS_IDS = [
+  'c_x_rpl1',
+  'c_x_rpl2',
+  'c_xi_rpl1',
+  'c_xi_rpl2',
+  'c_xii_rpl1',
+  'c_xii_rpl2',
+  'c_x_tkj1',
+  'c_x_tkj2',
+  'unassigned',
+  'c_dummy',
+  'dummy_class'
+];
+
+export const isPurgedClassId = (classId?: string): boolean => {
+  if (!classId) return false;
+  const clean = classId.toLowerCase().trim();
+  if (PURGED_DEMO_CLASS_IDS.includes(clean)) return true;
+  if (clean.includes('rpl') || clean.includes('tkj') || clean.includes('dummy')) return true;
+  return isDeletedClassId(classId);
+};
+
+export const getDeletedClassIds = (): Set<string> => {
+  try {
+    const raw = localStorage.getItem(DELETED_CLASS_IDS_KEY);
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) {
+        return new Set(arr);
+      }
+    }
+  } catch (e) {}
+  return new Set();
+};
+
+export const addDeletedClassId = (classId: string) => {
+  if (!classId) return;
+  try {
+    const set = getDeletedClassIds();
+    set.add(classId);
+    set.add(classId.toLowerCase().trim());
+    localStorage.setItem(DELETED_CLASS_IDS_KEY, JSON.stringify(Array.from(set)));
+  } catch (e) {}
+};
+
+export const removeDeletedClassId = (classId: string) => {
+  if (!classId) return;
+  try {
+    const set = getDeletedClassIds();
+    set.delete(classId);
+    set.delete(classId.toLowerCase().trim());
+    localStorage.setItem(DELETED_CLASS_IDS_KEY, JSON.stringify(Array.from(set)));
+  } catch (e) {}
+};
+
+export const isDeletedClassId = (classId?: string): boolean => {
+  if (!classId) return false;
+  const clean = classId.toLowerCase().trim();
+  const set = getDeletedClassIds();
+  return set.has(classId) || set.has(clean) || PURGED_DEMO_CLASS_IDS.includes(clean);
+};
+
+// ==========================================
+// STUDENT DEDUPLICATION & INTEGRITY ENGINE
+// ==========================================
+
+/**
+ * Deduplicates the student list strictly by unique NIS, NISN, or Normalized Full Name + Class.
+ * Filters out legacy demo/dummy student records (e.g., s01, placeholder names).
+ * Returns the deduplicated list along with an array of stale duplicate document IDs for cloud purging.
+ */
+export const deduplicateStudentsList = (
+  studentsList: Student[]
+): { deduplicated: Student[]; duplicateIds: string[] } => {
+  const seenNis = new Set<string>();
+  const seenNisn = new Set<string>();
+  const seenNameAndClass = new Set<string>();
+  const seenIds = new Set<string>();
+  const deduplicated: Student[] = [];
+  const duplicateIds: string[] = [];
+
+  const validCandidates = (studentsList || []).filter(s => {
+    if (!s || !s.id) return false;
+    const cleanId = s.id.toLowerCase().trim();
+    // Exclude mock / demo IDs
+    if (
+      cleanId === 's01' ||
+      cleanId === 's1' ||
+      cleanId === 'dummy' ||
+      cleanId.startsWith('dummy_') ||
+      cleanId.includes('demo_student')
+    ) {
+      duplicateIds.push(s.id);
+      return false;
+    }
+    // Exclude soft-deleted students
+    if (s.isDeleted) {
+      duplicateIds.push(s.id);
+      return false;
+    }
+    return true;
+  });
+
+  for (const s of validCandidates) {
+    if (seenIds.has(s.id)) {
+      duplicateIds.push(s.id);
+      continue;
+    }
+
+    const cleanNis = s.nis ? cleanDigits(s.nis) : '';
+    const cleanNisn = s.nisn ? cleanDigits(s.nisn) : '';
+    const normName = normalizeName(s.fullName || (s as any).name);
+    const normClass = (s.className || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const nameClassKey = normName && normClass ? `${normName}__${normClass}` : '';
+
+    let isDuplicate = false;
+
+    // Check duplicate by NIS (at least 3 digits)
+    if (cleanNis && cleanNis.length >= 3) {
+      if (seenNis.has(cleanNis)) {
+        isDuplicate = true;
+      }
+    }
+
+    // Check duplicate by NISN (at least 8 digits)
+    if (!isDuplicate && cleanNisn && cleanNisn.length >= 8) {
+      if (seenNisn.has(cleanNisn)) {
+        isDuplicate = true;
+      }
+    }
+
+    // Check duplicate by normalized full name + class
+    if (!isDuplicate && nameClassKey && normName.length >= 4) {
+      if (seenNameAndClass.has(nameClassKey)) {
+        isDuplicate = true;
+      }
+    }
+
+    if (isDuplicate) {
+      duplicateIds.push(s.id);
+    } else {
+      if (cleanNis && cleanNis.length >= 3) seenNis.add(cleanNis);
+      if (cleanNisn && cleanNisn.length >= 8) seenNisn.add(cleanNisn);
+      if (nameClassKey && normName.length >= 4) seenNameAndClass.add(nameClassKey);
+      seenIds.add(s.id);
+      deduplicated.push(s);
+    }
+  }
+
+  return { deduplicated, duplicateIds };
 };
 

@@ -87,19 +87,7 @@ export const INITIAL_ACADEMIC_YEARS: AcademicYear[] = [
   }
 ];
 
-export const INITIAL_CLASSES: SchoolClass[] = [
-  { id: 'c_x_mia1', name: 'X MIA 1', grade: 'X', major: 'MIPA (Matematika & IPA)', homeroomTeacher: '', studentCount: 0 },
-  { id: 'c_x_mia2', name: 'X MIA 2', grade: 'X', major: 'MIPA (Matematika & IPA)', homeroomTeacher: '', studentCount: 0 },
-  { id: 'c_x_iis1', name: 'X IIS 1', grade: 'X', major: 'IPS (Ilmu-Ilmu Sosial)', homeroomTeacher: '', studentCount: 0 },
-  { id: 'c_x_iis2', name: 'X IIS 2', grade: 'X', major: 'IPS (Ilmu-Ilmu Sosial)', homeroomTeacher: '', studentCount: 0 },
-  { id: 'c_x_keagamaan', name: 'X Keagamaan', grade: 'X', major: 'Ilmu Keagamaan Islam (IIK)', homeroomTeacher: '', studentCount: 0 },
-  { id: 'c_xi_mia1', name: 'XI MIA 1', grade: 'XI', major: 'MIPA (Matematika & IPA)', homeroomTeacher: '', studentCount: 0 },
-  { id: 'c_xi_iis1', name: 'XI IIS 1', grade: 'XI', major: 'IPS (Ilmu-Ilmu Sosial)', homeroomTeacher: '', studentCount: 0 },
-  { id: 'c_xi_keagamaan', name: 'XI Keagamaan', grade: 'XI', major: 'Ilmu Keagamaan Islam (IIK)', homeroomTeacher: '', studentCount: 0 },
-  { id: 'c_xii_mia1', name: 'XII MIA 1', grade: 'XII', major: 'MIPA (Matematika & IPA)', homeroomTeacher: '', studentCount: 0 },
-  { id: 'c_xii_iis1', name: 'XII IIS 1', grade: 'XII', major: 'IPS (Ilmu-Ilmu Sosial)', homeroomTeacher: '', studentCount: 0 },
-  { id: 'c_xii_keagamaan', name: 'XII Keagamaan', grade: 'XII', major: 'Ilmu Keagamaan Islam (IIK)', homeroomTeacher: '', studentCount: 0 }
-];
+export const INITIAL_CLASSES: SchoolClass[] = [];
 
 export const DEFAULT_SUPER_ADMIN: UserProfile = {
   uid: 'user_super_admin',
@@ -466,8 +454,11 @@ export const PURGED_DEMO_NAMES = [
 
 export function isBlacklistedDemoName(name?: string): boolean {
   if (!name) return false;
-  const lower = name.toLowerCase();
-  return PURGED_DEMO_NAMES.some(n => lower.includes(n));
+  const lower = name.toLowerCase().trim();
+  if (lower.includes('(demo)') || lower.includes('(dummy)') || lower.includes('contoh user') || lower.includes('sample')) {
+    return true;
+  }
+  return PURGED_DEMO_NAMES.some(n => lower === n);
 }
 
 // Helper to wipe all operational data collections in Firebase Firestore
@@ -599,21 +590,27 @@ export async function uploadAllStateToFirebase(bundle: {
     // Classes
     if (Array.isArray(bundle.classes)) {
       for (const c of bundle.classes) {
-        if (c && c.id) allOperations.push({ collection: 'classes', id: c.id, data: c });
+        if (c && c.id && !c.id.includes('rpl') && !c.id.includes('tkj') && !c.id.includes('dummy')) {
+          allOperations.push({ collection: 'classes', id: c.id, data: c });
+        }
       }
     }
 
     // Teachers
     if (Array.isArray(bundle.teachers)) {
       for (const t of bundle.teachers) {
-        if (t && t.id) allOperations.push({ collection: 'teachers', id: t.id, data: t });
+        if (t && t.id && !isBlacklistedDemoName(t.fullName || (t as any).name)) {
+          allOperations.push({ collection: 'teachers', id: t.id, data: t });
+        }
       }
     }
 
     // Students
     if (Array.isArray(bundle.students)) {
       for (const s of bundle.students) {
-        if (s && s.id) allOperations.push({ collection: 'students', id: s.id, data: s });
+        if (s && s.id && !isBlacklistedDemoName(s.fullName || (s as any).name)) {
+          allOperations.push({ collection: 'students', id: s.id, data: s });
+        }
       }
     }
 

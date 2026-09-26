@@ -71,22 +71,27 @@ import { ExportActions } from '../components/common/ExportActions';
 import { StatusBadge } from '../components/common/Badge';
 import { getTeacherInitials } from '../utils/initials';
 import { getDefaultOsimPassword } from '../services/seedData';
-import { OsimPrintSlipsModal } from './osim/modals/OsimPrintSlipsModal';
-import { OsimMemberDetailModal } from './osim/modals/OsimMemberDetailModal';
-import { OsimMeetingDetailModal } from './osim/modals/OsimMeetingDetailModal';
-import { OsimAspirationDetailModal } from './osim/modals/OsimAspirationDetailModal';
-import { OsimAccountModal, OsimQuickResetPasswordModal } from './osim/modals/OsimAccountModal';
-import { OsimMeetingModal } from './osim/modals/OsimMeetingModal';
-import { OsimAspirationModal, OsimAspirationResponseModal } from './osim/modals/OsimAspirationModal';
-import { OsimMemberModal } from './osim/modals/OsimMemberModal';
 import {
+  OsimDepartmentModal,
+  OsimAccountModal,
+  OsimQuickResetPasswordModal,
+  OsimAspirationModal,
+  OsimAspirationResponseModal,
+  OsimAspirationDetailModal,
+  OsimMeetingModal,
+  OsimMeetingDetailModal,
+  OsimPrintMeetingModal,
+  OsimMemberModal,
+  OsimMemberDetailModal,
+  OsimPrintSlipsModal,
+  OsimProkerModal,
+  OsimProkerDetailModal,
   OsimGuidanceModal,
   OsimLpjModal,
   OsimValidateLpjModal,
   OsimVetoModal,
   OsimAnnualReportPrintModal
-} from './osim/modals/OsimSupervisionModals';
-import { OsimProkerModal, OsimProkerDetailModal } from './osim/modals/OsimProkerModal';
+} from './osim/modals';
 import {
   OsimProkerTab,
   OsimStrukturTab,
@@ -96,7 +101,6 @@ import {
   OsimMatriksTab,
   OsimRekapTahunanTab
 } from './osim/tabs';
-import { OsimPrintMeetingModal } from './osim/modals/OsimPrintMeetingModal';
 import {
   extractSekbidNumber,
   isBphMember,
@@ -171,8 +175,25 @@ export const OsimPage: React.FC = () => {
     activeAcademicYear,
     schoolSetting,
     syncUserFromCPanel,
-    syncDeleteUserFromCPanel
+    syncDeleteUserFromCPanel,
+    cashAccounts,
+    cashTransactions,
+    addCashTransaction
   } = useSchool();
+
+  // Rekening Kas OSIM & Saldo Kas Riil untuk Transparansi Anggaran LPJ
+  const osimCashAccount = useMemo(() => {
+    return (cashAccounts || []).find(a => a.category === 'OSIM' || a.name.toLowerCase().includes('osim')) || null;
+  }, [cashAccounts]);
+
+  const osimCashBalance = useMemo(() => {
+    if (!osimCashAccount) return 0;
+    const initial = osimCashAccount.initialBalance || 0;
+    const trxs = (cashTransactions || []).filter(t => t.accountId === osimCashAccount.id);
+    const inTotal = trxs.filter(t => t.type === 'MASUK').reduce((acc, t) => acc + (t.amount || 0), 0);
+    const outTotal = trxs.filter(t => t.type === 'KELUAR').reduce((acc, t) => acc + (t.amount || 0), 0);
+    return initial + inTotal - outTotal;
+  }, [osimCashAccount, cashTransactions]);
 
   // Active view tab
   const [activeSubTab, setActiveSubTab] = useState<
@@ -923,6 +944,35 @@ export const OsimPage: React.FC = () => {
         targetRole: 'pengurus_osim',
         link: '#osim'
       });
+
+      // Sinkronisasi otomatis ke Buku Kas Kesiswaan (Kategori OSIM) bila ada realisasi anggaran
+      if (selectedProker.budgetRealized && selectedProker.budgetRealized > 0 && osimCashAccount && addCashTransaction) {
+        try {
+          const receiptCode = `BKK-OSIM-${Date.now().toString().slice(-6)}`;
+          await addCashTransaction({
+            accountId: osimCashAccount.id,
+            accountName: osimCashAccount.name,
+            accountCode: osimCashAccount.code,
+            type: 'KELUAR',
+            category: 'Operasional Kesekretariatan',
+            amount: Number(selectedProker.budgetRealized),
+            date: today,
+            title: `Realisasi Proker: ${selectedProker.title} (${selectedProker.sekbid.split(':')[0]})`,
+            description: `Pengeluaran realisasi anggaran LPJ kegiatan "${selectedProker.title}". Penanggung jawab: ${selectedProker.personInCharge}. Disahkan oleh ${approver}.`,
+            recipientOrPayer: selectedProker.personInCharge || 'Pengurus OSIM',
+            referenceNumber: receiptCode,
+            receiptUrl: selectedProker.lpjFileUrl || (selectedProker.photos && selectedProker.photos.length > 0 ? selectedProker.photos[0] : undefined),
+            status: 'VERIFIED',
+            recordedByUid: currentUser?.uid || 'system',
+            recordedByName: currentUser?.displayName || approver,
+            recordedByRole: currentUser?.role || 'pembina_osim',
+            academicYear: selectedProker.academicYear || activeAcademicYear,
+            notes: `Tercatat otomatis dari Validasi LPJ OSIM Sah`
+          });
+        } catch (trxErr) {
+          console.warn('Note on auto cash sync:', trxErr);
+        }
+      }
 
       setIsValidatingLpjOpen(false);
       alert(`Program kerja "${selectedProker.title}" telah berstatus "Selesai & Sah" dan resmi terakumulasi dalam Rekap Tahunan Kesiswaan (${authorityLabel})!`);
@@ -2539,6 +2589,9 @@ export const OsimPage: React.FC = () => {
           activeAcademicYear={activeAcademicYear}
           getStatusBadge={getStatusBadge}
           onOpenDetailProker={handleOpenDetailProker}
+          osimCashBalance={osimCashBalance}
+          osimCashAccountName={osimCashAccount?.name}
+          onNavigateToCashLedger={() => { window.location.hash = '#cash'; }}
         />
       )}
 
@@ -2556,6 +2609,9 @@ export const OsimPage: React.FC = () => {
           onPrintAnnualReport={() => setIsAnnualReportPrintOpen(true)}
           onOpenDetailProker={handleOpenDetailProker}
           onNavigateToProkerTab={() => setActiveSubTab('proker')}
+          osimCashBalance={osimCashBalance}
+          osimCashAccountName={osimCashAccount?.name}
+          onNavigateToCashLedger={() => { window.location.hash = '#cash'; }}
         />
       )}
 
@@ -2754,7 +2810,7 @@ export const OsimPage: React.FC = () => {
         meetingForm={meetingForm}
         setMeetingForm={setMeetingForm}
         onSaveMeeting={handleSaveMeeting}
-        isEditing={false}
+        isEditing={Boolean(selectedMeeting)}
       />
 
       {/* Modal Detail Pengurus OSIM */}
@@ -2816,7 +2872,7 @@ export const OsimPage: React.FC = () => {
         onClose={() => setIsMemberDeleteOpen(false)}
         onConfirm={handleDeleteMemberConfirm}
         title="Hapus Pengurus OSIM?"
-        message={`Apakah Anda yakin ingin menghapus "${selectedMember?.fullName}" dari struktur pengurus OSIM?`}
+        message={`Apakah Anda yakin ingin menghapus "${selectedMember?.fullName}" dari struktur pengurus OSIM? Tindakan ini hanya menghapus status kepengurusan OSIM dan akun login OSIM terkait, dan TIDAK AKAN menghapus data siswa dari kelas atau Buku Induk Siswa.`}
         confirmText="Hapus Pengurus"
         type="danger"
       />
@@ -2890,6 +2946,40 @@ export const OsimPage: React.FC = () => {
         osimMembers={osimMembers}
         schoolSetting={schoolSetting}
         activeAcademicYear={activeAcademicYear}
+      />
+
+      {/* MODAL KELOLA / TAMBAH SEKSI BIDANG & KOORDINATOR OSIM */}
+      <OsimDepartmentModal
+        isOpen={isDeptModalOpen}
+        onClose={() => setIsDeptModalOpen(false)}
+        selectedDept={selectedDept}
+        deptForm={deptForm}
+        setDeptForm={setDeptForm}
+        onSaveDept={handleSaveDept}
+        students={students}
+        osimMembers={osimMembers}
+      />
+
+      {/* Dialog Konfirmasi Hapus Bidang */}
+      <ConfirmDialog
+        isOpen={isDeptDeleteOpen}
+        onClose={() => setIsDeptDeleteOpen(false)}
+        onConfirm={handleDeleteDeptConfirm}
+        title="Hapus Seksi Bidang OSIM?"
+        message={`Apakah Anda yakin ingin menghapus bidang "${selectedDept?.name}"? Tindakan ini akan mengosongkan relasi bidang terkait.`}
+        confirmText="Hapus Bidang"
+        type="danger"
+      />
+
+      {/* Dialog Konfirmasi Reset Bidang ke Standar */}
+      <ConfirmDialog
+        isOpen={isDeptResetOpen}
+        onClose={() => setIsDeptResetOpen(false)}
+        onConfirm={handleResetDeptConfirm}
+        title="Reset Struktur Seksi Bidang?"
+        message="Apakah Anda yakin ingin mengembalikan struktur seksi bidang ke 8 Sekbid standar madrasah? Data nama dan urutan bidang akan dikembalikan ke konfigurasi resmi madrasah."
+        confirmText="Reset Standar"
+        type="danger"
       />
 
       {/* Dialog Konfirmasi Hapus Akun OSIM */}

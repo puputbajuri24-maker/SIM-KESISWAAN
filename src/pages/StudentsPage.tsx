@@ -409,6 +409,13 @@ export const StudentsPage: React.FC = () => {
         );
         const currentActiveEkskulIds = currentActiveMemberships.map(m => m.extracurricularId);
 
+        // Remove unselected extracurriculars
+        for (const mem of currentActiveMemberships) {
+          if (!formEkskulIds.includes(mem.extracurricularId)) {
+            await removeMember(mem.id);
+          }
+        }
+
         // Add newly selected extracurriculars
         for (const ekskulId of formEkskulIds) {
           if (!currentActiveEkskulIds.includes(ekskulId)) {
@@ -461,6 +468,8 @@ export const StudentsPage: React.FC = () => {
               period: activeAcademicYear
             });
           }
+        } else if (existingOsim) {
+          await deleteOsimMember(existingOsim.id);
         }
       }
     } catch (err) {

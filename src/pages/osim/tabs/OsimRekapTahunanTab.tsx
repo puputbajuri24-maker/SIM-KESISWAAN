@@ -6,7 +6,8 @@ import {
   Image as ImageIcon,
   Compass,
   Search,
-  Filter
+  Filter,
+  Wallet
 } from 'lucide-react';
 import { OsimWorkProgram } from '../../../types';
 import { ExportActions } from '../../../components/common/ExportActions';
@@ -21,6 +22,9 @@ export interface OsimRekapTahunanTabProps {
   onPrintAnnualReport: () => void;
   onOpenDetailProker: (proker: OsimWorkProgram) => void;
   onNavigateToProkerTab: () => void;
+  osimCashBalance?: number;
+  osimCashAccountName?: string;
+  onNavigateToCashLedger?: () => void;
 }
 
 export const OsimRekapTahunanTab: React.FC<OsimRekapTahunanTabProps> = ({
@@ -32,7 +36,10 @@ export const OsimRekapTahunanTab: React.FC<OsimRekapTahunanTabProps> = ({
   activeAcademicYear,
   onPrintAnnualReport,
   onOpenDetailProker,
-  onNavigateToProkerTab
+  onNavigateToProkerTab,
+  osimCashBalance = 0,
+  osimCashAccountName,
+  onNavigateToCashLedger
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterSekbid, setFilterSekbid] = useState<string>('all');
@@ -154,6 +161,46 @@ export const OsimRekapTahunanTab: React.FC<OsimRekapTahunanTabProps> = ({
               <span className="text-[10px] text-zinc-400">Peserta Hadir</span>
             </div>
           </div>
+        </div>
+
+        {/* Transparansi Rekening Kas OSIM */}
+        <div className="mt-3 pt-3 border-t border-zinc-800/80 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-zinc-950/60 p-3 rounded-lg border border-emerald-500/20">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0">
+              <Wallet className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-zinc-200 uppercase font-mono tracking-wide">
+                  {osimCashAccountName || 'Rekening Kas OSIM & Intrakurikuler'}
+                </span>
+                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                  REKAP LPJ SAH
+                </span>
+              </div>
+              <p className="text-[11px] text-zinc-400 mt-0.5">
+                Saldo Kas Terkini:{' '}
+                <strong className="text-emerald-400 font-mono">
+                  Rp {osimCashBalance.toLocaleString('id-ID')}
+                </strong>
+                {' '}• Total Pengeluaran LPJ Sah Terverifikasi:{' '}
+                <strong className="text-zinc-200 font-mono">
+                  Rp {rekapTotalRealized.toLocaleString('id-ID')}
+                </strong>
+              </p>
+            </div>
+          </div>
+
+          {onNavigateToCashLedger && (
+            <button
+              type="button"
+              onClick={onNavigateToCashLedger}
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 rounded text-xs font-semibold tracking-wide transition shrink-0"
+            >
+              <span>Lihat Ledger Kas OSIM</span>
+              <ExternalLink className="w-3.5 h-3.5 text-emerald-400" />
+            </button>
+          )}
         </div>
       </div>
 

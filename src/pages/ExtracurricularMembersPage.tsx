@@ -334,9 +334,8 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
 
     setIsSavingQuickStudent(true);
     try {
-      const newStudentId = `s_${Date.now()}`;
       // 1. Simpan ke data pokok siswa
-      await addStudent({
+      const createdStudent = await addStudent({
         nis: quickStudentNis.trim(),
         nisn: quickStudentNisn.trim() || '',
         fullName: quickStudentName.trim(),
@@ -353,11 +352,11 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
         status: 'Aktif'
       });
 
-      // 2. Daftarkan langsung sebagai anggota ekstrakurikuler
+      // 2. Daftarkan langsung sebagai anggota ekstrakurikuler dengan ID siswa yang terdaftar
       await addMember({
         extracurricularId: targetEkskulId,
         extracurricularName: ekskul.name,
-        studentId: newStudentId,
+        studentId: createdStudent?.id || `s_${Date.now()}`,
         studentName: quickStudentName.trim(),
         studentNis: quickStudentNis.trim(),
         studentClass: className,
@@ -1929,8 +1928,8 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
         isOpen={isDeleteOpen}
         onClose={() => setIsDeleteOpen(false)}
         onConfirm={handleDeleteConfirm}
-        title="Keluarkan Anggota"
-        message={`Apakah Anda yakin ingin mengeluarkan siswa ${selectedMember?.studentName} dari ekstrakurikuler ${selectedMember?.extracurricularName}?`}
+        title="Keluarkan Anggota Ekstrakurikuler"
+        message={`Apakah Anda yakin ingin mengeluarkan siswa "${selectedMember?.studentName}" dari ekstrakurikuler ${selectedMember?.extracurricularName}? Tindakan ini hanya menghapus keanggotaan ekstrakurikuler, dan data siswa tetap aman tersimpan di kelas dan Buku Induk Siswa.`}
         confirmText="Keluarkan Siswa"
       />
 
@@ -1940,7 +1939,7 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
         onClose={() => setIsBulkDeleteOpen(false)}
         onConfirm={handleBulkDeleteConfirm}
         title="Keluarkan / Hapus Anggota Massal"
-        message={`Apakah Anda yakin ingin mengeluarkan ${selectedMemberIds.size} siswa terpilih dari ekstrakurikuler terkait? Tindakan ini akan menghapus data keanggotaan mereka.`}
+        message={`Apakah Anda yakin ingin mengeluarkan ${selectedMemberIds.size} siswa terpilih dari ekstrakurikuler terkait? Tindakan ini hanya menghapus status keanggotaan ekstrakurikuler dan TIDAK AKAN menghapus data siswa dari kelas atau Buku Induk Siswa.`}
         confirmText={isProcessingBulk ? "Memproses..." : `Ya, Keluarkan ${selectedMemberIds.size} Anggota`}
       />
     </div>

@@ -2849,7 +2849,7 @@ export const CPanelPage: React.FC = () => {
         onClose={() => setIsDeleteModalOpen(false)}
         onConfirm={handleConfirmDeleteUser}
         title="Hapus Akun Pengguna"
-        message={`Apakah Anda yakin ingin menghapus akun "${selectedUserForAction?.displayName}" (${selectedUserForAction?.email}) dari cPanel Kesiswaan? Tindakan ini tidak dapat dibatalkan.`}
+        message={`Apakah Anda yakin ingin menghapus akun "${selectedUserForAction?.displayName}" (${selectedUserForAction?.email}) dari cPanel Kesiswaan? Tindakan ini hanya menghapus hak akses akun login. Data siswa di kelas maupun Buku Induk Siswa tetap tersimpan aman dan tidak akan terhapus.`}
         confirmLabel="Hapus Akun"
         variant="danger"
       />
