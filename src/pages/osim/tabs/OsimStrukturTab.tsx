@@ -14,6 +14,7 @@ import {
   RotateCcw
 } from 'lucide-react';
 import { OsimMember, OsimDepartment, OsimWorkProgram, SchoolSetting, Teacher } from '../../../types';
+import { isBphMember } from '../../../utils/osimAccountHelper';
 
 export interface OsimStrukturTabProps {
   canCrudMembers: boolean;
@@ -33,7 +34,7 @@ export interface OsimStrukturTabProps {
   teachers: Teacher[];
   getTeacherInitials: (name: string) => string;
   osimMembers: OsimMember[];
-  onOpenAddBph: () => void;
+  onOpenAddBph: (defaultPosition?: string) => void;
   onOpenDetailMember: (member: OsimMember, e?: React.MouseEvent) => void;
   onOpenManageAccountForMember: (member: OsimMember, e: React.MouseEvent) => void;
   onOpenEditMember: (member: OsimMember, e: React.MouseEvent) => void;
@@ -276,7 +277,7 @@ export const OsimStrukturTab: React.FC<OsimStrukturTabProps> = ({
             <span className="text-[11px] font-mono text-zinc-400">Ketua Umum, Wakil, Sekretaris & Bendahara</span>
             {canManageCabinetStructure && (
               <button
-                onClick={onOpenAddBph}
+                onClick={() => onOpenAddBph()}
                 className="px-2.5 py-1 rounded bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border border-amber-500/30 text-xs font-semibold flex items-center gap-1 transition"
                 title="Tambah Pengurus Badan Pengurus Harian (BPH)"
               >
@@ -287,9 +288,167 @@ export const OsimStrukturTab: React.FC<OsimStrukturTabProps> = ({
           </div>
         </div>
 
+        {/* Grid 4 Pilar BPH (Persisten - Kolom BPH Tidak Akan Hilang Saat Dirubah atau Dihapus) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {[
+            { key: 'ketua', title: 'Ketua Umum OSIM', defaultPosition: 'Ketua Umum OSIM' },
+            { key: 'wakil', title: 'Wakil Ketua OSIM', defaultPosition: 'Wakil Ketua 1' },
+            { key: 'sekretaris', title: 'Sekretaris Umum', defaultPosition: 'Sekretaris Umum' },
+            { key: 'bendahara', title: 'Bendahara Umum', defaultPosition: 'Bendahara Umum' }
+          ].map(slot => {
+            const currentBphMembers = osimMembers.filter(m => isBphMember(m));
+            const bph = currentBphMembers.find(m => {
+              const pos = (m.position || '').toLowerCase();
+              if (slot.key === 'ketua') return pos.includes('ketua') && !pos.includes('wakil') && !pos.includes('sekbid') && !pos.includes('bidang');
+              if (slot.key === 'wakil') return pos.includes('wakil');
+              if (slot.key === 'sekretaris') return pos.includes('sekretaris');
+              if (slot.key === 'bendahara') return pos.includes('bendahara');
+              return false;
+            });
+
+            if (bph) {
+              return (
+                <div
+                  key={bph.id}
+                  onClick={() => onOpenDetailMember(bph)}
+                  className="bg-zinc-900/90 border border-zinc-800 hover:border-amber-500/40 rounded-lg p-3.5 transition flex flex-col justify-between cursor-pointer group shadow-sm"
+                >
+                  <div>
+                    <div className="flex items-start gap-3 mb-2">
+                      {bph.photoUrl ? (
+                        <img
+                          src={bph.photoUrl}
+                          alt={bph.fullName}
+                          referrerPolicy="no-referrer"
+                          className="w-12 h-12 rounded-full object-cover border border-amber-500/40 shrink-0"
+                        />
+                      ) : (
+                        <div className="w-12 h-12 rounded-full bg-amber-500/20 text-amber-400 font-bold flex items-center justify-center border border-amber-500/30 shrink-0 text-sm">
+                          {bph.fullName.charAt(0)}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                          {bph.position}
+                        </span>
+                        <h4 className="font-bold text-xs text-zinc-100 group-hover:text-amber-400 mt-1 truncate transition">{bph.fullName}</h4>
+                        <p className="text-[10px] text-zinc-400 font-mono">{bph.className} • NIS {bph.studentNis}</p>
+                      </div>
+                    </div>
+
+                    <p className="text-[11px] text-zinc-400 italic mt-2 line-clamp-2 border-t border-zinc-800 pt-2">
+                      "{bph.vision || 'Mewujudkan visi madrasah berprestasi'}"
+                    </p>
+                  </div>
+
+                  <div className="mt-3 pt-2 border-t border-zinc-800/80 flex items-center justify-between text-[10px]">
+                    <span className="text-zinc-500 font-mono">📱 {bph.phone}</span>
+                    <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                      <button
+                        onClick={e => onOpenDetailMember(bph, e)}
+                        className="p-1 rounded bg-zinc-800 text-zinc-400 hover:text-cyan-400 transition"
+                        title="Lihat Detail Pengurus"
+                      >
+                        <Eye className="w-3 h-3" />
+                      </button>
+                      {canManageCabinetStructure && (
+                        <>
+                          {canManageOsimAccounts && (
+                            <button
+                              onClick={e => onOpenManageAccountForMember(bph, e)}
+                              className="p-1 rounded bg-zinc-800 text-amber-400 hover:bg-amber-500/20 transition"
+                              title="Kelola Akun & Kata Sandi Siswa"
+                            >
+                              <Key className="w-3 h-3" />
+                            </button>
+                          )}
+                          <button
+                            onClick={e => onOpenEditMember(bph, e)}
+                            className="p-1 rounded bg-zinc-800 text-zinc-400 hover:text-amber-400 transition"
+                            title="Edit Pengurus"
+                          >
+                            <Edit2 className="w-3 h-3" />
+                          </button>
+                          <button
+                            onClick={e => {
+                              e.stopPropagation();
+                              onDeleteMember(bph);
+                            }}
+                            className="p-1 rounded bg-zinc-800 text-zinc-400 hover:text-rose-400 transition"
+                            title="Hapus Pengurus"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+            // Slot BPH Kosong: Menjaga kolom BPH tetap muncul dan stabil di UI
+            return (
+              <div
+                key={`empty-slot-${slot.key}`}
+                className="bg-zinc-950/60 border border-dashed border-zinc-800 hover:border-amber-500/50 rounded-lg p-3.5 transition flex flex-col justify-between min-h-[165px] group shadow-inner"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-zinc-800/80 text-zinc-400 border border-zinc-700/60">
+                      {slot.title}
+                    </span>
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-mono text-amber-400/90 bg-amber-500/10 border border-amber-500/20">
+                      Belum Terisi
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-2">
+                    <div className="w-9 h-9 rounded-full bg-zinc-900 border border-dashed border-zinc-700 flex items-center justify-center text-zinc-500 group-hover:text-amber-400 group-hover:border-amber-500/40 transition shrink-0">
+                      <Crown className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-semibold text-zinc-300 group-hover:text-amber-300 transition">
+                        {slot.title}
+                      </h4>
+                      <p className="text-[10px] text-zinc-500">Jabatan Inti BPH</p>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-zinc-500 mt-2 line-clamp-2 border-t border-zinc-900 pt-1.5 leading-relaxed">
+                    Posisi ini kosong setelah dihapus atau belum ditetapkan. Tetapkan pengurus baru sekarang.
+                  </p>
+                </div>
+
+                <div className="mt-3 pt-2 border-t border-zinc-800/60">
+                  {canManageCabinetStructure ? (
+                    <button
+                      type="button"
+                      onClick={() => onOpenAddBph(slot.defaultPosition)}
+                      className="w-full py-1.5 px-2 rounded bg-amber-500/15 hover:bg-amber-500 text-amber-300 hover:text-zinc-950 border border-amber-500/30 text-xs font-semibold flex items-center justify-center gap-1.5 transition shadow-xs"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>+ Tetapkan Pejabat</span>
+                    </button>
+                  ) : (
+                    <span className="text-[10px] text-zinc-500 italic block text-center">
+                      Belum ditetapkan Pembina
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Pengurus BPH Tambahan (Misal: Wakil Ketua 2, Wakil Sekretaris, Wakil Bendahara) */}
           {osimMembers
-            .filter(m => m.sekbid === 'BPH (Badan Pengurus Harian)' || m.position.toLowerCase().includes('ketua') || m.position.toLowerCase().includes('sekretaris') || m.position.toLowerCase().includes('bendahara'))
+            .filter(m => isBphMember(m))
+            .filter(m => {
+              const pos = (m.position || '').toLowerCase();
+              const isCoreKetua = pos.includes('ketua') && !pos.includes('wakil') && !pos.includes('sekbid') && !pos.includes('bidang');
+              const isCoreWakil1 = pos === 'wakil ketua 1' || pos === 'wakil ketua umum' || (pos.includes('wakil') && !pos.includes('2'));
+              const isCoreSekretaris = pos === 'sekretaris umum' || (pos.includes('sekretaris') && !pos.includes('wakil'));
+              const isCoreBendahara = pos === 'bendahara umum' || (pos.includes('bendahara') && !pos.includes('wakil'));
+              return !isCoreKetua && !isCoreWakil1 && !isCoreSekretaris && !isCoreBendahara;
+            })
             .map(bph => (
               <div
                 key={bph.id}
@@ -378,7 +537,7 @@ export const OsimStrukturTab: React.FC<OsimStrukturTabProps> = ({
             <div className="flex items-center gap-2">
               <Layers className="w-4 h-4 text-amber-400" />
               <h3 className="text-xs font-mono font-bold uppercase text-zinc-200 tracking-wider">
-                STRUKTUR BIDANG & DEWAN SEKSI BIDANG ({sortedDepartments.length} Bidang Terdaftar)
+                STRUKTUR BIDANG & DEWAN SEKSI BIDANG ({sortedDepartments.filter(d => d.code !== 'BPH' && !d.name.startsWith('BPH')).length} Bidang Terdaftar)
               </h3>
             </div>
             <p className="text-[11px] text-zinc-400 mt-0.5">
@@ -407,10 +566,10 @@ export const OsimStrukturTab: React.FC<OsimStrukturTabProps> = ({
           )}
         </div>
 
-        {/* Department Accordions / Cards */}
+        {/* Department Accordions / Cards (Seksi Bidang) */}
         <div className="space-y-4">
           {sortedDepartments
-            .filter(dept => filterSekbid === 'all' || dept.name === filterSekbid)
+            .filter(dept => dept.code !== 'BPH' && !dept.name.startsWith('BPH') && (filterSekbid === 'all' || dept.name === filterSekbid))
             .map(dept => {
               const deptMembers = filteredMembers.filter(m => m.sekbid === dept.name);
               const deptPrograms = osimPrograms.filter(p => p.sekbid === dept.name);

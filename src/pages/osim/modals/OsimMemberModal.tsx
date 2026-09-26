@@ -1,5 +1,5 @@
 import React from 'react';
-import { Check, Edit2, RotateCcw, Layers, Search, Crown, Key, Eye, EyeOff, GraduationCap } from 'lucide-react';
+import { Check, Edit2, RotateCcw, Layers, Search, Crown, Key, Eye, EyeOff, GraduationCap, ShieldCheck } from 'lucide-react';
 import { Modal } from '../../../components/common/Modal';
 import { Student, OsimMember, OsimSekbid } from '../../../types';
 
@@ -64,6 +64,11 @@ export const OsimMemberModal: React.FC<OsimMemberModalProps> = ({
   showMemberLoginPassword,
   setShowMemberLoginPassword
 }) => {
+  const posLower = (memberForm.position || '').toLowerCase();
+  const isRoleHolder = memberCategoryTab === 'bph' || (
+    memberCategoryTab === 'sekbid' && (posLower.includes('ketua') || posLower.includes('koordinator'))
+  );
+
   return (
     <Modal
       isOpen={isOpen}
@@ -535,51 +540,66 @@ export const OsimMemberModal: React.FC<OsimMemberModalProps> = ({
             />
           </div>
 
-          {/* Otorisasi Pembina OSIM: Manajemen Akun & Kata Sandi Siswa */}
-          {canManageOsimAccounts && (
-            <div className="bg-amber-950/20 border border-amber-500/40 rounded-lg p-3 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 text-amber-400 font-semibold text-xs">
-                  <Key className="w-3.5 h-3.5" />
-                  <span>Akun & Kata Sandi Login Pengurus (Hak Akses Pembina)</span>
+          {/* Manajemen Akun Login: Hanya untuk Pemegang Peran (BPH & Ketua Sekbid) */}
+          {isRoleHolder ? (
+            canManageOsimAccounts && (
+              <div className="bg-amber-950/20 border border-amber-500/40 rounded-lg p-3 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-amber-400 font-semibold text-xs">
+                    <Key className="w-3.5 h-3.5" />
+                    <span>Akun & Kata Sandi Login Pengurus (Daftarkan ke cPanel Admin)</span>
+                  </div>
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold">
+                    HAK AKSES ROLE
+                  </span>
                 </div>
-                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold">
-                  KENDALI PENUH
-                </span>
-              </div>
-              <p className="text-[11px] text-zinc-400">
-                Pembina OSIM memiliki wewenang penuh mengatur akses login anggota OSIM. Jika Anda merubah kata sandi di bawah ini, password lama siswa akan otomatis langsung tergantikan.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-                <div>
-                  <label className="block text-[11px] font-medium text-zinc-300 mb-1">Username Login Siswa</label>
-                  <input
-                    type="text"
-                    placeholder="Contoh: 24251001 atau osim.ketua"
-                    value={memberLoginUsername}
-                    onChange={e => setMemberLoginUsername(e.target.value)}
-                    className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded text-xs text-zinc-100 focus:outline-none focus:border-amber-500 font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-medium text-zinc-300 mb-1">Kata Sandi Login</label>
-                  <div className="relative">
+                <p className="text-[11px] text-zinc-400">
+                  {memberCategoryTab === 'bph'
+                    ? 'Pejabat BPH memiliki hak akses login pengurus inti. Akun ini otomatis terdaftar di cPanel Admin.'
+                    : 'Ketua / Koordinator Sekbid memiliki hak akses login untuk mengelola program kerja & proposal bidangnya di cPanel.'}
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                  <div>
+                    <label className="block text-[11px] font-medium text-zinc-300 mb-1">Username Login Siswa *</label>
                     <input
-                      type={showMemberLoginPassword ? 'text' : 'password'}
-                      placeholder="Masukkan password baru"
-                      value={memberLoginPassword}
-                      onChange={e => setMemberLoginPassword(e.target.value)}
-                      className="w-full pl-3 pr-8 py-2 bg-zinc-900 border border-zinc-700 rounded text-xs text-zinc-100 focus:outline-none focus:border-amber-500 font-mono"
+                      type="text"
+                      placeholder="Contoh: 24251001 atau osim.ketua"
+                      value={memberLoginUsername}
+                      onChange={e => setMemberLoginUsername(e.target.value)}
+                      className="w-full px-3 py-2 bg-zinc-900 border border-zinc-700 rounded text-xs text-zinc-100 focus:outline-none focus:border-amber-500 font-mono"
                     />
-                    <button
-                      type="button"
-                      onClick={() => setShowMemberLoginPassword(!showMemberLoginPassword)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-200"
-                    >
-                      {showMemberLoginPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                    </button>
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium text-zinc-300 mb-1">Kata Sandi Login *</label>
+                    <div className="relative">
+                      <input
+                        type={showMemberLoginPassword ? 'text' : 'password'}
+                        placeholder="Masukkan password baru"
+                        value={memberLoginPassword}
+                        onChange={e => setMemberLoginPassword(e.target.value)}
+                        className="w-full pl-3 pr-8 py-2 bg-zinc-900 border border-zinc-700 rounded text-xs text-zinc-100 focus:outline-none focus:border-amber-500 font-mono"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowMemberLoginPassword(!showMemberLoginPassword)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-200"
+                      >
+                        {showMemberLoginPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
                   </div>
                 </div>
+              </div>
+            )
+          ) : (
+            /* Anggota Sekbid Biasa: Non-Role (Tidak Dibuatkan Akun Login & Tidak Masuk cPanel) */
+            <div className="bg-emerald-950/20 border border-emerald-500/30 rounded-lg p-3 flex items-start gap-2.5 text-xs text-emerald-200">
+              <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-bold text-emerald-300">Status: Anggota Sekbid (Staf Bidang - Tanpa Role Akun cPanel)</span>
+                <p className="text-[11px] text-zinc-300 mt-1 leading-relaxed">
+                  Siswa ini ditugaskan sebagai <strong>Anggota Sekbid</strong>. Sesuai kebijakan madrasah, anggota bidang tidak diberikan akun login sistem dan tidak membebani cPanel Admin, namun tetap resmi terdaftar dalam struktur organisasi kabinet, SK kepengurusan, dan absensi kegiatan.
+                </p>
               </div>
             </div>
           )}

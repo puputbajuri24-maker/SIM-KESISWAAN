@@ -25,6 +25,47 @@ export const cleanDigits = (val?: string): string => {
 const DELETED_UIDS_KEY = 'sim_kesiswaan_deleted_user_uids';
 
 /**
+ * Functional OSIM & administrative role UIDs that must NEVER be permanently tombstoned.
+ * When individual persons change or resign, the role/position slot itself remains available.
+ */
+export const PROTECTED_FUNCTIONAL_UIDS = new Set([
+  'user_super_admin',
+  'super_admin',
+  'user_waka',
+  'user_guru_bk',
+  'user_pembina_osim',
+  'user_osim_dept_bph',
+  'user_osim_ketua',
+  'user_osim_wakil',
+  'user_osim_sekretaris',
+  'user_osim_bendahara',
+  'osim.ketua',
+  'osim.wakil',
+  'osim.sekretaris',
+  'osim.bendahara',
+  'dept_bph',
+  'user_osim_dept_sekbid_1',
+  'user_osim_dept_sekbid_2',
+  'user_osim_dept_sekbid_3',
+  'user_osim_dept_sekbid_4',
+  'user_osim_dept_sekbid_5',
+  'user_osim_dept_sekbid_6',
+  'user_osim_dept_sekbid_7',
+  'user_osim_dept_sekbid_8'
+]);
+
+export const isProtectedFunctionalUid = (uid?: string): boolean => {
+  if (!uid) return false;
+  const clean = uid.toLowerCase().trim();
+  if (PROTECTED_FUNCTIONAL_UIDS.has(clean)) return true;
+  if (/^user_osim_dept_sekbid_\d+$/.test(clean)) return true;
+  if (/^osim\.sekbid\d+$/.test(clean)) return true;
+  if (/^user_osim_(ketua|wakil|sekretaris|bendahara|sekbid)$/.test(clean)) return true;
+  if (/^user_osim_dept_/.test(clean)) return true;
+  return false;
+};
+
+/**
  * Tombstone tracking for deleted user accounts so stale local caches or
  * un-purged default demo sets never resurrect deleted accounts.
  */
@@ -33,20 +74,30 @@ export const getDeletedUids = (): Set<string> => {
     const raw = localStorage.getItem(DELETED_UIDS_KEY);
     if (raw) {
       const arr = JSON.parse(raw);
-      if (Array.isArray(arr)) return new Set(arr);
+      if (Array.isArray(arr)) {
+        // Filter out any protected functional UIDs so they are unblocked automatically
+        const valid = arr.filter(id => !isProtectedFunctionalUid(id));
+        if (valid.length !== arr.length) {
+          localStorage.setItem(DELETED_UIDS_KEY, JSON.stringify(valid));
+        }
+        return new Set(valid);
+      }
     }
   } catch (e) {}
   return new Set();
 };
 
 export const addDeletedUid = (uid: string) => {
-  if (!uid) return;
+  if (!uid || isProtectedFunctionalUid(uid)) return;
   try {
     const set = getDeletedUids();
     set.add(uid);
     // Also add related prefix variations if applicable
     if (uid.startsWith('user_')) {
-      set.add(uid.replace(/^user_/, ''));
+      const clean = uid.replace(/^user_/, '');
+      if (!isProtectedFunctionalUid(clean)) {
+        set.add(clean);
+      }
     }
     localStorage.setItem(DELETED_UIDS_KEY, JSON.stringify(Array.from(set)));
   } catch (e) {}
@@ -340,22 +391,28 @@ export const getCanonicalBphPositionKey = (position?: string, sekbid?: string): 
   const pos = position.toLowerCase().trim();
   const sek = (sekbid || '').toLowerCase().trim();
 
+  // If it clearly belongs to a Sekbid (e.g. Ketua Sekbid, Sekretaris Bidang), it is not BPH
+  const hasSekbid = (sek + ' ' + pos).match(/sekbid\s*[-_]?\s*(\d+)/i) || pos.includes('sekbid') || pos.includes('bidang');
+  if (hasSekbid && !sek.includes('bph')) return null;
+
   const isBph = sek.includes('bph') || 
+    sek.includes('badan pengurus harian') ||
     pos.includes('ketua umum') || 
     pos.includes('wakil ketua') || 
-    pos.includes('sekretaris') || 
-    pos.includes('bendahara');
+    pos.includes('sekretaris umum') || 
+    pos.includes('bendahara umum') ||
+    (!hasSekbid && (pos.includes('ketua') || pos.includes('wakil') || pos.includes('sekretaris') || pos.includes('bendahara')));
 
   if (!isBph) return null;
 
   if (pos.includes('wakil')) return 'bph_wakil_ketua';
-  if (pos.includes('ketua') && !pos.includes('sekbid')) return 'bph_ketua_umum';
+  if (pos.includes('ketua') && !pos.includes('sekbid') && !pos.includes('bidang')) return 'bph_ketua_umum';
   if (pos.includes('sekretaris 1') || pos.includes('sekretaris umum') || pos === 'sekretaris') return 'bph_sekretaris_1';
   if (pos.includes('sekretaris 2') || pos.includes('wakil sekretaris')) return 'bph_sekretaris_2';
   if (pos.includes('bendahara 1') || pos.includes('bendahara umum') || pos === 'bendahara') return 'bph_bendahara_1';
   if (pos.includes('bendahara 2') || pos.includes('wakil bendahara')) return 'bph_bendahara_2';
 
-  return null;
+  return 'bph_pengurus';
 };
 
 /**

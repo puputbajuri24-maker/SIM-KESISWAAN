@@ -24,7 +24,10 @@ import {
   UserPlus
 } from 'lucide-react';
 import { useSchool } from '../../contexts/SchoolContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { Teacher, Extracurricular, ExtracurricularMember, OsimMember, UserProfile, UserRole } from '../../types';
+import { extractSekbidNumber, cleanDigits, isBphMember, getDefaultOsimUsername, getDefaultOsimPasswordForMember } from '../../utils/osimAccountHelper';
+import { getDefaultOsimPassword } from '../../services/seedData';
 
 interface CentralizedCrudManagerProps {
   currentUser: UserProfile | null;
@@ -56,9 +59,13 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
     addOsimMember,
     updateOsimMember,
     deleteOsimMember,
+    osimDepartments,
+    updateOsimDepartment,
     students,
     activeAcademicYear
   } = useSchool();
+
+  const { addUser, updateUser, deleteUser } = useAuth();
 
   const [activeTab, setActiveTab] = useState<'teachers' | 'pembina_intra' | 'pembina_ekstra' | 'guru_bk' | 'members'>('teachers');
   const [memberSubTab, setMemberSubTab] = useState<'ekskul' | 'osim'>('ekskul');
@@ -512,9 +519,15 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
   const [editingOsimMember, setEditingOsimMember] = useState<OsimMember | null>(null);
   const [osimMemberForm, setOsimMemberForm] = useState({
     studentId: '',
-    position: 'Anggota',
-    sekbid: 'Sekbid 1: Keimanan & Ketaqwaan' as any,
-    departmentName: 'Seksi Bidang 1'
+    fullName: '',
+    studentNis: '',
+    className: '',
+    position: 'Anggota Sekbid',
+    sekbid: 'Sekbid 1: Keimanan, Ketaqwaan & Moderasi Beragama' as any,
+    departmentName: 'Seksi Bidang 1',
+    status: 'Aktif' as 'Aktif' | 'Demisioner' | 'Nonaktif',
+    phone: '',
+    flagshipProgram: ''
   });
 
   const handleOpenAddEkskulMember = () => {
@@ -610,11 +623,35 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
 
   const handleOpenAddOsimMember = () => {
     setEditingOsimMember(null);
+    const firstStudent = students[0];
     setOsimMemberForm({
-      studentId: students[0]?.id || '',
-      position: 'Anggota',
-      sekbid: 'Sekbid 1: Keimanan & Ketaqwaan',
-      departmentName: 'Seksi Bidang 1'
+      studentId: firstStudent?.id || '',
+      fullName: firstStudent?.fullName || '',
+      studentNis: firstStudent?.nis || '',
+      className: firstStudent?.className || '',
+      position: 'Anggota Sekbid',
+      sekbid: 'Sekbid 1: Keimanan, Ketaqwaan & Moderasi Beragama',
+      departmentName: 'Seksi Bidang 1',
+      status: 'Aktif',
+      phone: (firstStudent as any)?.phone || '',
+      flagshipProgram: ''
+    });
+    setIsOsimMemberModalOpen(true);
+  };
+
+  const handleOpenEditOsimMember = (om: OsimMember) => {
+    setEditingOsimMember(om);
+    setOsimMemberForm({
+      studentId: om.studentId || '',
+      fullName: om.fullName,
+      studentNis: om.studentNis || '',
+      className: om.className || '',
+      position: om.position || 'Anggota Sekbid',
+      sekbid: (om.sekbid || 'Sekbid 1: Keimanan, Ketaqwaan & Moderasi Beragama') as any,
+      departmentName: om.sekbid || 'Seksi Bidang 1',
+      status: (om.status === 'Demisioner' || om.status === 'Nonaktif') ? 'Demisioner' : 'Aktif',
+      phone: om.phone || '',
+      flagshipProgram: om.flagshipProgram || ''
     });
     setIsOsimMemberModalOpen(true);
   };
@@ -622,18 +659,101 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
   const handleSaveOsimMember = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const pos = osimMemberForm.position || 'Anggota Sekbid';
+      const posLower = pos.toLowerCase();
+      const isBph = (osimMemberForm.sekbid?.startsWith('BPH') || false) || 
+                    posLower.includes('ketua umum') || 
+                    posLower.includes('wakil ketua') || 
+                    posLower.includes('sekretaris') || 
+                    posLower.includes('bendahara');
+      const isKetuaSekbid = !isBph && (posLower.includes('ketua') || posLower.includes('koordinator'));
+      const isRoleHolder = isBph || isKetuaSekbid;
+      const sekbidNum = extractSekbidNumber(osimMemberForm.sekbid) || extractSekbidNumber(pos);
+
       if (editingOsimMember) {
+        // 1. Update data pengurus di osimMembers
         await updateOsimMember(editingOsimMember.id, {
           position: osimMemberForm.position as any,
-          sekbid: osimMemberForm.sekbid
+          sekbid: osimMemberForm.sekbid,
+          status: osimMemberForm.status as any,
+          phone: osimMemberForm.phone,
+          flagshipProgram: osimMemberForm.flagshipProgram
         });
-        showToast(`Jabatan kabinet "${editingOsimMember.fullName}" berhasil diperbarui.`);
+
+        // 2. Sinkronisasi dengan departemen jika Ketua Sekbid
+        if (isKetuaSekbid && updateOsimDepartment) {
+          const dept = osimDepartments.find(d => 
+            d.name === osimMemberForm.sekbid || 
+            (sekbidNum && (d.code === `SEKBID-${sekbidNum}` || d.name.toLowerCase().includes(`sekbid ${sekbidNum}`)))
+          );
+          if (dept) {
+            await updateOsimDepartment(dept.id, { coordinatorName: editingOsimMember.fullName });
+          }
+        }
+
+        // 3. Sinkronisasi dengan akun cPanel
+        const linkedAccount = allUsers.find(u =>
+          u.uid === editingOsimMember.id ||
+          (cleanDigits(u.nip) && cleanDigits(editingOsimMember.studentNis) && cleanDigits(u.nip) === cleanDigits(editingOsimMember.studentNis)) ||
+          (u.username && editingOsimMember.loginUsername && u.username.toLowerCase() === editingOsimMember.loginUsername.toLowerCase()) ||
+          u.displayName.toLowerCase().trim() === editingOsimMember.fullName.toLowerCase().trim()
+        );
+
+        if (isRoleHolder) {
+          const defaultUsername = editingOsimMember.loginUsername || getDefaultOsimUsername(editingOsimMember);
+          const defaultPassword = editingOsimMember.loginPassword || getDefaultOsimPasswordForMember({ ...editingOsimMember, position: pos as any, sekbid: osimMemberForm.sekbid });
+          const osimRoleVal = isBph
+            ? (posLower.includes('ketua') && !posLower.includes('wakil') ? 'ketua' : posLower.includes('wakil') ? 'wakil' : posLower.includes('sekretaris') ? 'sekretaris' : posLower.includes('bendahara') ? 'bendahara' : 'sekbid')
+            : 'sekbid';
+
+          if (linkedAccount) {
+            await updateUser(linkedAccount.uid, {
+              displayName: editingOsimMember.fullName,
+              role: 'pengurus_osim',
+              osimRole: osimRoleVal,
+              osimPosition: pos,
+              osimDepartmentName: osimMemberForm.sekbid,
+              status: osimMemberForm.status === 'Demisioner' ? 'Nonaktif' : 'Aktif',
+              isCashManager: osimRoleVal === 'bendahara',
+              cashManagerTitle: osimRoleVal === 'bendahara' ? 'Bendahara OSIM' : undefined
+            });
+          } else {
+            const newUid = `user_osim_${Date.now()}`;
+            await addUser({
+              uid: newUid,
+              displayName: editingOsimMember.fullName,
+              username: defaultUsername,
+              email: `${defaultUsername}@madrasah.sch.id`,
+              password: defaultPassword,
+              role: 'pengurus_osim',
+              osimRole: osimRoleVal,
+              osimPosition: pos,
+              osimDepartmentName: osimMemberForm.sekbid,
+              nip: editingOsimMember.studentNis,
+              studentClass: editingOsimMember.className,
+              phone: osimMemberForm.phone || editingOsimMember.phone,
+              status: osimMemberForm.status === 'Demisioner' ? 'Nonaktif' : 'Aktif',
+              isCashManager: osimRoleVal === 'bendahara',
+              cashManagerTitle: osimRoleVal === 'bendahara' ? 'Bendahara OSIM' : undefined,
+              createdAt: new Date().toISOString()
+            });
+          }
+        } else if (linkedAccount && !isRoleHolder) {
+          // Jika diturunkan dari Ketua Sekbid ke Anggota Sekbid biasa, hapus akun login cPanel agar sesuai kebijakan
+          await deleteUser(linkedAccount.uid);
+        }
+
+        showToast(`Data pengurus OSIM "${editingOsimMember.fullName}" berhasil diperbarui & disinkronkan ke cPanel.`);
       } else {
+        // Mode Tambah Pengurus OSIM Terpusat
         const student = students.find(s => s.id === osimMemberForm.studentId);
         if (!student) {
           alert('Pilih siswa yang akan ditugaskan ke OSIM.');
           return;
         }
+
+        const defaultUsername = student.nis || `osim.${student.fullName.toLowerCase().split(' ')[0].replace(/[^a-z0-9]/g, '')}`;
+        const defaultPassword = getDefaultOsimPassword(sekbidNum ? `sekbid${sekbidNum}` : 'sekbid');
 
         await addOsimMember({
           studentId: student.id,
@@ -644,24 +764,88 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
           position: osimMemberForm.position as any,
           sekbid: osimMemberForm.sekbid,
           photoUrl: student.photoUrl || '',
-          phone: (student as any).phone || '',
-          status: 'Aktif',
-          period: activeAcademicYear || '2024/2025'
+          phone: osimMemberForm.phone || (student as any).phone || '',
+          status: osimMemberForm.status || 'Aktif',
+          period: activeAcademicYear || '2026/2027',
+          loginUsername: defaultUsername,
+          loginPassword: defaultPassword
         });
-        showToast(`Siswa "${student.fullName}" resmi ditambahkan ke Kabinet OSIM sebagai ${osimMemberForm.position}.`);
+
+        // Jika Ketua Sekbid atau BPH, buat akun cPanel
+        if (isRoleHolder) {
+          const osimRoleVal = isBph
+            ? (posLower.includes('ketua') && !posLower.includes('wakil') ? 'ketua' : posLower.includes('wakil') ? 'wakil' : posLower.includes('sekretaris') ? 'sekretaris' : posLower.includes('bendahara') ? 'bendahara' : 'sekbid')
+            : 'sekbid';
+
+          const newUid = `user_osim_${Date.now()}`;
+          await addUser({
+            uid: newUid,
+            displayName: student.fullName,
+            username: defaultUsername,
+            email: `${defaultUsername}@madrasah.sch.id`,
+            password: defaultPassword,
+            role: 'pengurus_osim',
+            osimRole: osimRoleVal,
+            osimPosition: pos,
+            osimDepartmentName: osimMemberForm.sekbid,
+            nip: student.nis,
+            studentClass: student.className,
+            phone: osimMemberForm.phone || (student as any).phone,
+            status: 'Aktif',
+            isCashManager: osimRoleVal === 'bendahara',
+            cashManagerTitle: osimRoleVal === 'bendahara' ? 'Bendahara OSIM' : undefined,
+            createdAt: new Date().toISOString()
+          });
+
+          if (isKetuaSekbid && updateOsimDepartment) {
+            const dept = osimDepartments.find(d => 
+              d.name === osimMemberForm.sekbid || 
+              (sekbidNum && (d.code === `SEKBID-${sekbidNum}` || d.name.toLowerCase().includes(`sekbid ${sekbidNum}`)))
+            );
+            if (dept) {
+              await updateOsimDepartment(dept.id, { coordinatorName: student.fullName });
+            }
+          }
+        }
+
+        showToast(`Siswa "${student.fullName}" resmi ditambahkan ke OSIM sebagai ${osimMemberForm.position} & disinkronkan ke cPanel.`);
       }
       setIsOsimMemberModalOpen(false);
     } catch (err) {
       console.error(err);
-      alert('Gagal menyimpan anggota kabinet OSIM.');
+      alert('Gagal menyimpan pengurus OSIM.');
     }
   };
 
   const handleDeleteOsimMemberConfirm = async (om: OsimMember) => {
-    if (window.confirm(`Hapus pengurus OSIM "${om.fullName}" (${om.position}) dari struktur kabinet?`)) {
+    if (window.confirm(`Hapus pengurus OSIM "${om.fullName}" (${om.position}) dari struktur kabinet? Tindakan ini terintegrasi langsung dengan akun login cPanel.`)) {
       try {
         await deleteOsimMember(om.id);
-        showToast(`Pengurus "${om.fullName}" berhasil dihapus dari kabinet OSIM.`);
+
+        // Hapus akun cPanel jika ada
+        const linkedAccount = allUsers.find(u =>
+          u.uid === om.id ||
+          (cleanDigits(u.nip) && cleanDigits(om.studentNis) && cleanDigits(u.nip) === cleanDigits(om.studentNis)) ||
+          (u.username && om.loginUsername && u.username.toLowerCase() === om.loginUsername.toLowerCase()) ||
+          u.displayName.toLowerCase().trim() === om.fullName.toLowerCase().trim()
+        );
+        if (linkedAccount) {
+          await deleteUser(linkedAccount.uid);
+        }
+
+        // Jika dia adalah Ketua Sekbid, kosongkan koordinator bidang di departemen
+        const posLower = (om.position || '').toLowerCase();
+        if (posLower.includes('ketua') || posLower.includes('koordinator')) {
+          const dept = osimDepartments.find(d =>
+            d.name === om.sekbid ||
+            (d.coordinatorName && d.coordinatorName.toLowerCase().trim() === om.fullName.toLowerCase().trim())
+          );
+          if (dept && updateOsimDepartment) {
+            await updateOsimDepartment(dept.id, { coordinatorName: '' });
+          }
+        }
+
+        showToast(`Pengurus "${om.fullName}" berhasil dihapus dari kabinet OSIM dan akun cPanel.`);
       } catch (err) {
         console.error(err);
         alert('Gagal menghapus pengurus OSIM.');
@@ -1280,6 +1464,13 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
                           <button
+                            onClick={() => handleOpenEditOsimMember(om)}
+                            className="p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 transition-all"
+                            title="Edit Jabatan & Penugasan Pengurus"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                          </button>
+                          <button
                             onClick={() => handleDeleteOsimMemberConfirm(om)}
                             className="p-1.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 transition-all"
                             title="Hapus Pengurus"
@@ -1888,12 +2079,35 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
             </div>
 
             <form onSubmit={handleSaveOsimMember} className="p-6 space-y-4 text-xs">
-              {!editingOsimMember && (
+              {editingOsimMember ? (
+                <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-amber-500/20 text-amber-400 font-bold flex items-center justify-center text-sm border border-amber-500/30 shrink-0">
+                    {editingOsimMember.fullName.charAt(0)}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="font-bold text-white text-sm truncate">{editingOsimMember.fullName}</div>
+                    <div className="text-[11px] text-slate-400 font-mono flex items-center gap-2 mt-0.5">
+                      <span className="px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 font-semibold">{editingOsimMember.className || '-'}</span>
+                      <span>NIS: {editingOsimMember.studentNis || '-'}</span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
                 <div>
                   <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Pilih Siswa dari Database Madrasah *</label>
                   <select
                     value={osimMemberForm.studentId}
-                    onChange={e => setOsimMemberForm({ ...osimMemberForm, studentId: e.target.value })}
+                    onChange={e => {
+                      const sel = students.find(s => s.id === e.target.value);
+                      setOsimMemberForm({
+                        ...osimMemberForm,
+                        studentId: e.target.value,
+                        fullName: sel?.fullName || '',
+                        studentNis: sel?.nis || '',
+                        className: sel?.className || '',
+                        phone: (sel as any)?.phone || osimMemberForm.phone
+                      });
+                    }}
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500"
                   >
                     {students.map(s => (
@@ -1905,41 +2119,95 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Jabatan Kabinet</label>
+                  <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Jabatan dalam Organisasi *</label>
                   <select
                     value={osimMemberForm.position}
                     onChange={e => setOsimMemberForm({ ...osimMemberForm, position: e.target.value })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500"
                   >
-                    <option value="Ketua OSIM">Ketua OSIM</option>
-                    <option value="Wakil Ketua OSIM">Wakil Ketua OSIM</option>
-                    <option value="Sekretaris 1">Sekretaris 1</option>
-                    <option value="Sekretaris 2">Sekretaris 2</option>
-                    <option value="Bendahara 1">Bendahara 1</option>
-                    <option value="Bendahara 2">Bendahara 2</option>
-                    <option value="Koordinator Sekbid">Koordinator Sekbid</option>
-                    <option value="Anggota">Anggota</option>
+                    <optgroup label="Badan Pengurus Harian (BPH)">
+                      <option value="Ketua Umum OSIM">Ketua Umum OSIM</option>
+                      <option value="Wakil Ketua 1">Wakil Ketua 1 (Bidang Internal)</option>
+                      <option value="Wakil Ketua 2">Wakil Ketua 2 (Bidang Eksternal)</option>
+                      <option value="Sekretaris Umum">Sekretaris Umum</option>
+                      <option value="Wakil Sekretaris">Wakil Sekretaris</option>
+                      <option value="Bendahara Umum">Bendahara Umum</option>
+                      <option value="Wakil Bendahara">Wakil Bendahara</option>
+                    </optgroup>
+                    <optgroup label="Seksi Bidang (Sekbid)">
+                      <option value="Ketua Sekbid">Ketua Sekbid (Koordinator Bidang)</option>
+                      <option value="Wakil Ketua Sekbid">Wakil Ketua Sekbid</option>
+                      <option value="Sekretaris Bidang">Sekretaris Bidang</option>
+                      <option value="Bendahara Bidang">Bendahara Bidang</option>
+                      <option value="Anggota Sekbid">Anggota Sekbid</option>
+                      <option value="Koordinator Divisi">Koordinator Divisi</option>
+                    </optgroup>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Seksi Bidang (Sekbid)</label>
+                  <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Entitas / Seksi Bidang *</label>
                   <select
                     value={osimMemberForm.sekbid}
                     onChange={e => setOsimMemberForm({ ...osimMemberForm, sekbid: e.target.value as any })}
-                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500"
                   >
                     <option value="BPH (Badan Pengurus Harian)">BPH (Badan Pengurus Harian)</option>
-                    <option value="Sekbid 1: Keimanan & Ketaqwaan">Sekbid 1: Keimanan & Ketaqwaan</option>
-                    <option value="Sekbid 2: Budi Pekerti Luhur">Sekbid 2: Budi Pekerti Luhur</option>
-                    <option value="Sekbid 3: Kepribadian Unggul, Wawasan Kebangsaan & Bela Negara">Sekbid 3: Kepribadian Unggul</option>
-                    <option value="Sekbid 4: Prestasi Akademik, Seni & Olahraga">Sekbid 4: Prestasi Akademik & Olahraga</option>
-                    <option value="Sekbid 5: Demokrasi, HAM, Pendidikan Politik & Lingkungan Hidup">Sekbid 5: Demokrasi & Lingkungan</option>
-                    <option value="Sekbid 6: Kreativitas, Keterampilan & Kewirausahaan">Sekbid 6: Kewirausahaan & Teknologi</option>
+                    <option value="Sekbid 1: Keimanan, Ketaqwaan & Moderasi Beragama">Sekbid 1: Keimanan, Ketaqwaan & Moderasi Beragama</option>
+                    <option value="Sekbid 2: Wawasan Kebangsaan, Bela Negara & Kedisiplinan">Sekbid 2: Wawasan Kebangsaan, Bela Negara & Kedisiplinan</option>
+                    <option value="Sekbid 3: Akademik, Sains, Riset & Literasi">Sekbid 3: Akademik, Sains, Riset & Literasi</option>
+                    <option value="Sekbid 4: Demokrasi, HAM, Kepemimpinan & Politik Pelajar">Sekbid 4: Demokrasi, HAM, Kepemimpinan & Politik Pelajar</option>
+                    <option value="Sekbid 5: Keterampilan, Kewirausahaan & Koperasi Siswa">Sekbid 5: Keterampilan, Kewirausahaan & Koperasi Siswa</option>
+                    <option value="Sekbid 6: Kesehatan Jasmani, Olahraga & Lingkungan Hidup">Sekbid 6: Kesehatan Jasmani, Olahraga & Lingkungan Hidup</option>
+                    <option value="Sekbid 7: Sastra, Seni, Budaya & Bahasa">Sekbid 7: Sastra, Seni, Budaya & Bahasa</option>
+                    <option value="Sekbid 8: Teknologi Informasi, Multimedia & Komunikasi">Sekbid 8: Teknologi Informasi, Multimedia & Komunikasi</option>
                   </select>
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Status Keaktifan</label>
+                  <select
+                    value={osimMemberForm.status}
+                    onChange={e => setOsimMemberForm({ ...osimMemberForm, status: e.target.value as any })}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="Aktif">Aktif Menjabat</option>
+                    <option value="Demisioner">Demisioner / Purna Tugas</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">No. WhatsApp / HP</label>
+                  <input
+                    type="text"
+                    value={osimMemberForm.phone}
+                    onChange={e => setOsimMemberForm({ ...osimMemberForm, phone: e.target.value })}
+                    placeholder="081234567890"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Program Unggulan / Amanah (Opsional)</label>
+                <input
+                  type="text"
+                  value={osimMemberForm.flagshipProgram}
+                  onChange={e => setOsimMemberForm({ ...osimMemberForm, flagshipProgram: e.target.value })}
+                  placeholder="Contoh: Digitalisasi E-Voting OSIM & Gerakan Santri Peduli Lingkungan"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="p-3 bg-slate-900/60 border border-slate-800 rounded-xl text-[11px] text-slate-400 space-y-1">
+                <span className="font-semibold text-amber-300">ℹ️ Kebijakan Hak Akses cPanel:</span>
+                <p>
+                  Jabatan BPH dan Ketua Sekbid secara otomatis dibuatkan/diperbarui akun login cPanel Admin dengan hak akses pengelolaan program kerja bidang. Anggota Sekbid biasa berstatus staf tanpa akun login.
+                </p>
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
@@ -1954,7 +2222,7 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
                   type="submit"
                   className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold shadow-lg shadow-amber-600/30"
                 >
-                  Sahkan Pengurus OSIM
+                  {editingOsimMember ? 'Simpan Perubahan Pengurus' : 'Sahkan Pengurus OSIM'}
                 </button>
               </div>
             </form>

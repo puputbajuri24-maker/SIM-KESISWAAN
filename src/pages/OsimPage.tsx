@@ -87,7 +87,16 @@ import {
   OsimAnnualReportPrintModal
 } from './osim/modals/OsimSupervisionModals';
 import { OsimProkerModal, OsimProkerDetailModal } from './osim/modals/OsimProkerModal';
-import { OsimProkerTab, OsimStrukturTab, OsimAkunPengurusTab } from './osim/tabs';
+import {
+  OsimProkerTab,
+  OsimStrukturTab,
+  OsimAkunPengurusTab,
+  OsimSidangTab,
+  OsimAspirasiTab,
+  OsimMatriksTab,
+  OsimRekapTahunanTab
+} from './osim/tabs';
+import { OsimPrintMeetingModal } from './osim/modals/OsimPrintMeetingModal';
 import {
   extractSekbidNumber,
   isBphMember,
@@ -232,14 +241,20 @@ export const OsimPage: React.FC = () => {
   }, [osimAccounts, accountRoleFilter, accountSearchQuery]);
 
   // Anggota Struktur Kabinet yang belum memiliki akun di Kelola Akun / cPanel
+  // Sesuai kebijakan madrasah, hanya pemegang peran (BPH dan Ketua Sekbid) yang membutuhkan akun cPanel
   const unlinkedKabinetMembers = useMemo(() => {
-    return osimMembers.filter(m => !osimAccounts.some(u =>
-      u.uid === m.id ||
-      (u.username && m.loginUsername && u.username.toLowerCase() === m.loginUsername.toLowerCase()) ||
-      (u.username && m.username && u.username.toLowerCase() === m.username.toLowerCase()) ||
-      (u.nip && m.studentNis && u.nip === m.studentNis) ||
-      (u.displayName.toLowerCase().replace(/\s*\(.*\)$/, '').trim() === m.fullName.toLowerCase().trim())
-    ));
+    return osimMembers.filter(m => {
+      const pos = (m.position || '').toLowerCase();
+      const isRoleHolder = isBphMember(m) || pos.includes('ketua') || pos.includes('koordinator');
+      if (!isRoleHolder) return false;
+      return !osimAccounts.some(u =>
+        u.uid === m.id ||
+        (u.username && m.loginUsername && u.username.toLowerCase() === m.loginUsername.toLowerCase()) ||
+        (u.username && m.username && u.username.toLowerCase() === m.username.toLowerCase()) ||
+        (u.nip && m.studentNis && u.nip === m.studentNis) ||
+        (u.displayName.toLowerCase().replace(/\s*\(.*\)$/, '').trim() === m.fullName.toLowerCase().trim())
+      );
+    });
   }, [osimMembers, osimAccounts]);
 
   // Form for OSIM account
@@ -330,6 +345,13 @@ export const OsimPage: React.FC = () => {
   const [isMeetingDetailOpen, setIsMeetingDetailOpen] = useState(false);
   const [selectedMeeting, setSelectedMeeting] = useState<OsimMeeting | null>(null);
   const [isMeetingDeleteOpen, setIsMeetingDeleteOpen] = useState(false);
+  const [isMeetingPrintOpen, setIsMeetingPrintOpen] = useState(false);
+  const [meetingToPrint, setMeetingToPrint] = useState<OsimMeeting | null>(null);
+
+  const handleOpenPrintMeeting = (meeting: OsimMeeting) => {
+    setMeetingToPrint(meeting);
+    setIsMeetingPrintOpen(true);
+  };
 
   // Department (Bidang/Sekbid) modal states
   const [isDeptModalOpen, setIsDeptModalOpen] = useState(false);
@@ -1059,7 +1081,7 @@ export const OsimPage: React.FC = () => {
     setIsMemberModalOpen(true);
   };
 
-  const handleOpenAddBph = () => {
+  const handleOpenAddBph = (defaultPosition?: string) => {
     if (!canManageCabinetStructure) {
       alert('Akses Dibatasi: Akun anggota OSIM hanya memiliki hak akses melihat (Read-Only) pada Struktur Kabinet & Bidang.');
       return;
@@ -1070,11 +1092,12 @@ export const OsimPage: React.FC = () => {
     setStudentSearchTerm('');
     setIsChangingSelectedStudent(false);
     setMemberCategoryTab('bph');
+    const posToSet = (defaultPosition || 'Ketua Umum OSIM') as any;
     setMemberForm({
       fullName: '',
       studentNis: '',
       className: '',
-      position: 'Ketua Umum OSIM',
+      position: posToSet,
       sekbid: 'BPH (Badan Pengurus Harian)',
       phone: '',
       email: '',
@@ -1177,20 +1200,34 @@ export const OsimPage: React.FC = () => {
 
     try {
       const cleanUsername = memberLoginUsername.trim().toLowerCase();
-      const passToSet = memberLoginPassword.trim() || 'password';
+      const posLower = (memberForm.position || '').toLowerCase();
+      const isBph = memberCategoryTab === 'bph' || isBphMember(memberForm);
+      const isSekbidKetua = !isBph && (
+        posLower.includes('ketua') ||
+        posLower.includes('koordinator')
+      );
+      const isRoleHolder = isBph || isSekbidKetua;
 
-      const effectiveUsername = cleanUsername || (memberForm.studentNis ? memberForm.studentNis.trim() : '');
+      const fallbackUsername = getDefaultOsimUsername(memberForm);
+      const effectiveUsername = cleanUsername ||
+        (memberForm.studentNis ? memberForm.studentNis.trim() : '') ||
+        (isRoleHolder ? fallbackUsername : undefined);
+
+      const fallbackPass = getDefaultOsimPasswordForMember(memberForm);
+      const passToSet = memberLoginPassword.trim() || fallbackPass || 'password';
+
       const defaultClassFallback = classes && classes.length > 0 ? classes[0].name : '10-A';
 
       const memberToSave: OsimMember = {
         ...memberForm,
         className: memberForm.className || defaultClassFallback,
-        loginUsername: effectiveUsername || undefined,
-        loginPassword: passToSet,
-        username: effectiveUsername || undefined,
-        password: passToSet
+        loginUsername: isRoleHolder ? effectiveUsername : undefined,
+        loginPassword: isRoleHolder ? passToSet : undefined,
+        username: isRoleHolder ? effectiveUsername : undefined,
+        password: isRoleHolder ? passToSet : undefined
       } as OsimMember;
 
+      let savedMemberId = selectedMember?.id;
       if (selectedMember) {
         await updateOsimMember(selectedMember.id, memberToSave);
       } else {
@@ -1207,77 +1244,108 @@ export const OsimPage: React.FC = () => {
           vision: memberForm.vision || '',
           flagshipProgram: memberForm.flagshipProgram || '',
           period: memberForm.period || activeAcademicYear,
-          loginUsername: effectiveUsername || undefined,
-          loginPassword: passToSet,
-          username: effectiveUsername || undefined,
-          password: passToSet
+          loginUsername: isRoleHolder ? effectiveUsername : undefined,
+          loginPassword: isRoleHolder ? passToSet : undefined,
+          username: isRoleHolder ? effectiveUsername : undefined,
+          password: isRoleHolder ? passToSet : undefined
         });
       }
 
-      // If Pembina OSIM or Admin changed or verified login credentials, synchronize with user accounts
-      if (canManageOsimAccounts && effectiveUsername) {
+      // 1. Sinkronisasi Koordinator Bidang di Header Departemen OSIM
+      if (isSekbidKetua && memberForm.sekbid && memberForm.fullName && updateOsimDepartment) {
+        const matchedDept = osimDepartments.find(d =>
+          d.name === memberForm.sekbid ||
+          (extractSekbidNumber(d.name) !== null && extractSekbidNumber(d.name) === extractSekbidNumber(memberForm.sekbid))
+        );
+        if (matchedDept && matchedDept.coordinatorName !== memberForm.fullName) {
+          await updateOsimDepartment(matchedDept.id, {
+            coordinatorName: memberForm.fullName
+          });
+        }
+      }
+
+      // 2. Sinkronisasi Akun Login ke cPanel Admin:
+      // Hanya Pemegang Peran Resmi (BPH & Ketua Sekbid) yang dibuatkan akun di cPanel.
+      // Anggota Sekbid biasa TIDAK diberikan role / akun di cPanel.
+      if (canManageOsimAccounts) {
         const existingAccount = findLinkedOsimAccount(memberForm, osimAccounts);
 
-        const pos = (memberForm.position || '').toLowerCase();
-        const osimRoleVal: 'ketua' | 'wakil' | 'sekretaris' | 'bendahara' | 'sekbid' =
-          pos.includes('ketua') && !pos.includes('wakil') && !pos.includes('sekbid') ? 'ketua'
-          : pos.includes('wakil') ? 'wakil'
-          : pos.includes('sekretaris') ? 'sekretaris'
-          : pos.includes('bendahara') ? 'bendahara'
-          : 'sekbid';
+        if (isRoleHolder) {
+          const osimRoleVal: 'ketua' | 'wakil' | 'sekretaris' | 'bendahara' | 'sekbid' =
+            posLower.includes('ketua') && !posLower.includes('wakil') && !posLower.includes('sekbid') ? 'ketua'
+            : posLower.includes('wakil') ? 'wakil'
+            : posLower.includes('sekretaris') ? 'sekretaris'
+            : posLower.includes('bendahara') ? 'bendahara'
+            : 'sekbid';
 
-        const isBph = isBphMember(memberForm);
-        const sekbidNum = extractSekbidNumber(memberForm.sekbid) || extractSekbidNumber(memberForm.position);
+          const sekbidNum = extractSekbidNumber(memberForm.sekbid) || extractSekbidNumber(memberForm.position);
+          const deptCode = sekbidNum ? `SEKBID-${sekbidNum}` : (isBph ? 'BPH' : 'SEKBID');
+          const finalUsername = effectiveUsername || (sekbidNum ? `osim.sekbid${sekbidNum}` : `osim.${Date.now()}`);
 
-        // Only update existing account if it matches this person or is an unassigned generic account
-        const isSamePerson = existingAccount && (
-          existingAccount.username.toLowerCase() === effectiveUsername.toLowerCase() ||
-          existingAccount.displayName.toLowerCase().trim() === (memberForm.fullName || '').toLowerCase().trim() ||
-          existingAccount.uid === selectedMember?.id ||
-          existingAccount.username.startsWith('osim.')
-        );
+          const isSamePerson = existingAccount && (
+            existingAccount.username.toLowerCase() === finalUsername.toLowerCase() ||
+            existingAccount.displayName.toLowerCase().trim() === (memberForm.fullName || '').toLowerCase().trim() ||
+            existingAccount.uid === selectedMember?.id ||
+            existingAccount.username.startsWith('osim.')
+          );
 
-        if (existingAccount && isSamePerson) {
-          const updatedUserObj: UserProfile = {
-            ...existingAccount,
-            displayName: memberForm.fullName || existingAccount.displayName,
-            username: effectiveUsername,
-            password: passToSet,
-            status: memberForm.status === 'Nonaktif' || memberForm.status === 'Demisioner' ? 'Nonaktif' : 'Aktif',
-            osimRole: osimRoleVal,
-            osimPosition: memberForm.position,
-            osimDepartmentName: memberForm.sekbid,
-            isCashManager: pos.includes('bendahara'),
-            cashManagerTitle: pos.includes('bendahara') ? 'Bendahara OSIM' : undefined
-          };
-          await updateUser(existingAccount.uid, updatedUserObj);
-          if (syncUserFromCPanel) {
-            try {
-              await syncUserFromCPanel(updatedUserObj, existingAccount);
-            } catch (e) {}
+          if (existingAccount && isSamePerson) {
+            const updatedUserObj: UserProfile = {
+              ...existingAccount,
+              displayName: memberForm.fullName || existingAccount.displayName,
+              username: finalUsername,
+              password: passToSet,
+              role: 'pengurus_osim',
+              position: isBph ? (osimRoleVal === 'ketua' ? 'ketua_osim' : osimRoleVal === 'wakil' ? 'wakil_ketua_osim' : osimRoleVal === 'bendahara' ? 'bendahara' : 'sekretaris') : 'ketua_sekbid',
+              status: memberForm.status === 'Nonaktif' || memberForm.status === 'Demisioner' ? 'Nonaktif' : 'Aktif',
+              osimRole: osimRoleVal,
+              osimPosition: memberForm.position,
+              osimDepartmentName: memberForm.sekbid,
+              osimDepartmentCode: deptCode,
+              isCashManager: posLower.includes('bendahara'),
+              cashManagerTitle: posLower.includes('bendahara') ? 'Bendahara OSIM' : undefined
+            };
+            await updateUser(existingAccount.uid, updatedUserObj);
+            if (syncUserFromCPanel) {
+              try {
+                await syncUserFromCPanel(updatedUserObj, existingAccount);
+              } catch (e) {}
+            }
+          } else {
+            const newUid = `user_osim_${memberForm.studentNis ? memberForm.studentNis.replace(/[^a-zA-Z0-9]/g, '') : (savedMemberId || Date.now())}`;
+            const newUserObj: UserProfile = {
+              uid: newUid,
+              displayName: memberForm.fullName!,
+              username: finalUsername,
+              email: memberForm.email || `${finalUsername}@madrasah.sch.id`,
+              password: passToSet,
+              role: 'pengurus_osim',
+              position: isBph ? (osimRoleVal === 'ketua' ? 'ketua_osim' : osimRoleVal === 'wakil' ? 'wakil_ketua_osim' : osimRoleVal === 'bendahara' ? 'bendahara' : 'sekretaris') : 'ketua_sekbid',
+              osimRole: osimRoleVal,
+              osimPosition: memberForm.position,
+              osimDepartmentName: memberForm.sekbid,
+              osimDepartmentCode: deptCode,
+              status: memberForm.status === 'Nonaktif' || memberForm.status === 'Demisioner' ? 'Nonaktif' : 'Aktif',
+              isCashManager: posLower.includes('bendahara'),
+              cashManagerTitle: posLower.includes('bendahara') ? 'Bendahara OSIM' : undefined,
+              createdAt: new Date().toISOString()
+            };
+            await addUser(newUserObj);
+            if (syncUserFromCPanel) {
+              try {
+                await syncUserFromCPanel(newUserObj);
+              } catch (e) {}
+            }
           }
         } else {
-          const newUid = `user_osim_${memberForm.studentNis ? memberForm.studentNis.replace(/[^a-zA-Z0-9]/g, '') : Date.now()}`;
-          const newUserObj: UserProfile = {
-            uid: newUid,
-            displayName: memberForm.fullName!,
-            username: effectiveUsername,
-            email: memberForm.email || `${effectiveUsername}@madrasah.sch.id`,
-            password: passToSet,
-            role: 'pengurus_osim',
-            osimRole: osimRoleVal,
-            osimPosition: memberForm.position,
-            osimDepartmentName: memberForm.sekbid,
-            osimDepartmentCode: sekbidNum ? `SEKBID-${sekbidNum}` : (isBph ? 'BPH' : undefined),
-            status: memberForm.status === 'Nonaktif' || memberForm.status === 'Demisioner' ? 'Nonaktif' : 'Aktif',
-            isCashManager: pos.includes('bendahara'),
-            cashManagerTitle: pos.includes('bendahara') ? 'Bendahara OSIM' : undefined,
-            createdAt: new Date().toISOString()
-          };
-          await addUser(newUserObj);
-          if (syncUserFromCPanel) {
+          // Anggota Sekbid biasa: Jangan buat akun di cPanel.
+          // Jika sebelumnya memiliki akun login (misalnya mantan ketua sekbid), bersihkan dari cPanel
+          if (existingAccount && (existingAccount.uid === selectedMember?.id || (existingAccount.nip && existingAccount.nip === memberForm.studentNis))) {
             try {
-              await syncUserFromCPanel(newUserObj);
+              await deleteUser(existingAccount.uid);
+              if (syncDeleteUserFromCPanel) {
+                await syncDeleteUserFromCPanel(existingAccount.uid, existingAccount);
+              }
             } catch (e) {}
           }
         }
@@ -1652,6 +1720,18 @@ export const OsimPage: React.FC = () => {
             } catch (e) {}
           }
         }
+
+        // Jika pengurus yang dihapus adalah koordinator / ketua sekbid, kosongkan koordinator bidang
+        const posLower = (mem.position || '').toLowerCase();
+        if (posLower.includes('ketua') || posLower.includes('koordinator')) {
+          const dept = osimDepartments.find(d =>
+            d.name === mem.sekbid ||
+            (d.coordinatorName && d.coordinatorName.toLowerCase().trim() === mem.fullName.toLowerCase().trim())
+          );
+          if (dept && updateOsimDepartment) {
+            await updateOsimDepartment(dept.id, { coordinatorName: '' });
+          }
+        }
       } catch (err) {
         console.error('Error deleting member:', err);
       } finally {
@@ -1711,22 +1791,123 @@ export const OsimPage: React.FC = () => {
       return;
     }
     try {
+      const trimmedName = deptForm.name.trim();
+      const trimmedCoord = deptForm.coordinatorName?.trim() || '';
+      const sekbidNum = extractSekbidNumber(trimmedName);
+      const codeToSet = deptForm.code?.trim() || (sekbidNum ? `SEKBID-${sekbidNum}` : `SEKBID-${Date.now()}`);
+
+      let targetDeptId = selectedDept?.id;
+
       if (selectedDept) {
         await updateOsimDepartment(selectedDept.id, {
-          name: deptForm.name.trim(),
-          code: deptForm.code?.trim() || selectedDept.code,
+          name: trimmedName,
+          code: codeToSet,
           description: deptForm.description?.trim() || '',
-          coordinatorName: deptForm.coordinatorName?.trim() || '',
+          coordinatorName: trimmedCoord,
           sortOrder: Number(deptForm.sortOrder) || selectedDept.sortOrder
         });
       } else {
-        await addOsimDepartment({
-          name: deptForm.name.trim(),
-          code: deptForm.code?.trim() || `SEKBID-${Date.now()}`,
+        const newDept = await addOsimDepartment({
+          name: trimmedName,
+          code: codeToSet,
           description: deptForm.description?.trim() || '',
-          coordinatorName: deptForm.coordinatorName?.trim() || '',
+          coordinatorName: trimmedCoord,
           sortOrder: Number(deptForm.sortOrder) || ((osimDepartments?.length || 0) + 1)
         });
+        targetDeptId = (newDept as any)?.id || targetDeptId;
+      }
+
+      // SINKRONISASI KOORDINATOR / KETUA SEKBID KE STRUKTUR ANGGOTA & CPANEL:
+      if (trimmedCoord) {
+        // 1. Periksa apakah sudah ada anggota di osimMembers yang cocok
+        const existingMember = osimMembers.find(m =>
+          m.fullName.toLowerCase().trim() === trimmedCoord.toLowerCase() ||
+          (m.sekbid === trimmedName && (m.position?.toLowerCase().includes('ketua') || m.position?.toLowerCase().includes('koordinator')))
+        );
+
+        const positionTitle = sekbidNum ? `Ketua Sekbid ${sekbidNum}` : 'Ketua Sekbid';
+        const defaultUsername = sekbidNum ? `osim.sekbid${sekbidNum}` : `osim.${trimmedCoord.toLowerCase().split(' ')[0].replace(/[^a-z0-9]/g, '')}`;
+        const defaultPassword = getDefaultOsimPassword(sekbidNum ? `sekbid${sekbidNum}` : 'sekbid');
+
+        if (existingMember) {
+          // Update pengurus yang sudah ada menjadi Ketua Sekbid
+          await updateOsimMember(existingMember.id, {
+            fullName: trimmedCoord,
+            position: positionTitle as any,
+            sekbid: trimmedName as OsimSekbid,
+            status: 'Aktif',
+            loginUsername: existingMember.loginUsername || defaultUsername,
+            loginPassword: existingMember.loginPassword || defaultPassword
+          });
+        } else {
+          // Tambahkan pengurus baru di osimMembers sebagai Ketua Sekbid
+          const matchedStudent = students.find(s => s.fullName.toLowerCase().trim() === trimmedCoord.toLowerCase());
+          await addOsimMember({
+            fullName: trimmedCoord,
+            studentNis: matchedStudent?.nis || '24251000',
+            className: matchedStudent?.className || 'XI',
+            position: positionTitle as any,
+            sekbid: trimmedName as OsimSekbid,
+            phone: matchedStudent?.phone || '-',
+            email: `${defaultUsername}@madrasah.sch.id`,
+            photoUrl: matchedStudent?.photoUrl || '',
+            status: 'Aktif',
+            period: activeAcademicYear,
+            loginUsername: defaultUsername,
+            loginPassword: defaultPassword
+          });
+        }
+
+        // 2. Buat atau perbarui akun pengguna cPanel
+        const existingAccount = allUsers.find(u =>
+          u.displayName.toLowerCase().trim() === trimmedCoord.toLowerCase() ||
+          (u.osimDepartmentCode && u.osimDepartmentCode.toUpperCase() === codeToSet.toUpperCase() && u.role === 'pengurus_osim') ||
+          (u.username && u.username.toLowerCase() === defaultUsername.toLowerCase())
+        );
+
+        if (existingAccount) {
+          const updatedUser: UserProfile = {
+            ...existingAccount,
+            displayName: trimmedCoord,
+            role: 'pengurus_osim',
+            osimRole: 'sekbid',
+            osimPosition: positionTitle,
+            osimDepartmentId: targetDeptId || existingAccount.osimDepartmentId,
+            osimDepartmentCode: codeToSet,
+            osimDepartmentName: trimmedName,
+            status: 'Aktif',
+            updatedAt: new Date().toISOString()
+          };
+          await updateUser(existingAccount.uid, updatedUser);
+          if (syncUserFromCPanel) {
+            try {
+              await syncUserFromCPanel(updatedUser, existingAccount);
+            } catch (e) {}
+          }
+        } else {
+          const newUid = `user_osim_${codeToSet.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${Date.now()}`;
+          const newAcc: UserProfile = {
+            uid: newUid,
+            displayName: trimmedCoord,
+            username: defaultUsername,
+            email: `${defaultUsername}@madrasah.sch.id`,
+            password: defaultPassword,
+            role: 'pengurus_osim',
+            osimRole: 'sekbid',
+            osimPosition: positionTitle,
+            osimDepartmentId: targetDeptId,
+            osimDepartmentCode: codeToSet,
+            osimDepartmentName: trimmedName,
+            status: 'Aktif',
+            createdAt: new Date().toISOString()
+          };
+          const res = await addUser(newAcc);
+          if (res.success && syncUserFromCPanel) {
+            try {
+              await syncUserFromCPanel(newAcc);
+            } catch (e) {}
+          }
+        }
       }
     } catch (err) {
       console.error('Error saving department:', err);
@@ -2323,516 +2504,59 @@ export const OsimPage: React.FC = () => {
       {/* SUB-TAB 3: SIDANG PLENO, MUKER & NOTULENSI */}
       {/* ========================================================== */}
       {activeSubTab === 'sidang' && (
-        <div className="space-y-4" id="view-sidang-osim">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-[#121214] border border-zinc-800 p-3 rounded">
-            <div>
-              <h3 className="text-xs font-mono font-bold uppercase text-zinc-200">
-                ARSIP SIDANG PLENO & NOTULENSI RAPAT OSIM
-              </h3>
-              <p className="text-[11px] text-zinc-400 mt-0.5">
-                Dokumentasi Berita Acara, Keputusan Mufakat MUKER, dan Pengesahan Program Kerja Kesiswaan.
-              </p>
-            </div>
-
-            {canManageOsim && (
-              <button
-                onClick={handleOpenAddMeeting}
-                className="flex items-center gap-1 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded text-xs font-semibold transition"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                Catat Notulensi Baru
-              </button>
-            )}
-          </div>
-
-          <div className="space-y-3">
-            {osimMeetings.map(meet => (
-              <div
-                key={meet.id}
-                onClick={() => handleOpenDetailMeeting(meet)}
-                className="bg-[#121214] border border-zinc-800 rounded-lg p-4 hover:border-amber-500/40 transition cursor-pointer group shadow-sm"
-              >
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-zinc-800 pb-2.5">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                        {meet.type}
-                      </span>
-                      <span className="text-xs text-zinc-400 font-mono">
-                        📅 {meet.date} ({meet.startTime} - {meet.endTime} WIB)
-                      </span>
-                    </div>
-                    <h3 className="font-bold text-sm text-zinc-100 group-hover:text-amber-400 mt-1.5 transition">{meet.title}</h3>
-                  </div>
-
-                  <div className="flex items-center gap-3 text-[11px] text-zinc-400 font-mono">
-                    <span>📍 {meet.location}</span>
-                    <span>👥 {meet.attendeesCount} Peserta Hadir</span>
-                    <div className="flex items-center gap-1 ml-2" onClick={e => e.stopPropagation()}>
-                      <button
-                        onClick={e => handleOpenDetailMeeting(meet, e)}
-                        className="p-1 rounded bg-zinc-800 text-zinc-400 hover:text-cyan-400 transition"
-                        title="Lihat Detail Notulensi"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                      </button>
-                      {canManageOsim && (
-                        <>
-                          <button
-                            onClick={e => handleOpenEditMeeting(meet, e)}
-                            className="p-1 rounded bg-zinc-800 text-zinc-400 hover:text-amber-400 transition"
-                            title="Edit Notulensi"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={e => handleOpenDeleteMeeting(meet, e)}
-                            className="p-1 rounded bg-zinc-800 text-zinc-400 hover:text-rose-400 transition"
-                            title="Hapus Notulensi"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3 text-xs">
-                  <div className="bg-zinc-900/80 border border-zinc-800/80 rounded p-3">
-                    <span className="text-[10px] font-mono font-bold uppercase text-zinc-400 block mb-1">
-                      AGENDA PEMBAHASAN:
-                    </span>
-                    <p className="text-zinc-300 leading-relaxed whitespace-pre-line line-clamp-3">{meet.agenda}</p>
-                    <div className="mt-3 pt-2 border-t border-zinc-800 text-[11px] text-zinc-400">
-                      Pimpinan Rapat: <strong className="text-zinc-200">{meet.leader}</strong> • Notulis: <strong className="text-zinc-200">{meet.secretary}</strong>
-                    </div>
-                  </div>
-
-                  <div className="bg-zinc-900/80 border border-zinc-800/80 rounded p-3">
-                    <span className="text-[10px] font-mono font-bold uppercase text-emerald-400 block mb-1">
-                      HASIL KEPUTUSAN & MUFAKAT:
-                    </span>
-                    <p className="text-zinc-300 leading-relaxed whitespace-pre-line line-clamp-3">{meet.decisionNotes}</p>
-                    {meet.wakaNotes && (
-                      <div className="mt-3 pt-2 border-t border-zinc-800 text-[11px] text-amber-400/90 line-clamp-1">
-                        Catatan Waka Kesiswaan: <em>"{meet.wakaNotes}"</em>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <OsimSidangTab
+          osimMeetings={osimMeetings}
+          canManageOsim={canManageOsim}
+          onOpenAddMeeting={handleOpenAddMeeting}
+          onOpenDetailMeeting={handleOpenDetailMeeting}
+          onOpenEditMeeting={handleOpenEditMeeting}
+          onDeleteMeeting={handleOpenDeleteMeeting}
+          onPrintMeeting={handleOpenPrintMeeting}
+        />
       )}
 
       {/* ========================================================== */}
       {/* SUB-TAB 4: KOTAK ASPIRASI SANTRI / SUARA SISWA */}
       {/* ========================================================== */}
       {activeSubTab === 'aspirasi' && (
-        <div className="space-y-4" id="view-aspirasi-osim">
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-[#121214] border border-zinc-800 p-3 rounded">
-            <div>
-              <h3 className="text-xs font-mono font-bold uppercase text-zinc-200">
-                KOTAK SUARA & ASPIRASI SANTRI (OSIM DIGIVOICE)
-              </h3>
-              <p className="text-[11px] text-zinc-400 mt-0.5">
-                Kanal transparan penampungan ide kreatif, usulan sarpras, kritik membangun, dan gagasan kegiatan dari santri untuk OSIM & Madrasah.
-              </p>
-            </div>
-
-            <button
-              onClick={handleOpenAddAspiration}
-              className="flex items-center gap-1 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded text-xs font-semibold transition"
-            >
-              <Send className="w-3.5 h-3.5" />
-              Kirim Aspirasi Baru
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {osimAspirations.map(asp => (
-              <div
-                key={asp.id}
-                onClick={() => handleOpenDetailAspiration(asp)}
-                className="bg-[#121214] border border-zinc-800 rounded-lg p-4 flex flex-col justify-between hover:border-amber-500/40 transition cursor-pointer group shadow-sm"
-              >
-                <div>
-                  <div className="flex items-start justify-between gap-2 mb-2">
-                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-zinc-800 text-zinc-300 border border-zinc-700">
-                      {asp.category}
-                    </span>
-                    <span
-                      className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
-                        asp.status === 'Direalisasikan'
-                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                          : asp.status === 'Sedang Dibahas'
-                          ? 'bg-sky-500/10 text-sky-400 border border-sky-500/20'
-                          : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                      }`}
-                    >
-                      {asp.status}
-                    </span>
-                  </div>
-
-                  <h4 className="font-bold text-sm text-zinc-100 group-hover:text-amber-400 transition">{asp.title}</h4>
-                  <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed line-clamp-3">{asp.content}</p>
-
-                  <div className="mt-2 text-[10px] font-mono text-zinc-500">
-                    Oleh: <span className="text-zinc-300">{asp.studentName}</span> ({asp.studentClass}) • {asp.date}
-                  </div>
-
-                  {asp.responseNote && (
-                    <div className="mt-3 bg-zinc-900/90 border border-emerald-500/20 rounded p-2.5 text-xs text-emerald-300">
-                      <span className="text-[10px] font-mono font-bold uppercase text-emerald-400 block mb-0.5">
-                        Tanggapan Resmi ({asp.respondedBy}):
-                      </span>
-                      <p className="text-zinc-300 text-[11px] leading-snug line-clamp-2">{asp.responseNote}</p>
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-3 pt-2.5 border-t border-zinc-800/80 flex items-center justify-between" onClick={e => e.stopPropagation()}>
-                  <button
-                    onClick={e => handleUpvoteAspiration(asp, e)}
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded bg-zinc-900 hover:bg-zinc-800 text-zinc-300 hover:text-amber-400 border border-zinc-800 text-xs font-mono transition"
-                  >
-                    <ThumbsUp className="w-3.5 h-3.5" />
-                    <span>Dukungan ({asp.upvotes || 1})</span>
-                  </button>
-
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={e => handleOpenDetailAspiration(asp, e)}
-                      className="p-1.5 rounded bg-zinc-800 text-zinc-400 hover:text-cyan-400 transition"
-                      title="Lihat Detail Aspirasi"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                    </button>
-                    {canManageOsim && (
-                      <>
-                        <button
-                          onClick={e => handleOpenResponseAspiration(asp, e)}
-                          className="px-2.5 py-1 rounded bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border border-amber-500/30 text-xs font-semibold transition"
-                        >
-                          Beri Respon
-                        </button>
-                        <button
-                          onClick={e => handleOpenDeleteAspiration(asp, e)}
-                          className="p-1.5 rounded bg-zinc-800 text-zinc-400 hover:text-rose-400 transition"
-                          title="Hapus Aspirasi"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        <OsimAspirasiTab
+          osimAspirations={osimAspirations}
+          canManageOsim={canManageOsim}
+          onOpenAddAspiration={handleOpenAddAspiration}
+          onOpenDetailAspiration={handleOpenDetailAspiration}
+          onOpenResponseAspiration={handleOpenResponseAspiration}
+          onOpenDeleteAspiration={handleOpenDeleteAspiration}
+          onUpvoteAspiration={handleUpvoteAspiration}
+        />
       )}
 
       {/* ========================================================== */}
       {/* SUB-TAB 5: MATRIKS EVALUASI & ANGGARAN */}
       {/* ========================================================== */}
       {activeSubTab === 'matriks' && (
-        <div className="space-y-4" id="view-matriks-osim">
-          <div className="bg-[#121214] border border-zinc-800 p-4 rounded-lg">
-            <h3 className="text-xs font-mono font-bold uppercase text-zinc-200 mb-1">
-              MATRIKS ALOKASI ANGGARAN & STATUS PELAKSANAAN PROKER
-            </h3>
-            <p className="text-[11px] text-zinc-400">
-              Evaluasi ketercapaian target indikator kinerja 8 Seksi Bidang OSIM Tahun Ajaran {activeAcademicYear}.
-            </p>
-
-            <div className="overflow-x-auto mt-4">
-              <table className="w-full text-left text-xs font-mono border-collapse">
-                <thead>
-                  <tr className="border-b border-zinc-800 text-zinc-400 bg-zinc-900/50">
-                    <th className="p-2.5">Seksi Bidang</th>
-                    <th className="p-2.5">Program Kerja</th>
-                    <th className="p-2.5">PJ Pelaksana</th>
-                    <th className="p-2.5">Estimasi Biaya</th>
-                    <th className="p-2.5">Realisasi</th>
-                    <th className="p-2.5">Progres</th>
-                    <th className="p-2.5">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-800/60 font-sans">
-                  {osimPrograms.map(p => (
-                    <tr key={p.id} className="hover:bg-zinc-900/40 transition">
-                      <td className="p-2.5 text-[11px] font-mono text-zinc-400">{p.sekbid.split(':')[0]}</td>
-                      <td className="p-2.5 font-bold text-zinc-200">{p.title}</td>
-                      <td className="p-2.5 text-xs text-zinc-400">{p.personInCharge}</td>
-                      <td className="p-2.5 text-xs font-mono text-amber-400">Rp {p.budgetEstimated.toLocaleString('id-ID')}</td>
-                      <td className="p-2.5 text-xs font-mono text-zinc-300">Rp {(p.budgetRealized || 0).toLocaleString('id-ID')}</td>
-                      <td className="p-2.5 text-xs font-mono text-emerald-400">{p.progressPercentage}%</td>
-                      <td className="p-2.5">{getStatusBadge(p.status)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+        <OsimMatriksTab
+          osimPrograms={osimPrograms}
+          activeAcademicYear={activeAcademicYear}
+          getStatusBadge={getStatusBadge}
+          onOpenDetailProker={handleOpenDetailProker}
+        />
       )}
 
       {/* ========================================================== */}
       {/* SUB-TAB 6: REKAP TAHUNAN KESISWAAN (LAPORAN RESMI KAMAD) */}
       {/* ========================================================== */}
       {activeSubTab === 'rekap_tahunan' && (
-        <div className="space-y-4" id="view-rekap-tahunan-osim">
-          {/* Header Banner */}
-          <div className="bg-[#121214] border border-emerald-500/30 rounded-lg p-4 shadow-sm relative overflow-hidden">
-            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-              <div className="flex items-start gap-3">
-                <div className="w-10 h-10 rounded-md bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0 mt-0.5">
-                  <ShieldCheck className="w-5 h-5" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-base font-bold tracking-wide text-zinc-100 uppercase">
-                      Rekapitulasi Tahunan Dokumen LPJ & Proker OSIM
-                    </h2>
-                    <span className="px-2 py-0.5 text-[10px] font-mono font-semibold uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded">
-                      TERVALIDASI SAH
-                    </span>
-                  </div>
-                  <p className="text-xs text-zinc-400 mt-1 max-w-3xl">
-                    Arsip resmi seluruh program kerja OSIM yang telah tuntas dilaksanakan, ber-LPJ sah, dan divalidasi oleh Pembina OSIM & Waka Kesiswaan untuk Laporan Pertanggungjawaban kepada Kepala Madrasah / Sekolah Tahun Ajaran {activeAcademicYear}.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <ExportActions
-                  data={sahPrograms}
-                  filename={`Rekap_Tahunan_LPJ_OSIM_${activeAcademicYear}`}
-                  title="Ekspor Rekap"
-                />
-                <button
-                  id="btn-print-rekap-kamad"
-                  onClick={() => setIsAnnualReportPrintOpen(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-semibold tracking-wide transition shadow-sm"
-                >
-                  <Printer className="w-4 h-4" />
-                  Cetak Lembar Pengesahan Kamad
-                </button>
-              </div>
-            </div>
-
-            {/* Telemetry Metric Widgets */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-2 mt-4 pt-3 border-t border-zinc-800/80 font-mono">
-              <div className="bg-zinc-900/90 border border-zinc-800 p-2.5 rounded">
-                <span className="text-[10px] uppercase text-zinc-400 block font-sans font-medium">Program Kerja Sah</span>
-                <div className="flex items-baseline justify-between mt-1">
-                  <span className="text-lg font-bold text-emerald-400">{sahPrograms.length}</span>
-                  <span className="text-[10px] text-zinc-400">dari {osimPrograms.length} ({Math.round((sahPrograms.length / (osimPrograms.length || 1)) * 100)}%)</span>
-                </div>
-              </div>
-
-              <div className="bg-zinc-900/90 border border-zinc-800 p-2.5 rounded">
-                <span className="text-[10px] uppercase text-zinc-400 block font-sans font-medium">Total Anggaran (RAB)</span>
-                <div className="flex items-baseline justify-between mt-1">
-                  <span className="text-sm font-bold text-amber-400">Rp {rekapTotalRab.toLocaleString('id-ID')}</span>
-                  <span className="text-[10px] text-zinc-400">Rencana</span>
-                </div>
-              </div>
-
-              <div className="bg-zinc-900/90 border border-zinc-800 p-2.5 rounded">
-                <span className="text-[10px] uppercase text-zinc-400 block font-sans font-medium">Total Realisasi Kas</span>
-                <div className="flex items-baseline justify-between mt-1">
-                  <span className="text-sm font-bold text-zinc-100">Rp {rekapTotalRealized.toLocaleString('id-ID')}</span>
-                  <span className="text-[10px] text-emerald-400">Terpakai</span>
-                </div>
-              </div>
-
-              <div className="bg-zinc-900/90 border border-zinc-800 p-2.5 rounded">
-                <span className="text-[10px] uppercase text-zinc-400 block font-sans font-medium">Efisiensi / Deviasi</span>
-                <div className="flex items-baseline justify-between mt-1">
-                  <span className={`text-sm font-bold ${rekapTotalRab >= rekapTotalRealized ? 'text-emerald-400' : 'text-rose-400'}`}>
-                    Rp {(rekapTotalRab - rekapTotalRealized).toLocaleString('id-ID')}
-                  </span>
-                  <span className="text-[10px] text-zinc-400">
-                    {rekapTotalRab >= rekapTotalRealized ? 'Hemat' : 'Defisit'}
-                  </span>
-                </div>
-              </div>
-
-              <div className="bg-zinc-900/90 border border-zinc-800 p-2.5 rounded col-span-2 sm:col-span-4 lg:col-span-1">
-                <span className="text-[10px] uppercase text-zinc-400 block font-sans font-medium">Total Partisipasi Santri</span>
-                <div className="flex items-baseline justify-between mt-1">
-                  <span className="text-lg font-bold text-indigo-400">{rekapTotalParticipants}</span>
-                  <span className="text-[10px] text-zinc-400">Peserta Hadir</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Table of Certified & Archived Programs */}
-          <div className="bg-[#121214] border border-zinc-800 p-4 rounded-lg">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <h3 className="text-xs font-mono font-bold uppercase text-zinc-200">
-                  Daftar Program Kerja Berstatus "Selesai & Sah"
-                </h3>
-                <p className="text-[11px] text-zinc-400">
-                  Dokumen terarsip yang telah memenuhi seluruh syarat akuntabilitas LPJ, kwitansi biaya, dan bukti visual.
-                </p>
-              </div>
-              <span className="text-xs text-zinc-400 font-mono">
-                Menampilkan <strong className="text-emerald-400">{sahPrograms.length}</strong> dokumen sah
-              </span>
-            </div>
-
-            {sahPrograms.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs font-mono border-collapse">
-                  <thead>
-                    <tr className="border-b border-zinc-800 text-zinc-400 bg-zinc-900/60">
-                      <th className="p-2.5">No</th>
-                      <th className="p-2.5">Bidang OSIM</th>
-                      <th className="p-2.5">Nama Program Kerja</th>
-                      <th className="p-2.5">PJ / Pelaksana</th>
-                      <th className="p-2.5 text-right">RAB (Rp)</th>
-                      <th className="p-2.5 text-right">Realisasi (Rp)</th>
-                      <th className="p-2.5 text-right">Efisiensi</th>
-                      <th className="p-2.5 text-center">Partisipan</th>
-                      <th className="p-2.5">Tanggal Sah</th>
-                      <th className="p-2.5 text-center">Berkas & Bukti</th>
-                      <th className="p-2.5 text-center">Aksi</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-800/60 font-sans">
-                    {sahPrograms.map((p, idx) => {
-                      const est = p.budgetEstimated || 0;
-                      const real = p.budgetRealized || 0;
-                      const diff = est - real;
-                      return (
-                        <tr key={p.id} className="hover:bg-zinc-900/40 transition">
-                          <td className="p-2.5 font-mono text-zinc-400">{idx + 1}</td>
-                          <td className="p-2.5 text-[11px] font-mono text-zinc-300 font-semibold">
-                            {p.sekbid.split(':')[0]}
-                          </td>
-                          <td className="p-2.5 font-bold text-zinc-100">
-                            {p.title}
-                          </td>
-                          <td className="p-2.5 text-xs text-zinc-400">{p.personInCharge}</td>
-                          <td className="p-2.5 text-right font-mono text-amber-400 font-semibold">
-                            Rp {est.toLocaleString('id-ID')}
-                          </td>
-                          <td className="p-2.5 text-right font-mono text-zinc-200">
-                            Rp {real.toLocaleString('id-ID')}
-                          </td>
-                          <td className={`p-2.5 text-right font-mono font-semibold ${diff >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                            Rp {diff.toLocaleString('id-ID')}
-                          </td>
-                          <td className="p-2.5 text-center font-mono text-indigo-400">
-                            {p.participantCount || 0} Siswa
-                          </td>
-                          <td className="p-2.5 text-xs font-mono text-zinc-400">
-                            {p.finalApprovedAt || p.endDate || '-'}
-                          </td>
-                          <td className="p-2.5 text-center">
-                            <div className="flex items-center justify-center gap-1.5">
-                              {p.lpjFileUrl ? (
-                                <a
-                                  href={p.lpjFileUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-cyan-400 hover:text-cyan-300 transition"
-                                  title="Lihat Berkas LPJ"
-                                >
-                                  <ExternalLink className="w-3.5 h-3.5" />
-                                </a>
-                              ) : (
-                                <span className="text-[10px] text-zinc-500 font-mono">-</span>
-                              )}
-                              {p.photos && p.photos.length > 0 && (
-                                <span
-                                  onClick={() => handleOpenDetailProker(p)}
-                                  className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-zinc-800 text-[10px] text-emerald-400 rounded cursor-pointer hover:bg-zinc-700 font-mono"
-                                  title={`${p.photos.length} Foto Dokumentasi`}
-                                >
-                                  <ImageIcon className="w-3 h-3" />
-                                  {p.photos.length}
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="p-2.5 text-center">
-                            <button
-                              onClick={() => handleOpenDetailProker(p)}
-                              className="px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-emerald-400 rounded text-xs transition"
-                            >
-                              Detail LPJ
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="text-center py-10 border border-dashed border-zinc-800 rounded p-6">
-                <ShieldCheck className="w-9 h-9 text-zinc-600 mx-auto mb-2" />
-                <p className="text-xs font-semibold text-zinc-300">Belum ada program kerja yang berstatus "Selesai & Sah".</p>
-                <p className="text-[11px] text-zinc-500 mt-1 max-w-md mx-auto">
-                  Setelah kegiatan selesai, siswa bidang mengisi LPJ & realisasi biaya. Pembina OSIM atau Waka Kesiswaan kemudian melakukan validasi akhir dan mengunci status program menjadi "Selesai & Sah".
-                </p>
-                <button
-                  onClick={() => setActiveSubTab('proker')}
-                  className="mt-3 px-3 py-1.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border border-amber-500/30 rounded text-xs font-semibold transition"
-                >
-                  Buka Daftar Program Kerja
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Educational Workflow Card */}
-          <div className="bg-[#121214] border border-zinc-800 p-4 rounded-lg">
-            <h3 className="text-xs font-mono font-bold uppercase text-zinc-200 mb-3 flex items-center gap-1.5">
-              <Compass className="w-4 h-4 text-amber-400" />
-              SOP Alur Akuntabilitas & Bimbingan Program Kerja OSIM
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
-              <div className="p-3 rounded bg-zinc-900/60 border border-zinc-800/80">
-                <div className="flex items-center gap-2 mb-1.5 text-amber-400 font-bold">
-                  <span className="w-5 h-5 rounded-full bg-amber-500/20 flex items-center justify-center text-[10px] font-mono border border-amber-500/40">1</span>
-                  <span>Pengajuan Usulan (Siswa)</span>
-                </div>
-                <p className="text-zinc-400 text-[11px] leading-relaxed">
-                  Pengurus bidang membuat proposal/rencana kegiatan dengan status awal <strong>Draft</strong>, menyusun estimasi RAB & indikator keberhasilan, lalu klik <strong>Ajukan ke Pembina</strong>.
-                </p>
-              </div>
-
-              <div className="p-3 rounded bg-zinc-900/60 border border-zinc-800/80">
-                <div className="flex items-center gap-2 mb-1.5 text-indigo-400 font-bold">
-                  <span className="w-5 h-5 rounded-full bg-indigo-500/20 flex items-center justify-center text-[10px] font-mono border border-indigo-500/40">2</span>
-                  <span>Bimbingan & Verifikasi (Pembina)</span>
-                </div>
-                <p className="text-zinc-400 text-[11px] leading-relaxed">
-                  Pembina OSIM menerima notifikasi, memeriksa kelayakan rencana anggaran, memberikan catatan arahan/bimbingan, dan mengesahkan status menjadi <strong>Disetujui</strong>.
-                </p>
-              </div>
-
-              <div className="p-3 rounded bg-zinc-900/60 border border-zinc-800/80">
-                <div className="flex items-center gap-2 mb-1.5 text-emerald-400 font-bold">
-                  <span className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center text-[10px] font-mono border border-emerald-500/40">3</span>
-                  <span>Pelaporan LPJ & Arsip Sah (Kamad)</span>
-                </div>
-                <p className="text-zinc-400 text-[11px] leading-relaxed">
-                  Siswa mengunggah foto, kwitansi realisasi, serta evaluasi. Pembina & Waka Kesiswaan mengunci status menjadi <strong>Selesai & Sah</strong> yang otomatis terakumulasi dalam Laporan Tahunan Kamad.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
+        <OsimRekapTahunanTab
+          sahPrograms={sahPrograms}
+          allProgramsCount={osimPrograms.length}
+          rekapTotalRab={rekapTotalRab}
+          rekapTotalRealized={rekapTotalRealized}
+          rekapTotalParticipants={rekapTotalParticipants}
+          activeAcademicYear={activeAcademicYear}
+          onPrintAnnualReport={() => setIsAnnualReportPrintOpen(true)}
+          onOpenDetailProker={handleOpenDetailProker}
+          onNavigateToProkerTab={() => setActiveSubTab('proker')}
+        />
       )}
 
       {/* ========================================================== */}
@@ -3054,6 +2778,15 @@ export const OsimPage: React.FC = () => {
         canManageOsim={canManageOsim}
         onEditMeeting={handleOpenEditMeeting}
         onDeleteMeeting={handleOpenDeleteMeeting}
+        onPrintMeeting={handleOpenPrintMeeting}
+      />
+
+      {/* Modal Cetak Berita Acara & Notulensi Sidang OSIM */}
+      <OsimPrintMeetingModal
+        isOpen={isMeetingPrintOpen}
+        onClose={() => setIsMeetingPrintOpen(false)}
+        meeting={meetingToPrint}
+        schoolSetting={schoolSetting}
       />
 
       {/* Modal Detail Aspirasi Santri */}

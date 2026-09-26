@@ -30,6 +30,11 @@ import {
   normalizeName,
   cleanDigits
 } from '../utils/syncUtils';
+import {
+  extractSekbidNumber,
+  isBphMember,
+  getDefaultOsimUsername
+} from '../utils/osimAccountHelper';
 
 export const recordSystemAuditLog = async (
   action: string,
@@ -765,22 +770,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       const targetUser = allUsers.find(u => u.uid === uid);
       
-      // Register tombstones to prevent resurrection from default demo lists or stale snapshots
+      // Register tombstones for this specific person's UID only.
+      // NEVER tombstone role-based or department functional IDs (e.g. user_osim_dept_bph, user_osim_ketua)
+      // because the leadership position remains valid for new incoming student officers.
       addDeletedUid(uid);
       if (uid.startsWith('user_')) {
         addDeletedUid(uid.replace(/^user_/, ''));
-      }
-      // For OSIM accounts, also tombstone role-based IDs
-      if (targetUser?.role === 'pengurus_osim') {
-        if (targetUser.osimRole === 'ketua') {
-          addDeletedUid('user_osim_dept_bph');
-          addDeletedUid('user_osim_ketua');
-        } else if (targetUser.osimRole) {
-          addDeletedUid(`user_osim_${targetUser.osimRole}`);
-        }
-        if (targetUser.osimDepartmentId) {
-          addDeletedUid(`user_osim_${targetUser.osimDepartmentId}`);
-        }
       }
 
       setAllUsers(prev => {
@@ -1128,21 +1123,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             : pos.includes('bendahara') ? 'bendahara'
             : 'sekbid';
 
-          const isBph = osimRoleVal !== 'sekbid' || sek.includes('bph');
+          const isBph = osimRoleVal !== 'sekbid' || sek.includes('bph') || isBphMember(m);
+          const isSekbidKetua = !isBph && (pos.includes('ketua') || pos.includes('koordinator'));
+
+          // Kebijakan Kesiswaan & cPanel:
+          // Hanya pengurus BPH dan Ketua Sekbid yang memiliki akun login di cPanel Admin.
+          // Anggota Sekbid biasa (staf bidang) TIDAK dibuatkan akun login / role cPanel.
+          if (!isBph && !isSekbidKetua) {
+            continue;
+          }
+
           const matchedDept = departmentsList.find(d => 
             d.id === m.sekbid || 
             d.name === m.sekbid || 
             (d.code && (m.sekbid || '').toLowerCase().includes(d.code.toLowerCase()))
           );
 
-          const deptId = isBph ? 'dept_bph' : (matchedDept?.id || 'dept_sekbid');
-          const deptCode = isBph ? 'BPH' : (matchedDept?.code || 'SEKBID');
-          const deptName = isBph ? 'Badan Pengurus Harian' : (matchedDept?.name || m.sekbid || 'Seksi Bidang');
+          const sekbidNum = extractSekbidNumber(m.sekbid) || extractSekbidNumber(m.position);
+          const deptId = isBph ? 'dept_bph' : (matchedDept?.id || (sekbidNum ? `dept_sekbid_${sekbidNum}` : 'dept_sekbid'));
+          const deptCode = isBph ? 'BPH' : (sekbidNum ? `SEKBID-${sekbidNum}` : (matchedDept?.code || 'SEKBID'));
+          const deptName = isBph ? 'BPH (Badan Pengurus Harian)' : (matchedDept?.name || m.sekbid || 'Seksi Bidang');
 
-          // Username strictly follows student NIS or loginUsername
+          // Username strictly follows student NIS or loginUsername or fallback
           const cleanNis = cleanDigits(m.studentNis);
-          const username = cleanNis || (m.loginUsername || m.username || '').toLowerCase().trim() || `osim.${cleanDigits(m.id || String(Date.now()))}`;
-          const defaultPassword = m.loginPassword || m.password || getDefaultOsimPassword(osimRoleVal);
+          const fallbackUsername = isBph ? getDefaultOsimUsername(m) : (sekbidNum ? `osim.sekbid${sekbidNum}` : getDefaultOsimUsername(m));
+          const username = cleanNis || (m.loginUsername || m.username || '').toLowerCase().trim() || fallbackUsername;
+          const defaultPassword = m.loginPassword || m.password || (isBph ? getDefaultOsimPassword(osimRoleVal) : (sekbidNum ? getDefaultOsimPassword(`sekbid${sekbidNum}`) : getDefaultOsimPassword('sekbid')));
           const email = m.email || `${username}@madrasah.sch.id`;
 
           // Map to Canonical OsimPosition
@@ -1151,7 +1157,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             osimRoleVal === 'wakil' ? 'wakil_ketua_osim' :
             osimRoleVal === 'sekretaris' ? 'sekretaris' :
             osimRoleVal === 'bendahara' ? 'bendahara' :
-            pos.includes('ketua') || pos.includes('koordinator') ? 'ketua_sekbid' : 'anggota_sekbid';
+            'ketua_sekbid';
 
           // Match existing user by ID, username, NIS, or member match
           const existingIdx = updatedUsers.findIndex(u =>
@@ -1175,7 +1181,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               username: existing.username || username,
               email: existing.email || email,
               password: currentPassword,
-              role: 'anggota_osim',
+              role: 'pengurus_osim',
               position: canonicalOsimPos,
               osimRole: osimRoleVal,
               osimPosition: m.position,
@@ -1199,7 +1205,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               password: defaultPassword,
               nip: m.studentNis,
               phone: m.phone && m.phone !== '-' ? m.phone : undefined,
-              role: 'anggota_osim',
+              role: 'pengurus_osim',
               position: canonicalOsimPos,
               osimRole: osimRoleVal,
               osimPosition: m.position,
@@ -1215,6 +1221,60 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             firestorePromises.push(setDoc(doc(db, 'users', newUser.uid), newUser, { merge: true }));
             count++;
           }
+        }
+      }
+
+      // Ensure each department coordinator from departmentsList also has a synchronized user account
+      for (const d of departmentsList) {
+        if (!d || !d.coordinatorName || d.code === 'BPH' || d.name.startsWith('BPH')) continue;
+        const trimmedCoord = d.coordinatorName.trim();
+        const sekbidNum = extractSekbidNumber(d.code) || extractSekbidNumber(d.name);
+        const deptCode = d.code || (sekbidNum ? `SEKBID-${sekbidNum}` : 'SEKBID');
+        const defaultUsername = sekbidNum ? `osim.sekbid${sekbidNum}` : `osim.${trimmedCoord.toLowerCase().split(' ')[0].replace(/[^a-z0-9]/g, '')}`;
+        const defaultPassword = getDefaultOsimPassword(sekbidNum ? `sekbid${sekbidNum}` : 'sekbid');
+
+        const existingAccIdx = updatedUsers.findIndex(u =>
+          u.displayName.toLowerCase().trim() === trimmedCoord.toLowerCase() ||
+          (u.osimDepartmentCode && u.osimDepartmentCode.toUpperCase() === deptCode.toUpperCase() && u.role === 'pengurus_osim') ||
+          (u.username && u.username.toLowerCase() === defaultUsername.toLowerCase())
+        );
+
+        if (existingAccIdx >= 0) {
+          const existing = updatedUsers[existingAccIdx];
+          const merged: UserProfile = {
+            ...existing,
+            displayName: trimmedCoord,
+            role: 'pengurus_osim',
+            osimRole: 'sekbid',
+            osimPosition: sekbidNum ? `Ketua Sekbid ${sekbidNum}` : 'Ketua Sekbid',
+            osimDepartmentId: d.id || existing.osimDepartmentId,
+            osimDepartmentCode: deptCode,
+            osimDepartmentName: d.name,
+            status: existing.status || 'Aktif',
+            updatedAt: new Date().toISOString()
+          };
+          updatedUsers[existingAccIdx] = merged;
+          firestorePromises.push(setDoc(doc(db, 'users', merged.uid), merged, { merge: true }));
+        } else {
+          const newUid = `user_osim_${(deptCode || 'sekbid').toLowerCase().replace(/[^a-z0-9]/g, '_')}_${Date.now()}`;
+          const newAcc: UserProfile = {
+            uid: newUid,
+            displayName: trimmedCoord,
+            username: defaultUsername,
+            email: `${defaultUsername}@madrasah.sch.id`,
+            password: defaultPassword,
+            role: 'pengurus_osim',
+            osimRole: 'sekbid',
+            osimPosition: sekbidNum ? `Ketua Sekbid ${sekbidNum}` : 'Ketua Sekbid',
+            osimDepartmentId: d.id,
+            osimDepartmentCode: deptCode,
+            osimDepartmentName: d.name,
+            status: 'Aktif',
+            createdAt: new Date().toISOString()
+          };
+          updatedUsers.push(newAcc);
+          firestorePromises.push(setDoc(doc(db, 'users', newAcc.uid), newAcc, { merge: true }));
+          count++;
         }
       }
 

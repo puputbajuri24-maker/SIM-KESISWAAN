@@ -87,7 +87,7 @@ import { findMatchingClass, resolveStudentClass, isStudentInClass } from '../uti
 import { normalizeTeacherCode, formatTeacherCode, formatStudentCode } from '../utils/idGenerator';
 import { resolveStudent, resolveTeacher } from '../utils/relationResolvers';
 
-import { extractSekbidNumber, isBphMember } from '../utils/osimAccountHelper';
+import { extractSekbidNumber, isBphMember, normalizeSekbidName } from '../utils/osimAccountHelper';
 import {
   addDeletedUid,
   removeDeletedUid,
@@ -3608,7 +3608,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             username: user.username,
             password: user.password,
             position: (user.osimPosition as any) || updated[idx].position,
-            sekbid: (user.osimDepartmentName as any) || updated[idx].sekbid,
+            sekbid: isUserBph ? 'BPH (Badan Pengurus Harian)' : (normalizeSekbidName(user.osimDepartmentName) || updated[idx].sekbid),
             className: user.studentClass || updated[idx].className
           };
           updated[idx] = updatedMember;
@@ -3619,7 +3619,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           return updated;
         } else {
           // If member does not exist in osimMembers yet, create it so Pembina can view and manage it
-          const sekbidVal = user.osimDepartmentName || (userSekbidNum ? `Sekbid ${userSekbidNum}` : 'BPH (Badan Pengurus Harian)');
+          const sekbidVal = isUserBph
+            ? 'BPH (Badan Pengurus Harian)'
+            : (normalizeSekbidName(user.osimDepartmentName) || (userSekbidNum ? `Sekbid ${userSekbidNum}` : 'Sekbid 1: Keimanan, Ketaqwaan & Moderasi Beragama'));
           const newMember: OsimMember = {
             id: user.uid,
             fullName: cleanName,
@@ -3880,7 +3882,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         matchedOsimIds.push(m.id);
         addDeletedUid(m.id);
         if (m.studentNis) addDeletedUid(cleanDigits(m.studentNis));
-        if (m.loginUsername) addDeletedUid(m.loginUsername);
+        if (m.loginUsername && !m.loginUsername.startsWith('osim.') && !/^\d{4,}$/.test(m.loginUsername)) {
+          addDeletedUid(m.loginUsername);
+        }
       }
     });
 
@@ -4846,6 +4850,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const finalClassName = student?.className || data.className;
     const finalStudentNis = student?.nis || data.studentNis;
 
+    const isBph = isBphMember(data as any);
+    const finalSekbid = isBph
+      ? 'BPH (Badan Pengurus Harian)'
+      : (data.sekbid ? normalizeSekbidName(data.sekbid) : 'Sekbid 1: Keimanan, Ketaqwaan & Moderasi Beragama');
+
     const newMember: OsimMember = {
       id: `osim_m_${Date.now()}`,
       ...data,
@@ -4854,6 +4863,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       fullName: finalFullName,
       className: finalClassName,
       studentNis: finalStudentNis,
+      sekbid: finalSekbid as any,
       createdAt: new Date().toISOString().split('T')[0]
     };
 
@@ -4878,9 +4888,17 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (data.studentId) removeDeletedUid(data.studentId);
     if (data.loginUsername) removeDeletedUid(data.loginUsername);
 
-    setOsimMembers(prev => prev.map(m => m.id === id ? { ...m, ...data } : m));
+    const isBph = isBphMember(data as any);
+    const normalizedData = {
+      ...data,
+      ...(isBph
+        ? { sekbid: 'BPH (Badan Pengurus Harian)' as any }
+        : (data.sekbid ? { sekbid: normalizeSekbidName(data.sekbid) as any } : {}))
+    };
+
+    setOsimMembers(prev => prev.map(m => m.id === id ? { ...m, ...normalizedData } : m));
     try {
-      updateDoc(doc(db, 'osim_members', id), data);
+      updateDoc(doc(db, 'osim_members', id), normalizedData);
     } catch (e) {}
     logAction('UPDATE_OSIM_MEMBER', 'Intrakurikuler & OSIM', `Memperbarui data pengurus OSIM ID ${id}`);
   };
@@ -4888,11 +4906,10 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const deleteOsimMember = async (id: string) => {
     const target = osimMembers.find(m => m.id === id);
 
-    // Tombstone OSIM record ID and specific OSIM login user only.
-    // NEVER tombstone student NIS because the student remains an active madrasah student!
+    // Tombstone OSIM record ID only, never tombstone generic OSIM login usernames or student NIS
     addDeletedUid(id);
     addDeletedUid(`user_${id}`);
-    if (target?.loginUsername && !/^\d{4,}$/.test(target.loginUsername)) {
+    if (target?.loginUsername && !target.loginUsername.startsWith('osim.') && !/^\d{4,}$/.test(target.loginUsername)) {
       addDeletedUid(target.loginUsername);
     }
 

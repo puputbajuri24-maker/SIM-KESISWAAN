@@ -1,5 +1,5 @@
 import React from 'react';
-import { Edit2, Trash2 } from 'lucide-react';
+import { Edit2, Trash2, Printer } from 'lucide-react';
 import { Modal } from '../../../components/common/Modal';
 import { OsimMeeting } from '../../../types';
 
@@ -10,6 +10,7 @@ interface OsimMeetingDetailModalProps {
   canManageOsim: boolean;
   onEditMeeting: (meeting: OsimMeeting) => void;
   onDeleteMeeting: (meeting: OsimMeeting) => void;
+  onPrintMeeting?: (meeting: OsimMeeting) => void;
 }
 
 export const OsimMeetingDetailModal: React.FC<OsimMeetingDetailModalProps> = ({
@@ -18,7 +19,8 @@ export const OsimMeetingDetailModal: React.FC<OsimMeetingDetailModalProps> = ({
   selectedMeeting,
   canManageOsim,
   onEditMeeting,
-  onDeleteMeeting
+  onDeleteMeeting,
+  onPrintMeeting
 }) => {
   if (!selectedMeeting) return null;
 
@@ -84,13 +86,28 @@ export const OsimMeetingDetailModal: React.FC<OsimMeetingDetailModalProps> = ({
         )}
 
         <div className="flex items-center justify-between pt-3 border-t border-zinc-800">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 text-xs hover:bg-zinc-700 transition"
-          >
-            Tutup
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 text-xs hover:bg-zinc-700 transition"
+            >
+              Tutup
+            </button>
+            {onPrintMeeting && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onPrintMeeting(selectedMeeting);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 text-xs font-semibold transition"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                Cetak Berita Acara
+              </button>
+            )}
+          </div>
           {canManageOsim && (
             <div className="flex items-center gap-2">
               <button

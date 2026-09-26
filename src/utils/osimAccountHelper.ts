@@ -12,20 +12,38 @@ export const extractSekbidNumber = (text?: string): number | null => {
   return null;
 };
 
+export const cleanDigits = (s?: string): string => (s ? s.replace(/\D/g, '') : '');
+
+export const CANONICAL_BPH_NAME = 'BPH (Badan Pengurus Harian)';
+
+/**
+ * Normalizes any variation of BPH naming into standard CANONICAL_BPH_NAME.
+ * Handles "BPH", "Badan Pengurus Harian", "dept_bph", etc.
+ */
+export const normalizeSekbidName = (name?: string): string => {
+  if (!name) return CANONICAL_BPH_NAME;
+  const lower = name.toLowerCase().trim();
+  if (lower === 'bph' || lower.includes('badan pengurus harian') || lower === 'dept_bph') {
+    return CANONICAL_BPH_NAME;
+  }
+  return name.trim();
+};
+
 /**
  * Checks if a member belongs to BPH (Ketua Umum, Wakil Ketua, Sekretaris, Bendahara)
  * and NOT a Sekbid
  */
 export const isBphMember = (member: { position?: string; sekbid?: string }): boolean => {
+  if (!member) return false;
   const sekbidNum = extractSekbidNumber(member.sekbid) || extractSekbidNumber(member.position);
   if (sekbidNum !== null) return false;
   const pos = (member.position || '').toLowerCase();
   const sek = (member.sekbid || '').toLowerCase();
   if (sek.includes('bph') || sek.includes('badan pengurus harian')) return true;
-  if (pos.includes('ketua') && !pos.includes('sekbid')) return true;
+  if (pos.includes('ketua') && !pos.includes('sekbid') && !pos.includes('bidang')) return true;
   if (pos.includes('wakil')) return true;
-  if (pos.includes('sekretaris')) return true;
-  if (pos.includes('bendahara')) return true;
+  if (pos.includes('sekretaris') && !pos.includes('sekbid') && !pos.includes('bidang')) return true;
+  if (pos.includes('bendahara') && !pos.includes('sekbid') && !pos.includes('bidang')) return true;
   return false;
 };
 

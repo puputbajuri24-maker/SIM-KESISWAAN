@@ -333,10 +333,16 @@ export const CPanelPage: React.FC = () => {
   const unregisteredOsimCount = useMemo(() => {
     let count = 0;
     for (const d of osimDepartments) {
+      if (d.code === 'BPH' || d.name.startsWith('BPH')) continue;
       const code = (d.code || '').toLowerCase();
       const hasAcc = allUsers.some(u => 
         u.role === 'pengurus_osim' && 
-        (u.osimDepartmentCode === code || u.username === code || u.osimDepartmentName === d.name)
+        (
+          (u.osimDepartmentCode && u.osimDepartmentCode.toLowerCase() === code) ||
+          (u.username && u.username.toLowerCase() === code) ||
+          (u.osimDepartmentName && u.osimDepartmentName.toLowerCase() === d.name.toLowerCase()) ||
+          (d.coordinatorName && u.displayName.toLowerCase().trim() === d.coordinatorName.toLowerCase().trim())
+        )
       );
       if (!hasAcc) count++;
     }
