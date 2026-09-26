@@ -601,7 +601,7 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
                 {m.studentName}
               </p>
             </div>
-            <p className="text-[11px] text-slate-400">NIS: {m.studentNis} • Kelas: {m.studentClass}</p>
+            <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">NIS: {m.studentNis} • Kelas: {m.studentClass}</p>
           </div>
         </div>
       )
@@ -621,7 +621,7 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
       header: 'Tgl Bergabung',
       accessorKey: 'joinDate',
       sortable: true,
-      cell: m => <span className="text-xs text-slate-500">{m.joinDate}</span>
+      cell: m => <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">{m.joinDate}</span>
     },
     {
       header: 'Status Keanggotaan',
@@ -1115,61 +1115,61 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
 
             {/* Quick Metrics */}
             <div className="grid grid-cols-3 gap-3">
-              <div className="p-3 rounded-xl bg-zinc-900/60 border border-zinc-800 text-center">
-                <span className="text-[10px] font-mono uppercase text-zinc-400 block mb-0.5">Kehadiran Sesi</span>
-                <span className="text-base font-bold text-emerald-400 font-mono">
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-zinc-900/60 border border-slate-200 dark:border-zinc-800 text-center">
+                <span className="text-[10px] font-mono uppercase text-slate-600 dark:text-zinc-400 font-bold block mb-0.5">Kehadiran Sesi</span>
+                <span className="text-base font-bold text-emerald-600 dark:text-emerald-400 font-mono">
                   {memberAttendanceStats.rate}%
                 </span>
-                <span className="text-[10px] text-zinc-500 block mt-0.5">
+                <span className="text-[10px] text-slate-500 dark:text-zinc-500 block mt-0.5">
                   ({memberAttendanceStats.present}/{memberAttendanceStats.total} Pertemuan)
                 </span>
               </div>
-              <div className="p-3 rounded-xl bg-zinc-900/60 border border-zinc-800 text-center">
-                <span className="text-[10px] font-mono uppercase text-zinc-400 block mb-0.5">Poin Disiplin</span>
-                <span className={`text-base font-bold font-mono ${(selectedStudentObj?.violationPoints || 0) > 0 ? 'text-rose-400' : 'text-zinc-400'}`}>
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-zinc-900/60 border border-slate-200 dark:border-zinc-800 text-center">
+                <span className="text-[10px] font-mono uppercase text-slate-600 dark:text-zinc-400 font-bold block mb-0.5">Poin Disiplin</span>
+                <span className={`text-base font-bold font-mono ${(selectedStudentObj?.violationPoints || 0) > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-slate-600 dark:text-zinc-400'}`}>
                   {selectedStudentObj?.violationPoints || 0}
                 </span>
-                <span className="text-[10px] text-zinc-500 block mt-0.5">Poin Pelanggaran</span>
+                <span className="text-[10px] text-slate-500 dark:text-zinc-500 block mt-0.5">Poin Pelanggaran</span>
               </div>
-              <div className="p-3 rounded-xl bg-zinc-900/60 border border-zinc-800 text-center">
-                <span className="text-[10px] font-mono uppercase text-zinc-400 block mb-0.5">Poin Prestasi</span>
-                <span className="text-base font-bold text-amber-400 font-mono">
+              <div className="p-3 rounded-xl bg-slate-50 dark:bg-zinc-900/60 border border-slate-200 dark:border-zinc-800 text-center">
+                <span className="text-[10px] font-mono uppercase text-slate-600 dark:text-zinc-400 font-bold block mb-0.5">Poin Prestasi</span>
+                <span className="text-base font-bold text-amber-600 dark:text-amber-400 font-mono">
                   {selectedStudentObj?.achievementPoints || 0}
                 </span>
-                <span className="text-[10px] text-zinc-500 block mt-0.5">Poin Reward</span>
+                <span className="text-[10px] text-slate-500 dark:text-zinc-500 block mt-0.5">Poin Reward</span>
               </div>
             </div>
 
             {/* Detail List */}
-            <div className="p-3.5 rounded-xl bg-zinc-900/40 border border-zinc-800 space-y-2.5 text-xs">
-              <div className="flex items-center justify-between py-1 border-b border-zinc-800/60">
-                <span className="text-zinc-400">Tanggal Terdaftar:</span>
-                <span className="font-semibold text-zinc-200 font-mono">{selectedMember.joinDate}</span>
+            <div className="p-3.5 rounded-xl bg-slate-50/70 dark:bg-zinc-900/40 border border-slate-200 dark:border-zinc-800 space-y-2.5 text-xs">
+              <div className="flex items-center justify-between py-1 border-b border-slate-200/60 dark:border-zinc-800/60">
+                <span className="text-slate-600 dark:text-zinc-400 font-semibold">Tanggal Terdaftar:</span>
+                <span className="font-semibold text-slate-900 dark:text-zinc-200 font-mono">{selectedMember.joinDate}</span>
               </div>
-              <div className="flex items-center justify-between py-1 border-b border-zinc-800/60">
-                <span className="text-zinc-400">Tahun Ajaran:</span>
-                <span className="font-semibold text-zinc-200 font-mono">{selectedMember.academicYear || activeAcademicYear}</span>
+              <div className="flex items-center justify-between py-1 border-b border-slate-200/60 dark:border-zinc-800/60">
+                <span className="text-slate-600 dark:text-zinc-400 font-semibold">Tahun Ajaran:</span>
+                <span className="font-semibold text-slate-900 dark:text-zinc-200 font-mono">{selectedMember.academicYear || activeAcademicYear}</span>
               </div>
-              <div className="flex items-center justify-between py-1 border-b border-zinc-800/60">
-                <span className="text-zinc-400">Pembina Ekstrakurikuler:</span>
-                <span className="font-semibold text-zinc-200">{selectedEkskulObj?.coachName || '-'}</span>
+              <div className="flex items-center justify-between py-1 border-b border-slate-200/60 dark:border-zinc-800/60">
+                <span className="text-slate-600 dark:text-zinc-400 font-semibold">Pembina Ekstrakurikuler:</span>
+                <span className="font-semibold text-slate-900 dark:text-zinc-200">{selectedEkskulObj?.coachName || '-'}</span>
               </div>
-              <div className="flex items-center justify-between py-1 border-b border-zinc-800/60">
-                <span className="text-zinc-400">Jadwal & Lokasi:</span>
-                <span className="font-semibold text-zinc-200">
+              <div className="flex items-center justify-between py-1 border-b border-slate-200/60 dark:border-zinc-800/60">
+                <span className="text-slate-600 dark:text-zinc-400 font-semibold">Jadwal & Lokasi:</span>
+                <span className="font-semibold text-slate-900 dark:text-zinc-200">
                   {selectedEkskulObj ? `${selectedEkskulObj.day}, ${selectedEkskulObj.startTime}-${selectedEkskulObj.endTime} WIB (${selectedEkskulObj.location})` : '-'}
                 </span>
               </div>
               {selectedStudentObj?.phone && (
-                <div className="flex items-center justify-between py-1 border-b border-zinc-800/60">
-                  <span className="text-zinc-400">Kontak Siswa:</span>
-                  <span className="font-semibold text-zinc-200 font-mono">📞 {selectedStudentObj.phone}</span>
+                <div className="flex items-center justify-between py-1 border-b border-slate-200/60 dark:border-zinc-800/60">
+                  <span className="text-slate-600 dark:text-zinc-400 font-semibold">Kontak Siswa:</span>
+                  <span className="font-semibold text-slate-900 dark:text-zinc-200 font-mono">📞 {selectedStudentObj.phone}</span>
                 </div>
               )}
               {selectedStudentObj?.parentName && (
                 <div className="flex items-center justify-between py-1">
-                  <span className="text-zinc-400">Orang Tua / Wali:</span>
-                  <span className="font-semibold text-zinc-200">
+                  <span className="text-slate-600 dark:text-zinc-400 font-semibold">Orang Tua / Wali:</span>
+                  <span className="font-semibold text-slate-900 dark:text-zinc-200">
                     {selectedStudentObj.parentName} ({selectedStudentObj.parentPhone || '-'})
                   </span>
                 </div>

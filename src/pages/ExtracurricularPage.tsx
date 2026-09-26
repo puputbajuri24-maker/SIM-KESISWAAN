@@ -479,7 +479,7 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
 
                   <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 space-y-2">
                     <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
-                      <span className="text-slate-400 font-medium">Pembina:</span>
+                      <span className="text-slate-600 dark:text-slate-400 font-semibold">Pembina:</span>
                       <div className="flex items-center gap-1.5 font-bold">
                         <span className="w-5 h-5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[10px] font-mono font-black flex items-center justify-center shrink-0">
                           {getTeacherInitials(ekskul.coachName)}
@@ -488,18 +488,18 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
                       </div>
                     </div>
                     <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
-                      <span className="text-slate-400 font-medium">Jadwal:</span>
+                      <span className="text-slate-600 dark:text-slate-400 font-semibold">Jadwal:</span>
                       <span className="font-semibold">{ekskul.day}, {ekskul.startTime} - {ekskul.endTime}</span>
                     </div>
                     <div className="flex items-center justify-between text-slate-700 dark:text-slate-300">
-                      <span className="text-slate-400 font-medium">Lokasi:</span>
+                      <span className="text-slate-600 dark:text-slate-400 font-semibold">Lokasi:</span>
                       <span className="font-semibold truncate max-w-[150px]">{ekskul.location}</span>
                     </div>
                   </div>
 
                   {/* Quota Progress */}
                   <div>
-                    <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 mb-1">
+                    <div className="flex items-center justify-between text-[11px] font-semibold text-slate-700 dark:text-slate-400 mb-1">
                       <span>Anggota Terdaftar</span>
                       <span>{currentMembersCount} / {ekskul.quota} Siswa ({quotaPercent}%)</span>
                     </div>

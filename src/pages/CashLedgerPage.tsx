@@ -489,8 +489,8 @@ export const CashLedgerPage: React.FC = () => {
               {trx.referenceNumber || `TRX-${trx.id.slice(-6)}`}
             </span>
           </div>
-          <span className="text-[11px] text-zinc-400 font-mono mt-1 flex items-center">
-            <Calendar className="w-3 h-3 mr-1 text-zinc-500" />
+          <span className="text-[11px] text-slate-600 dark:text-zinc-400 font-medium font-mono mt-1 flex items-center">
+            <Calendar className="w-3 h-3 mr-1 text-slate-500 dark:text-zinc-500" />
             {trx.date} {timezoneAbbr ? `(${timezoneAbbr})` : ''}
           </span>
         </div>
@@ -505,12 +505,12 @@ export const CashLedgerPage: React.FC = () => {
         const catConfig = CATEGORY_LABELS[category] || CATEGORY_LABELS['Kesiswaan'];
         return (
           <div className="flex flex-col max-w-[200px]">
-            <span className="font-semibold text-xs text-zinc-200 truncate">{trx.accountName}</span>
+            <span className="font-semibold text-xs text-slate-800 dark:text-zinc-200 truncate">{trx.accountName}</span>
             <div className="flex items-center space-x-1 mt-0.5">
               <span className={`text-[9px] px-1.5 py-0.2 rounded border font-mono ${catConfig.color}`}>
                 {category}
               </span>
-              <span className="text-[10px] text-zinc-400 truncate">{trx.category || 'Operasional'}</span>
+              <span className="text-[10px] text-slate-600 dark:text-zinc-400 font-medium truncate">{trx.category || 'Operasional'}</span>
             </div>
           </div>
         );
@@ -521,14 +521,14 @@ export const CashLedgerPage: React.FC = () => {
       accessorKey: 'title',
       cell: trx => (
         <div className="flex flex-col max-w-[280px]">
-          <span className="font-medium text-xs text-zinc-100 line-clamp-1">{trx.title}</span>
+          <span className="font-medium text-xs text-slate-900 dark:text-zinc-100 line-clamp-1">{trx.title}</span>
           {trx.recipientOrPayer && (
-            <span className="text-[11px] text-zinc-400 italic">
+            <span className="text-[11px] text-slate-600 dark:text-zinc-400 font-medium italic">
               {trx.type === 'MASUK' ? 'Dari: ' : 'Kepada: '} {trx.recipientOrPayer}
             </span>
           )}
           {trx.description && (
-            <span className="text-[10px] text-zinc-500 line-clamp-1 mt-0.5">{trx.description}</span>
+            <span className="text-[10px] text-slate-500 dark:text-zinc-400 line-clamp-1 mt-0.5">{trx.description}</span>
           )}
         </div>
       )
@@ -733,78 +733,78 @@ export const CashLedgerPage: React.FC = () => {
 
       {/* 2. Key Telemetry Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-        <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 flex flex-col justify-between">
+        <div className="p-4 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 flex flex-col justify-between shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-mono uppercase text-zinc-400 tracking-wider">Total Saldo Terkonsolidasi</span>
-            <div className="p-1.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            <span className="text-[11px] font-mono uppercase text-slate-600 dark:text-zinc-400 font-bold tracking-wider">Total Saldo Terkonsolidasi</span>
+            <div className="p-1.5 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
               <Scale className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3">
-            <div className="text-xl sm:text-2xl font-bold font-mono text-emerald-400 tracking-tight">
+            <div className="text-xl sm:text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400 tracking-tight">
               {formatRupiah(telemetry.totalBalance)}
             </div>
-            <div className="text-[11px] text-zinc-400 mt-1 flex items-center justify-between">
+            <div className="text-[11px] text-slate-600 dark:text-zinc-400 mt-1 flex items-center justify-between font-medium">
               <span>Dari {telemetry.activeAccountsCount} Akun Kas Aktif</span>
-              <span className="text-emerald-500 font-mono font-medium">REAL-TIME</span>
+              <span className="text-emerald-600 dark:text-emerald-500 font-mono font-bold">REAL-TIME</span>
             </div>
           </div>
         </div>
 
-        <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 flex flex-col justify-between">
+        <div className="p-4 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 flex flex-col justify-between shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-mono uppercase text-zinc-400 tracking-wider">Total Penerimaan (Debit)</span>
-            <div className="p-1.5 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20">
+            <span className="text-[11px] font-mono uppercase text-slate-600 dark:text-zinc-400 font-bold tracking-wider">Total Penerimaan (Debit)</span>
+            <div className="p-1.5 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
               <ArrowDownLeft className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3">
-            <div className="text-lg sm:text-xl font-bold font-mono text-blue-400">
+            <div className="text-lg sm:text-xl font-bold font-mono text-blue-600 dark:text-blue-400">
               {formatRupiah(telemetry.totalIn)}
             </div>
-            <span className="text-[11px] text-zinc-500 mt-1 block">Akumulasi uang kas masuk</span>
+            <span className="text-[11px] text-slate-500 dark:text-zinc-400 mt-1 block">Akumulasi uang kas masuk</span>
           </div>
         </div>
 
-        <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 flex flex-col justify-between">
+        <div className="p-4 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 flex flex-col justify-between shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-mono uppercase text-zinc-400 tracking-wider">Total Pengeluaran (Kredit)</span>
-            <div className="p-1.5 rounded-md bg-rose-500/10 text-rose-400 border border-rose-500/20">
+            <span className="text-[11px] font-mono uppercase text-slate-600 dark:text-zinc-400 font-bold tracking-wider">Total Pengeluaran (Kredit)</span>
+            <div className="p-1.5 rounded-md bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
               <ArrowUpRight className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3">
-            <div className="text-lg sm:text-xl font-bold font-mono text-rose-400">
+            <div className="text-lg sm:text-xl font-bold font-mono text-rose-600 dark:text-rose-400">
               {formatRupiah(telemetry.totalOut)}
             </div>
-            <span className="text-[11px] text-zinc-500 mt-1 block">Akumulasi pengeluaran kegiatan</span>
+            <span className="text-[11px] text-slate-500 dark:text-zinc-400 mt-1 block">Akumulasi pengeluaran kegiatan</span>
           </div>
         </div>
 
-        <div className="p-4 rounded-xl bg-zinc-900 border border-zinc-800 flex flex-col justify-between">
+        <div className="p-4 rounded-xl bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 flex flex-col justify-between shadow-xs">
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-mono uppercase text-zinc-400 tracking-wider">Aktivitas Transaksi</span>
-            <div className="p-1.5 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20">
+            <span className="text-[11px] font-mono uppercase text-slate-600 dark:text-zinc-400 font-bold tracking-wider">Aktivitas Transaksi</span>
+            <div className="p-1.5 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
               <FileText className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3">
-            <div className="text-lg sm:text-xl font-bold font-mono text-zinc-200">
-              {telemetry.transactionsCount} <span className="text-xs font-normal text-zinc-400 font-sans">Kwitansi Tercatat</span>
+            <div className="text-lg sm:text-xl font-bold font-mono text-slate-900 dark:text-zinc-200">
+              {telemetry.transactionsCount} <span className="text-xs font-normal text-slate-600 dark:text-zinc-400 font-sans">Kwitansi Tercatat</span>
             </div>
-            <span className="text-[11px] text-amber-400/80 mt-1 block font-mono">Status Terverifikasi</span>
+            <span className="text-[11px] text-amber-600 dark:text-amber-400/80 mt-1 block font-mono font-semibold">Status Terverifikasi</span>
           </div>
         </div>
       </div>
 
       {/* 3. Navigation View Switcher */}
-      <div className="flex items-center space-x-2 border-b border-zinc-800">
+      <div className="flex items-center space-x-2 border-b border-slate-200 dark:border-zinc-800">
         <button
           onClick={() => setActiveTab('buku_kas')}
           className={`relative px-4 py-2.5 text-xs font-medium transition-colors flex items-center space-x-2 ${
             activeTab === 'buku_kas'
-              ? 'text-emerald-400 font-semibold'
-              : 'text-zinc-400 hover:text-zinc-200'
+              ? 'text-emerald-600 dark:text-emerald-400 font-bold'
+              : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200 font-medium'
           }`}
         >
           {activeTab === 'buku_kas' && (
@@ -816,7 +816,7 @@ export const CashLedgerPage: React.FC = () => {
           )}
           <FileText className="w-3.5 h-3.5" />
           <span>Buku Jurnal Mutasi Kas</span>
-          <span className="px-1.5 py-0.2 rounded-full bg-zinc-800 text-[10px] font-mono text-zinc-300">
+          <span className="px-1.5 py-0.2 rounded-full bg-slate-100 dark:bg-zinc-800 text-[10px] font-mono text-slate-700 dark:text-zinc-300 font-bold">
             {filteredTransactions.length}
           </span>
         </button>
@@ -825,8 +825,8 @@ export const CashLedgerPage: React.FC = () => {
           onClick={() => setActiveTab('daftar_akun')}
           className={`relative px-4 py-2.5 text-xs font-medium transition-colors flex items-center space-x-2 ${
             activeTab === 'daftar_akun'
-              ? 'text-emerald-400 font-semibold'
-              : 'text-zinc-400 hover:text-zinc-200'
+              ? 'text-emerald-600 dark:text-emerald-400 font-bold'
+              : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200 font-medium'
           }`}
         >
           {activeTab === 'daftar_akun' && (
@@ -838,7 +838,7 @@ export const CashLedgerPage: React.FC = () => {
           )}
           <Layers className="w-3.5 h-3.5" />
           <span>Daftar Akun Kas & Delegasi Amanah</span>
-          <span className="px-1.5 py-0.2 rounded-full bg-zinc-800 text-[10px] font-mono text-zinc-300">
+          <span className="px-1.5 py-0.2 rounded-full bg-slate-100 dark:bg-zinc-800 text-[10px] font-mono text-slate-700 dark:text-zinc-300 font-bold">
             {cashAccounts.length}
           </span>
         </button>
@@ -847,8 +847,8 @@ export const CashLedgerPage: React.FC = () => {
           onClick={() => setActiveTab('rekap_laporan')}
           className={`relative px-4 py-2.5 text-xs font-medium transition-colors flex items-center space-x-2 ${
             activeTab === 'rekap_laporan'
-              ? 'text-emerald-400 font-semibold'
-              : 'text-zinc-400 hover:text-zinc-200'
+              ? 'text-emerald-600 dark:text-emerald-400 font-bold'
+              : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200 font-medium'
           }`}
         >
           {activeTab === 'rekap_laporan' && (

@@ -354,7 +354,7 @@ export const ReportsPage: React.FC = () => {
       cell: r => (
         <div>
           <p className="font-bold text-slate-900 dark:text-slate-100">{r.activityTitle}</p>
-          <p className="text-[11px] text-slate-400">
+          <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">
             {r.extracurricularName} • Pembina: {r.coachName}
           </p>
         </div>
@@ -367,7 +367,7 @@ export const ReportsPage: React.FC = () => {
       cell: r => (
         <div>
           <span className="font-semibold text-xs text-slate-800 dark:text-slate-200">{r.date}</span>
-          <p className="text-[11px] text-slate-400">👥 {r.attendanceCount} Siswa Hadir</p>
+          <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">👥 {r.attendanceCount} Siswa Hadir</p>
         </div>
       )
     },
@@ -451,7 +451,7 @@ export const ReportsPage: React.FC = () => {
             )}
             <p className="font-bold text-slate-900 dark:text-slate-100">{v.studentName}</p>
           </div>
-          <p className="text-[11px] text-slate-400">NIS: {v.studentNis} • Kelas: {v.studentClass}</p>
+          <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">NIS: {v.studentNis} • Kelas: {v.studentClass}</p>
         </div>
       )
     },
@@ -462,7 +462,7 @@ export const ReportsPage: React.FC = () => {
       cell: v => (
         <div>
           <span className="font-semibold text-xs text-slate-800 dark:text-slate-200">{v.date}</span>
-          <p className="text-[11px] text-slate-400">{v.category}</p>
+          <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">{v.category}</p>
         </div>
       )
     },
@@ -509,7 +509,7 @@ export const ReportsPage: React.FC = () => {
             )}
             <p className="font-bold text-slate-900 dark:text-slate-100">{c.studentName}</p>
           </div>
-          <p className="text-[11px] text-slate-400">Kelas: {c.studentClass}</p>
+          <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">Kelas: {c.studentClass}</p>
         </div>
       )
     },
@@ -526,7 +526,7 @@ export const ReportsPage: React.FC = () => {
                 {c.counselorCode}
               </span>
             )}
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">Guru: {c.counselorName}</p>
+            <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">Guru: {c.counselorName}</p>
           </div>
         </div>
       )
@@ -537,7 +537,7 @@ export const ReportsPage: React.FC = () => {
       cell: c => (
         <div>
           <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400">{c.serviceField || 'Pribadi'}</span>
-          <p className="text-[10px] text-slate-400">{c.urgencyLevel || 'Sedang'}</p>
+          <p className="text-[10px] text-slate-600 dark:text-slate-400 font-medium">{c.urgencyLevel || 'Sedang'}</p>
         </div>
       )
     },
@@ -562,7 +562,7 @@ export const ReportsPage: React.FC = () => {
       cell: s => (
         <div>
           <p className="font-bold text-slate-900 dark:text-slate-100">{s.studentName}</p>
-          <p className="text-[11px] text-slate-400">NIS: {s.studentNis} • Kelas: {s.studentClass}</p>
+          <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">NIS: {s.studentNis} • Kelas: {s.studentClass}</p>
         </div>
       )
     },
@@ -621,7 +621,7 @@ export const ReportsPage: React.FC = () => {
           SP Terbit Ke-{s.highestCall} ({s.parentCallsCount} surat)
         </span>
       ) : (
-        <span className="text-[10px] text-slate-400 font-medium">Belum terbit SP</span>
+        <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">Belum terbit SP</span>
       )
     },
     {
@@ -820,19 +820,19 @@ export const ReportsPage: React.FC = () => {
             </select>
 
             <div className="flex items-center gap-2 ml-auto">
-              <span className="text-slate-400">Rentang:</span>
+              <span className="text-slate-600 dark:text-slate-400 font-medium">Rentang:</span>
               <input
                 type="date"
                 value={dateFilterStart}
                 onChange={e => setDateFilterStart(e.target.value)}
-                className="px-2 py-1 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
+                className="px-2 py-1 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
               />
-              <span className="text-slate-400">s/d</span>
+              <span className="text-slate-600 dark:text-slate-400 font-medium">s/d</span>
               <input
                 type="date"
                 value={dateFilterEnd}
                 onChange={e => setDateFilterEnd(e.target.value)}
-                className="px-2 py-1 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700"
+                className="px-2 py-1 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
               />
               {(selectedClassFilter !== 'all' || dateFilterStart || dateFilterEnd) && (
                 <button
@@ -989,29 +989,29 @@ export const ReportsPage: React.FC = () => {
 
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
               <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60">
-                <span className="text-[11px] text-slate-500 block">Bab I: Kelakuan</span>
+                <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium block">Bab I: Kelakuan</span>
                 <span className="text-lg font-bold text-slate-900 dark:text-slate-100">{sk380Metrics.countKelakuan}</span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">16 butir pasal tata tertib</span>
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5">16 butir pasal tata tertib</span>
               </div>
               <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60">
-                <span className="text-[11px] text-slate-500 block">Bab II: Kerajinan</span>
+                <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium block">Bab II: Kerajinan</span>
                 <span className="text-lg font-bold text-slate-900 dark:text-slate-100">{sk380Metrics.countKerajinan}</span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">11 butir pasal tata tertib</span>
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5">11 butir pasal tata tertib</span>
               </div>
               <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60">
-                <span className="text-[11px] text-slate-500 block">Bab III: Kerapian</span>
+                <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium block">Bab III: Kerapian</span>
                 <span className="text-lg font-bold text-slate-900 dark:text-slate-100">{sk380Metrics.countKerapian}</span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">9 butir pasal tata tertib</span>
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5">9 butir pasal tata tertib</span>
               </div>
               <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60">
-                <span className="text-[11px] text-slate-500 block">Bab IV: Ibadah</span>
+                <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium block">Bab IV: Ibadah</span>
                 <span className="text-lg font-bold text-slate-900 dark:text-slate-100">{sk380Metrics.countIbadah}</span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">7 butir pasal tata tertib</span>
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5">7 butir pasal tata tertib</span>
               </div>
               <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60">
-                <span className="text-[11px] text-slate-500 block">Pelanggaran Khusus / Berat</span>
+                <span className="text-[11px] text-slate-600 dark:text-slate-400 font-medium block">Pelanggaran Khusus / Berat</span>
                 <span className="text-lg font-bold text-rose-600 dark:text-rose-400">{sk380Metrics.countKhusus}</span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">12 butir larangan keras</span>
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5">12 butir larangan keras</span>
               </div>
             </div>
           </div>
@@ -1222,7 +1222,7 @@ export const ReportsPage: React.FC = () => {
           maxWidth="lg"
           footer={
             <div className="flex items-center justify-between w-full">
-              <span className="text-xs text-slate-400">Format Lembar Pertanggungjawaban (A4)</span>
+              <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">Format Lembar Pertanggungjawaban (A4)</span>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setIsPrintLpjOpen(false)}
@@ -1347,7 +1347,7 @@ export const ReportsPage: React.FC = () => {
           maxWidth="lg"
           footer={
             <div className="flex items-center justify-between w-full">
-              <span className="text-xs text-slate-400">Total {filteredViolations.length} Catatan Pelanggaran</span>
+              <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">Total {filteredViolations.length} Catatan Pelanggaran</span>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setIsPrintViolationsOpen(false)}
@@ -1610,7 +1610,7 @@ export const ReportsPage: React.FC = () => {
           maxWidth="lg"
           footer={
             <div className="flex items-center justify-between w-full">
-              <span className="text-xs text-slate-400">Total {filteredCounseling.length} Sesi Konseling</span>
+              <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">Total {filteredCounseling.length} Sesi Konseling</span>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setIsPrintCounselingOpen(false)}

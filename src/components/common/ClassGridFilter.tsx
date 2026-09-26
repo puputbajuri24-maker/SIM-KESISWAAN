@@ -199,8 +199,8 @@ export const ClassGridFilter: React.FC<ClassGridFilterProps> = ({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2 border-b border-slate-100 dark:border-slate-800/80">
             {showGradeTabs && (
               <div className="flex items-center flex-wrap gap-1">
-                <span className="text-[11px] text-slate-400 font-medium mr-1 flex items-center gap-1">
-                  <Filter className="w-3 h-3" /> Tingkat:
+                <span className="text-[11px] text-slate-600 dark:text-slate-400 font-semibold mr-1 flex items-center gap-1">
+                  <Filter className="w-3 h-3 text-slate-500 dark:text-slate-400" /> Tingkat:
                 </span>
                 <button
                   type="button"
@@ -208,7 +208,7 @@ export const ClassGridFilter: React.FC<ClassGridFilterProps> = ({
                   className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
                     selectedGrade === 'all'
                       ? scheme.gradeActive + ' shadow-xs'
-                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
                   }`}
                 >
                   Semua ({classes.length})
@@ -224,7 +224,7 @@ export const ClassGridFilter: React.FC<ClassGridFilterProps> = ({
                       className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all ${
                         selectedGrade === grade
                           ? scheme.gradeActive + ' shadow-xs'
-                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
                       }`}
                     >
                       Kelas {grade} ({countInGrade})
@@ -238,13 +238,13 @@ export const ClassGridFilter: React.FC<ClassGridFilterProps> = ({
             <div className="flex items-center flex-wrap gap-2">
               {/* Sort Order Selector */}
               <div className="flex items-center gap-1.5 text-xs">
-                <span className="text-[11px] text-slate-400 font-medium hidden sm:inline flex items-center gap-1">
-                  <ArrowUpDown className="w-3 h-3 text-slate-400" /> Urutkan:
+                <span className="text-[11px] text-slate-600 dark:text-slate-400 font-semibold hidden sm:inline flex items-center gap-1">
+                  <ArrowUpDown className="w-3 h-3 text-slate-500 dark:text-slate-400" /> Urutkan:
                 </span>
                 <select
                   value={classSortOrder}
                   onChange={e => setClassSortOrder(e.target.value as ClassSortOrder)}
-                  className="px-2.5 py-1 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 font-medium cursor-pointer"
+                  className="px-2.5 py-1 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:outline-hidden focus:ring-1 focus:ring-indigo-500 font-medium cursor-pointer"
                   title="Urutkan Rombel Kelas"
                 >
                   <option value="classification">🏷️ Tingkat (X ➔ XI ➔ XII) & Abjad</option>
@@ -256,19 +256,19 @@ export const ClassGridFilter: React.FC<ClassGridFilterProps> = ({
 
               {/* Quick search class */}
               <div className="relative min-w-[160px] sm:w-48">
-                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400" />
                 <input
                   type="text"
                   placeholder="Cari rombel/wali..."
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
-                  className="w-full pl-8 pr-3 py-1 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
+                  className="w-full pl-8 pr-3 py-1 text-xs rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 placeholder:text-slate-500 dark:placeholder:text-slate-400 focus:outline-hidden focus:ring-1 focus:ring-indigo-500"
                 />
                 {searchQuery && (
                   <button
                     type="button"
                     onClick={() => setSearchQuery('')}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -335,14 +335,14 @@ export const ClassGridFilter: React.FC<ClassGridFilterProps> = ({
                   </div>
 
                   <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 mt-1">
-                    <span className="truncate text-[10px] text-slate-400 dark:text-slate-500 max-w-[65px]" title={cls.homeroomTeacherName || cls.major || ''}>
+                    <span className="truncate text-[10px] text-slate-600 dark:text-slate-400 font-medium max-w-[65px]" title={cls.homeroomTeacherName || cls.major || ''}>
                       {cls.homeroomTeacherName ? cls.homeroomTeacherName.split(' ')[0] : (cls.major || cls.grade)}
                     </span>
                     <span
                       className={`font-semibold px-1.5 py-0.2 rounded-md text-[10px] shrink-0 ${
                         count > 0
                           ? 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
-                          : 'bg-slate-100/50 dark:bg-slate-800/50 text-slate-400'
+                          : 'bg-slate-100/60 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400'
                       }`}
                     >
                       {count}
@@ -354,7 +354,7 @@ export const ClassGridFilter: React.FC<ClassGridFilterProps> = ({
           </div>
 
           {filteredClasses.length === 0 && (
-            <div className="text-center py-4 text-xs text-slate-400">
+            <div className="text-center py-4 text-xs text-slate-500 dark:text-slate-400 font-medium">
               Tidak ada rombel kelas yang sesuai dengan pencarian atau tingkat terpilih.
             </div>
           )}

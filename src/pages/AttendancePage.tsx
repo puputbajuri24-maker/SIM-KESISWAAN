@@ -256,7 +256,7 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ initialSchedule 
       cell: r => (
         <div>
           <p className="font-bold text-slate-900 dark:text-slate-100">{r.meetingTopic}</p>
-          <p className="text-[11px] text-slate-400">📅 {r.date} • {r.extracurricularName}</p>
+          <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">📅 {r.date} • {r.extracurricularName}</p>
         </div>
       )
     },
@@ -532,15 +532,15 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ initialSchedule 
             </div>
 
             {activeEkskulMembers.length === 0 ? (
-              <div className="py-12 text-center text-slate-400">
-                <Users className="w-10 h-10 mx-auto mb-2 text-slate-300" />
-                <p className="font-bold text-slate-700 dark:text-slate-300 text-sm">Belum ada anggota terdaftar</p>
-                <p className="text-xs text-slate-400 mt-1">Daftarkan siswa terlebih dahulu di menu "Anggota Ekskul".</p>
+              <div className="py-12 text-center text-slate-500 dark:text-slate-400">
+                <Users className="w-10 h-10 mx-auto mb-2 text-slate-400" />
+                <p className="font-bold text-slate-800 dark:text-slate-200 text-sm">Belum ada anggota terdaftar</p>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Daftarkan siswa terlebih dahulu di menu "Anggota Ekskul".</p>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
-                  <thead className="bg-slate-50 dark:bg-slate-800/80 text-slate-500 border-b border-slate-200 dark:border-slate-700 uppercase tracking-wider text-[10px]">
+                  <thead className="bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-700 uppercase tracking-wider text-[10px] font-semibold">
                     <tr>
                       <th className="py-3 px-4 w-12 text-center">No</th>
                       <th className="py-3 px-4">Nama Siswa & NIS</th>
@@ -556,10 +556,10 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ initialSchedule 
 
                       return (
                         <tr key={member.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40 transition-colors">
-                          <td className="py-3 px-4 text-center text-slate-400 font-semibold">{idx + 1}</td>
+                          <td className="py-3 px-4 text-center text-slate-600 dark:text-slate-400 font-semibold">{idx + 1}</td>
                           <td className="py-3 px-4">
                             <p className="font-bold text-slate-900 dark:text-slate-100">{member.studentName}</p>
-                            <p className="text-[10px] text-slate-400">NIS: {member.studentNis}</p>
+                            <p className="text-[10px] text-slate-600 dark:text-slate-400 font-medium">NIS: {member.studentNis}</p>
                           </td>
                           <td className="py-3 px-4">
                             <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded font-semibold text-slate-600 dark:text-slate-300">
@@ -677,7 +677,7 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ initialSchedule 
                 <div key={idx} className="p-3 flex items-center justify-between">
                   <div>
                     <p className="font-bold text-slate-800 dark:text-slate-100">{item.studentName}</p>
-                    <p className="text-[11px] text-slate-400">Kelas: {item.studentClass} {item.notes && `• Ket: ${item.notes}`}</p>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">Kelas: {item.studentClass} {item.notes && `• Ket: ${item.notes}`}</p>
                   </div>
                   <StatusBadge status={item.status} />
                 </div>

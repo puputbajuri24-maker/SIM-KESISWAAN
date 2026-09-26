@@ -481,7 +481,7 @@ export const TeachersPage: React.FC = () => {
                 )}
                 <p className="font-bold text-slate-900 dark:text-slate-100">{t.fullName}</p>
               </div>
-              <p className="text-[11px] text-slate-400">NIP: {t.nip || '-'}</p>
+              <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">NIP: {t.nip || '-'}</p>
             </div>
           </div>
         );
@@ -531,7 +531,7 @@ export const TeachersPage: React.FC = () => {
       cell: t => (
         <div className="text-xs">
           <p className="text-slate-800 dark:text-slate-200 font-semibold">📞 {t.phone || '-'}</p>
-          <p className="text-[11px] text-slate-400">✉️ {t.email || '-'}</p>
+          <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">✉️ {t.email || '-'}</p>
         </div>
       )
     },
@@ -546,7 +546,7 @@ export const TeachersPage: React.FC = () => {
               </span>
             ))
           ) : (
-            <span className="text-[11px] text-slate-400">-</span>
+            <span className="text-[11px] text-slate-500 dark:text-slate-400">-</span>
           )}
         </div>
       )
@@ -1329,7 +1329,7 @@ export const TeachersPage: React.FC = () => {
                         key={idx}
                         className={t.isValid ? 'hover:bg-slate-50 dark:hover:bg-slate-800/40' : 'bg-rose-50/50 dark:bg-rose-950/20'}
                       >
-                        <td className="py-2 px-3 font-mono text-slate-400">{idx + 1}</td>
+                        <td className="py-2 px-3 font-mono text-slate-600 dark:text-slate-400 font-semibold">{idx + 1}</td>
                         <td className="py-2 px-3 font-mono font-bold text-indigo-600 dark:text-indigo-400">
                           {t.code || '-'}
                         </td>
@@ -1350,7 +1350,7 @@ export const TeachersPage: React.FC = () => {
                           <span className="px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-medium text-[11px]">
                             {t.role}
                           </span>
-                          {t.subject && <div className="text-[10px] text-slate-400 mt-0.5">{t.subject}</div>}
+                          {t.subject && <div className="text-[10px] text-slate-600 dark:text-slate-400 font-medium mt-0.5">{t.subject}</div>}
                         </td>
                         <td className="py-2 px-3">
                           {t.assignedExtracurriculars && t.assignedExtracurriculars.length > 0 ? (
@@ -1362,12 +1362,12 @@ export const TeachersPage: React.FC = () => {
                               ))}
                             </div>
                           ) : (
-                            <span className="text-slate-400 text-[11px]">-</span>
+                            <span className="text-slate-500 dark:text-slate-400 text-[11px]">-</span>
                           )}
                         </td>
                         <td className="py-2 px-3 text-[11px]">
                           <div className="text-slate-700 dark:text-slate-300">{t.phone || '-'}</div>
-                          {t.email && <div className="text-[10px] text-slate-400 truncate max-w-[120px]">{t.email}</div>}
+                          {t.email && <div className="text-[10px] text-slate-600 dark:text-slate-400 font-medium truncate max-w-[120px]">{t.email}</div>}
                         </td>
                         <td className="py-2 px-3 text-right">
                           {t.isValid ? (

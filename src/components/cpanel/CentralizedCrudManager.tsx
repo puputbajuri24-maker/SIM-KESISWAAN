@@ -760,13 +760,13 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
       </div>
 
       {/* Primary Sub-Menu Navigation */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-2">
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
         <button
           onClick={() => { setActiveTab('teachers'); setSearchQuery(''); }}
           className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
             activeTab === 'teachers'
               ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20'
-              : 'bg-[#18181e] text-slate-400 hover:text-slate-200 hover:bg-[#202028]'
+              : 'bg-slate-100 dark:bg-[#18181e] text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-[#202028]'
           }`}
         >
           <GraduationCap className="w-4 h-4" />
@@ -778,7 +778,7 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
           className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
             activeTab === 'pembina_intra'
               ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/20'
-              : 'bg-[#18181e] text-slate-400 hover:text-slate-200 hover:bg-[#202028]'
+              : 'bg-slate-100 dark:bg-[#18181e] text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-[#202028]'
           }`}
         >
           <Shield className="w-4 h-4" />
@@ -790,7 +790,7 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
           className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
             activeTab === 'pembina_ekstra'
               ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20'
-              : 'bg-[#18181e] text-slate-400 hover:text-slate-200 hover:bg-[#202028]'
+              : 'bg-slate-100 dark:bg-[#18181e] text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-[#202028]'
           }`}
         >
           <Award className="w-4 h-4" />
@@ -802,7 +802,7 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
           className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
             activeTab === 'guru_bk'
               ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/20'
-              : 'bg-[#18181e] text-slate-400 hover:text-slate-200 hover:bg-[#202028]'
+              : 'bg-slate-100 dark:bg-[#18181e] text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-[#202028]'
           }`}
         >
           <HeartHandshake className="w-4 h-4" />
@@ -814,7 +814,7 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
           className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
             activeTab === 'members'
               ? 'bg-rose-600 text-white shadow-lg shadow-rose-600/20'
-              : 'bg-[#18181e] text-slate-400 hover:text-slate-200 hover:bg-[#202028]'
+              : 'bg-slate-100 dark:bg-[#18181e] text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-[#202028]'
           }`}
         >
           <Users className="w-4 h-4" />
@@ -823,7 +823,7 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
       </div>
 
       {/* Action & Filter Bar */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3.5 rounded-xl bg-[#141419] border border-slate-800">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3.5 rounded-xl bg-slate-50 dark:bg-[#141419] border border-slate-200 dark:border-slate-800">
         <div className="relative w-full sm:w-80">
           <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-500" />
           <input
@@ -831,7 +831,7 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
             placeholder={`Cari di ${activeTab === 'teachers' ? 'Dewan Guru' : activeTab === 'pembina_intra' ? 'Pembina OSIM' : activeTab === 'pembina_ekstra' ? 'Ekstrakurikuler' : activeTab === 'guru_bk' ? 'Guru BK' : 'Anggota'}...`}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 bg-[#1c1c24] border border-slate-700/80 rounded-lg text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
+            className="w-full pl-9 pr-3 py-2 bg-white dark:bg-[#1c1c24] border border-slate-300 dark:border-slate-700/80 rounded-lg text-xs text-slate-800 dark:text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
           />
         </div>
 
@@ -903,9 +903,9 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
       {/* ========================================================= */}
       {activeTab === 'teachers' && (
         <div className="space-y-4">
-          <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-[#121216]">
+          <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#121216]">
             <table className="w-full text-left text-xs text-slate-300">
-              <thead className="bg-[#181820] text-[11px] uppercase tracking-wider font-semibold text-slate-400 border-b border-slate-800">
+              <thead className="bg-slate-100 dark:bg-[#181820] text-[11px] uppercase tracking-wider font-semibold text-slate-700 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
                 <tr>
                   <th className="py-3 px-4">Nama Lengkap & NIP</th>
                   <th className="py-3 px-4">L/P</th>
@@ -916,9 +916,9 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
                   <th className="py-3 px-4 text-right">Aksi Terpusat</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/80">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
                 {filteredTeachers.map(t => (
-                  <tr key={t.id} className="hover:bg-[#181822] transition-colors">
+                  <tr key={t.id} className="hover:bg-slate-50/80 dark:hover:bg-[#181822] transition-colors">
                     <td className="py-3 px-4">
                       <div className="font-bold text-white text-sm">{t.fullName}</div>
                       <div className="text-[11px] text-slate-500 font-mono">NIP: {t.nip || '-'}</div>
@@ -989,7 +989,7 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {intraPembinaList.map((p, idx) => (
-              <div key={p.id || idx} className="p-4 rounded-2xl bg-[#141419] border border-slate-800 hover:border-amber-500/40 transition-all space-y-3">
+              <div key={p.id || idx} className="p-4 rounded-2xl bg-slate-50 dark:bg-[#141419] border border-slate-200 dark:border-slate-800 hover:border-amber-500/40 transition-all space-y-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
@@ -1033,9 +1033,9 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
       {/* ========================================================= */}
       {activeTab === 'pembina_ekstra' && (
         <div className="space-y-4">
-          <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-[#121216]">
+          <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#121216]">
             <table className="w-full text-left text-xs text-slate-300">
-              <thead className="bg-[#181820] text-[11px] uppercase tracking-wider font-semibold text-slate-400 border-b border-slate-800">
+              <thead className="bg-slate-100 dark:bg-[#181820] text-[11px] uppercase tracking-wider font-semibold text-slate-700 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
                 <tr>
                   <th className="py-3 px-4">Nama Ekstrakurikuler</th>
                   <th className="py-3 px-4">Kategori</th>
@@ -1046,9 +1046,9 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
                   <th className="py-3 px-4 text-right">Aksi Terpusat</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/80">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
                 {filteredEkskuls.map(e => (
-                  <tr key={e.id} className="hover:bg-[#181822] transition-colors">
+                  <tr key={e.id} className="hover:bg-slate-50/80 dark:hover:bg-[#181822] transition-colors">
                     <td className="py-3 px-4">
                       <div className="font-bold text-white text-sm">{e.name}</div>
                       <div className="text-[11px] text-slate-500 line-clamp-1">{e.description}</div>
@@ -1113,7 +1113,7 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {bkTeachersList.map(bk => (
-              <div key={bk.id} className="p-4 rounded-2xl bg-[#141419] border border-slate-800 hover:border-purple-500/40 transition-all space-y-3">
+              <div key={bk.id} className="p-4 rounded-2xl bg-slate-50 dark:bg-[#141419] border border-slate-200 dark:border-slate-800 hover:border-purple-500/40 transition-all space-y-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
@@ -1157,7 +1157,7 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
       {/* ========================================================= */}
       {activeTab === 'members' && (
         <div className="space-y-4">
-          <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
+          <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
             <button
               onClick={() => setMemberSubTab('ekskul')}
               className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
@@ -1181,9 +1181,9 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
           </div>
 
           {memberSubTab === 'ekskul' && (
-            <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-[#121216]">
+            <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#121216]">
               <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-[#181820] text-[11px] uppercase tracking-wider font-semibold text-slate-400 border-b border-slate-800">
+                <thead className="bg-slate-100 dark:bg-[#181820] text-[11px] uppercase tracking-wider font-semibold text-slate-700 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
                   <tr>
                     <th className="py-3 px-4">Nama Siswa & NIS</th>
                     <th className="py-3 px-4">Kelas</th>
@@ -1193,9 +1193,9 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
                     <th className="py-3 px-4 text-right">Aksi Terpusat</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/80">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
                   {filteredMembers.map(m => (
-                    <tr key={m.id} className="hover:bg-[#181822] transition-colors">
+                    <tr key={m.id} className="hover:bg-slate-50/80 dark:hover:bg-[#181822] transition-colors">
                       <td className="py-3 px-4">
                         <div className="font-bold text-white">{m.studentName}</div>
                         <div className="text-[11px] text-slate-500 font-mono">NIS: {m.studentNis}</div>
@@ -1242,9 +1242,9 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
           )}
 
           {memberSubTab === 'osim' && (
-            <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-[#121216]">
+            <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#121216]">
               <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-[#181820] text-[11px] uppercase tracking-wider font-semibold text-slate-400 border-b border-slate-800">
+                <thead className="bg-slate-100 dark:bg-[#181820] text-[11px] uppercase tracking-wider font-semibold text-slate-700 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
                   <tr>
                     <th className="py-3 px-4">Nama Pengurus & NIS</th>
                     <th className="py-3 px-4">Kelas</th>
@@ -1254,9 +1254,9 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
                     <th className="py-3 px-4 text-right">Aksi Terpusat</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-800/80">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
                   {filteredOsimMembers.map(om => (
-                    <tr key={om.id} className="hover:bg-[#181822] transition-colors">
+                    <tr key={om.id} className="hover:bg-slate-50/80 dark:hover:bg-[#181822] transition-colors">
                       <td className="py-3 px-4">
                         <div className="font-bold text-white">{om.fullName}</div>
                         <div className="text-[11px] text-slate-500 font-mono">NIS: {om.studentNis}</div>
@@ -1302,13 +1302,13 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
       {/* ========================================================= */}
       {isTeacherModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="w-full max-w-xl bg-[#181820] border border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
+          <div className="w-full max-w-xl bg-white dark:bg-[#181820] border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <GraduationCap className="w-5 h-5 text-indigo-400" />
                 <span>{editingTeacher ? 'Edit Data Dewan Guru' : 'Tambah Guru Baru (cPanel Master)'}</span>
               </h3>
-              <button onClick={() => setIsTeacherModalOpen(false)} className="text-slate-400 hover:text-white">
+              <button onClick={() => setIsTeacherModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1316,34 +1316,34 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
             <form onSubmit={handleSaveTeacher} className="p-6 space-y-4 text-xs">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Nama Lengkap & Gelar *</label>
+                  <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Nama Lengkap & Gelar *</label>
                   <input
                     type="text"
                     required
                     value={teacherForm.fullName}
                     onChange={e => setTeacherForm({ ...teacherForm, fullName: e.target.value })}
                     placeholder="Contoh: Ahmad Dahlan, M.Pd"
-                    className="w-full px-3 py-2 bg-[#101015] border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-semibold mb-1">NIP / NUPTK</label>
+                  <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">NIP / NUPTK</label>
                   <input
                     type="text"
                     value={teacherForm.nip}
                     onChange={e => setTeacherForm({ ...teacherForm, nip: e.target.value })}
                     placeholder="198001012005011001"
-                    className="w-full px-3 py-2 bg-[#101015] border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Jenis Kelamin</label>
+                  <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Jenis Kelamin</label>
                   <select
                     value={teacherForm.gender}
                     onChange={e => setTeacherForm({ ...teacherForm, gender: e.target.value as any })}
-                    className="w-full px-3 py-2 bg-[#101015] border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500"
                   >
                     <option value="L">Laki-laki (L)</option>
                     <option value="P">Perempuan (P)</option>
@@ -1351,55 +1351,55 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Mata Pelajaran Utama</label>
+                  <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Mata Pelajaran Utama</label>
                   <input
                     type="text"
                     value={teacherForm.subject}
                     onChange={e => setTeacherForm({ ...teacherForm, subject: e.target.value })}
                     placeholder="Matematika, Fikih, Bahasa Arab..."
-                    className="w-full px-3 py-2 bg-[#101015] border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Tugas / Jabatan Tambahan</label>
+                  <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Tugas / Jabatan Tambahan</label>
                   <input
                     type="text"
                     value={teacherForm.role}
                     onChange={e => setTeacherForm({ ...teacherForm, role: e.target.value })}
                     placeholder="Guru Mapel, Wali Kelas, Waka..."
-                    className="w-full px-3 py-2 bg-[#101015] border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Nomor WhatsApp / HP</label>
+                  <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Nomor WhatsApp / HP</label>
                   <input
                     type="text"
                     value={teacherForm.phone}
                     onChange={e => setTeacherForm({ ...teacherForm, phone: e.target.value })}
                     placeholder="081234567890"
-                    className="w-full px-3 py-2 bg-[#101015] border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Email Resmi</label>
+                  <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Email Resmi</label>
                   <input
                     type="email"
                     value={teacherForm.email}
                     onChange={e => setTeacherForm({ ...teacherForm, email: e.target.value })}
                     placeholder="guru@madrasah.sch.id"
-                    className="w-full px-3 py-2 bg-[#101015] border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Status Keaktifan</label>
+                  <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Status Keaktifan</label>
                   <select
                     value={teacherForm.status}
                     onChange={e => setTeacherForm({ ...teacherForm, status: e.target.value })}
-                    className="w-full px-3 py-2 bg-[#101015] border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500"
                   >
                     <option value="Aktif">Aktif Mengajar</option>
                     <option value="Nonaktif">Nonaktif / Pensiun</option>
@@ -1421,13 +1421,13 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
 
               {teacherForm.isPembina && (
                 <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Nama Ekskul / Organisasi yang Dibina</label>
+                  <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Nama Ekskul / Organisasi yang Dibina</label>
                   <input
                     type="text"
                     value={teacherForm.extracurricularName}
                     onChange={e => setTeacherForm({ ...teacherForm, extracurricularName: e.target.value })}
                     placeholder="Pramuka, PMR, Paskibra, OSIM..."
-                    className="w-full px-3 py-2 bg-[#101015] border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:border-indigo-500"
                   />
                 </div>
               )}
@@ -1457,24 +1457,24 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
       {/* ========================================================= */}
       {isPembinaIntraModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="w-full max-w-lg bg-[#181820] border border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
+          <div className="w-full max-w-lg bg-white dark:bg-[#181820] border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <Shield className="w-5 h-5 text-amber-400" />
                 <span>Tetapkan Majelis Pembina OSIM (Terpusat)</span>
               </h3>
-              <button onClick={() => setIsPembinaIntraModalOpen(false)} className="text-slate-400 hover:text-white">
+              <button onClick={() => setIsPembinaIntraModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleSavePembinaIntra} className="p-6 space-y-4 text-xs">
               <div>
-                <label className="block text-slate-400 font-semibold mb-1">Pilih Guru dari Master Dewan Guru *</label>
+                <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Pilih Guru dari Master Dewan Guru *</label>
                 <select
                   value={pembinaIntraForm.teacherId}
                   onChange={e => setPembinaIntraForm({ ...pembinaIntraForm, teacherId: e.target.value })}
-                  className="w-full px-3 py-2 bg-[#101015] border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-amber-500"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500"
                 >
                   {teachers.map(t => (
                     <option key={t.id} value={t.id}>
@@ -1485,11 +1485,11 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
               </div>
 
               <div>
-                <label className="block text-slate-400 font-semibold mb-1">Jabatan Pembina OSIM</label>
+                <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Jabatan Pembina OSIM</label>
                 <select
                   value={pembinaIntraForm.position}
                   onChange={e => setPembinaIntraForm({ ...pembinaIntraForm, position: e.target.value })}
-                  className="w-full px-3 py-2 bg-[#101015] border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-amber-500"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500"
                 >
                   <option value="Pembina Utama OSIM">Pembina Utama OSIM</option>
                   <option value="Pembina OSIM Putra">Pembina OSIM Putra</option>
@@ -1524,13 +1524,13 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
       {/* ========================================================= */}
       {isEkskulModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="w-full max-w-xl bg-[#181820] border border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
+          <div className="w-full max-w-xl bg-white dark:bg-[#181820] border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <Award className="w-5 h-5 text-emerald-400" />
                 <span>{editingEkskul ? 'Edit Unit Ekstrakurikuler & Pembina' : 'Tambah Unit Ekskul & Pembina Baru'}</span>
               </h3>
-              <button onClick={() => setIsEkskulModalOpen(false)} className="text-slate-400 hover:text-white">
+              <button onClick={() => setIsEkskulModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1538,23 +1538,23 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
             <form onSubmit={handleSaveEkskul} className="p-6 space-y-4 text-xs">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Nama Ekstrakurikuler *</label>
+                  <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Nama Ekstrakurikuler *</label>
                   <input
                     type="text"
                     required
                     value={ekskulForm.name}
                     onChange={e => setEkskulForm({ ...ekskulForm, name: e.target.value })}
                     placeholder="Pramuka, Futsal, Robotik, Tahfidz..."
-                    className="w-full px-3 py-2 bg-[#101015] border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-emerald-500"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:border-emerald-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Kategori</label>
+                  <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Kategori</label>
                   <select
                     value={ekskulForm.category}
                     onChange={e => setEkskulForm({ ...ekskulForm, category: e.target.value as any })}
-                    className="w-full px-3 py-2 bg-[#101015] border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-emerald-500"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:border-emerald-500"
                   >
                     <option value="Olahraga">Olahraga</option>
                     <option value="Seni">Seni</option>
@@ -1568,7 +1568,7 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Pilih Pembina Utama (Dari Dewan Guru)</label>
+                  <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Pilih Pembina Utama (Dari Dewan Guru)</label>
                   <select
                     value={ekskulForm.coachTeacherId}
                     onChange={e => {
@@ -1579,7 +1579,7 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
                         coachName: sel ? sel.fullName : ekskulForm.coachName
                       });
                     }}
-                    className="w-full px-3 py-2 bg-[#101015] border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-emerald-500"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:border-emerald-500"
                   >
                     <option value="">-- Tulis Nama Manual di Bawah --</option>
                     {teachers.map(t => (
@@ -1589,23 +1589,23 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Nama Pembina / Pelatih</label>
+                  <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Nama Pembina / Pelatih</label>
                   <input
                     type="text"
                     required
                     value={ekskulForm.coachName}
                     onChange={e => setEkskulForm({ ...ekskulForm, coachName: e.target.value })}
                     placeholder="Nama Pembina / Pelatih"
-                    className="w-full px-3 py-2 bg-[#101015] border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-emerald-500"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:border-emerald-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Hari Latihan</label>
+                  <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Hari Latihan</label>
                   <select
                     value={ekskulForm.day}
                     onChange={e => setEkskulForm({ ...ekskulForm, day: e.target.value as any })}
-                    className="w-full px-3 py-2 bg-[#101015] border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-emerald-500"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:border-emerald-500"
                   >
                     {['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu', 'Minggu'].map(d => (
                       <option key={d} value={d}>{d}</option>
@@ -1614,14 +1614,14 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Jam Latihan (Mulai - Selesai)</label>
+                  <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Jam Latihan (Mulai - Selesai)</label>
                   <div className="flex items-center gap-2">
                     <input
                       type="text"
                       value={ekskulForm.startTime}
                       onChange={e => setEkskulForm({ ...ekskulForm, startTime: e.target.value })}
                       placeholder="15:30"
-                      className="w-full px-3 py-2 bg-[#101015] border border-slate-700 rounded-lg text-slate-200"
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200"
                     />
                     <span>-</span>
                     <input
@@ -1629,41 +1629,41 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
                       value={ekskulForm.endTime}
                       onChange={e => setEkskulForm({ ...ekskulForm, endTime: e.target.value })}
                       placeholder="17:00"
-                      className="w-full px-3 py-2 bg-[#101015] border border-slate-700 rounded-lg text-slate-200"
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Lokasi Latihan</label>
+                  <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Lokasi Latihan</label>
                   <input
                     type="text"
                     value={ekskulForm.location}
                     onChange={e => setEkskulForm({ ...ekskulForm, location: e.target.value })}
                     placeholder="Lapangan Utama, Lab Komputer, Aula..."
-                    className="w-full px-3 py-2 bg-[#101015] border border-slate-700 rounded-lg text-slate-200"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Kapasitas / Kuota Anggota</label>
+                  <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Kapasitas / Kuota Anggota</label>
                   <input
                     type="number"
                     value={ekskulForm.quota}
                     onChange={e => setEkskulForm({ ...ekskulForm, quota: Number(e.target.value) })}
-                    className="w-full px-3 py-2 bg-[#101015] border border-slate-700 rounded-lg text-slate-200"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-slate-400 font-semibold mb-1">Deskripsi Singkat</label>
+                <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Deskripsi Singkat</label>
                 <textarea
                   rows={2}
                   value={ekskulForm.description}
                   onChange={e => setEkskulForm({ ...ekskulForm, description: e.target.value })}
                   placeholder="Deskripsi kegiatan ekstrakurikuler..."
-                  className="w-full px-3 py-2 bg-[#101015] border border-slate-700 rounded-lg text-slate-200"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200"
                 />
               </div>
 
@@ -1692,24 +1692,24 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
       {/* ========================================================= */}
       {isBkModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="w-full max-w-md bg-[#181820] border border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
+          <div className="w-full max-w-md bg-white dark:bg-[#181820] border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <HeartHandshake className="w-5 h-5 text-purple-400" />
                 <span>Tetapkan Personel Guru BK (Terpusat)</span>
               </h3>
-              <button onClick={() => setIsBkModalOpen(false)} className="text-slate-400 hover:text-white">
+              <button onClick={() => setIsBkModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleSaveBk} className="p-6 space-y-4 text-xs">
               <div>
-                <label className="block text-slate-400 font-semibold mb-1">Pilih Guru dari Master Dewan Guru *</label>
+                <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Pilih Guru dari Master Dewan Guru *</label>
                 <select
                   value={bkForm.teacherId}
                   onChange={e => setBkForm({ ...bkForm, teacherId: e.target.value })}
-                  className="w-full px-3 py-2 bg-[#101015] border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-purple-500"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:border-purple-500"
                 >
                   {teachers.map(t => (
                     <option key={t.id} value={t.id}>
@@ -1720,24 +1720,24 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
               </div>
 
               <div>
-                <label className="block text-slate-400 font-semibold mb-1">Penugasan / Jabatan BK</label>
+                <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Penugasan / Jabatan BK</label>
                 <input
                   type="text"
                   value={bkForm.counselorTitle}
                   onChange={e => setBkForm({ ...bkForm, counselorTitle: e.target.value })}
                   placeholder="Koordinator BK, Guru BK Kelas X..."
-                  className="w-full px-3 py-2 bg-[#101015] border border-slate-700 rounded-lg text-slate-200"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-400 font-semibold mb-1">Ruang Bimbingan Konseling</label>
+                <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Ruang Bimbingan Konseling</label>
                 <input
                   type="text"
                   value={bkForm.roomLocation}
                   onChange={e => setBkForm({ ...bkForm, roomLocation: e.target.value })}
                   placeholder="Ruang BK Gedung Utama Lantai 1"
-                  className="w-full px-3 py-2 bg-[#101015] border border-slate-700 rounded-lg text-slate-200"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200"
                 />
               </div>
 
@@ -1766,13 +1766,13 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
       {/* ========================================================= */}
       {isMemberModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="w-full max-w-lg bg-[#181820] border border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
+          <div className="w-full max-w-lg bg-white dark:bg-[#181820] border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <Users className="w-5 h-5 text-rose-400" />
                 <span>{editingMember ? 'Edit Anggota Ekstrakurikuler' : 'Daftarkan Anggota Ekskul Baru'}</span>
               </h3>
-              <button onClick={() => setIsMemberModalOpen(false)} className="text-slate-400 hover:text-white">
+              <button onClick={() => setIsMemberModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1780,11 +1780,11 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
             <form onSubmit={handleSaveEkskulMember} className="p-6 space-y-4 text-xs">
               {!editingMember && (
                 <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Pilih Siswa dari Database Madrasah *</label>
+                  <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Pilih Siswa dari Database Madrasah *</label>
                   <select
                     value={memberForm.studentId}
                     onChange={e => setMemberForm({ ...memberForm, studentId: e.target.value })}
-                    className="w-full px-3 py-2 bg-[#101015] border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-rose-500"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:border-rose-500"
                   >
                     {students.map(s => (
                       <option key={s.id} value={s.id}>
@@ -1796,12 +1796,12 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
               )}
 
               <div>
-                <label className="block text-slate-400 font-semibold mb-1">Ekstrakurikuler Tujuan *</label>
+                <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Ekstrakurikuler Tujuan *</label>
                 <select
                   disabled={Boolean(editingMember)}
                   value={memberForm.extracurricularId}
                   onChange={e => setMemberForm({ ...memberForm, extracurricularId: e.target.value })}
-                  className="w-full px-3 py-2 bg-[#101015] border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-rose-500 disabled:opacity-60"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:border-rose-500 disabled:opacity-60"
                 >
                   {extracurriculars.map(e => (
                     <option key={e.id} value={e.id}>
@@ -1813,11 +1813,11 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Status Keanggotaan</label>
+                  <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Status Keanggotaan</label>
                   <select
                     value={memberForm.status}
                     onChange={e => setMemberForm({ ...memberForm, status: e.target.value as any })}
-                    className="w-full px-3 py-2 bg-[#101015] border border-slate-700 rounded-lg text-slate-200"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200"
                   >
                     <option value="Aktif">Aktif</option>
                     <option value="Nonaktif">Nonaktif</option>
@@ -1825,11 +1825,11 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Peran / Jabatan</label>
+                  <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Peran / Jabatan</label>
                   <select
                     value={memberForm.role}
                     onChange={e => setMemberForm({ ...memberForm, role: e.target.value })}
-                    className="w-full px-3 py-2 bg-[#101015] border border-slate-700 rounded-lg text-slate-200"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200"
                   >
                     <option value="Anggota">Anggota</option>
                     <option value="Ketua Ekskul">Ketua Ekskul</option>
@@ -1841,13 +1841,13 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
               </div>
 
               <div>
-                <label className="block text-slate-400 font-semibold mb-1">Catatan / Keterangan</label>
+                <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Catatan / Keterangan</label>
                 <textarea
                   rows={2}
                   value={memberForm.notes}
                   onChange={e => setMemberForm({ ...memberForm, notes: e.target.value })}
                   placeholder="Catatan keanggotaan atau prestasi siswa..."
-                  className="w-full px-3 py-2 bg-[#101015] border border-slate-700 rounded-lg text-slate-200"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200"
                 />
               </div>
 
@@ -1876,13 +1876,13 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
       {/* ========================================================= */}
       {isOsimMemberModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div className="w-full max-w-lg bg-[#181820] border border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
+          <div className="w-full max-w-lg bg-white dark:bg-[#181820] border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <Users className="w-5 h-5 text-amber-400" />
                 <span>{editingOsimMember ? 'Edit Pengurus Kabinet OSIM' : 'Tambah Pengurus Kabinet OSIM (Terpusat)'}</span>
               </h3>
-              <button onClick={() => setIsOsimMemberModalOpen(false)} className="text-slate-400 hover:text-white">
+              <button onClick={() => setIsOsimMemberModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1890,11 +1890,11 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
             <form onSubmit={handleSaveOsimMember} className="p-6 space-y-4 text-xs">
               {!editingOsimMember && (
                 <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Pilih Siswa dari Database Madrasah *</label>
+                  <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Pilih Siswa dari Database Madrasah *</label>
                   <select
                     value={osimMemberForm.studentId}
                     onChange={e => setOsimMemberForm({ ...osimMemberForm, studentId: e.target.value })}
-                    className="w-full px-3 py-2 bg-[#101015] border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-amber-500"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500"
                   >
                     {students.map(s => (
                       <option key={s.id} value={s.id}>
@@ -1907,11 +1907,11 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Jabatan Kabinet</label>
+                  <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Jabatan Kabinet</label>
                   <select
                     value={osimMemberForm.position}
                     onChange={e => setOsimMemberForm({ ...osimMemberForm, position: e.target.value })}
-                    className="w-full px-3 py-2 bg-[#101015] border border-slate-700 rounded-lg text-slate-200"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200"
                   >
                     <option value="Ketua OSIM">Ketua OSIM</option>
                     <option value="Wakil Ketua OSIM">Wakil Ketua OSIM</option>
@@ -1925,11 +1925,11 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-slate-400 font-semibold mb-1">Seksi Bidang (Sekbid)</label>
+                  <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">Seksi Bidang (Sekbid)</label>
                   <select
                     value={osimMemberForm.sekbid}
                     onChange={e => setOsimMemberForm({ ...osimMemberForm, sekbid: e.target.value as any })}
-                    className="w-full px-3 py-2 bg-[#101015] border border-slate-700 rounded-lg text-slate-200"
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200"
                   >
                     <option value="BPH (Badan Pengurus Harian)">BPH (Badan Pengurus Harian)</option>
                     <option value="Sekbid 1: Keimanan & Ketaqwaan">Sekbid 1: Keimanan & Ketaqwaan</option>

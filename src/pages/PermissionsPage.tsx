@@ -293,7 +293,7 @@ export const PermissionsPage: React.FC = () => {
       cell: p => (
         <div>
           <p className="font-bold text-slate-900 dark:text-slate-100">{p.studentName}</p>
-          <p className="text-[11px] text-slate-400">NIS: {p.studentNis} • Kelas: {p.studentClass}</p>
+          <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">NIS: {p.studentNis} • Kelas: {p.studentClass}</p>
         </div>
       )
     },
@@ -304,7 +304,7 @@ export const PermissionsPage: React.FC = () => {
       cell: p => (
         <div>
           <span className="font-bold text-xs text-indigo-600 dark:text-indigo-400">{p.type}</span>
-          {p.activityName && <p className="text-[11px] text-slate-500 line-clamp-1">{p.activityName}</p>}
+          {p.activityName && <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium line-clamp-1">{p.activityName}</p>}
         </div>
       )
     },
@@ -317,7 +317,7 @@ export const PermissionsPage: React.FC = () => {
           <span className="font-semibold text-slate-800 dark:text-slate-200">
             {p.startDate} {p.endDate && p.endDate !== p.startDate && `s/d ${p.endDate}`}
           </span>
-          <p className="text-[11px] text-slate-400">Alasan: {p.reason}</p>
+          <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">Alasan: {p.reason}</p>
         </div>
       )
     },
@@ -328,7 +328,7 @@ export const PermissionsPage: React.FC = () => {
       cell: p => (
         <div>
           <StatusBadge status={p.status} />
-          {p.approvedBy && <p className="text-[10px] text-slate-400 mt-0.5">Oleh: {p.approvedBy}</p>}
+          {p.approvedBy && <p className="text-[10px] text-slate-600 dark:text-slate-400 font-medium mt-0.5">Oleh: {p.approvedBy}</p>}
         </div>
       )
     },
@@ -656,7 +656,7 @@ export const PermissionsPage: React.FC = () => {
           maxWidth="2xl"
           footer={
             <div className="flex items-center justify-between w-full">
-              <span className="text-xs text-slate-400">Siap dicetak pada kertas A4</span>
+              <span className="text-xs text-slate-600 dark:text-slate-400 font-medium">Siap dicetak pada kertas A4</span>
               <div className="flex items-center gap-2">
                 <button
                   type="button"

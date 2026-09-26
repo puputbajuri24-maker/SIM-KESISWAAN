@@ -212,21 +212,21 @@ export function DataTable<T extends Record<string, any>>({
       <div className="overflow-x-auto min-h-[220px]">
         <table className="w-full text-left text-xs border-collapse">
           <thead>
-            <tr className="border-b border-[#27272a] bg-[#09090b] text-zinc-400 font-mono text-[10px] uppercase tracking-wider">
+            <tr className="border-b border-slate-200 dark:border-[#27272a] bg-slate-100 dark:bg-[#09090b] text-slate-700 dark:text-zinc-400 font-mono text-[10px] uppercase tracking-wider font-semibold">
               {selectable && (
                 <th className="w-10 px-3 py-2.5 text-center select-none">
                   <button
                     type="button"
                     onClick={() => onToggleSelectAll && onToggleSelectAll(filteredData)}
-                    className="p-0.5 rounded text-zinc-400 hover:text-indigo-400 transition-colors inline-flex items-center justify-center"
+                    className="p-0.5 rounded text-slate-500 dark:text-zinc-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors inline-flex items-center justify-center"
                     title={isAllFilteredSelected ? 'Batalkan semua' : 'Tandai semua'}
                   >
                     {isAllFilteredSelected ? (
-                      <CheckSquare className="w-4 h-4 text-indigo-500" />
+                      <CheckSquare className="w-4 h-4 text-indigo-600 dark:text-indigo-500" />
                     ) : isSomeFilteredSelected ? (
-                      <MinusSquare className="w-4 h-4 text-indigo-400" />
+                      <MinusSquare className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
                     ) : (
-                      <Square className="w-4 h-4 text-zinc-500" />
+                      <Square className="w-4 h-4 text-slate-400 dark:text-zinc-500" />
                     )}
                   </button>
                 </th>
@@ -235,24 +235,24 @@ export function DataTable<T extends Record<string, any>>({
                 <th
                   key={idx}
                   onClick={() => col.sortable && col.accessorKey && handleSort(col.accessorKey)}
-                  className={`px-3 py-2.5 select-none ${col.sortable ? 'cursor-pointer hover:text-indigo-400' : ''} ${col.className || ''}`}
+                  className={`px-3 py-2.5 select-none ${col.sortable ? 'cursor-pointer hover:text-indigo-600 dark:hover:text-indigo-400' : ''} ${col.className || ''}`}
                 >
                   <div className="flex items-center gap-1">
                     <span>{col.header}</span>
-                    {col.sortable && <ArrowUpDown className="w-3 h-3 text-zinc-600" />}
+                    {col.sortable && <ArrowUpDown className="w-3 h-3 text-slate-400 dark:text-zinc-600" />}
                   </div>
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-[#1e1e22]">
+          <tbody className="divide-y divide-slate-100 dark:divide-[#1e1e22]">
             {paginatedData.length === 0 ? (
               <tr>
                 <td colSpan={columns.length + (selectable ? 1 : 0)} className="py-12 text-center">
-                  <div className="flex flex-col items-center justify-center text-zinc-500 font-mono">
-                    <Inbox className="w-8 h-8 mb-2 stroke-[1.5] text-zinc-600" />
-                    <p className="text-xs font-bold text-zinc-300">{emptyTitle}</p>
-                    <p className="text-[10px] text-zinc-500 mt-0.5">{emptySubtitle}</p>
+                  <div className="flex flex-col items-center justify-center text-slate-500 dark:text-zinc-500 font-mono">
+                    <Inbox className="w-8 h-8 mb-2 stroke-[1.5] text-slate-400 dark:text-zinc-600" />
+                    <p className="text-xs font-bold text-slate-800 dark:text-zinc-300">{emptyTitle}</p>
+                    <p className="text-[10px] text-slate-500 dark:text-zinc-500 mt-0.5">{emptySubtitle}</p>
                   </div>
                 </td>
               </tr>
@@ -266,7 +266,7 @@ export function DataTable<T extends Record<string, any>>({
                     key={rowKey || rIdx}
                     onClick={() => onRowClick && onRowClick(row)}
                     className={`transition-colors ${
-                      isSelected ? 'bg-indigo-950/30 dark:bg-indigo-950/40 text-white' : 'hover:bg-[#161618]'
+                      isSelected ? 'bg-indigo-50/80 dark:bg-indigo-950/40 text-indigo-950 dark:text-white font-medium' : 'hover:bg-slate-50/80 dark:hover:bg-[#161618]'
                     } ${onRowClick ? 'cursor-pointer' : ''}`}
                   >
                     {selectable && (
@@ -279,18 +279,18 @@ export function DataTable<T extends Record<string, any>>({
                       >
                         <button
                           type="button"
-                          className="p-0.5 rounded text-zinc-400 hover:text-indigo-400 transition-colors inline-flex items-center justify-center"
+                          className="p-0.5 rounded text-slate-500 dark:text-zinc-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors inline-flex items-center justify-center"
                         >
                           {isSelected ? (
-                            <CheckSquare className="w-4 h-4 text-indigo-500" />
+                            <CheckSquare className="w-4 h-4 text-indigo-600 dark:text-indigo-500" />
                           ) : (
-                            <Square className="w-4 h-4 text-zinc-600 hover:text-zinc-400" />
+                            <Square className="w-4 h-4 text-slate-400 dark:text-zinc-600 hover:text-slate-600 dark:hover:text-zinc-400" />
                           )}
                         </button>
                       </td>
                     )}
                     {columns.map((col, cIdx) => (
-                      <td key={cIdx} className={`px-3 py-2 text-zinc-300 ${col.className || ''}`}>
+                      <td key={cIdx} className={`px-3 py-2 text-slate-800 dark:text-zinc-300 ${col.className || ''}`}>
                         {col.cell ? col.cell(row) : col.accessorKey ? String(row[col.accessorKey] ?? '-') : null}
                       </td>
                     ))}
@@ -303,7 +303,7 @@ export function DataTable<T extends Record<string, any>>({
       </div>
 
       {/* Pagination Footer */}
-      <div className="p-2.5 border-t border-[#27272a] bg-[#121215] flex flex-col sm:flex-row items-center justify-between gap-2 text-[10px] font-mono text-zinc-500">
+      <div className="p-2.5 border-t border-slate-200 dark:border-[#27272a] bg-slate-50/90 dark:bg-[#121215] flex flex-col sm:flex-row items-center justify-between gap-2 text-[10px] font-mono text-slate-600 dark:text-zinc-500">
         <div className="flex items-center gap-2">
           <span>SHOW:</span>
           <select
@@ -312,7 +312,7 @@ export function DataTable<T extends Record<string, any>>({
               setPageSize(Number(e.target.value));
               setCurrentPage(1);
             }}
-            className="px-1.5 py-0.5 bg-[#161618] border border-[#27272a] rounded-lg text-zinc-300 text-[10px] focus:outline-none"
+            className="px-1.5 py-0.5 bg-white dark:bg-[#161618] border border-slate-300 dark:border-[#27272a] rounded-lg text-slate-800 dark:text-zinc-300 text-[10px] focus:outline-none font-medium shadow-2xs"
           >
             {itemsPerPageOptions.map(opt => (
               <option key={opt} value={opt}>
@@ -320,17 +320,17 @@ export function DataTable<T extends Record<string, any>>({
               </option>
             ))}
           </select>
-          <span>OF <strong className="text-zinc-300">{sortedData.length}</strong> RECORDS</span>
+          <span>OF <strong className="text-slate-900 dark:text-zinc-300 font-bold">{sortedData.length}</strong> RECORDS</span>
         </div>
 
         <div className="flex items-center gap-1">
-          <span className="mr-2 text-zinc-400">
+          <span className="mr-2 text-slate-700 dark:text-zinc-400 font-semibold">
             PAGE {currentPage} / {totalPages}
           </span>
           <button
             onClick={() => setCurrentPage(1)}
             disabled={currentPage === 1}
-            className="p-1 rounded-lg border border-[#27272a] bg-[#161618] hover:border-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed text-zinc-400"
+            className="p-1 rounded-lg border border-slate-300 dark:border-[#27272a] bg-white dark:bg-[#161618] hover:border-slate-400 dark:hover:border-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed text-slate-700 dark:text-zinc-400 hover:text-slate-950 dark:hover:text-zinc-200 shadow-2xs transition-colors"
             title="First Page"
           >
             <ChevronsLeft className="w-3.5 h-3.5" />
@@ -338,7 +338,7 @@ export function DataTable<T extends Record<string, any>>({
           <button
             onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
             disabled={currentPage === 1}
-            className="p-1 rounded-lg border border-[#27272a] bg-[#161618] hover:border-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed text-zinc-400"
+            className="p-1 rounded-lg border border-slate-300 dark:border-[#27272a] bg-white dark:bg-[#161618] hover:border-slate-400 dark:hover:border-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed text-slate-700 dark:text-zinc-400 hover:text-slate-950 dark:hover:text-zinc-200 shadow-2xs transition-colors"
             title="Prev Page"
           >
             <ChevronLeft className="w-3.5 h-3.5" />
@@ -346,7 +346,7 @@ export function DataTable<T extends Record<string, any>>({
           <button
             onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
             disabled={currentPage === totalPages}
-            className="p-1 rounded-lg border border-[#27272a] bg-[#161618] hover:border-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed text-zinc-400"
+            className="p-1 rounded-lg border border-slate-300 dark:border-[#27272a] bg-white dark:bg-[#161618] hover:border-slate-400 dark:hover:border-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed text-slate-700 dark:text-zinc-400 hover:text-slate-950 dark:hover:text-zinc-200 shadow-2xs transition-colors"
             title="Next Page"
           >
             <ChevronRight className="w-3.5 h-3.5" />
@@ -354,7 +354,7 @@ export function DataTable<T extends Record<string, any>>({
           <button
             onClick={() => setCurrentPage(totalPages)}
             disabled={currentPage === totalPages}
-            className="p-1 rounded-lg border border-[#27272a] bg-[#161618] hover:border-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed text-zinc-400"
+            className="p-1 rounded-lg border border-slate-300 dark:border-[#27272a] bg-white dark:bg-[#161618] hover:border-slate-400 dark:hover:border-zinc-700 disabled:opacity-30 disabled:cursor-not-allowed text-slate-700 dark:text-zinc-400 hover:text-slate-950 dark:hover:text-zinc-200 shadow-2xs transition-colors"
             title="Last Page"
           >
             <ChevronsRight className="w-3.5 h-3.5" />

@@ -730,7 +730,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
             )}
             <p className="font-bold text-zinc-100">{c.studentName}</p>
           </div>
-          <p className="text-[11px] text-zinc-400">Kelas: {c.studentClass}</p>
+          <p className="text-[11px] text-slate-600 dark:text-zinc-400 font-medium">Kelas: {c.studentClass}</p>
         </div>
       )
     },
@@ -770,7 +770,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
                 {c.counselorCode}
               </span>
             )}
-            <p className="text-[11px] text-zinc-400">Oleh: {c.counselorName}</p>
+            <p className="text-[11px] text-slate-600 dark:text-zinc-400 font-medium">Oleh: {c.counselorName}</p>
           </div>
         </div>
       )
@@ -841,7 +841,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
       cell: h => (
         <div>
           <p className="font-bold text-zinc-100">{h.studentName}</p>
-          <p className="text-[11px] text-zinc-400">Kelas: {h.studentClass}</p>
+          <p className="text-[11px] text-slate-600 dark:text-zinc-400 font-medium">Kelas: {h.studentClass}</p>
           <p className="text-[10px] text-zinc-500 truncate max-w-xs">{h.address}</p>
         </div>
       )
@@ -853,7 +853,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
       cell: h => (
         <div className="text-xs">
           <span className="font-semibold text-zinc-200">📅 {h.date}</span>
-          <p className="text-[11px] text-zinc-400">Konselor: {h.counselorName}</p>
+          <p className="text-[11px] text-slate-600 dark:text-zinc-400 font-medium">Konselor: {h.counselorName}</p>
         </div>
       )
     },
@@ -863,7 +863,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
       cell: h => (
         <div>
           <p className="font-medium text-amber-400 text-xs">{h.purpose}</p>
-          <p className="text-[11px] text-zinc-400 line-clamp-1">{h.findings}</p>
+          <p className="text-[11px] text-slate-600 dark:text-zinc-400 font-medium line-clamp-1">{h.findings}</p>
         </div>
       )
     },
@@ -972,7 +972,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
                 {studentPts} Poin
               </span>
             </div>
-            <p className="text-[11px] text-zinc-400 mt-0.5">Yth. {p.parentName || 'Orang Tua / Wali'}</p>
+            <p className="text-[11px] text-slate-600 dark:text-zinc-400 font-medium mt-0.5">Yth. {p.parentName || 'Orang Tua / Wali'}</p>
           </div>
         );
       }
@@ -984,7 +984,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
       cell: p => (
         <div className="text-xs">
           <span className="font-semibold text-zinc-200">📅 {p.callDate} • {p.callTime}</span>
-          <p className="text-[10px] text-zinc-500 truncate max-w-[180px]">📍 {p.location}</p>
+          <p className="text-[10px] text-slate-600 dark:text-zinc-400 font-medium truncate max-w-[180px]">📍 {p.location}</p>
         </div>
       )
     },
@@ -994,7 +994,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
       cell: p => {
         const stage = p.sanctionStage || (p.callNumber === 1 ? 2 : p.callNumber === 2 ? 3 : 4);
         return (
-          <div className="text-[10px] font-mono text-zinc-400">
+          <div className="text-[10px] font-mono text-slate-600 dark:text-zinc-400 font-semibold">
             {stage === 1 && <span>Wali Kelas & Siswa</span>}
             {stage === 2 && <span>Wali Kelas & Guru BK</span>}
             {stage === 3 && <span className="text-rose-400 font-semibold">Waka Kesiswaan & BK</span>}
@@ -1059,7 +1059,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
       cell: c => (
         <div>
           <p className="font-bold text-zinc-100">{c.studentName}</p>
-          <p className="text-[11px] text-zinc-400">Kelas: {c.studentClass}</p>
+          <p className="text-[11px] text-slate-600 dark:text-zinc-400 font-medium">Kelas: {c.studentClass}</p>
         </div>
       )
     },
@@ -1185,7 +1185,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
           className={`relative px-3 py-1.5 rounded flex items-center space-x-2 transition-all ${
             activeTab === 'counseling'
               ? 'text-pink-400 font-bold'
-              : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#161618]'
+              : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200 hover:bg-slate-100 dark:hover:bg-[#161618]'
           }`}
         >
           {activeTab === 'counseling' && (
@@ -1206,7 +1206,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
           className={`relative px-3 py-1.5 rounded flex items-center space-x-2 transition-all ${
             activeTab === 'home_visit'
               ? 'text-purple-400 font-bold'
-              : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#161618]'
+              : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200 hover:bg-slate-100 dark:hover:bg-[#161618]'
           }`}
         >
           {activeTab === 'home_visit' && (
@@ -1227,7 +1227,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
           className={`relative px-3 py-1.5 rounded flex items-center space-x-2 transition-all ${
             activeTab === 'parent_call'
               ? 'text-blue-400 font-bold'
-              : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#161618]'
+              : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200 hover:bg-slate-100 dark:hover:bg-[#161618]'
           }`}
         >
           {activeTab === 'parent_call' && (
@@ -1248,7 +1248,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
           className={`relative px-3 py-1.5 rounded flex items-center space-x-2 transition-all ${
             activeTab === 'career'
               ? 'text-emerald-400 font-bold'
-              : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#161618]'
+              : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200 hover:bg-slate-100 dark:hover:bg-[#161618]'
           }`}
         >
           {activeTab === 'career' && (
@@ -1269,7 +1269,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
           className={`relative px-3 py-1.5 rounded flex items-center space-x-2 transition-all ${
             activeTab === 'analytics'
               ? 'text-amber-400 font-bold'
-              : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#161618]'
+              : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200 hover:bg-slate-100 dark:hover:bg-[#161618]'
           }`}
         >
           {activeTab === 'analytics' && (
@@ -1745,7 +1745,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
       >
         <form onSubmit={handleSaveCounseling} className="space-y-3 font-sans text-xs">
           <div>
-            <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+            <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
               PILIH SISWA TERBIMBING *
             </label>
             <select
@@ -1772,7 +1772,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <div>
-              <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+              <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
                 BIDANG LAYANAN
               </label>
               <select
@@ -1788,7 +1788,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
             </div>
 
             <div>
-              <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+              <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
                 JENIS KONSELING
               </label>
               <select
@@ -1804,7 +1804,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
             </div>
 
             <div>
-              <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+              <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
                 TINGKAT URGENSI
               </label>
               <select
@@ -1820,7 +1820,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
           </div>
 
           <div>
-            <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+            <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
               TOPIK PEMBAHASAN / MASALAH *
             </label>
             <input
@@ -1835,7 +1835,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <div>
-              <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+              <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
                 TANGGAL SESI
               </label>
               <input
@@ -1847,7 +1847,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
               />
             </div>
             <div>
-              <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+              <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
                 GURU BK / KONSELOR
               </label>
               <input
@@ -1858,7 +1858,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
               />
             </div>
             <div>
-              <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+              <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
                 STATUS SESI
               </label>
               <select
@@ -1874,7 +1874,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
           </div>
 
           <div>
-            <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+            <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
               CATATAN DINAMIKA KONSELING & PENJELASAN SISWA *
             </label>
             <textarea
@@ -1889,7 +1889,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
-              <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+              <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
                 SOLUSI / KESEPAKATAN PEMBINAAN
               </label>
               <textarea
@@ -1901,7 +1901,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
               />
             </div>
             <div>
-              <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+              <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
                 RENCANA TINDAK LANJUT (FOLLOW UP)
               </label>
               <textarea
@@ -1992,7 +1992,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
       >
         <form onSubmit={handleSaveHomeVisit} className="space-y-3 font-sans text-xs">
           <div>
-            <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+            <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
               PILIH SISWA *
             </label>
             <select
@@ -2022,7 +2022,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
-              <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+              <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
                 TANGGAL KUNJUNGAN
               </label>
               <input
@@ -2034,7 +2034,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
               />
             </div>
             <div>
-              <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+              <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
                 STATUS KUNJUNGAN
               </label>
               <select
@@ -2052,7 +2052,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
-              <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+              <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
                 ALAMAT RUMAH SISWA
               </label>
               <input
@@ -2064,7 +2064,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
               />
             </div>
             <div>
-              <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+              <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
                 ANGGOTA KELUARGA / ORANG TUA DITEMUI
               </label>
               <input
@@ -2078,7 +2078,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
           </div>
 
           <div>
-            <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+            <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
               LATAR BELAKANG & TUJUAN KUNJUNGAN RUMAH *
             </label>
             <input
@@ -2092,7 +2092,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
           </div>
 
           <div>
-            <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+            <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
               HASIL OBSERVASI & TEMUAN DI RUMAH *
             </label>
             <textarea
@@ -2106,7 +2106,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
           </div>
 
           <div>
-            <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+            <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
               KESEPAKATAN BERSAMA ORANG TUA
             </label>
             <textarea
@@ -2152,7 +2152,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
           {/* Pilih Siswa & Analisis Poin Otomatis */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
-              <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+              <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
                 PILIH SISWA TERPANGGIL *
               </label>
               <select
@@ -2215,7 +2215,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
             </div>
 
             <div>
-              <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+              <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
                 NAMA ORANG TUA / WALI
               </label>
               <input
@@ -2259,7 +2259,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
 
           {/* Pilihan Tahapan Sanksi (1 s.d 5) */}
           <div>
-            <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1.5">
+            <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1.5">
               KLASIFIKASI TAHAPAN SANKSI RESMI (SK B-380) *
             </label>
             <div className="grid grid-cols-1 sm:grid-cols-5 gap-1.5 font-mono text-[10px]">
@@ -2334,7 +2334,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
           {/* Nomor Surat & Jadwal Pertemuan */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
-              <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+              <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
                 NOMOR SURAT RESMI *
               </label>
               <input
@@ -2346,7 +2346,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
               />
             </div>
             <div>
-              <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+              <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
                 STATUS SURAT
               </label>
               <select
@@ -2364,7 +2364,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <div>
-              <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+              <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
                 TANGGAL PANGGILAN
               </label>
               <input
@@ -2376,7 +2376,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
               />
             </div>
             <div>
-              <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+              <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
                 WAKTU / PUKUL
               </label>
               <input
@@ -2388,7 +2388,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
               />
             </div>
             <div>
-              <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+              <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
                 RUANG PERTEMUAN
               </label>
               <input
@@ -2402,7 +2402,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
           </div>
 
           <div>
-            <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+            <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
               PERIHAL / ALASAN PEMANGGILAN *
             </label>
             <textarea
@@ -2495,7 +2495,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
         <form onSubmit={handleSaveCareer} className="space-y-3 font-sans text-xs">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
-              <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+              <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
                 PILIH SISWA *
               </label>
               <select
@@ -2520,7 +2520,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
               </select>
             </div>
             <div>
-              <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+              <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
                 JALUR MINAT TARGET
               </label>
               <select
@@ -2540,7 +2540,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
-              <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+              <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
                 TARGET INSTITUSI / KAMPUS IMPIAN
               </label>
               <input
@@ -2552,7 +2552,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
               />
             </div>
             <div>
-              <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+              <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
                 TARGET PROGRAM STUDI / JURUSAN
               </label>
               <input
@@ -2566,7 +2566,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
           </div>
 
           <div>
-            <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+            <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
               POTENSI, BAKAT & KEUNGGULAN AKADEMIK
             </label>
             <textarea
@@ -2579,7 +2579,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
           </div>
 
           <div>
-            <label className="block font-mono text-[10px] text-zinc-400 uppercase tracking-widest mb-1">
+            <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
               REKOMENDASI & STRATEGI PEMBINA BK *
             </label>
             <textarea

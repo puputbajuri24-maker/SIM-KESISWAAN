@@ -737,7 +737,7 @@ export const StudentsPage: React.FC = () => {
             </span>
           )}
           <span className="font-bold text-slate-900 dark:text-slate-100">{s.nis}</span>
-          {s.nisn && <p className="text-[11px] text-slate-400">NISN: {s.nisn}</p>}
+          {s.nisn && <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">NISN: {s.nisn}</p>}
         </div>
       )
     },
@@ -752,7 +752,7 @@ export const StudentsPage: React.FC = () => {
           </div>
           <div>
             <p className="font-semibold text-slate-900 dark:text-slate-100">{s.fullName}</p>
-            <p className="text-[11px] text-slate-400">
+            <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">
               {s.gender === 'L' ? 'Laki-Laki' : 'Perempuan'} • {s.phone || 'Tanpa HP'}
             </p>
           </div>
@@ -772,12 +772,12 @@ export const StudentsPage: React.FC = () => {
                 {s.className}
               </span>
               {rank && (
-                <span className="text-[10px] text-slate-400 font-medium hidden sm:inline" title={`Urutan absen ke-${rank.index} dari total ${rank.total} siswa di kelas ${s.className}`}>
+                <span className="text-[10px] text-slate-600 dark:text-slate-400 font-semibold hidden sm:inline" title={`Urutan absen ke-${rank.index} dari total ${rank.total} siswa di kelas ${s.className}`}>
                   (Absen #{rank.index})
                 </span>
               )}
             </div>
-            <p className="text-[11px] text-slate-400 truncate max-w-[150px]">{s.major}</p>
+            <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium truncate max-w-[150px]">{s.major}</p>
           </div>
         );
       }
@@ -794,7 +794,7 @@ export const StudentsPage: React.FC = () => {
         );
 
         if (!osimEntry && studentEkskuls.length === 0) {
-          return <span className="text-[11px] text-slate-400 dark:text-slate-500 italic">Belum terdaftar</span>;
+          return <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium italic">Belum terdaftar</span>;
         }
 
         return (
@@ -2460,7 +2460,7 @@ export const StudentsPage: React.FC = () => {
                         key={idx}
                         className={s.isValid ? 'hover:bg-slate-50 dark:hover:bg-slate-800/40' : 'bg-rose-50/50 dark:bg-rose-950/20'}
                       >
-                        <td className="py-2 px-3 font-mono text-slate-400">{idx + 1}</td>
+                        <td className="py-2 px-3 font-mono text-slate-600 dark:text-slate-400 font-semibold">{idx + 1}</td>
                         <td className="py-2 px-3">
                           {s.code && (
                             <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 block w-fit mb-0.5">
@@ -2468,12 +2468,12 @@ export const StudentsPage: React.FC = () => {
                             </span>
                           )}
                           <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{s.nis || '-'}</span>
-                          {s.nisn && <div className="text-[10px] text-slate-400 font-mono">NISN: {s.nisn}</div>}
+                          {s.nisn && <div className="text-[10px] text-slate-600 dark:text-slate-400 font-mono font-medium">NISN: {s.nisn}</div>}
                         </td>
                         <td className="py-2 px-3">
                           <div className="font-semibold text-slate-900 dark:text-slate-100">{s.fullName}</div>
                           {s.birthPlace && (
-                            <div className="text-[10px] text-slate-400">
+                            <div className="text-[10px] text-slate-600 dark:text-slate-400 font-medium">
                               {s.birthPlace}, {s.birthDate}
                             </div>
                           )}
@@ -2492,7 +2492,7 @@ export const StudentsPage: React.FC = () => {
                         </td>
                         <td className="py-2 px-3 text-[11px]">
                           <div className="text-slate-700 dark:text-slate-300">{s.phone || '-'}</div>
-                          {s.parentName && <div className="text-[10px] text-slate-400">Wali: {s.parentName}</div>}
+                          {s.parentName && <div className="text-[10px] text-slate-600 dark:text-slate-400 font-medium">Wali: {s.parentName}</div>}
                         </td>
                         <td className="py-2 px-3 text-right">
                           {s.isValid ? (
