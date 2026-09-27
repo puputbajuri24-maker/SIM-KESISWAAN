@@ -724,6 +724,30 @@ export const PURGED_DEMO_CLASS_IDS = [
   'c_xii_rpl2',
   'c_x_tkj1',
   'c_x_tkj2',
+  // Legacy MA demo classes (replaced by official Kurikulum Merdeka 10-A s/d 12-C)
+  'c_x_iis1',
+  'c_x_iis2',
+  'c_x_keagamaan',
+  'c_x_mia1',
+  'c_x_mia2',
+  'c_xi_iis1',
+  'c_xi_keagamaan',
+  'c_xi_mia1',
+  'c_xii_iis1',
+  'c_xii_keagamaan',
+  'c_xii_mia1',
+  // Names variants
+  'x iis 1',
+  'x iis 2',
+  'x keagamaan',
+  'x mia 1',
+  'x mia 2',
+  'xi iis 1',
+  'xi keagamaan',
+  'xi mia 1',
+  'xii iis 1',
+  'xii keagamaan',
+  'xii mia 1',
   'unassigned',
   'c_dummy',
   'dummy_class'
@@ -733,7 +757,36 @@ export const isPurgedClassId = (classId?: string): boolean => {
   if (!classId) return false;
   const clean = classId.toLowerCase().trim();
   if (PURGED_DEMO_CLASS_IDS.includes(clean)) return true;
-  if (clean.includes('rpl') || clean.includes('tkj') || clean.includes('dummy')) return true;
+  if (
+    clean.includes('rpl') ||
+    clean.includes('tkj') ||
+    clean.includes('dummy') ||
+    clean.includes('c_x_iis') ||
+    clean.includes('c_xi_iis') ||
+    clean.includes('c_xii_iis') ||
+    clean.includes('c_x_mia') ||
+    clean.includes('c_xi_mia') ||
+    clean.includes('c_xii_mia') ||
+    clean.includes('c_x_keagamaan') ||
+    clean.includes('c_xi_keagamaan') ||
+    clean.includes('c_xii_keagamaan')
+  ) {
+    return true;
+  }
+  const normalizedName = clean.replace(/[^a-z0-9]/g, '');
+  if (
+    normalizedName.startsWith('xiis') ||
+    normalizedName.startsWith('xmia') ||
+    normalizedName.startsWith('xkeagamaan') ||
+    normalizedName.startsWith('xiiis') ||
+    normalizedName.startsWith('ximia') ||
+    normalizedName.startsWith('xikeagamaan') ||
+    normalizedName.startsWith('xiiiis') ||
+    normalizedName.startsWith('xiimia') ||
+    normalizedName.startsWith('xiikeagamaan')
+  ) {
+    return true;
+  }
   return isDeletedClassId(classId);
 };
 

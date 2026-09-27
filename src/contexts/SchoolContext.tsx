@@ -398,17 +398,31 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   });
 
   const [classes, setClasses] = useState<SchoolClass[]>(() => {
+    // Proactively register all purged dummy class IDs to tombstone
+    PURGED_DEMO_CLASS_IDS.forEach(id => addDeletedClassId(id));
+
     const saved = localStorage.getItem('sim_classes');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          const filtered = parsed.filter(c => c && c.id && !isDeletedClassId(c.id) && !isPurgedClassId(c.id));
+          const filtered = parsed.filter(c => c && c.id && !isDeletedClassId(c.id) && !isPurgedClassId(c.id) && !isPurgedClassId(c.name));
+          if (filtered.length !== parsed.length) {
+            try {
+              localStorage.setItem('sim_classes', JSON.stringify(filtered));
+            } catch (e) {}
+            parsed.forEach(c => {
+              if (c && (isPurgedClassId(c.id) || isPurgedClassId(c.name))) {
+                addDeletedClassId(c.id);
+                if (c.name) addDeletedClassId(c.name);
+              }
+            });
+          }
           return filtered;
         }
       } catch (e) {}
     }
-    return (INITIAL_CLASSES || []).filter(c => c && c.id && !isDeletedClassId(c.id) && !isPurgedClassId(c.id));
+    return (INITIAL_CLASSES || []).filter(c => c && c.id && !isDeletedClassId(c.id) && !isPurgedClassId(c.id) && !isPurgedClassId(c.name));
   });
 
   const [teachers, setTeachers] = useState<Teacher[]>(() => {
@@ -1006,11 +1020,12 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           const deletedClassSet = getDeletedClassIds();
           classSnap.forEach(docSnap => {
             const id = docSnap.id;
-            if (deletedClassSet.has(id) || isPurgedClassId(id)) {
+            const data = docSnap.data() as SchoolClass;
+            if (deletedClassSet.has(id) || isPurgedClassId(id) || isPurgedClassId(data?.name)) {
               deleteDoc(docSnap.ref).catch(() => {});
               return;
             }
-            loadedClasses.push({ id, ...docSnap.data() } as SchoolClass);
+            loadedClasses.push({ id, ...data });
           });
           setClasses(loadedClasses);
           try {
@@ -1639,11 +1654,12 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           const deletedClassSet = getDeletedClassIds();
           snapshot.forEach(docSnap => {
             const id = docSnap.id;
-            if (deletedClassSet.has(id) || isPurgedClassId(id)) {
+            const data = docSnap.data() as SchoolClass;
+            if (deletedClassSet.has(id) || isPurgedClassId(id) || isPurgedClassId(data?.name)) {
               deleteDoc(docSnap.ref).catch(() => {});
               return;
             }
-            loaded.push({ id: docSnap.id, ...docSnap.data() } as SchoolClass);
+            loaded.push({ id: docSnap.id, ...data });
           });
           setClasses(loaded);
           try {
