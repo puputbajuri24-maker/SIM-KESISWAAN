@@ -13,7 +13,8 @@ import {
   Compass,
   Sparkles,
   ArrowRight,
-  Filter
+  Filter,
+  Printer
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -23,15 +24,29 @@ import { StatusBadge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { ExportActions } from '../components/common/ExportActions';
+import { UnifiedPrintDocumentModal, UnifiedPrintDocumentData } from '../components/common/UnifiedPrintDocumentModal';
 
 export const ActivitiesPage: React.FC = () => {
-  const { isWakaOrAdmin } = useAuth();
-  const { activities, extracurriculars, addActivity, updateActivity, deleteActivity } = useSchool();
+  const { isWakaOrAdmin, currentUser } = useAuth();
+  const {
+    activities,
+    extracurriculars,
+    teachers,
+    schoolSetting,
+    activeAcademicYear,
+    addActivity,
+    updateActivity,
+    deleteActivity
+  } = useSchool();
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
+
+  // Print LPJ Document State
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [printDocumentData, setPrintDocumentData] = useState<UnifiedPrintDocumentData | null>(null);
 
   const [formData, setFormData] = useState<Partial<Activity>>({
     title: '',
@@ -75,6 +90,95 @@ export const ActivitiesPage: React.FC = () => {
   const handleOpenDetail = (act: Activity) => {
     setSelectedActivity(act);
     setIsDetailOpen(true);
+  };
+
+  const handlePrintLpj = (act: Activity, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setSelectedActivity(act);
+
+    const docNumber = `421.3 / ${act.id.slice(-4).toUpperCase()} / LPJ / ${new Date().getFullYear()}`;
+    const dateFormatted = new Date().toLocaleDateString('id-ID', {
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric'
+    });
+
+    setPrintDocumentData({
+      documentId: `lpj-${act.id}`,
+      documentTitle: `BERKAS LAPORAN PERTANGGUNGJAWABAN (LPJ) KEGIATAN`,
+      documentNumber: docNumber,
+      documentCategory: 'activities',
+      paperOrientation: 'portrait',
+      recommendedSlots: 3,
+      customReporterRole: act.organizer?.toLowerCase().includes('osim') ? 'Ketua OSIM / Panitia Pelaksana' : 'Koordinator / Pembina Pelaksana',
+      customReporterName: act.personInCharge || act.organizer || currentUser?.displayName || 'Panitia Pelaksana',
+      customReporterNip: '-',
+      dateString: dateFormatted,
+      content: (
+        <div className="space-y-4 font-sans text-xs leading-relaxed text-slate-800">
+          <div className="text-center font-bold text-sm tracking-wide border-b border-slate-300 pb-2">
+            LAPORAN PERTANGGUNGJAWABAN (LPJ)
+            <br />
+            <span className="text-xs uppercase font-extrabold text-indigo-900">
+              {act.title}
+            </span>
+          </div>
+
+          <div className="p-3 bg-slate-50 border border-slate-300 rounded-lg space-y-1.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div>
+                <p><strong>Nama Kegiatan:</strong> {act.title}</p>
+                <p><strong>Unit / Penyelenggara:</strong> {act.extracurricularName || act.organizer || 'Kesiswaan'}</p>
+                <p><strong>Penanggung Jawab:</strong> {act.personInCharge || act.organizer || '-'}</p>
+                <p><strong>Status Kegiatan:</strong> {act.status}</p>
+              </div>
+              <div>
+                <p><strong>Waktu Pelaksanaan:</strong> {act.date} {act.endDate ? `s/d ${act.endDate}` : ''}</p>
+                <p><strong>Lokasi Kegiatan:</strong> {act.location}</p>
+                <p><strong>Jumlah Peserta:</strong> {act.actualParticipants || act.participantCount || 0} Siswa</p>
+                <p><strong>Alokasi Anggaran:</strong> Rp {(act.budget || 0).toLocaleString('id-ID')}</p>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h4 className="font-bold text-slate-900 uppercase underline text-[11px] mb-1">
+              I. Latar Belakang & Tujuan Kegiatan
+            </h4>
+            <p className="leading-relaxed pl-2 text-justify">
+              {act.objective || act.description || 'Kegiatan diselenggarakan dalam rangka pembinaan karakter, penyaluran minat bakat, dan peningkatan prestasi peserta didik madrasah.'}
+            </p>
+          </div>
+
+          <div>
+            <h4 className="font-bold text-slate-900 uppercase underline text-[11px] mb-1">
+              II. Realisasi Pelaksanaan & Hasil Yang Dicapai
+            </h4>
+            <p className="leading-relaxed pl-2 text-justify">
+              {act.results || act.description || 'Seluruh rangkaian agenda berjalan dengan tertib, lancar, dan mencapai indikator keberhasilan yang telah ditetapkan oleh madrasah.'}
+            </p>
+          </div>
+
+          <div>
+            <h4 className="font-bold text-slate-900 uppercase underline text-[11px] mb-1">
+              III. Evaluasi, Kendala & Rekomendasi
+            </h4>
+            <p className="leading-relaxed pl-2 text-justify">
+              {act.evaluation || 'Secara umum kegiatan terlaksana sesuai rencana. Sebagai bahan evaluasi program mendatang, koordinasi perlengkapan dan logistik teknis perlu ditingkatkan lebih awal.'}
+            </p>
+          </div>
+
+          <div className="p-3 bg-slate-50 border border-slate-300 rounded-lg">
+            <p className="font-bold text-slate-900 mb-1">IV. Penutup & Rekapitulasi</p>
+            <p className="text-[11px] text-slate-700 leading-relaxed text-justify">
+              Demikian Laporan Pertanggungjawaban (LPJ) ini disusun dengan sebenar-benarnya sebagai bahan pertanggungjawaban pelaksanaan kegiatan kesiswaan serta arsip resmi madrasah. Atas perhatian, dukungan, dan kerja sama seluruh pihak, kami ucapkan terima kasih.
+            </p>
+          </div>
+        </div>
+      )
+    });
+
+    setIsPrintModalOpen(true);
   };
 
   const handleOpenDelete = (act: Activity, e?: React.MouseEvent) => {
@@ -183,6 +287,14 @@ export const ActivitiesPage: React.FC = () => {
       className: 'text-right',
       cell: a => (
         <div className="flex items-center justify-end gap-1.5" onClick={e => e.stopPropagation()}>
+          <button
+            onClick={e => handlePrintLpj(a, e)}
+            className="px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:hover:bg-emerald-900 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 text-xs font-bold flex items-center gap-1 transition-all"
+            title="Cetak Berkas LPJ Resmi Ber-Kop Surat"
+          >
+            <Printer className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Cetak LPJ</span>
+          </button>
           <button
             onClick={() => handleOpenDetail(a)}
             className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-950/60 dark:hover:bg-indigo-900 dark:text-indigo-400 transition-colors"
@@ -444,12 +556,25 @@ export const ActivitiesPage: React.FC = () => {
           subtitle={`Penyelenggara: ${selectedActivity.organizer}`}
           maxWidth="lg"
           footer={
-            <button
-              onClick={() => setIsDetailOpen(false)}
-              className="px-4 py-2 text-xs font-bold rounded-xl bg-slate-800 text-white"
-            >
-              Tutup
-            </button>
+            <div className="flex items-center justify-between w-full">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsDetailOpen(false);
+                  handlePrintLpj(selectedActivity);
+                }}
+                className="px-4 py-2 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-1.5 shadow-sm transition-all"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Cetak Berkas LPJ Resmi</span>
+              </button>
+              <button
+                onClick={() => setIsDetailOpen(false)}
+                className="px-4 py-2 text-xs font-bold rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300"
+              >
+                Tutup
+              </button>
+            </div>
           }
         >
           <div className="space-y-3 text-xs">
@@ -474,6 +599,16 @@ export const ActivitiesPage: React.FC = () => {
         title="Hapus Agenda Kegiatan"
         message={`Apakah Anda yakin ingin menghapus agenda kegiatan "${selectedActivity?.title}"?`}
         confirmText="Hapus Kegiatan"
+      />
+
+      {/* Unified Document Print Modal (LPJ Berkop Surat 4 Baris Resmi) */}
+      <UnifiedPrintDocumentModal
+        isOpen={isPrintModalOpen}
+        onClose={() => setIsPrintModalOpen(false)}
+        documentData={printDocumentData}
+        schoolInfo={schoolSetting}
+        teachersList={teachers}
+        currentUserName={currentUser?.displayName}
       />
     </div>
   );

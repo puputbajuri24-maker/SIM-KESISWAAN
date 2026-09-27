@@ -349,16 +349,31 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (parsed.principalName === 'Drs. H. M. Nur Latarissa, M.Pd.I.' || !parsed.principalName) {
-          parsed.principalName = 'Zakaria, S. Pd.I., M. Pd';
-          parsed.principalNip = '197808042003121008';
-        }
-        if (parsed.wakaName === 'Abdul Malik Kelian, S.Pd.I.' || !parsed.wakaName || !parsed.wakaKesiswaanName) {
-          parsed.wakaName = 'Puput Eka Bajuri, S. Pd., M. Or';
-          parsed.wakaKesiswaanName = 'Puput Eka Bajuri, S. Pd., M. Or';
-          parsed.wakaNip = '198810052020121003';
-        }
-        return parsed;
+        return {
+          ...INITIAL_SCHOOL_SETTING,
+          ...parsed,
+          name: parsed.name?.trim() || INITIAL_SCHOOL_SETTING.name,
+          address: parsed.address?.trim() || INITIAL_SCHOOL_SETTING.address,
+          centralInstitution: parsed.centralInstitution?.trim() || INITIAL_SCHOOL_SETTING.centralInstitution,
+          regionalInstitution: parsed.regionalInstitution?.trim() || INITIAL_SCHOOL_SETTING.regionalInstitution,
+          defaultCity: parsed.defaultCity?.trim() || INITIAL_SCHOOL_SETTING.defaultCity || 'Bula',
+          principalName: parsed.principalName?.trim() || INITIAL_SCHOOL_SETTING.principalName,
+          principalNip: parsed.principalNip?.trim() || INITIAL_SCHOOL_SETTING.principalNip,
+          wakaName: parsed.wakaName?.trim() || parsed.wakaKesiswaanName?.trim() || INITIAL_SCHOOL_SETTING.wakaName,
+          wakaKesiswaanName: parsed.wakaKesiswaanName?.trim() || parsed.wakaName?.trim() || INITIAL_SCHOOL_SETTING.wakaKesiswaanName,
+          wakaNip: parsed.wakaNip?.trim() || INITIAL_SCHOOL_SETTING.wakaNip,
+          pembinaOsim: parsed.pembinaOsim?.trim() || INITIAL_SCHOOL_SETTING.pembinaOsim || 'Puput Eka Bajuri, S. Pd., M. Or',
+          pembinaOsimNip: parsed.pembinaOsimNip?.trim() || INITIAL_SCHOOL_SETTING.pembinaOsimNip || '198810052020121003',
+          phone: parsed.phone?.trim() || INITIAL_SCHOOL_SETTING.phone,
+          email: parsed.email?.trim() || INITIAL_SCHOOL_SETTING.email,
+          website: parsed.website?.trim() || INITIAL_SCHOOL_SETTING.website,
+          logoLeftUrl: parsed.logoLeftUrl || parsed.logoUrl || INITIAL_SCHOOL_SETTING.logoLeftUrl || '',
+          logoRightUrl: parsed.logoRightUrl || INITIAL_SCHOOL_SETTING.logoRightUrl || '',
+          defaultSignaturesConfig: parsed.defaultSignaturesConfig || INITIAL_SCHOOL_SETTING.defaultSignaturesConfig,
+          isSignatureLocked: parsed.isSignatureLocked ?? parsed.defaultSignaturesConfig?.isLockedByUser ?? false,
+          signatureLockedAt: parsed.signatureLockedAt || parsed.defaultSignaturesConfig?.lockedAt,
+          signatureLockedBy: parsed.signatureLockedBy || parsed.defaultSignaturesConfig?.lockedBy
+        };
       } catch (e) {}
     }
     return INITIAL_SCHOOL_SETTING;
@@ -1000,21 +1015,46 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const isDbInitialized = !schoolSnap.empty;
 
         if (isDbInitialized) {
-          const loadedSchool = schoolSnap.docs[0].data() as SchoolSetting;
-          if (loadedSchool && loadedSchool.name) {
-            setSchoolSetting(prev => ({ ...prev, ...loadedSchool }));
+          const mainDoc = schoolSnap.docs.find(d => d.id === 'main_school') || schoolSnap.docs[0];
+          const loadedSchool = mainDoc.data() as SchoolSetting;
+          if (loadedSchool && (loadedSchool.name || loadedSchool.address)) {
+            setSchoolSetting(prev => {
+              const merged: SchoolSetting = {
+                ...INITIAL_SCHOOL_SETTING,
+                ...prev,
+                ...loadedSchool,
+                name: loadedSchool.name?.trim() || prev.name || INITIAL_SCHOOL_SETTING.name,
+                address: loadedSchool.address?.trim() || prev.address || INITIAL_SCHOOL_SETTING.address,
+                defaultCity: loadedSchool.defaultCity?.trim() || prev.defaultCity || 'Bula',
+                principalName: loadedSchool.principalName?.trim() || prev.principalName || INITIAL_SCHOOL_SETTING.principalName,
+                principalNip: loadedSchool.principalNip?.trim() || prev.principalNip || INITIAL_SCHOOL_SETTING.principalNip,
+                wakaName: loadedSchool.wakaName?.trim() || loadedSchool.wakaKesiswaanName?.trim() || prev.wakaName || INITIAL_SCHOOL_SETTING.wakaName,
+                wakaKesiswaanName: loadedSchool.wakaKesiswaanName?.trim() || loadedSchool.wakaName?.trim() || prev.wakaKesiswaanName || INITIAL_SCHOOL_SETTING.wakaKesiswaanName,
+                wakaNip: loadedSchool.wakaNip?.trim() || prev.wakaNip || INITIAL_SCHOOL_SETTING.wakaNip,
+                pembinaOsim: loadedSchool.pembinaOsim?.trim() || prev.pembinaOsim || INITIAL_SCHOOL_SETTING.pembinaOsim || 'Puput Eka Bajuri, S. Pd., M. Or',
+                pembinaOsimNip: loadedSchool.pembinaOsimNip?.trim() || prev.pembinaOsimNip || INITIAL_SCHOOL_SETTING.pembinaOsimNip || '198810052020121003',
+                phone: loadedSchool.phone?.trim() || prev.phone || INITIAL_SCHOOL_SETTING.phone,
+                email: loadedSchool.email?.trim() || prev.email || INITIAL_SCHOOL_SETTING.email,
+                website: loadedSchool.website?.trim() || prev.website || INITIAL_SCHOOL_SETTING.website,
+                logoLeftUrl: loadedSchool.logoLeftUrl || prev.logoLeftUrl || '',
+                logoRightUrl: loadedSchool.logoRightUrl || prev.logoRightUrl || '',
+                defaultSignaturesConfig: loadedSchool.defaultSignaturesConfig || prev.defaultSignaturesConfig || INITIAL_SCHOOL_SETTING.defaultSignaturesConfig,
+                isSignatureLocked: loadedSchool.isSignatureLocked ?? loadedSchool.defaultSignaturesConfig?.isLockedByUser ?? prev.isSignatureLocked ?? false,
+                signatureLockedAt: loadedSchool.signatureLockedAt || loadedSchool.defaultSignaturesConfig?.lockedAt || prev.signatureLockedAt,
+                signatureLockedBy: loadedSchool.signatureLockedBy || loadedSchool.defaultSignaturesConfig?.lockedBy || prev.signatureLockedBy
+              };
+              try {
+                localStorage.setItem('sim_school_setting', JSON.stringify(merged));
+              } catch (e) {}
+              return merged;
+            });
             if (loadedSchool.currentAcademicYear) {
               setActiveAcademicYearState(loadedSchool.currentAcademicYear);
             }
             if (loadedSchool.currentSemester) {
               setActiveSemesterState(loadedSchool.currentSemester);
             }
-            try {
-              localStorage.setItem('sim_school_setting', JSON.stringify(loadedSchool));
-            } catch (e) {}
           }
-
-          // Classes Sync
           const classSnap = await getDocs(collection(db, 'classes'));
           const loadedClasses: SchoolClass[] = [];
           const deletedClassSet = getDeletedClassIds();
@@ -1705,18 +1745,45 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     try {
       const unsub = onSnapshot(collection(db, 'schools'), (snapshot) => {
         if (!snapshot.empty) {
-          const loadedSchool = snapshot.docs[0].data() as SchoolSetting;
-          if (loadedSchool && loadedSchool.name) {
-            setSchoolSetting(prev => ({ ...prev, ...loadedSchool }));
+          const mainDoc = snapshot.docs.find(d => d.id === 'main_school') || snapshot.docs[0];
+          const loadedSchool = mainDoc.data() as SchoolSetting;
+          if (loadedSchool && (loadedSchool.name || loadedSchool.address)) {
+            setSchoolSetting(prev => {
+              const merged: SchoolSetting = {
+                ...INITIAL_SCHOOL_SETTING,
+                ...prev,
+                ...loadedSchool,
+                name: loadedSchool.name?.trim() || prev.name || INITIAL_SCHOOL_SETTING.name,
+                address: loadedSchool.address?.trim() || prev.address || INITIAL_SCHOOL_SETTING.address,
+                defaultCity: loadedSchool.defaultCity?.trim() || prev.defaultCity || 'Bula',
+                principalName: loadedSchool.principalName?.trim() || prev.principalName || INITIAL_SCHOOL_SETTING.principalName,
+                principalNip: loadedSchool.principalNip?.trim() || prev.principalNip || INITIAL_SCHOOL_SETTING.principalNip,
+                wakaName: loadedSchool.wakaName?.trim() || loadedSchool.wakaKesiswaanName?.trim() || prev.wakaName || INITIAL_SCHOOL_SETTING.wakaName,
+                wakaKesiswaanName: loadedSchool.wakaKesiswaanName?.trim() || loadedSchool.wakaName?.trim() || prev.wakaKesiswaanName || INITIAL_SCHOOL_SETTING.wakaKesiswaanName,
+                wakaNip: loadedSchool.wakaNip?.trim() || prev.wakaNip || INITIAL_SCHOOL_SETTING.wakaNip,
+                pembinaOsim: loadedSchool.pembinaOsim?.trim() || prev.pembinaOsim || INITIAL_SCHOOL_SETTING.pembinaOsim || 'Puput Eka Bajuri, S. Pd., M. Or',
+                pembinaOsimNip: loadedSchool.pembinaOsimNip?.trim() || prev.pembinaOsimNip || INITIAL_SCHOOL_SETTING.pembinaOsimNip || '198810052020121003',
+                phone: loadedSchool.phone?.trim() || prev.phone || INITIAL_SCHOOL_SETTING.phone,
+                email: loadedSchool.email?.trim() || prev.email || INITIAL_SCHOOL_SETTING.email,
+                website: loadedSchool.website?.trim() || prev.website || INITIAL_SCHOOL_SETTING.website,
+                logoLeftUrl: loadedSchool.logoLeftUrl || prev.logoLeftUrl || '',
+                logoRightUrl: loadedSchool.logoRightUrl || prev.logoRightUrl || '',
+                defaultSignaturesConfig: loadedSchool.defaultSignaturesConfig || prev.defaultSignaturesConfig || INITIAL_SCHOOL_SETTING.defaultSignaturesConfig,
+                isSignatureLocked: loadedSchool.isSignatureLocked ?? loadedSchool.defaultSignaturesConfig?.isLockedByUser ?? prev.isSignatureLocked ?? false,
+                signatureLockedAt: loadedSchool.signatureLockedAt || loadedSchool.defaultSignaturesConfig?.lockedAt || prev.signatureLockedAt,
+                signatureLockedBy: loadedSchool.signatureLockedBy || loadedSchool.defaultSignaturesConfig?.lockedBy || prev.signatureLockedBy
+              };
+              try {
+                localStorage.setItem('sim_school_setting', JSON.stringify(merged));
+              } catch (e) {}
+              return merged;
+            });
             if (loadedSchool.currentAcademicYear) {
               setActiveAcademicYearState(loadedSchool.currentAcademicYear);
             }
             if (loadedSchool.currentSemester) {
               setActiveSemesterState(loadedSchool.currentSemester);
             }
-            try {
-              localStorage.setItem('sim_school_setting', JSON.stringify(loadedSchool));
-            } catch (e) {}
           }
         }
       }, (err) => {
@@ -2222,13 +2289,32 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const setActiveAcademicYear = (year: string, semester: 'Ganjil' | 'Genap' = 'Ganjil') => {
     setActiveAcademicYearState(year);
     setActiveSemesterState(semester);
-    setSchoolSetting(prev => ({ ...prev, currentAcademicYear: year, currentSemester: semester }));
+    setSchoolSetting(prev => {
+      const next = { ...prev, currentAcademicYear: year, currentSemester: semester };
+      try {
+        localStorage.setItem('sim_school_setting', JSON.stringify(next));
+        setDoc(doc(db, 'schools', 'main_school'), { currentAcademicYear: year, currentSemester: semester }, { merge: true });
+      } catch (e) {}
+      return next;
+    });
     // Update active status in academicYears array
     setAcademicYears(prev => {
-      const updated = prev.map(ay => ({
-        ...ay,
-        isActive: ay.name === year
-      }));
+      const updated = prev.map(ay => {
+        const isTarget = ay.name === year || ay.year === year;
+        if (isTarget) {
+          try {
+            setDoc(doc(db, 'academic_years', ay.id), { isActive: true }, { merge: true });
+          } catch (e) {}
+        } else if (ay.isActive) {
+          try {
+            setDoc(doc(db, 'academic_years', ay.id), { isActive: false }, { merge: true });
+          } catch (e) {}
+        }
+        return {
+          ...ay,
+          isActive: isTarget
+        };
+      });
       try {
         localStorage.setItem('sim_academic_years', JSON.stringify(updated));
       } catch (e) {}
@@ -2513,18 +2599,39 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateSchoolSetting = async (data: Partial<SchoolSetting>) => {
-    const targetId = data.id || schoolSetting.id || 'main_school';
+    const targetId = 'main_school';
     const updated: SchoolSetting = {
+      ...INITIAL_SCHOOL_SETTING,
       ...schoolSetting,
       ...data,
       id: targetId,
-      wakaName: data.wakaName || data.wakaKesiswaanName || schoolSetting.wakaName || schoolSetting.wakaKesiswaanName || '',
-      wakaKesiswaanName: data.wakaKesiswaanName || data.wakaName || schoolSetting.wakaKesiswaanName || schoolSetting.wakaName || ''
+      name: (data.name !== undefined ? data.name : schoolSetting.name)?.trim() || INITIAL_SCHOOL_SETTING.name,
+      address: (data.address !== undefined ? data.address : schoolSetting.address)?.trim() || INITIAL_SCHOOL_SETTING.address,
+      centralInstitution: (data.centralInstitution !== undefined ? data.centralInstitution : schoolSetting.centralInstitution)?.trim() || INITIAL_SCHOOL_SETTING.centralInstitution,
+      regionalInstitution: (data.regionalInstitution !== undefined ? data.regionalInstitution : schoolSetting.regionalInstitution)?.trim() || INITIAL_SCHOOL_SETTING.regionalInstitution,
+      defaultCity: (data.defaultCity !== undefined ? data.defaultCity : schoolSetting.defaultCity)?.trim() || INITIAL_SCHOOL_SETTING.defaultCity || 'Bula',
+      principalName: (data.principalName !== undefined ? data.principalName : schoolSetting.principalName)?.trim() || INITIAL_SCHOOL_SETTING.principalName,
+      principalNip: (data.principalNip !== undefined ? data.principalNip : schoolSetting.principalNip)?.trim() || INITIAL_SCHOOL_SETTING.principalNip,
+      wakaName: (data.wakaName || data.wakaKesiswaanName || schoolSetting.wakaName || schoolSetting.wakaKesiswaanName || INITIAL_SCHOOL_SETTING.wakaName).trim(),
+      wakaKesiswaanName: (data.wakaKesiswaanName || data.wakaName || schoolSetting.wakaKesiswaanName || schoolSetting.wakaName || INITIAL_SCHOOL_SETTING.wakaKesiswaanName).trim(),
+      wakaNip: (data.wakaNip !== undefined ? data.wakaNip : schoolSetting.wakaNip)?.trim() || INITIAL_SCHOOL_SETTING.wakaNip,
+      pembinaOsim: (data.pembinaOsim !== undefined ? data.pembinaOsim : schoolSetting.pembinaOsim)?.trim() || INITIAL_SCHOOL_SETTING.pembinaOsim,
+      pembinaOsimNip: (data.pembinaOsimNip !== undefined ? data.pembinaOsimNip : schoolSetting.pembinaOsimNip)?.trim() || INITIAL_SCHOOL_SETTING.pembinaOsimNip,
+      phone: (data.phone !== undefined ? data.phone : schoolSetting.phone)?.trim() || INITIAL_SCHOOL_SETTING.phone,
+      email: (data.email !== undefined ? data.email : schoolSetting.email)?.trim() || INITIAL_SCHOOL_SETTING.email,
+      website: (data.website !== undefined ? data.website : schoolSetting.website)?.trim() || INITIAL_SCHOOL_SETTING.website,
+      logoUrl: data.logoRightUrl || data.logoUrl || schoolSetting.logoRightUrl || schoolSetting.logoUrl || '',
+      logoLeftUrl: (data.logoLeftUrl !== undefined ? data.logoLeftUrl : schoolSetting.logoLeftUrl) || '',
+      logoRightUrl: (data.logoRightUrl !== undefined ? data.logoRightUrl : schoolSetting.logoRightUrl) || '',
+      defaultSignaturesConfig: data.defaultSignaturesConfig !== undefined ? data.defaultSignaturesConfig : schoolSetting.defaultSignaturesConfig,
+      isSignatureLocked: data.isSignatureLocked !== undefined ? data.isSignatureLocked : schoolSetting.isSignatureLocked,
+      signatureLockedAt: data.signatureLockedAt !== undefined ? data.signatureLockedAt : schoolSetting.signatureLockedAt,
+      signatureLockedBy: data.signatureLockedBy !== undefined ? data.signatureLockedBy : schoolSetting.signatureLockedBy
     };
     setSchoolSetting(updated);
     try {
       localStorage.setItem('sim_school_setting', JSON.stringify(updated));
-      setDoc(doc(db, 'schools', targetId), updated, { merge: true });
+      await setDoc(doc(db, 'schools', targetId), updated, { merge: true });
     } catch (e) {
       console.warn('Firestore update school notice (saved locally):', e);
     }
@@ -3571,6 +3678,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // A. Pembina OSIM (Organisasi Siswa Intra Madrasah)
     if (roleLower.includes('osim') || roleLower.includes('pembina osim') || roleLower.includes('penasihat osim')) {
       setSchoolSetting(prev => {
+        // If user has locked signatures, do NOT overwrite the signatures config
         const next: SchoolSetting = {
           ...prev,
           pembinaOsim: teacher.fullName,
@@ -3587,11 +3695,33 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // B. Waka Kesiswaan
     if (roleLower.includes('waka') || roleLower.includes('kesiswaan')) {
       setSchoolSetting(prev => {
+        // When Waka Kesiswaan is updated, keep the user's locked signatories intact if locked!
+        const isLocked = prev.isSignatureLocked || prev.defaultSignaturesConfig?.isLockedByUser;
+        
+        // If not locked, we can adapt wakaName. If locked, keep the locked signatories intact.
+        let updatedSignaturesConfig = prev.defaultSignaturesConfig;
+        if (!isLocked && updatedSignaturesConfig?.signatories) {
+          updatedSignaturesConfig = {
+            ...updatedSignaturesConfig,
+            signatories: updatedSignaturesConfig.signatories.map(s => {
+              if (s.order === 1 || s.roleTitle.toLowerCase().includes('waka')) {
+                return {
+                  ...s,
+                  name: teacher.fullName,
+                  nipOrIdentifier: teacher.nip || s.nipOrIdentifier
+                };
+              }
+              return s;
+            })
+          };
+        }
+
         const next: SchoolSetting = {
           ...prev,
           wakaName: teacher.fullName,
           wakaKesiswaanName: teacher.fullName,
-          wakaNip: teacher.nip || prev.wakaNip || '-'
+          wakaNip: teacher.nip || prev.wakaNip || '-',
+          defaultSignaturesConfig: updatedSignaturesConfig
         };
         try {
           localStorage.setItem('sim_school_setting', JSON.stringify(next));

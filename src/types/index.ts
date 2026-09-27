@@ -84,6 +84,63 @@ export interface UserProfile {
   updatedAt?: string;
 }
 
+// ==========================================
+// PUSAT LAPORAN & CETAK DOKUMEN TERPADU (UNIFIED PRINT & SIGNATURE ENGINE)
+// ==========================================
+
+export type SignatorySlotPosition = 'left' | 'center' | 'right';
+export type SignatoryLayout = 'auto' | '1-col' | '2-col' | '3-col';
+
+export interface PrintSignatory {
+  id: string; // e.g. 'sig-1', 'sig-2', 'sig-3'
+  prefix?: string; // e.g. "Bula, 27 September 2026" or "Mengetahui," or "Menyetujui,"
+  roleTitle: string; // e.g. "Kepala Madrasah", "Waka Kesiswaan", "Koordinator BK", "Pembina", "Wali Kelas"
+  name: string; // Nama lengkap beserta gelar
+  nipOrIdentifier?: string; // NIP / NUPTK atau "-"
+  customSubtitle?: string; // e.g. "Pamong Kedisiplinan", "Konselor Madrasah"
+  order: number; // Urutan posisi (0: kiri, 1: tengah, 2: kanan)
+  alignment?: 'left' | 'center' | 'right';
+  isActive?: boolean; // Aktif atau tidak dalam dokumen saat ini
+}
+
+export interface PrintSignatureConfig {
+  signatories: PrintSignatory[];
+  layout?: SignatoryLayout;
+  cityDefault?: string;
+  includeDate?: boolean;
+  datePosition?: 'left' | 'center' | 'right' | 'top-right';
+}
+
+export interface PrintSignatureGlobalConfig {
+  city?: string;
+  defaultSlotsCount?: 1 | 2 | 3;
+  showNip?: boolean;
+  signatories?: PrintSignatory[];
+  isLockedByUser?: boolean;
+  lockedAt?: string;
+  lockedBy?: string;
+}
+
+export type UnifiedDocumentCategory =
+  | 'discipline'    // Kedisiplinan & Tata Tertib (SK B-380, Pelanggaran, SP 1-3)
+  | 'counseling'    // Bimbingan Konseling (Layanan BK, BAP, Home Visit)
+  | 'permissions'   // Perizinan & Dispensasi (Dispensasi Lomba, Izin Sakit)
+  | 'activities'    // Ekskul & LPJ (LPJ Kegiatan, Lembar Presensi Ekskul)
+  | 'osim'          // OSIM & Rapat (Berita Acara Rapat, Slip Iuran Kas)
+  | 'general';      // Umum & Rekapitulasi (Prestasi, Buku Kas, Jadwal)
+
+export interface UnifiedDocumentMeta {
+  id: string;
+  code: string;
+  title: string;
+  category: UnifiedDocumentCategory;
+  description: string;
+  paperOrientation: 'portrait' | 'landscape';
+  recommendedSignatoriesCount: 1 | 2 | 3;
+  defaultTitleKop?: string;
+  defaultDocNumberFormat?: string;
+}
+
 export interface SchoolSetting {
   id: string;
   name: string;
@@ -107,6 +164,11 @@ export interface SchoolSetting {
   logoRightUrl?: string; // Logo Kanan Kop Surat (Sekolah / Madrasah / Lembaga)
   currentAcademicYear: string;
   currentSemester: 'Ganjil' | 'Genap';
+  defaultCity?: string; // Kota/Kabupaten penerbitan dokumen resmi (e.g. "Bula")
+  defaultSignaturesConfig?: PrintSignatureGlobalConfig;
+  isSignatureLocked?: boolean; // Flag gembok permanen susunan penanda tangan
+  signatureLockedAt?: string; // Waktu penguncian oleh user
+  signatureLockedBy?: string; // Nama / email user yang mengunci
 }
 
 export type SchoolInfo = SchoolSetting;

@@ -27,7 +27,7 @@ export const ExportActions: React.FC<ExportActionsProps> = ({
 }) => {
   const { schoolInfo: contextSchoolInfo, activeAcademicYear, activeSemester } = useSchool();
   const schoolInfo = customSchoolInfo || contextSchoolInfo;
-  const currentSchoolName = schoolName || schoolInfo?.name || 'SMA NEGERI 1 TELADAN NUSANTARA';
+  const currentSchoolName = schoolName || schoolInfo?.name || 'MAN 2 SERAM BAGIAN TIMUR';
   const currentAcademicYear = academicYear || `${activeAcademicYear} ${activeSemester}`;
 
   const [isOpen, setIsOpen] = useState(false);

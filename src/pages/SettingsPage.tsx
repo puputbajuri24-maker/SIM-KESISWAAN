@@ -21,13 +21,17 @@ import {
   FileText,
   Lock,
   GraduationCap,
-  CloudUpload
+  CloudUpload,
+  Users
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
-import { UserRole, SchoolSetting } from '../types';
+import { UserRole, SchoolSetting, PrintSignatory } from '../types';
+import { INITIAL_SCHOOL_SETTING } from '../services/seedData';
 import { LogoUploader } from '../components/common/LogoUploader';
 import { SchoolLetterhead } from '../components/common/SchoolLetterhead';
+import { DynamicSignaturesBlock } from '../components/common/DynamicSignaturesBlock';
+import { createDefaultSignatories } from '../utils/printSignatureHelper';
 import { ClassManagementModal } from '../components/common/ClassManagementModal';
 import { AcademicYearManagementModal } from '../components/common/AcademicYearManagementModal';
 import { AcademicYearPromotionModal } from '../components/common/AcademicYearPromotionModal';
@@ -101,27 +105,48 @@ export const SettingsPage: React.FC = () => {
     osimMeetings
   } = useSchool();
 
-  const [formData, setFormData] = useState<SchoolSetting>({
-    id: schoolInfo?.id || 'main_school',
-    name: schoolInfo?.name || '',
-    centralInstitution: schoolInfo?.centralInstitution || '',
-    regionalInstitution: schoolInfo?.regionalInstitution || '',
-    npsn: schoolInfo?.npsn || '',
-    address: schoolInfo?.address || '',
-    postalCode: schoolInfo?.postalCode || '',
-    principalName: schoolInfo?.principalName || '',
-    principalNip: schoolInfo?.principalNip || '',
-    wakaName: schoolInfo?.wakaName || schoolInfo?.wakaKesiswaanName || '',
-    wakaNip: schoolInfo?.wakaNip || '',
-    wakaKesiswaanName: schoolInfo?.wakaKesiswaanName || schoolInfo?.wakaName || '',
-    phone: schoolInfo?.phone || '',
-    email: schoolInfo?.email || '',
-    website: schoolInfo?.website || '',
-    logoUrl: schoolInfo?.logoUrl || '',
-    logoLeftUrl: schoolInfo?.logoLeftUrl || '',
-    logoRightUrl: schoolInfo?.logoRightUrl || '',
-    currentAcademicYear: schoolInfo?.currentAcademicYear || activeAcademicYear || '2026/2027',
-    currentSemester: schoolInfo?.currentSemester || activeSemester || 'Ganjil'
+  const [formData, setFormData] = useState<SchoolSetting>(() => {
+    return {
+      ...INITIAL_SCHOOL_SETTING,
+      ...(schoolInfo || {}),
+      id: schoolInfo?.id || 'main_school',
+      name: schoolInfo?.name?.trim() || INITIAL_SCHOOL_SETTING.name,
+      centralInstitution: schoolInfo?.centralInstitution?.trim() || INITIAL_SCHOOL_SETTING.centralInstitution,
+      regionalInstitution: schoolInfo?.regionalInstitution?.trim() || INITIAL_SCHOOL_SETTING.regionalInstitution,
+      npsn: schoolInfo?.npsn?.trim() || INITIAL_SCHOOL_SETTING.npsn,
+      address: schoolInfo?.address?.trim() || INITIAL_SCHOOL_SETTING.address,
+      postalCode: schoolInfo?.postalCode?.trim() || INITIAL_SCHOOL_SETTING.postalCode,
+      principalName: schoolInfo?.principalName?.trim() || INITIAL_SCHOOL_SETTING.principalName,
+      principalNip: schoolInfo?.principalNip?.trim() || INITIAL_SCHOOL_SETTING.principalNip,
+      wakaName: schoolInfo?.wakaName?.trim() || schoolInfo?.wakaKesiswaanName?.trim() || INITIAL_SCHOOL_SETTING.wakaName,
+      wakaKesiswaanName: schoolInfo?.wakaKesiswaanName?.trim() || schoolInfo?.wakaName?.trim() || INITIAL_SCHOOL_SETTING.wakaKesiswaanName,
+      wakaNip: schoolInfo?.wakaNip?.trim() || INITIAL_SCHOOL_SETTING.wakaNip,
+      pembinaOsim: schoolInfo?.pembinaOsim?.trim() || INITIAL_SCHOOL_SETTING.pembinaOsim || 'Puput Eka Bajuri, S. Pd., M. Or',
+      pembinaOsimNip: schoolInfo?.pembinaOsimNip?.trim() || INITIAL_SCHOOL_SETTING.pembinaOsimNip || '198810052020121003',
+      phone: schoolInfo?.phone?.trim() || INITIAL_SCHOOL_SETTING.phone,
+      email: schoolInfo?.email?.trim() || INITIAL_SCHOOL_SETTING.email,
+      website: schoolInfo?.website?.trim() || INITIAL_SCHOOL_SETTING.website,
+      logoUrl: schoolInfo?.logoUrl || INITIAL_SCHOOL_SETTING.logoUrl || '',
+      logoLeftUrl: schoolInfo?.logoLeftUrl || INITIAL_SCHOOL_SETTING.logoLeftUrl || '',
+      logoRightUrl: schoolInfo?.logoRightUrl || INITIAL_SCHOOL_SETTING.logoRightUrl || '',
+      currentAcademicYear: schoolInfo?.currentAcademicYear || activeAcademicYear || '2026/2027',
+      currentSemester: schoolInfo?.currentSemester || activeSemester || 'Ganjil',
+      defaultCity: schoolInfo?.defaultCity?.trim() || INITIAL_SCHOOL_SETTING.defaultCity || 'Bula'
+    };
+  });
+
+  const [settingsSlotsCount, setSettingsSlotsCount] = useState<1 | 2 | 3>(
+    schoolInfo?.defaultSignaturesConfig?.defaultSlotsCount || 3
+  );
+
+  const [settingsSignatories, setSettingsSignatories] = useState<PrintSignatory[]>(() => {
+    if (schoolInfo?.defaultSignaturesConfig?.signatories && schoolInfo.defaultSignaturesConfig.signatories.length > 0) {
+      return schoolInfo.defaultSignaturesConfig.signatories;
+    }
+    return createDefaultSignatories(schoolInfo, {
+      customCity: schoolInfo?.defaultCity || 'Bula',
+      defaultSlotsCount: schoolInfo?.defaultSignaturesConfig?.defaultSlotsCount || 3
+    });
   });
 
   const [selectedYear, setSelectedYear] = useState<string>(activeAcademicYear || '2026/2027');
@@ -136,32 +161,55 @@ export const SettingsPage: React.FC = () => {
   const [seedSuccess, setSeedSuccess] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isFormDirty, setIsFormDirty] = useState(false);
 
-  // Sync form data when schoolInfo changes from Firestore or state
+  // Sync form data when schoolInfo changes from Firestore or state ONLY if user has not modified form
   useEffect(() => {
-    if (schoolInfo) {
-      setFormData({
+    if (schoolInfo && !isSaving && !isFormDirty) {
+      setFormData(prev => ({
+        ...INITIAL_SCHOOL_SETTING,
+        ...prev,
+        ...schoolInfo,
         id: schoolInfo.id || 'main_school',
-        name: schoolInfo.name || '',
-        centralInstitution: schoolInfo.centralInstitution || '',
-        regionalInstitution: schoolInfo.regionalInstitution || '',
-        npsn: schoolInfo.npsn || '',
-        address: schoolInfo.address || '',
-        postalCode: schoolInfo.postalCode || '',
-        principalName: schoolInfo.principalName || '',
-        principalNip: schoolInfo.principalNip || '',
-        wakaName: schoolInfo.wakaName || schoolInfo.wakaKesiswaanName || '',
-        wakaNip: schoolInfo.wakaNip || '',
-        wakaKesiswaanName: schoolInfo.wakaKesiswaanName || schoolInfo.wakaName || '',
-        phone: schoolInfo.phone || '',
-        email: schoolInfo.email || '',
-        website: schoolInfo.website || '',
-        logoUrl: schoolInfo.logoUrl || '',
-        logoLeftUrl: schoolInfo.logoLeftUrl || '',
-        logoRightUrl: schoolInfo.logoRightUrl || '',
-        currentAcademicYear: schoolInfo.currentAcademicYear || activeAcademicYear || '2026/2027',
-        currentSemester: schoolInfo.currentSemester || activeSemester || 'Ganjil'
-      });
+        name: schoolInfo.name?.trim() || prev.name || INITIAL_SCHOOL_SETTING.name,
+        centralInstitution: schoolInfo.centralInstitution?.trim() || prev.centralInstitution || INITIAL_SCHOOL_SETTING.centralInstitution,
+        regionalInstitution: schoolInfo.regionalInstitution?.trim() || prev.regionalInstitution || INITIAL_SCHOOL_SETTING.regionalInstitution,
+        npsn: schoolInfo.npsn?.trim() || prev.npsn || INITIAL_SCHOOL_SETTING.npsn,
+        address: schoolInfo.address?.trim() || prev.address || INITIAL_SCHOOL_SETTING.address,
+        postalCode: schoolInfo.postalCode?.trim() || prev.postalCode || INITIAL_SCHOOL_SETTING.postalCode,
+        principalName: schoolInfo.principalName?.trim() || prev.principalName || INITIAL_SCHOOL_SETTING.principalName,
+        principalNip: schoolInfo.principalNip?.trim() || prev.principalNip || INITIAL_SCHOOL_SETTING.principalNip,
+        wakaName: schoolInfo.wakaName?.trim() || schoolInfo.wakaKesiswaanName?.trim() || prev.wakaName || INITIAL_SCHOOL_SETTING.wakaName,
+        wakaKesiswaanName: schoolInfo.wakaKesiswaanName?.trim() || schoolInfo.wakaName?.trim() || prev.wakaKesiswaanName || INITIAL_SCHOOL_SETTING.wakaKesiswaanName,
+        wakaNip: schoolInfo.wakaNip?.trim() || prev.wakaNip || INITIAL_SCHOOL_SETTING.wakaNip,
+        pembinaOsim: schoolInfo.pembinaOsim?.trim() || prev.pembinaOsim || INITIAL_SCHOOL_SETTING.pembinaOsim || 'Puput Eka Bajuri, S. Pd., M. Or',
+        pembinaOsimNip: schoolInfo.pembinaOsimNip?.trim() || prev.pembinaOsimNip || INITIAL_SCHOOL_SETTING.pembinaOsimNip || '198810052020121003',
+        phone: schoolInfo.phone?.trim() || prev.phone || INITIAL_SCHOOL_SETTING.phone,
+        email: schoolInfo.email?.trim() || prev.email || INITIAL_SCHOOL_SETTING.email,
+        website: schoolInfo.website?.trim() || prev.website || INITIAL_SCHOOL_SETTING.website,
+        logoLeftUrl: schoolInfo.logoLeftUrl || prev.logoLeftUrl || '',
+        logoRightUrl: schoolInfo.logoRightUrl || prev.logoRightUrl || '',
+        defaultCity: schoolInfo.defaultCity?.trim() || prev.defaultCity || 'Bula',
+        defaultSignaturesConfig: schoolInfo.defaultSignaturesConfig || prev.defaultSignaturesConfig,
+        isSignatureLocked: schoolInfo.isSignatureLocked ?? schoolInfo.defaultSignaturesConfig?.isLockedByUser ?? prev.isSignatureLocked,
+        signatureLockedAt: schoolInfo.signatureLockedAt || schoolInfo.defaultSignaturesConfig?.lockedAt || prev.signatureLockedAt,
+        signatureLockedBy: schoolInfo.signatureLockedBy || schoolInfo.defaultSignaturesConfig?.lockedBy || prev.signatureLockedBy
+      }));
+
+      // Update signatories and slots count from locked school configuration if available
+      if (schoolInfo.defaultSignaturesConfig?.signatories && schoolInfo.defaultSignaturesConfig.signatories.length > 0) {
+        setSettingsSignatories(schoolInfo.defaultSignaturesConfig.signatories);
+        if (schoolInfo.defaultSignaturesConfig.defaultSlotsCount) {
+          setSettingsSlotsCount(schoolInfo.defaultSignaturesConfig.defaultSlotsCount);
+        }
+      } else if (schoolInfo.defaultCity) {
+        setSettingsSignatories(prev =>
+          prev.map(s => (s.alignment === 'right' || s.order === 2) && s.prefix?.includes(',')
+            ? { ...s, prefix: `${schoolInfo.defaultCity}, ${new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}` }
+            : s
+          )
+        );
+      }
       if (schoolInfo.currentAcademicYear) {
         setSelectedYear(schoolInfo.currentAcademicYear);
       }
@@ -169,7 +217,21 @@ export const SettingsPage: React.FC = () => {
         setSelectedSemester(schoolInfo.currentSemester);
       }
     }
-  }, [schoolInfo, activeAcademicYear, activeSemester]);
+  }, [
+    schoolInfo?.id,
+    schoolInfo?.name,
+    schoolInfo?.address,
+    schoolInfo?.currentAcademicYear,
+    schoolInfo?.currentSemester,
+    schoolInfo?.isSignatureLocked,
+    schoolInfo?.signatureLockedAt,
+    schoolInfo?.defaultSignaturesConfig?.isLockedByUser
+  ]);
+
+  const updateFormField = (partial: Partial<SchoolSetting>) => {
+    setIsFormDirty(true);
+    setFormData(prev => ({ ...prev, ...partial }));
+  };
 
   const handleSaveSchoolInfo = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -192,6 +254,8 @@ export const SettingsPage: React.FC = () => {
         wakaName: (formData.wakaKesiswaanName || formData.wakaName || '').trim(),
         wakaKesiswaanName: (formData.wakaKesiswaanName || formData.wakaName || '').trim(),
         wakaNip: formData.wakaNip?.trim() || '',
+        pembinaOsim: formData.pembinaOsim?.trim() || '',
+        pembinaOsimNip: formData.pembinaOsimNip?.trim() || '',
         phone: formData.phone.trim(),
         email: formData.email.trim(),
         website: formData.website?.trim() || '',
@@ -199,11 +263,24 @@ export const SettingsPage: React.FC = () => {
         logoLeftUrl: formData.logoLeftUrl?.trim() || '',
         logoRightUrl: formData.logoRightUrl?.trim() || '',
         currentAcademicYear: selectedYear,
-        currentSemester: selectedSemester
+        currentSemester: selectedSemester,
+        defaultCity: formData.defaultCity?.trim() || 'Bula',
+        defaultSignaturesConfig: {
+          city: formData.defaultCity?.trim() || 'Bula',
+          defaultSlotsCount: settingsSlotsCount,
+          signatories: settingsSignatories,
+          isLockedByUser: true,
+          lockedAt: new Date().toISOString(),
+          lockedBy: currentUser?.displayName || currentUser?.email || 'Administrator'
+        },
+        isSignatureLocked: true,
+        signatureLockedAt: new Date().toISOString(),
+        signatureLockedBy: currentUser?.displayName || currentUser?.email || 'Administrator'
       };
 
       await updateSchoolInfo(payload);
       setActiveAcademicYear(selectedYear, selectedSemester);
+      setIsFormDirty(false);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3500);
     } catch (err: any) {
@@ -495,27 +572,44 @@ export const SettingsPage: React.FC = () => {
 
       {/* 4. Form Identitas Sekolah & Logo Kop Surat */}
       <form onSubmit={handleSaveSchoolInfo} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-6 shadow-sm space-y-6">
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 gap-3">
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950 text-indigo-600">
               <School className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100">
-                Profil Identitas Instansi & Sekolah / Madrasah
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="font-bold text-sm text-slate-900 dark:text-slate-100">
+                  Profil Identitas Instansi & Sekolah / Madrasah
+                </h3>
+                {isFormDirty && (
+                  <span className="px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 text-[10px] font-bold">
+                    Perubahan Belum Disimpan
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-slate-500">
                 Data ini dicetak otomatis pada seluruh Kop Surat Resmi, Surat Dispensasi, Lembar Presensi, Berita Acara, dan LPJ.
               </p>
             </div>
           </div>
 
-          {saveSuccess && (
-            <span className="px-3 py-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center gap-1.5 animate-in fade-in shadow-sm">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-              Profil Berhasil Disimpan!
-            </span>
-          )}
+          <div className="flex items-center gap-2 shrink-0">
+            {saveSuccess && (
+              <span className="px-3 py-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-950/70 text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center gap-1.5 animate-in fade-in shadow-sm">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                Tersimpan Permanen!
+              </span>
+            )}
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-600/20 flex items-center gap-2 transition-all hover:scale-105 disabled:opacity-50"
+            >
+              <Save className="w-4 h-4" />
+              <span>{isSaving ? 'Menyimpan...' : 'Simpan Pengaturan'}</span>
+            </button>
+          </div>
         </div>
 
         {errorMessage && (
@@ -575,7 +669,7 @@ export const SettingsPage: React.FC = () => {
               <input
                 type="text"
                 value={formData.centralInstitution || ''}
-                onChange={e => setFormData({ ...formData, centralInstitution: e.target.value })}
+                onChange={e => updateFormField({ centralInstitution: e.target.value })}
                 placeholder="Contoh: KEMENTERIAN AGAMA REPUBLIK INDONESIA"
                 className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold uppercase"
               />
@@ -583,14 +677,14 @@ export const SettingsPage: React.FC = () => {
                 <span className="text-[10px] text-slate-400 self-center">Pilihan Cepat:</span>
                 <button
                   type="button"
-                  onClick={() => setFormData({ ...formData, centralInstitution: 'KEMENTERIAN AGAMA REPUBLIK INDONESIA' })}
+                  onClick={() => updateFormField({ centralInstitution: 'KEMENTERIAN AGAMA REPUBLIK INDONESIA' })}
                   className="px-2 py-0.5 rounded text-[10px] bg-slate-100 hover:bg-indigo-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium"
                 >
                   Kemenag RI
                 </button>
                 <button
                   type="button"
-                  onClick={() => setFormData({ ...formData, centralInstitution: 'KEMENTERIAN PENDIDIKAN, KEBUDAYAAN, RISET, DAN TEKNOLOGI' })}
+                  onClick={() => updateFormField({ centralInstitution: 'KEMENTERIAN PENDIDIKAN, KEBUDAYAAN, RISET, DAN TEKNOLOGI' })}
                   className="px-2 py-0.5 rounded text-[10px] bg-slate-100 hover:bg-indigo-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium"
                 >
                   Kemendikbudristek RI
@@ -605,7 +699,7 @@ export const SettingsPage: React.FC = () => {
               <input
                 type="text"
                 value={formData.regionalInstitution || ''}
-                onChange={e => setFormData({ ...formData, regionalInstitution: e.target.value })}
+                onChange={e => updateFormField({ regionalInstitution: e.target.value })}
                 placeholder="Contoh: KANTOR KEMENTERIAN AGAMA KABUPATEN BOGOR / DINAS PENDIDIKAN PROVINSI"
                 className="w-full px-3 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold uppercase"
               />
@@ -626,8 +720,8 @@ export const SettingsPage: React.FC = () => {
               type="text"
               required
               value={formData.name || ''}
-              onChange={e => setFormData({ ...formData, name: e.target.value })}
-              placeholder="Contoh: MAN 1 TELADAN NUSANTARA / SMA NEGERI 1 TELADAN"
+              onChange={e => updateFormField({ name: e.target.value })}
+              placeholder="Contoh: MAN 2 SERAM BAGIAN TIMUR"
               className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-extrabold uppercase text-indigo-900 dark:text-indigo-200"
             />
           </div>
@@ -640,26 +734,26 @@ export const SettingsPage: React.FC = () => {
               type="text"
               required
               value={formData.npsn || ''}
-              onChange={e => setFormData({ ...formData, npsn: e.target.value })}
-              placeholder="Contoh: 20108922"
+              onChange={e => updateFormField({ npsn: e.target.value })}
+              placeholder="Contoh: 60728491"
               className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono font-semibold"
             />
           </div>
 
           <div className="sm:col-span-2">
             <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Baris 4 Kop Surat: Alamat / Kontak / Website Lengkap *
+              Baris 4 Kop Surat: Alamat Lengkap Satuan Pendidikan *
             </label>
             <input
               type="text"
               required
               value={formData.address || ''}
-              onChange={e => setFormData({ ...formData, address: e.target.value })}
-              placeholder="Contoh: Jl. Pemuda Pendidikan No. 45 Telp. (021) 7892345 Email: info@sman1teladan.sch.id"
+              onChange={e => updateFormField({ address: e.target.value })}
+              placeholder="Contoh: Jl. Lintas Seram, Kec. Bula, Kab. Seram Bagian Timur, Maluku"
               className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
             />
             <p className="text-[10px] text-slate-400 mt-1">
-              Teks ini dicetak persis sebagai Baris 4 pada seluruh Kop Surat resmi.
+              Teks ini dicetak persis sebagai Baris 4 pada seluruh Kop Surat resmi (tanpa menambahkan kolom kode pos, telp, email, atau website).
             </p>
           </div>
 
@@ -670,8 +764,8 @@ export const SettingsPage: React.FC = () => {
             <input
               type="text"
               value={formData.postalCode || ''}
-              onChange={e => setFormData({ ...formData, postalCode: e.target.value })}
-              placeholder="Contoh: 12120"
+              onChange={e => updateFormField({ postalCode: e.target.value })}
+              placeholder="Contoh: 97554"
               className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono"
             />
           </div>
@@ -684,8 +778,8 @@ export const SettingsPage: React.FC = () => {
               type="text"
               required
               value={formData.principalName || ''}
-              onChange={e => setFormData({ ...formData, principalName: e.target.value })}
-              placeholder="Prof. Dr. H. Slamet Riyadi, M.Pd."
+              onChange={e => updateFormField({ principalName: e.target.value })}
+              placeholder="Zakaria, S. Pd.I., M. Pd"
               className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-semibold"
             />
           </div>
@@ -697,8 +791,8 @@ export const SettingsPage: React.FC = () => {
             <input
               type="text"
               value={formData.principalNip || ''}
-              onChange={e => setFormData({ ...formData, principalNip: e.target.value })}
-              placeholder="19680315 199203 1 004"
+              onChange={e => updateFormField({ principalNip: e.target.value })}
+              placeholder="197808042003121008"
               className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-slate-600 dark:text-slate-400"
             />
           </div>
@@ -711,8 +805,8 @@ export const SettingsPage: React.FC = () => {
               type="text"
               required
               value={formData.wakaKesiswaanName || formData.wakaName || ''}
-              onChange={e => setFormData({ ...formData, wakaKesiswaanName: e.target.value, wakaName: e.target.value })}
-              placeholder="Drs. H. Bambang Suryono, M.Pd."
+              onChange={e => updateFormField({ wakaKesiswaanName: e.target.value, wakaName: e.target.value })}
+              placeholder="Puput Eka Bajuri, S. Pd., M. Or"
               className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-semibold"
             />
           </div>
@@ -724,8 +818,51 @@ export const SettingsPage: React.FC = () => {
             <input
               type="text"
               value={formData.wakaNip || ''}
-              onChange={e => setFormData({ ...formData, wakaNip: e.target.value })}
-              placeholder="19740510 199903 1 002"
+              onChange={e => updateFormField({ wakaNip: e.target.value })}
+              placeholder="198810052020121003"
+              className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-slate-600 dark:text-slate-400"
+            />
+          </div>
+
+          <div>
+            <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              Kota / Kabupaten Penerbitan Surat Kedinasan *
+            </label>
+            <input
+              type="text"
+              required
+              value={formData.defaultCity || ''}
+              onChange={e => updateFormField({ defaultCity: e.target.value })}
+              placeholder="Contoh: Bula"
+              className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-bold text-indigo-700 dark:text-indigo-300"
+            />
+            <p className="text-[10px] text-slate-400 mt-1">
+              Nama daerah ini dicetak pada format tanggal surat dinas (e.g. &quot;{formData.defaultCity || 'Bula'}, 27 September 2026&quot;).
+            </p>
+          </div>
+
+          <div>
+            <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              Nama Pembina OSIM
+            </label>
+            <input
+              type="text"
+              value={formData.pembinaOsim || ''}
+              onChange={e => updateFormField({ pembinaOsim: e.target.value })}
+              placeholder="Puput Eka Bajuri, S. Pd., M. Or"
+              className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-semibold"
+            />
+          </div>
+
+          <div>
+            <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              NIP Pembina OSIM
+            </label>
+            <input
+              type="text"
+              value={formData.pembinaOsimNip || ''}
+              onChange={e => updateFormField({ pembinaOsimNip: e.target.value })}
+              placeholder="198810052020121003"
               className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-slate-600 dark:text-slate-400"
             />
           </div>
@@ -737,8 +874,8 @@ export const SettingsPage: React.FC = () => {
             <input
               type="text"
               value={formData.phone || ''}
-              onChange={e => setFormData({ ...formData, phone: e.target.value })}
-              placeholder="(021) 7892345"
+              onChange={e => updateFormField({ phone: e.target.value })}
+              placeholder="(0915) 21189"
               className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono"
             />
           </div>
@@ -750,8 +887,8 @@ export const SettingsPage: React.FC = () => {
             <input
               type="email"
               value={formData.email || ''}
-              onChange={e => setFormData({ ...formData, email: e.target.value })}
-              placeholder="info@sman1teladan.sch.id"
+              onChange={e => updateFormField({ email: e.target.value })}
+              placeholder="man2sbt@kemenag.go.id"
               className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
             />
           </div>
@@ -763,8 +900,8 @@ export const SettingsPage: React.FC = () => {
             <input
               type="text"
               value={formData.website || ''}
-              onChange={e => setFormData({ ...formData, website: e.target.value })}
-              placeholder="https://sman1teladan.sch.id"
+              onChange={e => updateFormField({ website: e.target.value })}
+              placeholder="https://man2serambagiantimur.sch.id"
               className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
             />
           </div>
@@ -863,7 +1000,7 @@ export const SettingsPage: React.FC = () => {
               label="Logo Kiri (Kemenag RI / Instansi Pembina)"
               sublabel="Diposisikan di sebelah kiri Kop Surat (Kemenag / Instansi Pembina)"
               value={formData.logoLeftUrl || ''}
-              onChange={(url) => setFormData({ ...formData, logoLeftUrl: url })}
+              onChange={(url) => updateFormField({ logoLeftUrl: url })}
               presets={LEFT_LOGO_PRESETS}
               position="left"
             />
@@ -873,7 +1010,7 @@ export const SettingsPage: React.FC = () => {
               label="Logo Kanan (Logo Sekolah / Madrasah)"
               sublabel="Diposisikan di sebelah kanan Kop Surat & logo utama aplikasi"
               value={formData.logoRightUrl || ''}
-              onChange={(url) => setFormData({ ...formData, logoRightUrl: url, logoUrl: url })}
+              onChange={(url) => updateFormField({ logoRightUrl: url, logoUrl: url })}
               presets={RIGHT_LOGO_PRESETS}
               position="right"
             />
@@ -903,23 +1040,71 @@ export const SettingsPage: React.FC = () => {
             <SchoolLetterhead
               schoolInfo={{
                 ...formData,
-                name: formData.name || 'NAMA SEKOLAH / MADRASAH',
-                centralInstitution: formData.centralInstitution || 'KEMENTERIAN AGAMA REPUBLIK INDONESIA',
-                regionalInstitution: formData.regionalInstitution || 'KANTOR KEMENTERIAN AGAMA KABUPATEN',
-                address: formData.address || 'Jl. Pendidikan No. 123',
-                postalCode: formData.postalCode,
-                phone: formData.phone,
-                email: formData.email,
-                website: formData.website,
-                npsn: formData.npsn || '12345678',
-                logoLeftUrl: formData.logoLeftUrl,
-                logoRightUrl: formData.logoRightUrl
+                name: formData.name || INITIAL_SCHOOL_SETTING.name,
+                centralInstitution: formData.centralInstitution || INITIAL_SCHOOL_SETTING.centralInstitution,
+                regionalInstitution: formData.regionalInstitution || INITIAL_SCHOOL_SETTING.regionalInstitution,
+                address: formData.address || INITIAL_SCHOOL_SETTING.address,
+                postalCode: formData.postalCode || INITIAL_SCHOOL_SETTING.postalCode,
+                phone: formData.phone || INITIAL_SCHOOL_SETTING.phone,
+                email: formData.email || INITIAL_SCHOOL_SETTING.email,
+                website: formData.website || INITIAL_SCHOOL_SETTING.website,
+                npsn: formData.npsn || INITIAL_SCHOOL_SETTING.npsn,
+                logoLeftUrl: formData.logoLeftUrl || INITIAL_SCHOOL_SETTING.logoLeftUrl,
+                logoRightUrl: formData.logoRightUrl || INITIAL_SCHOOL_SETTING.logoRightUrl
               }}
               documentTitle="SURAT KETERANGAN RESMI KESISWAAN"
               documentNumber={`421.3 / 001 / SIM-KES / ${new Date().getFullYear()}`}
             />
-            <div className="text-center py-4 text-slate-400 text-xs italic font-sans border-t border-dashed border-slate-200 mt-4">
+            <div className="text-center py-4 text-slate-400 text-xs italic font-sans border-t border-dashed border-slate-200 mt-4 mb-4">
               [ Konten isi surat dispensasi, berita acara OSIM, atau lembar laporan kegiatan akan dicetak di bagian ini ]
+            </div>
+
+            {/* Standar Blok Tanda Tangan Resmi Dinamis */}
+            <div className="pt-2 border-t border-slate-200">
+              <div className="mb-2 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1 text-[11px] font-sans text-slate-500">
+                <span className="font-bold flex items-center gap-1.5 text-indigo-700 dark:text-indigo-400">
+                  <Users className="w-3.5 h-3.5" />
+                  Simulasi Penanda Tangan Dokumen (Coba Geser dengan Tombol ⬅ ➡):
+                </span>
+                <div className="flex items-center gap-2">
+                  {(schoolInfo?.isSignatureLocked || schoolInfo?.defaultSignaturesConfig?.isLockedByUser) ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                      <Lock className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                      Terkunci Permanen oleh User
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-slate-400 italic">
+                      Format ini otomatis menjadi standar di seluruh dokumen cetak kesiswaan
+                    </span>
+                  )}
+                </div>
+              </div>
+              <DynamicSignaturesBlock
+                signatories={settingsSignatories}
+                onChange={(sigs) => {
+                  setIsFormDirty(true);
+                  setSettingsSignatories(sigs);
+                }}
+                activeSlotsCount={settingsSlotsCount}
+                onSlotsCountChange={(cnt) => {
+                  setIsFormDirty(true);
+                  setSettingsSlotsCount(cnt);
+                }}
+                onResetToDefault={() => {
+                  setIsFormDirty(true);
+                  const fresh = createDefaultSignatories(formData, {
+                    customCity: formData.defaultCity || 'Bula',
+                    defaultSlotsCount: 3,
+                    forceResetToDefault: true
+                  });
+                  setSettingsSignatories(fresh);
+                  setSettingsSlotsCount(3);
+                }}
+                schoolInfo={formData}
+                teachersList={teachers}
+                defaultCity={formData.defaultCity || 'Bula'}
+                isEditableInPreview={true}
+              />
             </div>
           </div>
         </div>

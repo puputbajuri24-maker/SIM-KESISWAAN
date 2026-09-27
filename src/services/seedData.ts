@@ -45,11 +45,14 @@ export const INITIAL_SCHOOL_SETTING: SchoolSetting = {
   npsn: '60728491',
   address: 'Jl. Lintas Seram, Kec. Bula, Kab. Seram Bagian Timur, Maluku',
   postalCode: '97554',
+  defaultCity: 'Bula',
   principalName: 'Zakaria, S. Pd.I., M. Pd',
   principalNip: '197808042003121008',
   wakaName: 'Puput Eka Bajuri, S. Pd., M. Or',
   wakaNip: '198810052020121003',
   wakaKesiswaanName: 'Puput Eka Bajuri, S. Pd., M. Or',
+  pembinaOsim: 'Puput Eka Bajuri, S. Pd., M. Or',
+  pembinaOsimNip: '198810052020121003',
   phone: '(0915) 21189',
   email: 'man2sbt@kemenag.go.id',
   website: 'https://man2serambagiantimur.sch.id',
@@ -57,7 +60,48 @@ export const INITIAL_SCHOOL_SETTING: SchoolSetting = {
   currentSemester: 'Ganjil',
   logoUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/90/Logo_Kementerian_Agama.png/240px-Logo_Kementerian_Agama.png',
   logoLeftUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/90/Logo_Kementerian_Agama.png/480px-Logo_Kementerian_Agama.png',
-  logoRightUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/90/Logo_Kementerian_Agama.png/240px-Logo_Kementerian_Agama.png'
+  logoRightUrl: 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/90/Logo_Kementerian_Agama.png/240px-Logo_Kementerian_Agama.png',
+  defaultSignaturesConfig: {
+    city: 'Bula',
+    defaultSlotsCount: 3,
+    showNip: true,
+    isLockedByUser: false,
+    signatories: [
+      {
+        id: 'sig-left',
+        order: 0,
+        alignment: 'left',
+        prefix: '',
+        roleTitle: 'Koordinator Guru BK / Pembina',
+        name: 'Guru BK / Pembina',
+        nipOrIdentifier: 'Pamong Pembinaan',
+        customSubtitle: 'Pamong Pembinaan',
+        isActive: true
+      },
+      {
+        id: 'sig-center',
+        order: 1,
+        alignment: 'center',
+        prefix: 'Menyetujui,',
+        roleTitle: 'Waka Bidang Kesiswaan',
+        name: 'Puput Eka Bajuri, S. Pd., M. Or',
+        nipOrIdentifier: '198810052020121003',
+        customSubtitle: 'Pimpinan Kesiswaan',
+        isActive: true
+      },
+      {
+        id: 'sig-right',
+        order: 2,
+        alignment: 'right',
+        prefix: 'Bula, 27 September 2026',
+        roleTitle: 'Kepala Madrasah',
+        name: 'Zakaria, S. Pd.I., M. Pd',
+        nipOrIdentifier: '197808042003121008',
+        customSubtitle: 'Penanggung Jawab Lembaga',
+        isActive: true
+      }
+    ]
+  }
 };
 
 export const INITIAL_ACADEMIC_YEARS: AcademicYear[] = [

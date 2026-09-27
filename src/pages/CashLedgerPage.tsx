@@ -1587,10 +1587,10 @@ export const CashLedgerPage: React.FC = () => {
                 {schoolSetting.centralInstitution || 'KEMENTERIAN AGAMA REPUBLIK INDONESIA'}
               </div>
               <div className="text-base font-black uppercase text-zinc-900">
-                {schoolSetting.name || 'MADRASAH ALIYAH NEGERI 1 TELADAN'}
+                {schoolSetting.name || 'MAN 2 SERAM BAGIAN TIMUR'}
               </div>
               <div className="text-[10px] text-zinc-600">
-                {schoolSetting.address || 'Jl. Pendidikan No. 45, Kompleks Madrasah Terpadu'} • Telp: {schoolSetting.phone || '(021) 7890123'}
+                {schoolSetting.address || 'Jl. Lintas Seram, Kec. Bula, Kab. Seram Bagian Timur, Maluku'} • Telp: {schoolSetting.phone || '(0915) 21189'}
               </div>
             </div>
 

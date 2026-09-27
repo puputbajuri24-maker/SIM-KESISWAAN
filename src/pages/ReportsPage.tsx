@@ -34,8 +34,10 @@ import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { ExportActions } from '../components/common/ExportActions';
 import { SchoolLetterhead } from '../components/common/SchoolLetterhead';
 import { OFFICIAL_DISCIPLINE_TIERS, getDisciplineTier } from '../services/officialRulesData';
+import { CentralizedDocumentCatalogTab } from '../components/reports/CentralizedDocumentCatalogTab';
+import { UnifiedPrintDocumentModal, UnifiedPrintDocumentData } from '../components/common/UnifiedPrintDocumentModal';
 
-type ReportTab = 'lpj' | 'violations' | 'discipline_sk380' | 'counseling' | 'ekskul';
+type ReportTab = 'katalog' | 'lpj' | 'violations' | 'discipline_sk380' | 'counseling' | 'ekskul';
 
 export const ReportsPage: React.FC = () => {
   const { isWakaOrAdmin, isGuruBK, isPembina, currentUser } = useAuth();
@@ -48,6 +50,13 @@ export const ReportsPage: React.FC = () => {
     students,
     teachers,
     parentCallLetters,
+    permissions,
+    achievements,
+    attendance,
+    cashTransactions,
+    cashAccounts,
+    osimPrograms,
+    osimMeetings,
     schoolSetting,
     activeAcademicYear,
     addActivityReport,
@@ -56,11 +65,16 @@ export const ReportsPage: React.FC = () => {
   } = useSchool();
 
   // Active tab selection
-  const [activeTab, setActiveTab] = useState<ReportTab>(() => {
-    if (isGuruBK) return 'discipline_sk380';
-    if (isPembina) return 'lpj';
-    return 'lpj';
-  });
+  const [activeTab, setActiveTab] = useState<ReportTab>('katalog');
+
+  // Unified Document Print Preview State
+  const [unifiedPrintData, setUnifiedPrintData] = useState<UnifiedPrintDocumentData | null>(null);
+  const [isUnifiedPrintOpen, setIsUnifiedPrintOpen] = useState(false);
+
+  const handleOpenUnifiedPrint = (data: UnifiedPrintDocumentData) => {
+    setUnifiedPrintData(data);
+    setIsUnifiedPrintOpen(true);
+  };
 
   // Modal states
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -287,7 +301,214 @@ export const ReportsPage: React.FC = () => {
 
   const handlePrintLpj = (report: ActivityReport) => {
     setSelectedReport(report);
-    setIsPrintLpjOpen(true);
+    handleOpenUnifiedPrint({
+      documentId: `lpj-${report.id}`,
+      documentTitle: `LAPORAN PERTANGGUNGJAWABAN (LPJ): ${report.activityTitle.toUpperCase()}`,
+      documentNumber: `421.3 / ${report.id.slice(0, 5).toUpperCase()} / LPJ / ${new Date().getFullYear()}`,
+      documentCategory: 'activities',
+      paperOrientation: 'portrait',
+      recommendedSlots: 3,
+      customReporterRole: `Guru Pembina ${report.extracurricularName}`,
+      customReporterName: report.coachName,
+      content: (
+        <div className="space-y-4 font-sans text-xs leading-relaxed">
+          <div className="p-3 bg-slate-50 border border-slate-300 rounded-lg space-y-1">
+            <p><strong>Judul Agenda:</strong> {report.activityTitle}</p>
+            <p><strong>Unit / Cabang:</strong> {report.extracurricularName}</p>
+            <p><strong>Guru Pembina:</strong> {report.coachName}</p>
+            <p><strong>Tanggal Pelaksanaan:</strong> {report.date}</p>
+            <p><strong>Kehadiran Siswa:</strong> {report.attendanceCount} Orang</p>
+            <p><strong>Realisasi Anggaran:</strong> Rp {(report.totalBudgetSpent || 0).toLocaleString('id-ID')}</p>
+            <p><strong>Status Verifikasi:</strong> {report.status}</p>
+          </div>
+
+          <div>
+            <h4 className="font-bold text-slate-900 uppercase underline text-[11px] mb-1">I. Ringkasan Jalannya Kegiatan</h4>
+            <p className="text-slate-800 leading-relaxed pl-2">{report.summary}</p>
+          </div>
+
+          <div>
+            <h4 className="font-bold text-slate-900 uppercase underline text-[11px] mb-1">II. Capaian & Prestasi Yang Diraih</h4>
+            <p className="text-slate-800 leading-relaxed pl-2">{report.achievements || '-'}</p>
+          </div>
+
+          <div>
+            <h4 className="font-bold text-slate-900 uppercase underline text-[11px] mb-1">III. Kendala & Catatan Evaluasi</h4>
+            <p className="text-slate-800 leading-relaxed pl-2">{report.challenges || '-'}</p>
+          </div>
+
+          {report.feedbackNotes && (
+            <div className="p-2.5 rounded bg-slate-100 border border-slate-300">
+              <p className="font-bold text-slate-900">Catatan Verifikasi Waka Kesiswaan:</p>
+              <p className="text-slate-800 italic mt-0.5">{report.feedbackNotes}</p>
+            </div>
+          )}
+        </div>
+      )
+    });
+  };
+
+  const triggerPrintViolations = () => {
+    handleOpenUnifiedPrint({
+      documentId: 'print-violations-recap',
+      documentTitle: 'REKAPITULASI PELANGGARAN KEDISIPLINAN PESERTA DIDIK',
+      documentNumber: `421.3 / ${Math.floor(100 + Math.random() * 900)} / TATA-TERTIB / ${new Date().getFullYear()}`,
+      documentCategory: 'discipline',
+      paperOrientation: 'landscape',
+      recommendedSlots: 3,
+      customReporterRole: 'Koordinator Guru BK',
+      customReporterName: currentUser?.displayName || 'Guru BK',
+      content: (
+        <div>
+          <p className="text-center text-[11px] font-sans text-slate-700 mb-3">
+            Tahun Pelajaran: {activeAcademicYear} {selectedClassFilter !== 'all' ? `• Kelas: ${selectedClassFilter}` : ''}
+          </p>
+          <table className="w-full font-sans text-[10px] border-collapse border border-slate-400 mb-4">
+            <thead>
+              <tr className="bg-slate-100 text-slate-900">
+                <th className="border border-slate-400 p-1 text-center w-8">No</th>
+                <th className="border border-slate-400 p-1.5 text-left">Nama Siswa</th>
+                <th className="border border-slate-400 p-1 text-center">Kelas</th>
+                <th className="border border-slate-400 p-1 text-center">Tanggal</th>
+                <th className="border border-slate-400 p-1.5 text-left">Bentuk Pelanggaran</th>
+                <th className="border border-slate-400 p-1 text-center">Poin</th>
+                <th className="border border-slate-400 p-1.5 text-left">Tindakan / Sanksi</th>
+                <th className="border border-slate-400 p-1 text-center">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredViolations.slice(0, 35).map((v, idx) => (
+                <tr key={v.id} className="border-b border-slate-300">
+                  <td className="border border-slate-300 p-1 text-center">{idx + 1}</td>
+                  <td className="border border-slate-300 p-1.5 font-bold">
+                    {v.studentName}
+                    <span className="block text-[9px] text-slate-500 font-normal">NIS: {v.studentNis}</span>
+                  </td>
+                  <td className="border border-slate-300 p-1 text-center">{v.studentClass}</td>
+                  <td className="border border-slate-300 p-1 text-center">{v.date}</td>
+                  <td className="border border-slate-300 p-1.5">{v.violationType}</td>
+                  <td className="border border-slate-300 p-1 text-center font-bold text-rose-700">+{v.points}</td>
+                  <td className="border border-slate-300 p-1.5">{v.actionTaken || '-'}</td>
+                  <td className="border border-slate-300 p-1 text-center">{v.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )
+    });
+  };
+
+  const triggerPrintDisciplineSk380 = () => {
+    handleOpenUnifiedPrint({
+      documentId: 'print-sk380-recap',
+      documentTitle: 'LAPORAN REKAPITULASI EVALUASI KEDISIPLINAN & PENETAPAN SANKSI TATA TERTIB',
+      documentNumber: `B-380/Ma.25.06/PP.00.6/07/${new Date().getFullYear()}`,
+      documentCategory: 'discipline',
+      paperOrientation: 'landscape',
+      recommendedSlots: 3,
+      customReporterRole: 'Koordinator Guru BK',
+      customReporterName: currentUser?.displayName || 'Guru BK',
+      content: (
+        <div>
+          <div className="text-center mb-3">
+            <p className="text-[11px] font-sans font-semibold text-slate-800">
+              BERDASARKAN KEPUTUSAN KEPALA MAN 2 SERAM BAGIAN TIMUR NOMOR: B-380/Ma.25.06/PP.00.6/07/2024
+            </p>
+            <p className="text-[10px] font-sans text-slate-600 mt-0.5">
+              Tahun Pelajaran: {activeAcademicYear} {selectedClassFilter !== 'all' ? `• Rombel: Kelas ${selectedClassFilter}` : '• Seluruh Rombongan Belajar'}
+            </p>
+          </div>
+
+          <table className="w-full font-sans text-[10px] border-collapse border border-slate-400 mb-4">
+            <thead>
+              <tr className="bg-slate-100 text-slate-900">
+                <th className="border border-slate-400 p-1 text-center w-7">No</th>
+                <th className="border border-slate-400 p-1.5 text-left">Nama Siswa</th>
+                <th className="border border-slate-400 p-1 text-center">NIS</th>
+                <th className="border border-slate-400 p-1 text-center">Kelas</th>
+                <th className="border border-slate-400 p-1 text-center">Total Poin</th>
+                <th className="border border-slate-400 p-1.5 text-left">Jenjang Sanksi (SK B-380)</th>
+                <th className="border border-slate-400 p-1.5 text-left">Tindakan Wajib / Sanksi Resmi</th>
+                <th className="border border-slate-400 p-1 text-center">Status SP</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredDisciplineStudents.map((s, idx) => (
+                <tr key={s.studentId} className="border-b border-slate-300">
+                  <td className="border border-slate-300 p-1 text-center">{idx + 1}</td>
+                  <td className="border border-slate-300 p-1.5 font-bold text-slate-900">{s.studentName}</td>
+                  <td className="border border-slate-300 p-1 text-center font-mono">{s.studentNis}</td>
+                  <td className="border border-slate-300 p-1 text-center font-semibold">{s.studentClass}</td>
+                  <td className="border border-slate-300 p-1 text-center font-bold font-mono">
+                    <span className={s.totalPoints >= 41 ? 'text-red-700' : s.totalPoints >= 21 ? 'text-orange-700' : 'text-slate-800'}>
+                      {s.totalPoints} P
+                    </span>
+                  </td>
+                  <td className="border border-slate-300 p-1.5">
+                    {s.tier ? <span className="font-semibold text-slate-800">{s.tier.name}</span> : <span className="text-slate-500 italic">&lt;10 P (Preventif)</span>}
+                  </td>
+                  <td className="border border-slate-300 p-1.5 text-[9.5px] leading-snug">
+                    {s.tier ? s.tier.actionRequired : 'Pembinaan preventif wali kelas'}
+                  </td>
+                  <td className="border border-slate-300 p-1 text-center">
+                    {s.highestCall > 0 ? `SP ${s.highestCall}` : '-'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )
+    });
+  };
+
+  const triggerPrintCounseling = () => {
+    handleOpenUnifiedPrint({
+      documentId: 'print-counseling-recap',
+      documentTitle: 'REKAPITULASI LAYANAN BIMBINGAN & KONSELING (BK)',
+      documentNumber: `421.3 / ${Math.floor(100 + Math.random() * 900)} / BK / ${new Date().getFullYear()}`,
+      documentCategory: 'counseling',
+      paperOrientation: 'landscape',
+      recommendedSlots: 2,
+      customReporterRole: 'Guru Bimbingan Konseling',
+      customReporterName: currentUser?.displayName || 'Guru BK',
+      content: (
+        <div>
+          <p className="text-center text-[11px] font-sans text-slate-700 mb-3">
+            Tahun Pelajaran: {activeAcademicYear} • Total {filteredCounseling.length} Sesi Bimbingan
+          </p>
+          <table className="w-full font-sans text-[10px] border-collapse border border-slate-400 mb-4">
+            <thead>
+              <tr className="bg-slate-100 text-slate-900">
+                <th className="border border-slate-400 p-1.5 text-center w-8">No</th>
+                <th className="border border-slate-400 p-1.5 text-left">Nama Siswa</th>
+                <th className="border border-slate-400 p-1.5 text-center">Kelas</th>
+                <th className="border border-slate-400 p-1.5 text-center">Tanggal</th>
+                <th className="border border-slate-400 p-1.5 text-left">Bidang</th>
+                <th className="border border-slate-400 p-1.5 text-left">Topik / Kasus</th>
+                <th className="border border-slate-400 p-1.5 text-left">Hasil / Kesepakatan</th>
+                <th className="border border-slate-400 p-1.5 text-left">Guru Konselor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredCounseling.slice(0, 30).map((c, idx) => (
+                <tr key={c.id} className="border-b border-slate-300">
+                  <td className="border border-slate-300 p-1.5 text-center">{idx + 1}</td>
+                  <td className="border border-slate-300 p-1.5 font-bold">{c.studentName}</td>
+                  <td className="border border-slate-300 p-1.5 text-center">{c.studentClass}</td>
+                  <td className="border border-slate-300 p-1.5 text-center">{c.date}</td>
+                  <td className="border border-slate-300 p-1.5 font-semibold text-indigo-900">{c.serviceField || 'Pribadi'}</td>
+                  <td className="border border-slate-300 p-1.5">{c.topic || c.reason || '-'}</td>
+                  <td className="border border-slate-300 p-1.5">{c.solution || c.counselingResult || '-'}</td>
+                  <td className="border border-slate-300 p-1.5">{c.counselorName}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )
+    });
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -653,6 +874,17 @@ export const ReportsPage: React.FC = () => {
         {/* Tab Navigasi Laporan */}
         <div className="flex flex-wrap items-center gap-1.5 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700">
           <button
+            onClick={() => setActiveTab('katalog')}
+            className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
+              activeTab === 'katalog'
+                ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-sm'
+                : 'text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/50'
+            }`}
+          >
+            <Printer className="w-3.5 h-3.5" />
+            <span>Pusat Cetak Dokumen</span>
+          </button>
+          <button
             onClick={() => setActiveTab('lpj')}
             className={`px-3 py-1.5 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${
               activeTab === 'lpj'
@@ -709,6 +941,33 @@ export const ReportsPage: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* ========================================================= */}
+      {/* TAB 0: PUSAT CETAK DOKUMEN KEDINASAN TERPADU */}
+      {/* ========================================================= */}
+      {activeTab === 'katalog' && (
+        <CentralizedDocumentCatalogTab
+          onOpenPrintDocument={handleOpenUnifiedPrint}
+          violations={violations}
+          counseling={counseling}
+          activityReports={activityReports}
+          parentCallLetters={parentCallLetters}
+          permissions={permissions}
+          achievements={achievements}
+          attendance={attendance}
+          cashTransactions={cashTransactions}
+          cashAccounts={cashAccounts}
+          osimPrograms={osimPrograms}
+          osimMeetings={osimMeetings}
+          extracurriculars={extracurriculars}
+          students={students}
+          teachers={teachers}
+          schoolSetting={schoolSetting}
+          activeAcademicYear={activeAcademicYear}
+          disciplineStudentsSummary={disciplineStudentsSummary}
+          sk380Metrics={sk380Metrics}
+        />
+      )}
 
       {/* ========================================================= */}
       {/* TAB 1: LPJ KEGIATAN & PEMBINA */}
@@ -776,7 +1035,7 @@ export const ReportsPage: React.FC = () => {
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setIsPrintViolationsOpen(true)}
+                onClick={triggerPrintViolations}
                 className="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-300 border border-rose-200 dark:border-rose-900 text-xs font-bold flex items-center gap-2 shadow-sm transition-all"
               >
                 <Printer className="w-4 h-4" />
@@ -913,7 +1172,7 @@ export const ReportsPage: React.FC = () => {
               />
 
               <button
-                onClick={() => setIsPrintDisciplineSk380Open(true)}
+                onClick={triggerPrintDisciplineSk380}
                 className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shadow-md shadow-amber-600/20 flex items-center gap-2 transition-all hover:scale-105"
               >
                 <Printer className="w-4 h-4" />
@@ -1095,7 +1354,7 @@ export const ReportsPage: React.FC = () => {
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setIsPrintCounselingOpen(true)}
+                onClick={triggerPrintCounseling}
                 className="px-3.5 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:hover:bg-blue-900 dark:text-blue-300 border border-blue-200 dark:border-blue-900 text-xs font-bold flex items-center gap-2 shadow-sm transition-all"
               >
                 <Printer className="w-4 h-4" />
@@ -1972,6 +2231,16 @@ export const ReportsPage: React.FC = () => {
         title="Hapus Laporan Kegiatan"
         message={`Apakah Anda yakin ingin menghapus laporan "${selectedReport?.activityTitle}"?`}
         confirmText="Hapus Laporan"
+      />
+
+      {/* UNIFIED PRINT DOCUMENT MODAL (CENTRALIZED PRINT & SIGNATURE ENGINE) */}
+      <UnifiedPrintDocumentModal
+        isOpen={isUnifiedPrintOpen}
+        onClose={() => setIsUnifiedPrintOpen(false)}
+        documentData={unifiedPrintData}
+        schoolInfo={schoolSetting}
+        teachersList={teachers}
+        currentUserName={currentUser?.displayName}
       />
     </div>
   );
