@@ -77,8 +77,17 @@ export const ClassGridFilter: React.FC<ClassGridFilterProps> = ({
   // Computed total count if not provided
   const computedTotal = useMemo(() => {
     if (typeof totalCount === 'number') return totalCount;
+    const validClassIds = new Set(classes.map(c => c.id));
+    if (validClassIds.size > 0) {
+      return Object.entries(countsByClassId).reduce((acc: number, [key, val]) => {
+        if (validClassIds.has(key)) {
+          return acc + (Number(val) || 0);
+        }
+        return acc;
+      }, 0);
+    }
     return Object.values(countsByClassId).reduce((acc: number, curr) => acc + (Number(curr) || 0), 0);
-  }, [totalCount, countsByClassId]);
+  }, [totalCount, countsByClassId, classes]);
 
   // Color scheme mappings
   const schemeStyles = {

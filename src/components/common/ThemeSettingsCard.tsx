@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useTheme, THEME_PALETTES, ThemeMode, ThemePalette, FontSize, FontContrast, FontFamily } from '../../contexts/ThemeContext';
+import { useSchool } from '../../contexts/SchoolContext';
 import { Sun, Moon, Monitor, Palette, Sparkles, Check, CheckCircle2, Type, Contrast, RotateCcw, Eye, ShieldCheck, Zap } from 'lucide-react';
 
 export const ThemeSettingsCard: React.FC = () => {
@@ -18,6 +19,38 @@ export const ThemeSettingsCard: React.FC = () => {
     resetTheme,
     isCloudSynced
   } = useTheme();
+
+  const {
+    students = [],
+    extracurriculars = [],
+    attendance = [],
+    violations = [],
+    schoolSetting
+  } = useSchool();
+
+  // Dynamic real data calculations
+  const totalStudentsCount = useMemo(() => {
+    const active = students.filter(s => s && s.status === 'Aktif').length;
+    return active > 0 ? active : students.length;
+  }, [students]);
+
+  const totalEkskulCount = useMemo(() => {
+    const active = extracurriculars.filter(e => e && e.status === 'Aktif').length;
+    return active > 0 ? active : extracurriculars.length;
+  }, [extracurriculars]);
+
+  const attendanceDisplay = useMemo(() => {
+    const totalMembers = attendance.reduce((acc, curr) => acc + (curr?.totalMembers || 0), 0);
+    const presentMembers = attendance.reduce((acc, curr) => acc + (curr?.presentCount || 0), 0);
+    if (totalMembers > 0) {
+      return `${Math.round((presentMembers / totalMembers) * 100)}% Hadir`;
+    }
+    return '0% Hadir';
+  }, [attendance]);
+
+  const activeViolationsCount = useMemo(() => {
+    return violations.filter(v => v && v.status !== 'Selesai').length;
+  }, [violations]);
 
   return (
     <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-6 shadow-sm space-y-6">
@@ -288,7 +321,7 @@ export const ThemeSettingsCard: React.FC = () => {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800 dark:text-slate-200">
             <Eye className="w-4 h-4 text-indigo-500" />
-            <span>Pratinjau Hasil Visual Nyata (Live Component Preview)</span>
+            <span>Pratinjau Hasil Visual Nyata (Data Riil Terkoneksi)</span>
           </div>
           <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-bold">
             {resolvedMode.toUpperCase()} • PALET_{palette.toUpperCase()} • FONT_{fontFamily.toUpperCase()}
@@ -298,8 +331,8 @@ export const ThemeSettingsCard: React.FC = () => {
         <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <h4 className="font-extrabold text-sm text-slate-900 dark:text-slate-100">
-                MAN 2 SERAM BAGIAN TIMUR — SISTEM KESISWAAN
+              <h4 className="font-extrabold text-sm text-slate-900 dark:text-slate-100 uppercase">
+                {schoolSetting?.name ? `${schoolSetting.name} — SISTEM KESISWAAN` : 'MAN 2 SERAM BAGIAN TIMUR — SISTEM KESISWAAN'}
               </h4>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 Monitoring presensi ekskul, disiplin siswa, surat dispensasi dinas, dan pengumuman resmi.
@@ -314,19 +347,27 @@ export const ThemeSettingsCard: React.FC = () => {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 text-xs">
             <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
               <span className="text-[10px] text-slate-400 block font-semibold">TOTAL SISWA</span>
-              <span className="text-sm font-bold text-slate-900 dark:text-slate-100">428 Siswa</span>
+              <span className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                {totalStudentsCount} Siswa
+              </span>
             </div>
             <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
               <span className="text-[10px] text-slate-400 block font-semibold">UNIT EKSKUL</span>
-              <span className="text-sm font-bold text-blue-600 dark:text-blue-400">11 Terdaftar</span>
+              <span className="text-sm font-bold text-blue-600 dark:text-blue-400">
+                {totalEkskulCount} Terdaftar
+              </span>
             </div>
             <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
               <span className="text-[10px] text-slate-400 block font-semibold">PRESENSI HARI INI</span>
-              <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">96.8% Hadir</span>
+              <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">
+                {attendanceDisplay}
+              </span>
             </div>
             <div className="p-2.5 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
               <span className="text-[10px] text-slate-400 block font-semibold">KONTROL DISIPLIN</span>
-              <span className="text-sm font-bold text-amber-600 dark:text-amber-400">0 Pelanggaran</span>
+              <span className="text-sm font-bold text-amber-600 dark:text-amber-400">
+                {activeViolationsCount} Pelanggaran
+              </span>
             </div>
           </div>
         </div>

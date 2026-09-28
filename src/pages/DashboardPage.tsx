@@ -47,6 +47,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
     isOsimBendahara
   } = useAuth();
   const {
+    classes = [],
     students,
     extracurriculars,
     teachers,
@@ -74,6 +75,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
 
   // Defensive Fallbacks for School-wide Data
   const safeStudents = students || [];
+  const safeClasses = classes || [];
   const safeExtracurriculars = extracurriculars || [];
   const safeTeachers = teachers || [];
   const safeMembers = members || [];
@@ -92,8 +94,23 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
   const safeCareerGuidances = careerGuidances || [];
 
   // Statistics calculation for School-wide
-  const totalStudents = safeStudents.filter(s => s && s.status === 'Aktif').length;
-  const totalEkskul = safeExtracurriculars.filter(e => e && e.status === 'Aktif').length;
+  const totalStudents = useMemo(() => {
+    const active = safeStudents.filter(s => {
+      if (!s) return false;
+      const st = (s.status || 'Aktif').trim().toLowerCase();
+      return st === 'aktif';
+    }).length;
+    return active > 0 ? active : safeStudents.length;
+  }, [safeStudents]);
+
+  const totalEkskul = useMemo(() => {
+    const active = safeExtracurriculars.filter(e => {
+      if (!e) return false;
+      const st = (e.status || 'Aktif').trim().toLowerCase();
+      return st === 'aktif';
+    }).length;
+    return active > 0 ? active : safeExtracurriculars.length;
+  }, [safeExtracurriculars]);
   const totalAchievements = safeAchievements.length;
   const pendingViolations = safeViolations.filter(v => v && v.status !== 'Selesai').length;
 
@@ -1462,7 +1479,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
           title="TOTAL SISWA AKTIF"
           value={totalStudents}
           icon={Users}
-          subtitle="8 ROMBEL TERDATA"
+          subtitle={`${safeClasses.length} ROMBEL TERDATA`}
           trend={{ value: '100%', isPositive: true }}
           colorTheme="indigo"
           onClick={() => onNavigate('students')}

@@ -252,6 +252,33 @@ export const parseIndonesianDateString = (val: any): string => {
 };
 
 /**
+ * Intelligent helper to extract cell value by matching various common Indonesian column header aliases
+ */
+export const getRowValue = (row: any, candidates: string[]): any => {
+  if (!row || typeof row !== 'object') return undefined;
+  
+  // 1. Direct key match
+  for (const c of candidates) {
+    if (row[c] !== undefined && row[c] !== null && String(row[c]).trim() !== '') {
+      return row[c];
+    }
+  }
+
+  // 2. Normalized key match (case-insensitive, remove spaces, underscores, dots, hyphens)
+  const normCandidates = candidates.map(c => c.toLowerCase().replace(/[^a-z0-9]/g, ''));
+  const rowKeys = Object.keys(row);
+  for (const rk of rowKeys) {
+    const normKey = rk.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const matchIdx = normCandidates.indexOf(normKey);
+    if (matchIdx !== -1 && row[rk] !== undefined && row[rk] !== null && String(row[rk]).trim() !== '') {
+      return row[rk];
+    }
+  }
+
+  return undefined;
+};
+
+/**
  * Parse and validate uploaded Excel / CSV rows into structured student records
  * With internal duplicate detection and robust data sanitization
  */
@@ -262,74 +289,113 @@ export const parseStudentRows = (
   existingStudentsNisList: string[] = []
 ): ParsedImportStudent[] => {
   const seenNisMap = new Map<string, number>();
-  const existingNisSet = new Set(existingStudentsNisList.map(n => cleanNisString(n)));
 
   return rawRows.map((item, index) => {
     const errors: string[] = [];
     const rowNum = index + 1;
 
-    // 1. Resolve & Sanitize NIS
-    const rawNis = item['NIS'] || item['nis'] || item['Nomor Induk'] || item['No Induk'] || item['nis_siswa'];
-    const nis = cleanNisString(rawNis);
-    if (!nis) {
-      errors.push('NIS wajib diisi');
-    } else {
-      if (seenNisMap.has(nis)) {
-        errors.push(`NIS duplikat dalam file (sama dengan baris ${seenNisMap.get(nis)})`);
-      } else {
-        seenNisMap.set(nis, rowNum);
-      }
-    }
-
+    // 1. Resolve & Sanitize NIS (supports all variants: NIS, No Induk, Nomor Induk, NIPD, etc.)
+    const rawNis = getRowValue(item, [
+      'NIS', 'nis', 'Nomor Induk', 'No Induk', 'No. Induk', 'No. Induk Siswa',
+      'Nomor Induk Siswa', 'NIPD', 'nis_siswa', 'No. Induk / NIS', 'NO INDUK'
+    ]);
+    
     // 2. Resolve & Sanitize NISN
-    const rawNisn = item['NISN'] || item['nisn'] || item['No NISN'] || item['nisn_siswa'];
+    const rawNisn = getRowValue(item, [
+      'NISN', 'nisn', 'No NISN', 'No. NISN', 'Nomor NISN', 'nisn_siswa', 'NO NISN'
+    ]);
     const nisn = cleanNisString(rawNisn);
 
+    let nis = cleanNisString(rawNis);
+    // Fallback: If NIS is empty but NISN exists, use NISN as NIS
+    if (!nis && nisn) {
+      nis = nisn;
+    }
+    // Fallback: If still empty, auto-generate deterministic identifier based on row
+    if (!nis) {
+      const yearPrefix = (activeAcademicYear || '2024/2025').replace(/[^0-9]/g, '').slice(0, 4);
+      nis = `${yearPrefix}${String(rowNum).padStart(4, '0')}`;
+    }
+
+    if (seenNisMap.has(nis)) {
+      errors.push(`NIS duplikat dalam file (sama dengan baris ${seenNisMap.get(nis)})`);
+    } else {
+      seenNisMap.set(nis, rowNum);
+    }
+
     // 3. Resolve Full Name
-    const rawName = item['Nama Lengkap'] || item['Nama Siswa'] || item['nama'] || item['fullName'] || item['Name'] || item['NAMA'];
+    const rawName = getRowValue(item, [
+      'Nama Lengkap', 'Nama Siswa', 'nama', 'fullName', 'Name', 'NAMA',
+      'Nama Peserta Didik', 'Peserta Didik', 'NAMA LENGKAP', 'Nama Murid'
+    ]);
     const fullName = rawName ? String(rawName).trim() : '';
     if (!fullName) {
       errors.push('Nama Lengkap siswa wajib diisi');
     }
 
     // 4. Resolve ID Siswa (Code)
-    const rawCode = item['ID Siswa'] || item['id_siswa'] || item['code'] || item['Kode Siswa'];
+    const rawCode = getRowValue(item, [
+      'ID Siswa', 'id_siswa', 'code', 'Kode Siswa', 'KODE SISWA', 'ID'
+    ]);
     const code = rawCode ? String(rawCode).trim() : formatStudentCode(activeAcademicYear, index + 1);
 
     // 5. Resolve Gender
-    const rawGender = String(item['Jenis Kelamin'] || item['JK'] || item['L/P'] || item['gender'] || item['Gender'] || 'L').toUpperCase().trim();
+    const rawGender = String(getRowValue(item, [
+      'Jenis Kelamin', 'JK', 'L/P', 'gender', 'Gender', 'JENIS KELAMIN', 'Jns Kelamin'
+    ]) || 'L').toUpperCase().trim();
     const gender: 'L' | 'P' = (rawGender === 'P' || rawGender === 'PEREMPUAN' || rawGender === 'WANITA' || rawGender === 'FEMALE') ? 'P' : 'L';
 
     // 6. Resolve Class & Major
-    const rawClassName = String(item['Kelas'] || item['kelas'] || item['className'] || item['Class'] || '').trim();
+    const rawClassName = String(getRowValue(item, [
+      'Kelas', 'kelas', 'className', 'Class', 'Rombel', 'ROMBEL',
+      'Rombongan Belajar', 'Tingkat/Rombel', 'KELAS'
+    ]) || '').trim();
     const matchedClass = findMatchingClass(rawClassName, existingClasses);
 
     const className = matchedClass ? matchedClass.name : (rawClassName || existingClasses[0]?.name || 'X');
     const classId = matchedClass ? matchedClass.id : (existingClasses[0]?.id || 'c_default');
     
-    const rawMajor = item['Jurusan'] || item['jurusan'] || item['major'] || item['Program Keahlian'];
+    const rawMajor = getRowValue(item, [
+      'Jurusan', 'jurusan', 'major', 'Program Keahlian', 'Peminatan', 'JURUSAN'
+    ]);
     const major = rawMajor ? String(rawMajor).trim() : (matchedClass?.major || 'Umum');
 
     // 7. Resolve Birth Place & Date
-    const birthPlace = String(item['Tempat Lahir'] || item['tempat_lahir'] || item['birthPlace'] || '-').trim();
-    const rawBirthDate = item['Tanggal Lahir'] || item['tanggal_lahir'] || item['birthDate'] || '2008-01-01';
+    const rawBirthPlace = getRowValue(item, [
+      'Tempat Lahir', 'tempat_lahir', 'birthPlace', 'Tpt Lahir', 'TEMPAT LAHIR'
+    ]);
+    const birthPlace = String(rawBirthPlace || '-').trim();
+
+    const rawBirthDate = getRowValue(item, [
+      'Tanggal Lahir', 'tanggal_lahir', 'birthDate', 'Tgl Lahir', 'TANGGAL LAHIR'
+    ]) || '2008-01-01';
     const birthDate = parseIndonesianDateString(rawBirthDate);
 
     // 8. Resolve Contacts
-    const rawPhone = item['No HP Siswa'] || item['No HP'] || item['No WA'] || item['phone'] || item['telepon'] || item['No Telepon'];
+    const rawPhone = getRowValue(item, [
+      'No HP Siswa', 'No HP', 'No WA', 'phone', 'telepon', 'No Telepon', 'HP Siswa', 'NO HP'
+    ]);
     const phone = cleanPhoneString(rawPhone);
 
-    const rawParentName = item['Nama Orang Tua'] || item['Nama Wali'] || item['Orang Tua'] || item['parentName'] || item['Wali'] || item['Nama Ayah/Ibu'];
+    const rawParentName = getRowValue(item, [
+      'Nama Orang Tua', 'Nama Wali', 'Orang Tua', 'parentName', 'Wali', 'Nama Ayah/Ibu',
+      'Nama Ayah', 'Nama Ibu', 'NAMA ORANG TUA'
+    ]);
     const parentName = rawParentName ? String(rawParentName).trim() : '';
 
-    const rawParentPhone = item['No HP Orang Tua'] || item['No WA Ortu'] || item['No HP Wali'] || item['parentPhone'] || item['Telepon Ortu'];
+    const rawParentPhone = getRowValue(item, [
+      'No HP Orang Tua', 'No WA Ortu', 'No HP Wali', 'parentPhone', 'Telepon Ortu',
+      'No Telp Ortu', 'HP Orang Tua'
+    ]);
     const parentPhone = cleanPhoneString(rawParentPhone);
 
-    const rawAddress = item['Alamat'] || item['alamat'] || item['address'] || item['Alamat Rumah'] || item['Domisili'];
+    const rawAddress = getRowValue(item, [
+      'Alamat', 'alamat', 'address', 'Alamat Rumah', 'Domisili', 'ALAMAT'
+    ]);
     const address = rawAddress ? String(rawAddress).trim() : '';
 
     // 9. Resolve Status
-    const rawStatus = String(item['Status'] || item['status'] || 'Aktif').trim();
+    const rawStatus = String(getRowValue(item, ['Status', 'status', 'STATUS']) || 'Aktif').trim();
     const validStatuses = ['Aktif', 'Alumni', 'Pindah', 'Keluar'];
     const status = validStatuses.includes(rawStatus) ? (rawStatus as 'Aktif' | 'Alumni' | 'Pindah' | 'Keluar') : 'Aktif';
 
