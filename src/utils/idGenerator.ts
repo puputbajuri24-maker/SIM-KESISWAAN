@@ -70,6 +70,44 @@ export function formatTeacherCode(indexUrut: number, fullName: string): string {
 }
 
 /**
+ * Format ID Dokumen Guru Firestore standar: guru_01, guru_02, dst.
+ * Menghasilkan ID seragam, berurutan, dan rapi di Firestore Console (Kolom 2).
+ */
+export function formatTeacherDocId(indexUrut: number): string {
+  const pad = String(Math.max(1, indexUrut)).padStart(2, '0');
+  return `guru_${pad}`;
+}
+
+/**
+ * Menghitung ID Dokumen Guru berikutnya yang belum terpakai berdasarkan daftar guru yang ada.
+ * Mencegah bentrok ID, menghilangkan timestamp acak, dan menjaga urutan rapi di Firestore.
+ */
+export function getNextTeacherDocId(existingTeachers: Array<{ id?: string; code?: string }>): string {
+  const usedNumbers = new Set<number>();
+
+  if (Array.isArray(existingTeachers)) {
+    existingTeachers.forEach(t => {
+      if (t?.id) {
+        const matchDoc = t.id.match(/^guru_(\d+)/i);
+        if (matchDoc) usedNumbers.add(parseInt(matchDoc[1], 10));
+        const matchLegacyT = t.id.match(/^t_(\d+)/i) || t.id.match(/^t_G(\d+)/i);
+        if (matchLegacyT) usedNumbers.add(parseInt(matchLegacyT[1], 10));
+      }
+      if (t?.code) {
+        const matchCode = t.code.match(/G?(\d+)/i);
+        if (matchCode) usedNumbers.add(parseInt(matchCode[1], 10));
+      }
+    });
+  }
+
+  let nextIndex = 1;
+  while (usedNumbers.has(nextIndex)) {
+    nextIndex++;
+  }
+  return formatTeacherDocId(nextIndex);
+}
+
+/**
  * Validasi apakah suatu string memenuhi format kode guru (misal G01-BS atau 01BS)
  */
 export function isValidTeacherCode(code?: string): boolean {

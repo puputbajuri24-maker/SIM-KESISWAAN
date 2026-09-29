@@ -52,7 +52,8 @@ import {
 } from '../utils/initials';
 import {
   getTeacherHierarchyClassification,
-  sortTeachersByHierarchy
+  sortTeachersByHierarchy,
+  canonicalizeAssignedEkskulIds
 } from '../utils/syncUtils';
 
 export const TeachersPage: React.FC = () => {
@@ -68,7 +69,8 @@ export const TeachersPage: React.FC = () => {
     deleteTeacher,
     deleteTeachersBulk,
     clearAllTeachers,
-    importTeachersBulk
+    importTeachersBulk,
+    harmonizeTeachersFirestore
   } = useSchool();
 
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -77,6 +79,8 @@ export const TeachersPage: React.FC = () => {
   const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
   const [isClearAllTeachersOpen, setIsClearAllTeachersOpen] = useState(false);
   const [isImportOpen, setIsImportOpen] = useState(false);
+  const [isHarmonizing, setIsHarmonizing] = useState(false);
+  const [harmonizeResult, setHarmonizeResult] = useState<{ show: boolean; success: boolean; message: string } | null>(null);
   const [selectedTeacher, setSelectedTeacher] = useState<Teacher | null>(null);
 
   // Bulk Selection State
@@ -199,10 +203,7 @@ export const TeachersPage: React.FC = () => {
     setFormData({
       ...t,
       subject: t.subject || '',
-      assignedExtracurriculars: (t.assignedExtracurriculars || []).map(item => {
-        const found = extracurriculars.find(ex => ex.id === item);
-        return found ? found.name : item;
-      }),
+      assignedExtracurriculars: canonicalizeAssignedEkskulIds(t.assignedExtracurriculars, extracurriculars),
       isCashManager: !!t.isCashManager,
       cashManagerTitle: t.cashManagerTitle || 'Bendahara Kesiswaan'
     });
@@ -220,21 +221,17 @@ export const TeachersPage: React.FC = () => {
     setIsDeleteOpen(true);
   };
 
-  // Toggle extracurricular assignment
-  const handleToggleEkskul = (ekskulName: string, ekskulId?: string) => {
-    const current = formData.assignedExtracurriculars || [];
-    const isAlready = current.some(item => item === ekskulName || (ekskulId && item === ekskulId));
-    if (isAlready) {
-      setFormData({
-        ...formData,
-        assignedExtracurriculars: current.filter(item => item !== ekskulName && item !== ekskulId)
-      });
-    } else {
-      setFormData({
-        ...formData,
-        assignedExtracurriculars: [...current.filter(item => item !== ekskulId), ekskulName]
-      });
-    }
+  // Toggle extracurricular assignment (stores strictly canonical ID with Set uniqueness)
+  const handleToggleEkskul = (ekskulId: string) => {
+    const targetEkskul = extracurriculars.find(e => e.id === ekskulId || e.name === ekskulId);
+    const resolvedId = targetEkskul ? targetEkskul.id : ekskulId;
+    const current = canonicalizeAssignedEkskulIds(formData.assignedExtracurriculars || [], extracurriculars);
+    const isAlready = current.includes(resolvedId);
+    const next = isAlready ? current.filter(id => id !== resolvedId) : [...current, resolvedId];
+    setFormData({
+      ...formData,
+      assignedExtracurriculars: Array.from(new Set(next))
+    });
   };
 
   // Template Download Handlers
@@ -321,9 +318,11 @@ export const TeachersPage: React.FC = () => {
     }
 
     try {
+      const cleanAssigned = canonicalizeAssignedEkskulIds(formData.assignedExtracurriculars, extracurriculars);
       if (selectedTeacher) {
         await updateTeacher(selectedTeacher.id, {
           ...formData,
+          assignedExtracurriculars: cleanAssigned,
           isCashManager: formData.isCashManager,
           cashManagerTitle: formData.isCashManager ? (formData.cashManagerTitle || 'Bendahara Kesiswaan') : undefined
         });
@@ -335,7 +334,7 @@ export const TeachersPage: React.FC = () => {
           subject: formData.subject || '',
           phone: formData.phone || '',
           email: formData.email || '',
-          assignedExtracurriculars: formData.assignedExtracurriculars || [],
+          assignedExtracurriculars: cleanAssigned,
           isActive: formData.isActive !== false,
           isCashManager: formData.isCashManager,
           cashManagerTitle: formData.isCashManager ? (formData.cashManagerTitle || 'Bendahara Kesiswaan') : undefined
@@ -359,6 +358,21 @@ export const TeachersPage: React.FC = () => {
         setIsDeleteOpen(false);
         setSelectedTeacher(null);
       }
+    }
+  };
+
+  const handleHarmonizeFirestore = async () => {
+    setIsHarmonizing(true);
+    try {
+      const res = await harmonizeTeachersFirestore();
+      setHarmonizeResult({ show: true, success: res.success, message: res.message });
+      setTimeout(() => {
+        setHarmonizeResult(null);
+      }, 6000);
+    } catch (err: any) {
+      setHarmonizeResult({ show: true, success: false, message: err?.message || 'Gagal merapikan database' });
+    } finally {
+      setIsHarmonizing(false);
     }
   };
 
@@ -474,6 +488,14 @@ export const TeachersPage: React.FC = () => {
                 >
                   #{hierarchy.rank}
                 </span>
+                {t.id && (
+                  <span
+                    className="font-mono text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/80"
+                    title={`ID Dokumen Firestore Kolom 2: ${t.id}`}
+                  >
+                    {t.id}
+                  </span>
+                )}
                 {t.code && (
                   <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 border border-slate-200 dark:border-slate-700">
                     {t.code}
@@ -648,15 +670,28 @@ export const TeachersPage: React.FC = () => {
               </button>
 
               {isWakaOrAdmin && teachers.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setIsClearAllTeachersOpen(true)}
-                  className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-300 font-bold text-xs border border-rose-200 dark:border-rose-800 transition-colors"
-                  title="Kosongkan semua data guru master untuk upload data dewan guru fresh"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Reset Guru</span>
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={handleHarmonizeFirestore}
+                    disabled={isHarmonizing}
+                    className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 border border-amber-300 dark:border-amber-700/80 hover:border-amber-400 text-amber-900 dark:text-amber-200 text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all disabled:opacity-50"
+                    title="Tahap 3: Harmonisasi ID Dokumen Firestore (guru_01, guru_02...), merapikan seluruh field data, dan sinkronisasi ke koleksi users"
+                  >
+                    <Sparkles className={`w-3.5 h-3.5 text-amber-600 dark:text-amber-400 ${isHarmonizing ? 'animate-spin' : ''}`} />
+                    <span>{isHarmonizing ? 'Merapikan...' : 'Harmonisasi Database'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsClearAllTeachersOpen(true)}
+                    className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-300 font-bold text-xs border border-rose-200 dark:border-rose-800 transition-colors"
+                    title="Kosongkan semua data guru master untuk upload data dewan guru fresh"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Reset Guru</span>
+                  </button>
+                </>
               )}
 
               <button
@@ -670,6 +705,26 @@ export const TeachersPage: React.FC = () => {
           )}
         </div>
       </div>
+
+      {harmonizeResult && (
+        <div className={`p-3 rounded-xl border flex items-center justify-between gap-3 text-xs animate-in fade-in slide-in-from-top-2 duration-200 ${
+          harmonizeResult.success 
+            ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200' 
+            : 'bg-rose-50 dark:bg-rose-950/50 border-rose-300 dark:border-rose-800 text-rose-900 dark:text-rose-200'
+        }`}>
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <p className="font-semibold">{harmonizeResult.message}</p>
+          </div>
+          <button 
+            type="button"
+            onClick={() => setHarmonizeResult(null)}
+            className="text-xs font-bold hover:underline cursor-pointer"
+          >
+            ✕ Tutup
+          </button>
+        </div>
+      )}
 
       {!canCrudTeachers && (
         <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-between gap-3 text-amber-900 dark:text-amber-200">
@@ -959,14 +1014,13 @@ export const TeachersPage: React.FC = () => {
             </p>
             <div className="flex flex-wrap gap-1.5 pt-1 max-h-36 overflow-y-auto">
               {extracurriculars.map(ekskul => {
-                const isSelected = (formData.assignedExtracurriculars || []).some(
-                  item => item === ekskul.name || item === ekskul.id
-                );
+                const canonicalCurrent = canonicalizeAssignedEkskulIds(formData.assignedExtracurriculars, extracurriculars);
+                const isSelected = canonicalCurrent.includes(ekskul.id);
                 return (
                   <button
                     key={ekskul.id}
                     type="button"
-                    onClick={() => handleToggleEkskul(ekskul.name, ekskul.id)}
+                    onClick={() => handleToggleEkskul(ekskul.id)}
                     className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 border ${
                       isSelected
                         ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
@@ -1027,7 +1081,7 @@ export const TeachersPage: React.FC = () => {
               <li>
                 <strong>Manajemen Ekstrakurikuler:</strong>{' '}
                 {(formData.assignedExtracurriculars && formData.assignedExtracurriculars.length > 0)
-                  ? `Tersinkronisasi sebagai Pembina Utama di: ${formData.assignedExtracurriculars.join(', ')}`
+                  ? `Tersinkronisasi sebagai Pembina Utama di: ${canonicalizeAssignedEkskulIds(formData.assignedExtracurriculars, extracurriculars).map(id => getEkskulDisplayName(id)).join(', ')}`
                   : 'Belum ada ekstrakurikuler binaan yang dipilih.'}
               </li>
               <li>

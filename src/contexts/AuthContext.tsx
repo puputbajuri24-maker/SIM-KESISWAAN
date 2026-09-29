@@ -28,7 +28,8 @@ import {
   isTeacherUserMatch,
   isOsimMemberUserMatch,
   normalizeName,
-  cleanDigits
+  cleanDigits,
+  canonicalizeAssignedEkskulIds
 } from '../utils/syncUtils';
 import {
   extractSekbidNumber,
@@ -103,7 +104,7 @@ interface AuthContextType {
   currentUser: UserProfile | null;
   allUsers: UserProfile[];
   userRole: UserRole;
-  canonicalRole: CanonicalUserRole;
+  canonicalRole: CanonicalUserRole | null;
   osimPosition?: OsimPosition;
   // Capability and Permission helpers
   hasRole: (...roles: CanonicalUserRole[]) => boolean;
@@ -920,6 +921,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
     }
 
+    const isPembinaEkstra = 
+      currentUser.role === 'pembina_ekstrakurikuler' ||
+      currentUser.role === 'pembina_ekskul' ||
+      currentUser.role === 'pembina_ekstra' ||
+      currentUser.role === 'pembina';
+
+    if (isPembinaEkstra) {
+      return {
+        success: false,
+        error: 'Akun Pembina Ekstrakurikuler dikelola secara terpusat. Penggantian kata sandi akun ini hanya dapat dilakukan melalui cPanel oleh Administrator Madrasah.'
+      };
+    }
+
     const cleanCurrent = currentPass.trim();
     const cleanNew = newPass.trim();
 
@@ -986,7 +1000,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const rawRole = (t.role || '').toLowerCase();
         const rawSubject = (t.subject || '').toLowerCase();
         const rawName = (t.fullName || '').toLowerCase();
-        let role: CanonicalUserRole = 'pembina_ekstrakurikuler';
+        let role: CanonicalUserRole = 'coach_ekstrakurikuler';
 
         if (rawRole.includes('bk') || rawRole.includes('bimbingan') || rawRole.includes('konselor') || rawSubject.includes('bk') || rawSubject.includes('bimbingan')) {
           role = 'guru_bk';
@@ -997,9 +1011,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } else if (rawRole.includes('osim') || rawRole.includes('osis')) {
           role = 'pembina_osim';
         } else if (t.isPembina || (t.assignedExtracurriculars && t.assignedExtracurriculars.length > 0)) {
-          role = 'pembina_ekstrakurikuler';
+          role = 'coach_ekstrakurikuler';
         } else {
-          role = 'pembina_ekstrakurikuler';
+          role = 'coach_ekstrakurikuler';
         }
 
         // 2. Resolve clean institutional email and username
@@ -1016,29 +1030,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           ? cleanNip 
           : email.split('@')[0];
 
-        // 3. Resolve extracurricular IDs
-        let assignedEkskulIds: string[] = [];
-        if (t.assignedExtracurriculars && Array.isArray(t.assignedExtracurriculars)) {
-          assignedEkskulIds = t.assignedExtracurriculars.map(item => {
-            if (item.startsWith('ekskul_')) return item;
-            if (extracurricularsList) {
-              const found = extracurricularsList.find(e => 
-                e.name.toLowerCase() === item.toLowerCase() || 
-                e.id.toLowerCase() === item.toLowerCase()
-              );
-              if (found) return found.id;
-            }
-            return item;
-          });
-        }
+        // 3. Resolve extracurricular IDs (strictly canonical format)
+        const assignedEkskulIds = canonicalizeAssignedEkskulIds(t.assignedExtracurriculars, extracurricularsList);
 
         // 4. Find existing user with comprehensive matching
         const existingIdx = updatedUsers.findIndex(u => isTeacherUserMatch(u, t));
 
         if (existingIdx >= 0) {
           const existing = updatedUsers[existingIdx];
+          const standardUid = t.id.startsWith('user_') ? t.id : `user_${t.id}`;
+          const isUidMigrated = standardUid.startsWith('user_guru_') && existing.uid !== standardUid && !existing.uid.startsWith('user_guru_') && existing.uid !== 'user_super_admin';
+          const targetUid = isUidMigrated ? standardUid : existing.uid;
+
           const merged: UserProfile = {
             ...existing,
+            uid: targetUid,
             displayName: t.fullName,
             nip: t.nip || existing.nip,
             email: existing.email || email,
@@ -1054,6 +1060,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
           updatedUsers[existingIdx] = merged;
           firestorePromises.push(setDoc(doc(db, 'users', merged.uid), merged, { merge: true }));
+          if (isUidMigrated && existing.uid) {
+            firestorePromises.push(deleteDoc(doc(db, 'users', existing.uid)));
+          }
           count++;
         } else {
           const newUser: UserProfile = {
@@ -1181,7 +1190,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               username: existing.username || username,
               email: existing.email || email,
               password: currentPassword,
-              role: 'pengurus_osim',
+              role: 'anggota_osim',
               position: canonicalOsimPos,
               osimRole: osimRoleVal,
               osimPosition: m.position,
@@ -1205,7 +1214,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               password: defaultPassword,
               nip: m.studentNis,
               phone: m.phone && m.phone !== '-' ? m.phone : undefined,
-              role: 'pengurus_osim',
+              role: 'anggota_osim',
               position: canonicalOsimPos,
               osimRole: osimRoleVal,
               osimPosition: m.position,
@@ -1235,7 +1244,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         const existingAccIdx = updatedUsers.findIndex(u =>
           u.displayName.toLowerCase().trim() === trimmedCoord.toLowerCase() ||
-          (u.osimDepartmentCode && u.osimDepartmentCode.toUpperCase() === deptCode.toUpperCase() && u.role === 'pengurus_osim') ||
+          (u.osimDepartmentCode && u.osimDepartmentCode.toUpperCase() === deptCode.toUpperCase() && (u.role === 'pengurus_osim' || u.role === 'anggota_osim')) ||
           (u.username && u.username.toLowerCase() === defaultUsername.toLowerCase())
         );
 
@@ -1244,7 +1253,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const merged: UserProfile = {
             ...existing,
             displayName: trimmedCoord,
-            role: 'pengurus_osim',
+            role: 'anggota_osim',
+            position: 'ketua_sekbid',
             osimRole: 'sekbid',
             osimPosition: sekbidNum ? `Ketua Sekbid ${sekbidNum}` : 'Ketua Sekbid',
             osimDepartmentId: d.id || existing.osimDepartmentId,
@@ -1263,7 +1273,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             username: defaultUsername,
             email: `${defaultUsername}@madrasah.sch.id`,
             password: defaultPassword,
-            role: 'pengurus_osim',
+            role: 'anggota_osim',
+            position: 'ketua_sekbid',
             osimRole: 'sekbid',
             osimPosition: sekbidNum ? `Ketua Sekbid ${sekbidNum}` : 'Ketua Sekbid',
             osimDepartmentId: d.id,
@@ -1297,8 +1308,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return count;
   };
 
-  // Canonical Role and Position Evaluation
-  const canonicalRole: CanonicalUserRole = currentUser ? normalizeUserRole(currentUser.role) : 'anggota_osim';
+  // Canonical Role and Position Evaluation (Zero Dangerous Fallbacks)
+  const canonicalRole: CanonicalUserRole | null = currentUser ? normalizeUserRole(currentUser.role) : null;
   const osimPosition: OsimPosition | undefined = currentUser ? normalizeOsimPosition(currentUser) : undefined;
 
   // Centralized capability helpers bound to the active user
@@ -1312,14 +1323,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const checkCanApproveOsimProgram = (): boolean => currentUser ? canApproveOsimProgram(currentUser) : false;
   const checkCanManageExtracurricular = (ekskulId?: string): boolean => currentUser ? canManageExtracurricular(currentUser, ekskulId) : false;
 
-  // Legacy flags cleanly derived from canonical role & position (strictly requiring active currentUser)
-  const role = currentUser?.role || canonicalRole;
+  // Legacy flags cleanly derived from canonical role & position (strictly requiring active currentUser and valid canonical role)
+  const role: UserRole = (currentUser?.role || canonicalRole || 'anggota_osim') as UserRole;
   const isSuperAdmin = Boolean(currentUser && canonicalRole === 'super_admin');
   const isWaka = Boolean(currentUser && canonicalRole === 'waka_kesiswaan');
   const isWakaOrAdmin = Boolean(currentUser && (isSuperAdmin || isWaka));
   const isGuruBK = Boolean(currentUser && canonicalRole === 'guru_bk');
   const isPembinaOsim = Boolean(currentUser && canonicalRole === 'pembina_osim');
-  const isPembinaEkskul = Boolean(currentUser && canonicalRole === 'pembina_ekstrakurikuler');
+  const isPembinaEkskul = Boolean(
+    currentUser && (canonicalRole === 'coach_ekstrakurikuler' || (canonicalRole as any) === 'pembina_ekstrakurikuler')
+  );
   const isPengurusOsim = Boolean(currentUser && canonicalRole === 'anggota_osim');
 
   // Dukungan Multi-Assignment / Rangkap Jabatan: Guru BK yang juga membina ekstrakurikuler
@@ -1334,11 +1347,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const isPembina = Boolean(currentUser && (isAlsoPembinaEkskul || isPembinaOsim));
 
-  // OSIM BPH Positions derived from Canonical Position
+  // OSIM BPH Positions derived from Canonical Position and position aliases
   const isOsimKetua = Boolean(isPengurusOsim && osimPosition === 'ketua_osim');
   const isOsimWakil = Boolean(isPengurusOsim && osimPosition === 'wakil_ketua_osim');
-  const isOsimSekretaris = Boolean(isPengurusOsim && osimPosition === 'sekretaris');
-  const isOsimBendahara = Boolean(isPengurusOsim && osimPosition === 'bendahara');
+  const isOsimSekretaris = Boolean(isPengurusOsim && (osimPosition === 'sekretaris_osim' || osimPosition === 'sekretaris'));
+  const isOsimBendahara = Boolean(isPengurusOsim && (osimPosition === 'bendahara_osim' || osimPosition === 'bendahara'));
   const isOsimBph = Boolean(
     isPengurusOsim && (
       isOsimKetua ||
@@ -1354,8 +1367,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const isSupervisoryVetoAuthorized = Boolean(currentUser && (isSuperAdmin || isWaka || isPembinaOsim));
 
   const canAccessTab = (tabId: string): boolean => {
-    // Unauthenticated visitors cannot access any internal tabs
-    if (!currentUser) return false;
+    // Unauthenticated visitors or accounts with invalid/denied roles cannot access any protected tabs
+    if (!currentUser || !canonicalRole) return false;
 
     // Dashboard, Profile, Announcements Center, and Buku Tata Tertib Siswa are accessible by all authenticated users
     if (tabId === 'dashboard' || tabId === 'profile' || tabId === 'announcements' || tabId === 'rules' || tabId === 'handbook' || tabId === 'tatib') return true;

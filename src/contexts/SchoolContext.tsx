@@ -84,7 +84,7 @@ import { db } from '../services/firebase';
 import { collection, getDocs, getDoc, doc, setDoc, updateDoc, deleteDoc, addDoc, writeBatch, onSnapshot, query, where } from 'firebase/firestore';
 import { useAuth } from './AuthContext';
 import { findMatchingClass, resolveStudentClass, isStudentInClass } from '../utils/classResolver';
-import { normalizeTeacherCode, formatTeacherCode, formatStudentCode } from '../utils/idGenerator';
+import { normalizeTeacherCode, formatTeacherCode, formatStudentCode, formatTeacherDocId, getNextTeacherDocId } from '../utils/idGenerator';
 import { resolveStudent, resolveTeacher } from '../utils/relationResolvers';
 
 import { extractSekbidNumber, isBphMember, normalizeSekbidName } from '../utils/osimAccountHelper';
@@ -96,6 +96,7 @@ import {
   isStudentUserMatch,
   isOsimMemberUserMatch,
   deduplicateTeachersList,
+  canonicalizeAssignedEkskulIds,
   deduplicateOsimMembersList,
   deduplicateStudentsList,
   getDeletedClassIds,
@@ -106,7 +107,8 @@ import {
   PURGED_DEMO_CLASS_IDS,
   getCanonicalBphPositionKey,
   cleanDigits,
-  normalizeName
+  normalizeName,
+  sortTeachersByHierarchy
 } from '../utils/syncUtils';
 
 interface SchoolContextType {
@@ -171,6 +173,7 @@ interface SchoolContextType {
   deleteTeachersBulk: (ids: string[]) => Promise<number>;
   clearAllTeachers: () => Promise<void>;
   importTeachersBulk: (teachers: Omit<Teacher, 'id'>[], mode?: 'append' | 'replace') => Promise<number>;
+  harmonizeTeachersFirestore: () => Promise<{ success: boolean; migratedCount: number; message: string }>;
 
   // Extracurricular operations
   addExtracurricular: (data: Omit<Extracurricular, 'id'>) => Promise<void>;
@@ -1106,10 +1109,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           teacherSnap.forEach(docSnap => {
             const data = docSnap.data() as Teacher;
             const id = docSnap.id;
+            const cleanNip = cleanDigits(data.nip);
             if (
               isBlacklistedDemoName(data.fullName || (data as any).name) ||
               isDeletedUid(id) ||
-              isDeletedUid(cleanDigits(data.nip))
+              (cleanNip.length >= 6 && isDeletedUid(cleanNip))
             ) {
               deleteDoc(docSnap.ref).catch(() => {});
             } else {
@@ -1117,16 +1121,32 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }
           });
 
-          const loadedTeachers = deduplicateTeachersList(rawLoadedTeachers);
+          let loadedTeachers = deduplicateTeachersList(rawLoadedTeachers, extracurriculars);
+
+          // Auto-heal dirty assignedExtracurriculars and legacy IDs in Firestore on initial load
+          const hasLegacyId = rawLoadedTeachers.some(t => !/^guru_\d{2,}$/.test(t.id));
+          rawLoadedTeachers.forEach(t => {
+            if (Array.isArray(t.assignedExtracurriculars)) {
+              const cleaned = canonicalizeAssignedEkskulIds(t.assignedExtracurriculars, extracurriculars);
+              const isDirty = t.assignedExtracurriculars.some(item => !item.startsWith('ekskul_')) ||
+                t.assignedExtracurriculars.length !== cleaned.length;
+              if (isDirty) {
+                setDoc(doc(db, 'teachers', t.id), { assignedExtracurriculars: cleaned }, { merge: true }).catch(() => {});
+              }
+            }
+          });
 
           const hasPitria = loadedTeachers.some(t =>
             (t.fullName || '').toLowerCase().includes('pitria') ||
             (t.fullName || '').toLowerCase().includes('lawenusa')
           );
-          if (!hasPitria && !isDeletedUid('teacher_pitria_lawenusa') && !isDeletedUid('user_guru_bk')) {
+          if (!hasPitria && !isDeletedUid('user_guru_bk')) {
+            const pitriaId = getNextTeacherDocId(loadedTeachers);
             const pitriaTeacher: Teacher = {
-              id: 'teacher_pitria_lawenusa',
+              id: pitriaId,
+              code: formatTeacherCode(loadedTeachers.length + 1, 'Pitria Lawenusa, S. Pd'),
               nip: '199005122020122008',
+              gender: 'P',
               fullName: 'Pitria Lawenusa, S. Pd',
               role: 'Guru BK',
               subject: 'Bimbingan Konseling (BK)',
@@ -1135,6 +1155,8 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               assignedExtracurriculars: [],
               isActive: true
             };
+            removeDeletedUid(pitriaId);
+            removeDeletedUid(`user_${pitriaId}`);
             loadedTeachers.unshift(pitriaTeacher);
             setDoc(doc(db, 'teachers', pitriaTeacher.id), pitriaTeacher).catch(() => {});
             if (syncUsersFromTeachers) {
@@ -1720,20 +1742,33 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           snapshot.forEach(docSnap => {
             const data = docSnap.data() as Teacher;
             const id = docSnap.id;
+            const cleanNip = cleanDigits(data.nip);
             if (
               isBlacklistedDemoName(data.fullName || (data as any).name) ||
               isDeletedUid(id) ||
-              isDeletedUid(cleanDigits(data.nip))
+              (cleanNip.length >= 6 && isDeletedUid(cleanNip))
             ) {
               return;
             }
             raw.push({ id, ...data });
           });
-          const loaded = deduplicateTeachersList(raw);
+          const loaded = deduplicateTeachersList(raw, extracurriculars);
           setTeachers(loaded);
           try {
             localStorage.setItem('sim_teachers', JSON.stringify(loaded));
           } catch (e) {}
+
+          // Auto-heal dirty assignedExtracurriculars in Firestore
+          raw.forEach(t => {
+            if (Array.isArray(t.assignedExtracurriculars)) {
+              const cleaned = canonicalizeAssignedEkskulIds(t.assignedExtracurriculars, extracurriculars);
+              const isDirty = t.assignedExtracurriculars.some(item => !item.startsWith('ekskul_')) ||
+                t.assignedExtracurriculars.length !== cleaned.length;
+              if (isDirty) {
+                setDoc(doc(db, 'teachers', t.id), { assignedExtracurriculars: cleaned }, { merge: true }).catch(() => {});
+              }
+            }
+          });
         }
       }, (err) => {
         console.warn('Real-time teachers listener notice:', err);
@@ -3229,13 +3264,26 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // Teachers Operations
   const addTeacher = async (data: Omit<Teacher, 'id'>) => {
     const assignedCode = normalizeTeacherCode(data.code, teachers.length + 1, data.fullName);
+    const newDocId = getNextTeacherDocId(teachers);
+    const cleanAssigned = canonicalizeAssignedEkskulIds(data.assignedExtracurriculars, extracurriculars);
     const newT: Teacher = {
-      id: `t_${assignedCode.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}`,
+      id: newDocId,
       ...data,
+      assignedExtracurriculars: cleanAssigned,
       code: assignedCode
     };
+
+    // Bersihkan tombstone usang jika ID atau NIP ini pernah terhapus
+    removeDeletedUid(newDocId);
+    removeDeletedUid(`user_${newDocId}`);
+    const cleanNip = cleanDigits(data.nip);
+    if (cleanNip && cleanNip.length >= 6) {
+      removeDeletedUid(cleanNip);
+      removeDeletedUid(`user_${cleanNip}`);
+    }
+
     setTeachers(prev => {
-      const merged = [newT, ...prev];
+      const merged = [newT, ...prev.filter(t => t.id !== newDocId)];
       try {
         localStorage.setItem('sim_teachers', JSON.stringify(merged));
       } catch (e) {}
@@ -3263,16 +3311,20 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       console.warn('Sync teacher to user account note:', e);
     }
 
-    logAction('ADD_TEACHER', 'Dewan Guru & Manajemen', `Menambahkan data guru ${newT.fullName} dan menyinkronkan ke Ekstrakurikuler & Intrakurikuler`);
+    logAction('ADD_TEACHER', 'Dewan Guru & Manajemen', `Menambahkan data guru ${newT.fullName} (ID: ${newT.id}) dan menyinkronkan ke Ekstrakurikuler & Intrakurikuler`);
   };
 
   const updateTeacher = async (id: string, data: Partial<Teacher>) => {
     const oldTeacher = teachers.find(t => t.id === id);
+    const cleanData = { ...data };
+    if (data.assignedExtracurriculars !== undefined) {
+      cleanData.assignedExtracurriculars = canonicalizeAssignedEkskulIds(data.assignedExtracurriculars, extracurriculars);
+    }
     let updatedTeacher: Teacher | undefined;
     setTeachers(prev => {
       const merged = prev.map(t => {
         if (t.id === id) {
-          updatedTeacher = { ...t, ...data };
+          updatedTeacher = { ...t, ...cleanData };
           return updatedTeacher;
         }
         return t;
@@ -3283,7 +3335,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return merged;
     });
     try {
-      await updateDoc(doc(db, 'teachers', id), data);
+      await updateDoc(doc(db, 'teachers', id), cleanData);
     } catch (e) {
       console.warn('Firestore update teacher notice:', e);
     }
@@ -3314,9 +3366,10 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     addDeletedUid(id);
     addDeletedUid(`user_${id}`);
     if (id.startsWith('user_')) addDeletedUid(id.replace(/^user_/, ''));
-    if (target?.nip) {
-      addDeletedUid(cleanDigits(target.nip));
-      addDeletedUid(`user_${cleanDigits(target.nip)}`);
+    const cleanNip = target?.nip ? cleanDigits(target.nip) : '';
+    if (cleanNip && cleanNip.length >= 6) {
+      addDeletedUid(cleanNip);
+      addDeletedUid(`user_${cleanNip}`);
     }
 
     setTeachers(prev => {
@@ -3391,9 +3444,10 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       addDeletedUid(t.id);
       addDeletedUid(`user_${t.id}`);
       if (t.id.startsWith('user_')) addDeletedUid(t.id.replace(/^user_/, ''));
-      if (t.nip) {
-        addDeletedUid(cleanDigits(t.nip));
-        addDeletedUid(`user_${cleanDigits(t.nip)}`);
+      const cleanNip = t.nip ? cleanDigits(t.nip) : '';
+      if (cleanNip && cleanNip.length >= 6) {
+        addDeletedUid(cleanNip);
+        addDeletedUid(`user_${cleanNip}`);
       }
     });
 
@@ -3516,17 +3570,29 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           ...t,
           id: existing.id,
           code: standardCode,
-          assignedExtracurriculars: (t.assignedExtracurriculars && t.assignedExtracurriculars.length > 0)
-            ? t.assignedExtracurriculars
-            : existing.assignedExtracurriculars,
+          assignedExtracurriculars: canonicalizeAssignedEkskulIds(
+            (t.assignedExtracurriculars && t.assignedExtracurriculars.length > 0)
+              ? t.assignedExtracurriculars
+              : existing.assignedExtracurriculars,
+            extracurriculars
+          ),
           isActive: t.isActive !== false
         };
         processedTeachers.push(updatedTeacher);
       } else {
-        // INSERT Baru dengan ID stabil
+        // INSERT Baru dengan ID standar dan urut (guru_01, guru_02...)
+        const newDocId = getNextTeacherDocId([...currentTeachers, ...processedTeachers]);
+        removeDeletedUid(newDocId);
+        removeDeletedUid(`user_${newDocId}`);
+        const cleanNip = t.nip ? cleanDigits(t.nip) : '';
+        if (cleanNip && cleanNip.length >= 6) {
+          removeDeletedUid(cleanNip);
+          removeDeletedUid(`user_${cleanNip}`);
+        }
         const newTeacher: Teacher = {
-          id: `t_${standardCode.replace(/[^a-zA-Z0-9]/g, '_')}_${Date.now()}_${idx}`,
+          id: newDocId,
           ...t,
+          assignedExtracurriculars: canonicalizeAssignedEkskulIds(t.assignedExtracurriculars, extracurriculars),
           code: standardCode,
           isActive: t.isActive !== false
         };
@@ -3601,6 +3667,125 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       `Mengimpor ${finalTeachers.length} data guru/pembina (Mode: ${mode === 'replace' ? 'Gantikan Total' : 'Tambahkan'})`
     );
     return finalTeachers.length;
+  };
+
+  // Tahap 3: Database Auto-Harmonization & Cross-Collection Synchronization Engine
+  const harmonizeTeachersFirestore = async (): Promise<{ success: boolean; migratedCount: number; message: string }> => {
+    try {
+      setIsSyncing(true);
+      const teacherSnap = await getDocs(collection(db, 'teachers'));
+      const rawList: Teacher[] = [];
+      teacherSnap.forEach(d => {
+        rawList.push({ id: d.id, ...(d.data() as Teacher) });
+      });
+
+      // Merge with current state in memory
+      teachers.forEach(t => {
+        if (!rawList.some(r => r.id === t.id || (r.nip && t.nip && r.nip !== '-' && cleanDigits(r.nip) === cleanDigits(t.nip)))) {
+          rawList.push(t);
+        }
+      });
+
+      if (rawList.length === 0) {
+        setIsSyncing(false);
+        return { success: true, migratedCount: 0, message: 'Tidak ada data guru yang perlu diharmonisasi.' };
+      }
+
+      // Deduplicate first
+      const deduplicated = deduplicateTeachersList(rawList, extracurriculars);
+
+      // Sort neatly by hierarchy (Waka -> BK -> OSIM -> Ekskul -> Wali Kelas -> Guru Mapel)
+      const sorted = sortTeachersByHierarchy(deduplicated);
+
+      let migratedCount = 0;
+      const oldDocIdsToDelete: string[] = [];
+      const updatedTeachers: Teacher[] = [];
+
+      for (let i = 0; i < sorted.length; i++) {
+        const item = sorted[i];
+        const targetSeqId = formatTeacherDocId(i + 1); // guru_01, guru_02, ...
+        const targetCode = formatTeacherCode(i + 1, item.fullName);
+        const cleanAssigned = canonicalizeAssignedEkskulIds(item.assignedExtracurriculars, extracurriculars);
+
+        if (item.id !== targetSeqId) {
+          oldDocIdsToDelete.push(item.id);
+          migratedCount++;
+        }
+
+        const standardizedTeacher: Teacher = {
+          ...item,
+          id: targetSeqId,
+          code: targetCode,
+          fullName: (item.fullName || (item as any).name || '').trim(),
+          nip: item.nip && item.nip.trim() ? item.nip.trim() : '-',
+          gender: item.gender || 'L',
+          role: item.role || 'Guru Mapel',
+          subject: item.subject && item.subject.trim() ? item.subject.trim() : '-',
+          phone: item.phone && item.phone.trim() ? item.phone.trim() : '-',
+          email: item.email ? item.email.trim() : '',
+          assignedExtracurriculars: cleanAssigned,
+          isActive: item.isActive !== false,
+          isCashManager: !!item.isCashManager,
+          cashManagerTitle: item.isCashManager ? (item.cashManagerTitle || 'Bendahara Kesiswaan') : undefined
+        };
+
+        updatedTeachers.push(standardizedTeacher);
+
+        // Write new standardized document to Firestore
+        await setDoc(doc(db, 'teachers', targetSeqId), standardizedTeacher);
+
+        // Clear tombstones for this new standard ID
+        removeDeletedUid(targetSeqId);
+        removeDeletedUid(`user_${targetSeqId}`);
+      }
+
+      // Safely delete obsolete documents with non-standard IDs from Firestore
+      const newIdSet = new Set(updatedTeachers.map(u => u.id));
+      for (const oldId of oldDocIdsToDelete) {
+        if (oldId && !newIdSet.has(oldId)) {
+          try {
+            await deleteDoc(doc(db, 'teachers', oldId));
+          } catch (e) {}
+        }
+      }
+
+      // Auto-sync into cPanel Users collection (Kolom 1: users)
+      if (syncUsersFromTeachers) {
+        try {
+          await syncUsersFromTeachers(updatedTeachers, extracurriculars);
+        } catch (e) {}
+      }
+
+      // Auto-sync each teacher's assignments into Ekstrakurikuler & Intrakurikuler
+      for (const t of updatedTeachers) {
+        try {
+          await syncTeacherToExtracurricularAndIntracurricular(t);
+        } catch (e) {}
+      }
+
+      // Update state and local storage
+      setTeachers(updatedTeachers);
+      try {
+        localStorage.setItem('sim_teachers', JSON.stringify(updatedTeachers));
+      } catch (e) {}
+
+      logAction('HARMONIZE_TEACHERS', 'Dewan Guru', `Mengharmonisasi ${updatedTeachers.length} data guru ke format urut standar (${updatedTeachers[0]?.id || 'guru_01'} s.d ${updatedTeachers[updatedTeachers.length - 1]?.id})`);
+      setIsSyncing(false);
+
+      return {
+        success: true,
+        migratedCount,
+        message: `Berhasil merapikan dan menstandarisasi ${updatedTeachers.length} data guru ke format urut standar (${updatedTeachers[0]?.id || 'guru_01'} s.d ${updatedTeachers[updatedTeachers.length - 1]?.id || ''}) di Firestore.`
+      };
+    } catch (err: any) {
+      setIsSyncing(false);
+      console.error('Error harmonizing teachers Firestore:', err);
+      return {
+        success: false,
+        migratedCount: 0,
+        message: `Gagal melakukan harmonisasi: ${err?.message || 'Terjadi kesalahan sistem'}`
+      };
+    }
   };
 
   // Synchronization Engine: Auto-sync Teacher & Pembina to Ekstrakurikuler & Intrakurikuler
@@ -3770,6 +3955,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return 'Guru BK';
       case 'pembina_osim':
         return 'Pembina OSIM';
+      case 'coach_ekstrakurikuler':
       case 'pembina_ekskul':
       case 'pembina':
         return 'Pembina Ekskul';
@@ -3777,6 +3963,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return 'Waka Kesiswaan';
       case 'super_admin':
         return 'Super Admin / Proktor';
+      case 'anggota_osim':
+      case 'pengurus_osim':
+        return 'Pengurus OSIM';
       default:
         return 'Guru / Pembina';
     }
@@ -3784,8 +3973,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // cPanel Cross-Module Synchronization
   const syncUserFromCPanel = async (user: UserProfile, oldUser?: UserProfile) => {
+    const isOldOsim = oldUser && (oldUser.role === 'pengurus_osim' || oldUser.role === 'anggota_osim');
+    const isCurrentOsim = user.role === 'pengurus_osim' || user.role === 'anggota_osim';
+
     // If user was previously an OSIM officer and role changed to something else, remove from OSIM cabinet
-    if (oldUser && oldUser.role === 'pengurus_osim' && user.role !== 'pengurus_osim') {
+    if (isOldOsim && !isCurrentOsim) {
       setOsimMembers(prev => {
         const remaining = prev.filter(m => m.id !== user.uid && m.id !== oldUser.uid);
         try { localStorage.setItem('sim_osim_members', JSON.stringify(remaining)); } catch (e) {}
@@ -3795,10 +3987,10 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (oldUser.uid) deleteDoc(doc(db, 'osim_members', oldUser.uid)).catch(() => {});
     }
 
-    // A. If this is an OSIM student account (pengurus_osim), sync to osimMembers, NOT teachers list
-    if (user.role === 'pengurus_osim') {
+    // A. If this is an OSIM student account (anggota_osim / pengurus_osim), sync to osimMembers, NOT teachers list
+    if (isCurrentOsim) {
       // Clean up from teachers list if previously was registered as teacher
-      if (oldUser && oldUser.role !== 'pengurus_osim') {
+      if (oldUser && oldUser.role !== 'pengurus_osim' && oldUser.role !== 'anggota_osim') {
         setTeachers(prev => {
           const filtered = prev.filter(t => t.id !== user.uid && t.id !== oldUser.uid);
           if (filtered.length !== prev.length) {
@@ -3920,12 +4112,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     const roleLabel = getRoleLabelFromUserRole(user.role);
-    const assignedIds = user.extracurricularIds || [];
-    // Convert extracurricular IDs to human-readable names for teacher.assignedExtracurriculars
-    const assignedNames = assignedIds.map(id => {
-      const found = extracurriculars.find(e => e.id === id);
-      return found ? found.name : id;
-    });
+    const assignedIds = canonicalizeAssignedEkskulIds(user.extracurricularIds || [], extracurriculars);
 
     // 1. Sync Dewan Guru (teachers list)
     setTeachers(prev => {
@@ -3946,7 +4133,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           email: user.email,
           phone: user.phone || updated[idx].phone || '-',
           role: roleLabel,
-          assignedExtracurriculars: assignedNames,
+          assignedExtracurriculars: assignedIds,
           photoUrl: user.photoURL || (user as any).photoUrl || updated[idx].photoUrl,
           isActive: user.status !== 'Nonaktif'
         };
@@ -3963,7 +4150,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           email: user.email,
           phone: user.phone || '-',
           role: roleLabel,
-          assignedExtracurriculars: assignedNames,
+          assignedExtracurriculars: assignedIds,
           photoUrl: user.photoURL || (user as any).photoUrl,
           isActive: user.status !== 'Nonaktif'
         };
@@ -3975,7 +4162,13 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
 
     // 2. Sync Unit Ekstrakurikuler (advisor / coach)
-    if (assignedIds.length > 0 || user.role === 'pembina_ekskul' || user.role === 'pembina') {
+    if (
+      assignedIds.length > 0 ||
+      user.role === 'coach_ekstrakurikuler' ||
+      user.role === 'pembina_ekskul' ||
+      user.role === 'pembina' ||
+      (user.role as string) === 'pembina_ekstrakurikuler'
+    ) {
       setExtracurriculars(prev => prev.map(ekskul => {
         if (assignedIds.includes(ekskul.id)) {
           return {
@@ -4223,12 +4416,14 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         let changed = false;
         const updated = prev.map(t => {
           if (t.id === newEkskul.coachId || t.fullName.toLowerCase() === newEkskul.coachName?.toLowerCase()) {
-            const currentAssigned = t.assignedExtracurriculars || [];
-            if (!currentAssigned.includes(newEkskul.name)) {
+            const currentAssigned = canonicalizeAssignedEkskulIds(t.assignedExtracurriculars, extracurriculars);
+            if (!currentAssigned.includes(newEkskul.id)) {
               changed = true;
+              const nextAssigned = Array.from(new Set([...currentAssigned, newEkskul.id]));
+              setDoc(doc(db, 'teachers', t.id), { assignedExtracurriculars: nextAssigned }, { merge: true }).catch(() => {});
               return {
                 ...t,
-                assignedExtracurriculars: [...currentAssigned, newEkskul.name]
+                assignedExtracurriculars: nextAssigned
               };
             }
           }
@@ -4259,12 +4454,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       updateDoc(doc(db, 'extracurriculars', id), data);
     } catch (e) {}
 
-    // Reverse sync coach assignments to teachers list
+    // Reverse sync coach assignments to teachers list using canonical ID
     const newCoachId = data.coachId;
     const newCoachName = data.coachName;
-    const ekskulName = data.name || oldEkskul?.name;
 
-    if (ekskulName && (newCoachId !== undefined || newCoachName !== undefined)) {
+    if (id && (newCoachId !== undefined || newCoachName !== undefined)) {
       setTeachers(prev => {
         let changed = false;
         const updated = prev.map(t => {
@@ -4272,16 +4466,20 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           const isOldCoach = oldEkskul && ((oldEkskul.coachId && t.id === oldEkskul.coachId) || (oldEkskul.coachName && t.fullName.toLowerCase() === oldEkskul.coachName.toLowerCase()));
 
           if (isNewCoach) {
-            const current = t.assignedExtracurriculars || [];
-            if (!current.includes(ekskulName)) {
+            const current = canonicalizeAssignedEkskulIds(t.assignedExtracurriculars, extracurriculars);
+            if (!current.includes(id)) {
               changed = true;
-              return { ...t, assignedExtracurriculars: [...current, ekskulName] };
+              const nextAssigned = Array.from(new Set([...current, id]));
+              setDoc(doc(db, 'teachers', t.id), { assignedExtracurriculars: nextAssigned }, { merge: true }).catch(() => {});
+              return { ...t, assignedExtracurriculars: nextAssigned };
             }
           } else if (isOldCoach && !isNewCoach) {
-            const current = t.assignedExtracurriculars || [];
-            if (current.includes(ekskulName)) {
+            const current = canonicalizeAssignedEkskulIds(t.assignedExtracurriculars, extracurriculars);
+            if (current.includes(id) || (oldEkskul && current.includes(oldEkskul.name))) {
               changed = true;
-              return { ...t, assignedExtracurriculars: current.filter(item => item !== ekskulName) };
+              const nextAssigned = current.filter(item => item !== id && (!oldEkskul || item !== oldEkskul.name));
+              setDoc(doc(db, 'teachers', t.id), { assignedExtracurriculars: nextAssigned }, { merge: true }).catch(() => {});
+              return { ...t, assignedExtracurriculars: nextAssigned };
             }
           }
           return t;
@@ -4330,11 +4528,14 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setTeachers(prev => {
         let changed = false;
         const updated = prev.map(t => {
-          if (t.assignedExtracurriculars && t.assignedExtracurriculars.includes(target.name)) {
+          const current = canonicalizeAssignedEkskulIds(t.assignedExtracurriculars, extracurriculars);
+          if (current.includes(target.id) || current.includes(target.name)) {
             changed = true;
+            const nextAssigned = current.filter(item => item !== target.id && item !== target.name);
+            setDoc(doc(db, 'teachers', t.id), { assignedExtracurriculars: nextAssigned }, { merge: true }).catch(() => {});
             return {
               ...t,
-              assignedExtracurriculars: t.assignedExtracurriculars.filter(item => item !== target.name)
+              assignedExtracurriculars: nextAssigned
             };
           }
           return t;
@@ -5723,6 +5924,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         deleteTeachersBulk,
         clearAllTeachers,
         importTeachersBulk,
+        harmonizeTeachersFirestore,
         addExtracurricular,
         updateExtracurricular,
         deleteExtracurricular,

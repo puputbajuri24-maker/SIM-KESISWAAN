@@ -62,14 +62,16 @@ export const CANONICAL_ROLES: CanonicalUserRole[] = [
   'waka_kesiswaan',
   'guru_bk',
   'pembina_osim',
-  'pembina_ekstrakurikuler',
+  'coach_ekstrakurikuler',
   'anggota_osim'
 ];
 
 export const OSIM_POSITIONS: OsimPosition[] = [
   'ketua_osim',
   'wakil_ketua_osim',
+  'sekretaris_osim',
   'sekretaris',
+  'bendahara_osim',
   'bendahara',
   'ketua_sekbid',
   'anggota_sekbid'
@@ -77,9 +79,11 @@ export const OSIM_POSITIONS: OsimPosition[] = [
 
 /**
  * Normalizes any legacy or custom role string to one of the 6 canonical roles.
+ * CRITICAL SECURITY RULE: Returns null if the role is missing, unrecognized, or invalid.
+ * Strictly prevents dangerous fallbacks (e.g. unknown role -> anggota_osim).
  */
-export function normalizeUserRole(role: UserRole | string | undefined | null): CanonicalUserRole {
-  if (!role) return 'anggota_osim';
+export function normalizeUserRole(role: UserRole | string | undefined | null): CanonicalUserRole | null {
+  if (!role) return null;
   const r = role.toLowerCase().trim();
 
   if (r === 'super_admin' || r === 'admin') return 'super_admin';
@@ -87,18 +91,20 @@ export function normalizeUserRole(role: UserRole | string | undefined | null): C
   if (r === 'guru_bk' || r === 'bk' || r === 'counselor') return 'guru_bk';
   if (r === 'pembina_osim') return 'pembina_osim';
   if (
+    r === 'coach_ekstrakurikuler' ||
     r === 'pembina_ekstrakurikuler' ||
     r === 'pembina_ekstra' ||
     r === 'pembina_ekskul' ||
     r === 'pembina'
   ) {
-    return 'pembina_ekstrakurikuler';
+    return 'coach_ekstrakurikuler';
   }
   if (r === 'pengurus_osim' || r === 'anggota_osim' || r === 'osim') {
     return 'anggota_osim';
   }
 
-  return 'anggota_osim';
+  // Deny-by-default for any unrecognized role string
+  return null;
 }
 
 /**
@@ -120,8 +126,8 @@ export function normalizeOsimPosition(
   const legacyRole = user.osimRole?.toLowerCase() || '';
   if (legacyRole === 'ketua') return 'ketua_osim';
   if (legacyRole === 'wakil') return 'wakil_ketua_osim';
-  if (legacyRole === 'sekretaris') return 'sekretaris';
-  if (legacyRole === 'bendahara') return 'bendahara';
+  if (legacyRole === 'sekretaris') return 'sekretaris_osim';
+  if (legacyRole === 'bendahara') return 'bendahara_osim';
 
   // 3. String position label check
   const posText = (user.osimPosition || user.position || '').toLowerCase();
@@ -129,12 +135,12 @@ export function normalizeOsimPosition(
   if (posText.includes('ketua') && !posText.includes('sekbid') && !posText.includes('bidang')) {
     return 'ketua_osim';
   }
-  if (posText.includes('sekretaris')) return 'sekretaris';
-  if (posText.includes('bendahara')) return 'bendahara';
+  if (posText.includes('sekretaris')) return 'sekretaris_osim';
+  if (posText.includes('bendahara')) return 'bendahara_osim';
   if (posText.includes('ketua') || posText.includes('koordinator')) return 'ketua_sekbid';
 
   // 4. Department / Sekbid member
-  if (user.osimDepartmentId || legacyRole === 'sekbid') {
+  if (user.osimDepartmentId || user.osimDepartmentCode || legacyRole === 'sekbid') {
     return 'anggota_sekbid';
   }
 
@@ -142,11 +148,22 @@ export function normalizeOsimPosition(
 }
 
 /**
+ * Helper to check equivalence between OSIM positions, taking aliases into account.
+ */
+export function isSameOsimPosition(a?: OsimPosition, b?: OsimPosition): boolean {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if ((a === 'sekretaris' || a === 'sekretaris_osim') && (b === 'sekretaris' || b === 'sekretaris_osim')) return true;
+  if ((a === 'bendahara' || a === 'bendahara_osim') && (b === 'bendahara' || b === 'bendahara_osim')) return true;
+  return false;
+}
+
+/**
  * Normalizes entire user object, ensuring canonical role and position are populated
  * without mutating or losing existing credentials or identity.
  */
 export function normalizeUserProfile(user: UserProfile): UserProfile & {
-  canonicalRole: CanonicalUserRole;
+  canonicalRole: CanonicalUserRole | null;
   canonicalPosition?: OsimPosition;
 } {
   const canonicalRole = normalizeUserRole(user.role);
@@ -154,7 +171,7 @@ export function normalizeUserProfile(user: UserProfile): UserProfile & {
 
   return {
     ...user,
-    role: canonicalRole,
+    role: canonicalRole || user.role,
     position: canonicalPosition || user.position,
     canonicalRole,
     canonicalPosition
@@ -170,6 +187,7 @@ export function hasRole(
 ): boolean {
   if (!user) return false;
   const normalized = normalizeUserRole(user.role);
+  if (!normalized) return false;
   return roles.includes(normalized);
 }
 
@@ -183,7 +201,7 @@ export function hasPosition(
   if (!user) return false;
   const pos = normalizeOsimPosition(user);
   if (!pos) return false;
-  return positions.includes(pos);
+  return positions.some(p => isSameOsimPosition(pos, p));
 }
 
 /**
@@ -196,6 +214,7 @@ export function hasScope(
 ): boolean {
   if (!user) return false;
   const canonical = normalizeUserRole(user.role);
+  if (!canonical) return false;
 
   // Super admin & Waka have global scope over all resources
   if (canonical === 'super_admin' || canonical === 'waka_kesiswaan') {
@@ -243,6 +262,7 @@ export function hasPermission(
 ): boolean {
   if (!user) return false;
   const role = normalizeUserRole(user.role);
+  if (!role) return false;
   const pos = normalizeOsimPosition(user);
 
   // 1. Super Admin has unrestricted permissions across all modules
@@ -304,8 +324,8 @@ export function hasPermission(
     }
   }
 
-  // 5. Pembina Ekstrakurikuler permissions
-  if (role === 'pembina_ekstrakurikuler') {
+  // 5. Coach Ekstrakurikuler permissions
+  if (role === 'coach_ekstrakurikuler' || (role as any) === 'pembina_ekstrakurikuler') {
     switch (permission) {
       case 'dashboard.view':
       case 'students.view':
@@ -342,13 +362,13 @@ export function hasPermission(
 
       case 'osim.manage':
         // Sekretaris & BPH manage administration, meetings, documentation
-        return pos === 'ketua_osim' || pos === 'wakil_ketua_osim' || pos === 'sekretaris';
+        return pos === 'ketua_osim' || pos === 'wakil_ketua_osim' || pos === 'sekretaris' || pos === 'sekretaris_osim';
 
       case 'cash.view':
       case 'cash.create':
       case 'cash.update':
         // Bendahara OSIM manages OSIM cash transactions
-        return pos === 'bendahara';
+        return pos === 'bendahara' || pos === 'bendahara_osim';
 
       case 'cash.void':
         // Void requires supervisor audit trail; Bendahara cannot silently delete
@@ -371,12 +391,13 @@ export function hasPermission(
 export function canManageCash(user: UserProfile | null | undefined): boolean {
   if (!user) return false;
   const role = normalizeUserRole(user.role);
+  if (!role) return false;
   const pos = normalizeOsimPosition(user);
 
   return (
     role === 'super_admin' ||
     role === 'waka_kesiswaan' ||
-    (role === 'anggota_osim' && pos === 'bendahara') ||
+    (role === 'anggota_osim' && (pos === 'bendahara' || pos === 'bendahara_osim')) ||
     user.isCashManager === true // legacy backward compatibility flag
   );
 }
@@ -387,6 +408,7 @@ export function canManageCash(user: UserProfile | null | undefined): boolean {
 export function canReviewOsimProgram(user: UserProfile | null | undefined): boolean {
   if (!user) return false;
   const role = normalizeUserRole(user.role);
+  if (!role) return false;
   const pos = normalizeOsimPosition(user);
 
   return (
@@ -405,6 +427,7 @@ export function canReviewOsimProgram(user: UserProfile | null | undefined): bool
 export function canApproveOsimProgram(user: UserProfile | null | undefined): boolean {
   if (!user) return false;
   const role = normalizeUserRole(user.role);
+  if (!role) return false;
 
   return (
     role === 'super_admin' ||
@@ -422,12 +445,13 @@ export function canManageExtracurricular(
 ): boolean {
   if (!user) return false;
   const role = normalizeUserRole(user.role);
+  if (!role) return false;
 
   if (role === 'super_admin' || role === 'waka_kesiswaan') {
     return true;
   }
 
-  if (role === 'pembina_ekstrakurikuler') {
+  if (role === 'coach_ekstrakurikuler' || (role as any) === 'pembina_ekstrakurikuler') {
     if (!ekskulId) return true;
     return hasScope(user, 'extracurricular', ekskulId);
   }
@@ -449,6 +473,7 @@ export function canAccessMenu(
 ): boolean {
   if (!user) return false;
   const role = normalizeUserRole(user.role);
+  if (!role) return false;
   const pos = normalizeOsimPosition(user);
 
   if (role === 'super_admin') return true;
@@ -458,7 +483,7 @@ export function canAccessMenu(
       return true;
 
     case 'students':
-      return role === 'waka_kesiswaan' || role === 'guru_bk' || role === 'pembina_osim' || role === 'pembina_ekstrakurikuler';
+      return role === 'waka_kesiswaan' || role === 'guru_bk' || role === 'pembina_osim' || role === 'coach_ekstrakurikuler' || (role as any) === 'pembina_ekstrakurikuler';
 
     case 'teachers':
       return role === 'waka_kesiswaan';
@@ -469,12 +494,13 @@ export function canAccessMenu(
     case 'extracurricular':
       return (
         role === 'waka_kesiswaan' ||
-        role === 'pembina_ekstrakurikuler' ||
+        role === 'coach_ekstrakurikuler' ||
+        (role as any) === 'pembina_ekstrakurikuler' ||
         (user.extracurricularIds && user.extracurricularIds.length > 0)
       );
 
     case 'cash':
-      return role === 'waka_kesiswaan' || pos === 'bendahara' || user.isCashManager === true;
+      return role === 'waka_kesiswaan' || pos === 'bendahara' || pos === 'bendahara_osim' || user.isCashManager === true;
 
     case 'counseling':
       return role === 'waka_kesiswaan' || role === 'guru_bk';

@@ -21,13 +21,18 @@ import {
   Sparkles,
   Lock,
   ArrowRight,
-  UserPlus
+  UserPlus,
+  Key,
+  Copy,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { useSchool } from '../../contexts/SchoolContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { Teacher, Extracurricular, ExtracurricularMember, OsimMember, UserProfile, UserRole } from '../../types';
 import { extractSekbidNumber, cleanDigits, isBphMember, getDefaultOsimUsername, getDefaultOsimPasswordForMember } from '../../utils/osimAccountHelper';
 import { getDefaultOsimPassword } from '../../services/seedData';
+import { canResetUserPassword, useCrudPermission } from '../../utils/rbacRules';
 
 interface CentralizedCrudManagerProps {
   currentUser: UserProfile | null;
@@ -65,10 +70,57 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
     activeAcademicYear
   } = useSchool();
 
-  const { addUser, updateUser, deleteUser } = useAuth();
+  const { addUser, updateUser, deleteUser, resetUserPassword } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<'teachers' | 'pembina_intra' | 'pembina_ekstra' | 'guru_bk' | 'members'>('teachers');
+  const [activeTab, setActiveTab] = useState<'teachers' | 'pembina_intra' | 'pembina_ekstra' | 'guru_bk' | 'members' | 'password_reset'>('teachers');
   const [memberSubTab, setMemberSubTab] = useState<'ekskul' | 'osim'>('ekskul');
+
+  // Password reset delegation states
+  const canResetPasswordPermission = useCrudPermission('password_reset', currentUser?.role);
+  const [selectedUserForReset, setSelectedUserForReset] = useState<UserProfile | null>(null);
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const [newPasswordInput, setNewPasswordInput] = useState('');
+  const [showResetInput, setShowResetInput] = useState(false);
+  const [showPasswordMap, setShowPasswordMap] = useState<Record<string, boolean>>({});
+  const [passwordUserCategory, setPasswordUserCategory] = useState<'all' | 'bph' | 'sekbid' | 'pembina_ekskul' | 'all_accounts'>('all');
+
+  const togglePasswordVisibility = (uid: string) => {
+    setShowPasswordMap(prev => ({ ...prev, [uid]: !prev[uid] }));
+  };
+
+  const handleOpenResetModal = (u: UserProfile) => {
+    const check = canResetUserPassword(currentUser, u);
+    if (!check.allowed) {
+      showToast(check.reason || 'Anda tidak diizinkan mereset kata sandi akun ini.');
+      return;
+    }
+    setSelectedUserForReset(u);
+    const defP = u.role === 'pengurus_osim'
+      ? ((u.password && u.password !== 'password') ? u.password : getDefaultOsimPassword(u.osimDepartmentCode || u.osimRole || u.username))
+      : (u.password || 'password');
+    setNewPasswordInput(defP);
+    setShowResetInput(false);
+    setIsResetModalOpen(true);
+  };
+
+  const handleConfirmReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedUserForReset) return;
+    const check = canResetUserPassword(currentUser, selectedUserForReset);
+    if (!check.allowed) {
+      showToast(check.reason || 'Anda tidak diizinkan mereset kata sandi akun ini.');
+      setIsResetModalOpen(false);
+      return;
+    }
+    const passToSet = newPasswordInput.trim() || 'password';
+    const res = await resetUserPassword(selectedUserForReset.uid, passToSet);
+    if (res.success) {
+      showToast(`Kata sandi akun ${selectedUserForReset.displayName} (@${selectedUserForReset.username || selectedUserForReset.email}) berhasil diperbarui menjadi "${passToSet}"!`);
+      setIsResetModalOpen(false);
+    } else {
+      alert(res.error || 'Gagal mengubah kata sandi.');
+    }
+  };
 
   // Search & Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -898,6 +950,29 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
     });
   }, [osimMembers, searchQuery]);
 
+  const filteredPasswordUsers = useMemo(() => {
+    return allUsers.filter(u => {
+      const isOsim = u.role === 'pengurus_osim' || u.role === 'anggota_osim';
+      const isBph = isOsim && (u.osimDepartmentCode === 'BPH' || u.osimRole === 'ketua' || u.osimRole === 'sekretaris' || u.osimRole === 'bendahara');
+      const isSekbid = isOsim && !isBph;
+      const isPembinaEkstra = u.role === 'pembina_ekstrakurikuler' || u.role === 'pembina_ekskul' || u.role === 'pembina_ekstra' || u.role === 'pembina';
+
+      if (passwordUserCategory === 'bph' && !isBph) return false;
+      if (passwordUserCategory === 'sekbid' && !isSekbid) return false;
+      if (passwordUserCategory === 'pembina_ekskul' && !isPembinaEkstra) return false;
+      if (passwordUserCategory === 'all' && !isOsim && currentUser?.role !== 'super_admin') return false;
+
+      const q = searchQuery.toLowerCase();
+      const matchQ = (u.displayName || '').toLowerCase().includes(q) ||
+                     (u.username || '').toLowerCase().includes(q) ||
+                     (u.email || '').toLowerCase().includes(q) ||
+                     (u.nip || '').includes(q) ||
+                     (u.role || '').toLowerCase().includes(q) ||
+                     (u.osimPosition || '').toLowerCase().includes(q);
+      return matchQ;
+    });
+  }, [allUsers, searchQuery, passwordUserCategory, currentUser]);
+
   return (
     <div className="space-y-6">
       {/* Toast Notification */}
@@ -1004,6 +1079,18 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
           <Users className="w-4 h-4" />
           <span>5. Anggota Ekskul & OSIM ({members.length + osimMembers.length})</span>
         </button>
+
+        <button
+          onClick={() => { setActiveTab('password_reset'); setSearchQuery(''); }}
+          className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all ${
+            activeTab === 'password_reset'
+              ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/20'
+              : 'bg-slate-100 dark:bg-[#18181e] text-slate-700 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-200 dark:hover:bg-[#202028]'
+          }`}
+        >
+          <Key className="w-4 h-4 text-amber-400" />
+          <span>6. Reset Sandi Delegasi</span>
+        </button>
       </div>
 
       {/* Action & Filter Bar */}
@@ -1012,7 +1099,7 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
           <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-500" />
           <input
             type="text"
-            placeholder={`Cari di ${activeTab === 'teachers' ? 'Dewan Guru' : activeTab === 'pembina_intra' ? 'Pembina OSIM' : activeTab === 'pembina_ekstra' ? 'Ekstrakurikuler' : activeTab === 'guru_bk' ? 'Guru BK' : 'Anggota'}...`}
+            placeholder={`Cari di ${activeTab === 'teachers' ? 'Dewan Guru' : activeTab === 'pembina_intra' ? 'Pembina OSIM' : activeTab === 'pembina_ekstra' ? 'Ekstrakurikuler' : activeTab === 'guru_bk' ? 'Guru BK' : activeTab === 'password_reset' ? 'Akun Pengguna' : 'Anggota'}...`}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-3 py-2 bg-white dark:bg-[#1c1c24] border border-slate-300 dark:border-slate-700/80 rounded-lg text-xs text-slate-800 dark:text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500"
@@ -1485,6 +1572,213 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* TAB 6: RESET KATA SANDI PENGGUNA (HELPDESK DELEGASI) */}
+      {/* ========================================================= */}
+      {activeTab === 'password_reset' && (
+        <div className="space-y-4">
+          {/* Policy Banner */}
+          <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">
+                <Key className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="font-bold text-amber-300">
+                    Helpdesk Delegasi Reset Sandi Pengguna
+                  </h4>
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                    canResetPasswordPermission 
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' 
+                      : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                  }`}>
+                    {canResetPasswordPermission ? 'Akses Checklist Terbuka' : 'Terkunci di Matriks RBAC'}
+                  </span>
+                </div>
+                <p className="text-slate-300 mt-1 leading-relaxed">
+                  Modul ini memfasilitasi wewenang reset kata sandi akun Siswa & Pengurus OSIM tanpa memerlukan akses ke seluruh database cPanel. 
+                  Dilengkapi <strong>Proteksi Hirarki</strong>: Wewenang delegasi hanya berlaku ke akun Siswa / OSIM dan mutlak dilarang mereset akun Pimpinan atau Super Admin.
+                </p>
+              </div>
+            </div>
+            {onOpenRbacMatrix && (
+              <button
+                type="button"
+                onClick={onOpenRbacMatrix}
+                className="px-3 py-1.5 rounded-lg bg-amber-600/30 hover:bg-amber-600/50 text-amber-200 border border-amber-500/40 font-semibold whitespace-nowrap text-xs"
+              >
+                Atur Matriks Hak Akses
+              </button>
+            )}
+          </div>
+
+          {/* Sub-Filters */}
+          <div className="flex flex-wrap items-center gap-2 pb-1">
+            <button
+              type="button"
+              onClick={() => setPasswordUserCategory('all')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                passwordUserCategory === 'all'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'bg-slate-100 dark:bg-[#181820] text-slate-600 dark:text-slate-400 hover:text-white'
+              }`}
+            >
+              Semua Sasaran Delegasi ({allUsers.filter(u => u.role === 'pengurus_osim' || u.role === 'anggota_osim').length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setPasswordUserCategory('bph')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                passwordUserCategory === 'bph'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'bg-slate-100 dark:bg-[#181820] text-slate-600 dark:text-slate-400 hover:text-white'
+              }`}
+            >
+              Pengurus BPH Inti ({allUsers.filter(u => (u.role === 'pengurus_osim' || u.role === 'anggota_osim') && (u.osimDepartmentCode === 'BPH' || u.osimRole === 'ketua' || u.osimRole === 'sekretaris' || u.osimRole === 'bendahara')).length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setPasswordUserCategory('sekbid')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                passwordUserCategory === 'sekbid'
+                  ? 'bg-amber-600 text-white shadow-sm'
+                  : 'bg-slate-100 dark:bg-[#181820] text-slate-600 dark:text-slate-400 hover:text-white'
+              }`}
+            >
+              Koordinator & Sekbid ({allUsers.filter(u => (u.role === 'pengurus_osim' || u.role === 'anggota_osim') && !(u.osimDepartmentCode === 'BPH' || u.osimRole === 'ketua' || u.osimRole === 'sekretaris' || u.osimRole === 'bendahara')).length})
+            </button>
+            {currentUser?.role === 'super_admin' && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setPasswordUserCategory('pembina_ekskul')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    passwordUserCategory === 'pembina_ekskul'
+                      ? 'bg-sky-600 text-white shadow-sm'
+                      : 'bg-slate-100 dark:bg-[#181820] text-slate-600 dark:text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Pembina Ekstrakurikuler ({allUsers.filter(u => u.role === 'pembina_ekstrakurikuler' || u.role === 'pembina_ekskul' || u.role === 'pembina_ekstra' || u.role === 'pembina').length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPasswordUserCategory('all_accounts')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    passwordUserCategory === 'all_accounts'
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'bg-slate-100 dark:bg-[#181820] text-slate-600 dark:text-slate-400 hover:text-white'
+                  }`}
+                >
+                  Semua Akun Sistem ({allUsers.length})
+                </button>
+              </>
+            )}
+          </div>
+
+          {/* User Table for Password Reset */}
+          <div className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#121216]">
+            <table className="w-full text-left text-xs text-slate-300">
+              <thead className="bg-slate-100 dark:bg-[#181820] text-[11px] uppercase tracking-wider font-semibold text-slate-700 dark:text-slate-400 border-b border-slate-200 dark:border-slate-800">
+                <tr>
+                  <th className="py-3 px-4">Nama Lengkap & Akun</th>
+                  <th className="py-3 px-4">Peran Sistem</th>
+                  <th className="py-3 px-4">NIP / NIS</th>
+                  <th className="py-3 px-4">Kata Sandi Saat Ini</th>
+                  <th className="py-3 px-4 text-right">Tindakan Reset</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
+                {filteredPasswordUsers.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="py-8 text-center text-slate-500">
+                      Tidak ada akun pengguna yang sesuai dengan filter atau kata kunci pencarian.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredPasswordUsers.map((u, uIdx) => {
+                    const isRevealed = showPasswordMap[u.uid];
+                    const check = canResetUserPassword(currentUser, u);
+                    return (
+                      <tr key={u.uid || `pass-u-${uIdx}`} className="hover:bg-slate-50/80 dark:hover:bg-[#181822] transition-colors">
+                        <td className="py-3 px-4">
+                          <div className="font-bold text-white">{u.displayName}</div>
+                          <div className="text-[11px] text-slate-400 font-mono flex items-center gap-1.5 mt-0.5">
+                            <span className="text-amber-400 font-semibold">@{u.username || u.email.split('@')[0]}</span>
+                            <span>•</span>
+                            <span className="truncate max-w-[200px]">{u.email}</span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+                              u.role === 'super_admin' ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' :
+                              u.role === 'waka_kesiswaan' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' :
+                              u.role === 'pembina_osim' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
+                              (u.role === 'pembina_ekstrakurikuler' || u.role === 'pembina_ekskul' || u.role === 'pembina_ekstra' || u.role === 'pembina') ? 'bg-sky-500/20 text-sky-300 border border-sky-500/30' :
+                              u.role === 'pengurus_osim' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' :
+                              'bg-slate-800 text-slate-300 border border-slate-700'
+                            }`}>
+                              {u.role === 'pengurus_osim' ? (u.osimPosition || 'Pengurus OSIM') : 
+                               (u.role === 'pembina_ekstrakurikuler' || u.role === 'pembina_ekskul' || u.role === 'pembina_ekstra' || u.role === 'pembina') ? 'Pembina Ekstrakurikuler' :
+                               u.role === 'pembina_osim' ? 'Pembina OSIM' : u.role}
+                            </span>
+                            {(u.role === 'pembina_ekstrakurikuler' || u.role === 'pembina_ekskul' || u.role === 'pembina_ekstra' || u.role === 'pembina') && (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-amber-500/10 text-amber-300 border border-amber-500/30 font-semibold" title="Akun dikelola terpusat oleh Admin cPanel">
+                                Terpusat (Super Admin Only)
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 font-mono text-[11px] text-slate-400">
+                          {u.nip || '-'}
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded bg-slate-900 border border-slate-800 font-mono text-[11px]">
+                            <span className="text-emerald-400 font-bold">
+                              {isRevealed ? (u.password || 'password') : '••••••••'}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => togglePasswordVisibility(u.uid)}
+                              className="text-slate-400 hover:text-white"
+                              title={isRevealed ? 'Sembunyikan' : 'Lihat sandi'}
+                            >
+                              {isRevealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                            </button>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 text-right">
+                          {check.allowed ? (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenResetModal(u)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 border border-amber-500/30 font-semibold hover:border-amber-400 transition"
+                              title="Reset kata sandi pengguna ini"
+                            >
+                              <Key className="w-3.5 h-3.5 text-amber-400" />
+                              <span>Reset Sandi</span>
+                            </button>
+                          ) : (
+                            <span 
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800/80 text-amber-300/80 border border-amber-500/30 text-[10px] cursor-not-allowed"
+                              title={check.reason || 'Proteksi hirarki aktif'}
+                            >
+                              <Lock className="w-3 h-3 text-amber-400" />
+                              <span>{check.reason ? 'Dibatasi (Super Admin Only)' : 'Terkunci'}</span>
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -2223,6 +2517,97 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
                   className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold shadow-lg shadow-amber-600/30"
                 >
                   {editingOsimMember ? 'Simpan Perubahan Pengurus' : 'Sahkan Pengurus OSIM'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* MODAL 6: RESET PASSWORD DIALOG (HELPDESK DELEGASI) */}
+      {/* ========================================================= */}
+      {isResetModalOpen && selectedUserForReset && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="w-full max-w-md bg-white dark:bg-[#181820] border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Key className="w-5 h-5 text-amber-400" />
+                <span>Reset Kata Sandi Akun</span>
+              </h3>
+              <button onClick={() => setIsResetModalOpen(false)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmReset} className="p-6 space-y-4 text-xs">
+              <div className="p-3 bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-xl space-y-1">
+                <div className="font-bold text-slate-900 dark:text-white text-sm">{selectedUserForReset.displayName}</div>
+                <div className="text-slate-500 dark:text-slate-400 font-mono">@{selectedUserForReset.username || selectedUserForReset.email}</div>
+                <div className="text-[11px] text-amber-400 font-medium">Peran: {selectedUserForReset.role}</div>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 dark:text-slate-400 font-semibold mb-1">
+                  Kata Sandi Baru *
+                </label>
+                <div className="relative">
+                  <input
+                    type={showResetInput ? 'text' : 'password'}
+                    required
+                    value={newPasswordInput}
+                    onChange={e => setNewPasswordInput(e.target.value)}
+                    placeholder="Masukkan kata sandi baru"
+                    className="w-full px-3 py-2 pr-10 bg-slate-50 dark:bg-[#101015] border border-slate-300 dark:border-slate-700 rounded-lg text-slate-800 dark:text-slate-200 font-mono focus:outline-none focus:border-amber-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowResetInput(!showResetInput)}
+                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-200"
+                  >
+                    {showResetInput ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Quick default presets */}
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setNewPasswordInput('password')}
+                  className="px-2.5 py-1 rounded bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-700 text-[11px] font-mono"
+                >
+                  Set: "password"
+                </button>
+                {selectedUserForReset.role === 'pengurus_osim' && (
+                  <button
+                    type="button"
+                    onClick={() => setNewPasswordInput(getDefaultOsimPassword(selectedUserForReset.osimDepartmentCode || selectedUserForReset.osimRole || selectedUserForReset.username))}
+                    className="px-2.5 py-1 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[11px] font-mono"
+                  >
+                    Set: Sandi Standar OSIM
+                  </button>
+                )}
+              </div>
+
+              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-[11px] text-amber-300/90 leading-relaxed">
+                Kata sandi baru akan langsung aktif secara <em>real-time</em> di database. Password lama otomatis digantikan dan tidak dapat digunakan lagi.
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsResetModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold shadow-lg shadow-amber-600/30 flex items-center gap-1.5"
+                >
+                  <Key className="w-4 h-4" />
+                  <span>Simpan Kata Sandi</span>
                 </button>
               </div>
             </form>

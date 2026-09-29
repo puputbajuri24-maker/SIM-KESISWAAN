@@ -53,7 +53,7 @@ import {
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
-import { useCrudPermission } from '../utils/rbacRules';
+import { useCrudPermission, canResetUserPassword } from '../utils/rbacRules';
 import {
   OsimMember,
   OsimWorkProgram,
@@ -132,9 +132,10 @@ export const OsimPage: React.FC = () => {
   } = useAuth();
   const canCrudMembers = useCrudPermission('members', currentUser?.role);
   const canCrudPembinaIntra = useCrudPermission('pembina_intra', currentUser?.role);
+  const canResetPasswords = useCrudPermission('password_reset', currentUser?.role);
 
   const canManageOsim = isSupervisoryVetoAuthorized || isPengurusOsim;
-  const canManageOsimAccounts = (isPembinaOsim || isWakaOrAdmin) && canCrudMembers;
+  const canManageOsimAccounts = (isPembinaOsim || isWakaOrAdmin) && (canCrudMembers || canResetPasswords);
   const isOsimTeacher = isSupervisoryVetoAuthorized;
   const hasSupervisionVeto = isSupervisoryVetoAuthorized;
 
@@ -1345,8 +1346,8 @@ export const OsimPage: React.FC = () => {
               displayName: memberForm.fullName || existingAccount.displayName,
               username: finalUsername,
               password: passToSet,
-              role: 'pengurus_osim',
-              position: isBph ? (osimRoleVal === 'ketua' ? 'ketua_osim' : osimRoleVal === 'wakil' ? 'wakil_ketua_osim' : osimRoleVal === 'bendahara' ? 'bendahara' : 'sekretaris') : 'ketua_sekbid',
+              role: 'anggota_osim',
+              position: isBph ? (osimRoleVal === 'ketua' ? 'ketua_osim' : osimRoleVal === 'wakil' ? 'wakil_ketua_osim' : osimRoleVal === 'bendahara' ? 'bendahara_osim' : 'sekretaris_osim') : 'ketua_sekbid',
               status: memberForm.status === 'Nonaktif' || memberForm.status === 'Demisioner' ? 'Nonaktif' : 'Aktif',
               osimRole: osimRoleVal,
               osimPosition: memberForm.position,
@@ -1369,8 +1370,8 @@ export const OsimPage: React.FC = () => {
               username: finalUsername,
               email: memberForm.email || `${finalUsername}@madrasah.sch.id`,
               password: passToSet,
-              role: 'pengurus_osim',
-              position: isBph ? (osimRoleVal === 'ketua' ? 'ketua_osim' : osimRoleVal === 'wakil' ? 'wakil_ketua_osim' : osimRoleVal === 'bendahara' ? 'bendahara' : 'sekretaris') : 'ketua_sekbid',
+              role: 'anggota_osim',
+              position: isBph ? (osimRoleVal === 'ketua' ? 'ketua_osim' : osimRoleVal === 'wakil' ? 'wakil_ketua_osim' : osimRoleVal === 'bendahara' ? 'bendahara_osim' : 'sekretaris_osim') : 'ketua_sekbid',
               osimRole: osimRoleVal,
               osimPosition: memberForm.position,
               osimDepartmentName: memberForm.sekbid,
@@ -1543,7 +1544,10 @@ export const OsimPage: React.FC = () => {
           username: cleanUsername,
           email: cleanEmail,
           password: passToSet,
-          role: 'pengurus_osim',
+          role: 'anggota_osim',
+          position: (osimAccountForm.osimRole !== 'sekbid'
+            ? (osimAccountForm.osimRole === 'ketua' ? 'ketua_osim' : osimAccountForm.osimRole === 'wakil' ? 'wakil_ketua_osim' : osimAccountForm.osimRole === 'bendahara' ? 'bendahara_osim' : 'sekretaris_osim')
+            : 'ketua_sekbid') as any,
           osimRole: osimAccountForm.osimRole,
           osimPosition: osimAccountForm.osimPosition,
           osimDepartmentName: osimAccountForm.osimDepartmentName,
@@ -1647,6 +1651,11 @@ export const OsimPage: React.FC = () => {
   };
 
   const handlePromptQuickResetOsimPassword = (u: UserProfile) => {
+    const check = canResetUserPassword(currentUser, u);
+    if (!check.allowed) {
+      alert(check.reason || 'Anda tidak memiliki wewenang untuk mereset kata sandi akun ini.');
+      return;
+    }
     setSelectedOsimAccount(u);
     setQuickResetPasswordText(u.password || 'password');
     setShowQuickResetText(false);
@@ -1657,6 +1666,12 @@ export const OsimPage: React.FC = () => {
     if (e) e.preventDefault();
     if (!selectedOsimAccount) return;
     const u = selectedOsimAccount;
+    const check = canResetUserPassword(currentUser, u);
+    if (!check.allowed) {
+      alert(check.reason || 'Anda tidak memiliki wewenang untuk mereset kata sandi akun ini.');
+      setIsOsimAccountResetModalOpen(false);
+      return;
+    }
     const passToSet = quickResetPasswordText.trim() || 'password';
     const res = await resetUserPassword(u.uid, passToSet);
     if (res.success) {
@@ -1919,7 +1934,8 @@ export const OsimPage: React.FC = () => {
           const updatedUser: UserProfile = {
             ...existingAccount,
             displayName: trimmedCoord,
-            role: 'pengurus_osim',
+            role: 'anggota_osim',
+            position: 'ketua_sekbid',
             osimRole: 'sekbid',
             osimPosition: positionTitle,
             osimDepartmentId: targetDeptId || existingAccount.osimDepartmentId,
@@ -1942,7 +1958,8 @@ export const OsimPage: React.FC = () => {
             username: defaultUsername,
             email: `${defaultUsername}@madrasah.sch.id`,
             password: defaultPassword,
-            role: 'pengurus_osim',
+            role: 'anggota_osim',
+            position: 'ketua_sekbid',
             osimRole: 'sekbid',
             osimPosition: positionTitle,
             osimDepartmentId: targetDeptId,

@@ -505,7 +505,14 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
 
       const targetStudents = students.filter(s => selectedStudentIds.includes(s.id));
 
-      for (const student of targetStudents) {
+      const existingInTarget = new Set(
+        members
+          .filter(m => m.extracurricularId === targetEkskulId && m.status !== 'Keluar')
+          .map(m => m.studentId)
+      );
+      const newStudentsToEnroll = targetStudents.filter(s => !existingInTarget.has(s.id));
+
+      for (const student of newStudentsToEnroll) {
         await addMember({
           extracurricularId: targetEkskulId,
           extracurricularName: ekskul.name,
@@ -584,26 +591,42 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
       header: 'NIS & Nama Siswa',
       accessorKey: 'studentName',
       sortable: true,
-      cell: m => (
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-bold text-xs flex items-center justify-center shrink-0">
-            {m.studentName.charAt(0)}
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              {m.studentCode && (
-                <span className="font-mono text-[10px] font-bold px-1.5 py-0.2 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                  {m.studentCode}
-                </span>
-              )}
-              <p className="font-bold text-slate-900 dark:text-slate-100 hover:text-indigo-600 transition-colors cursor-pointer" onClick={() => handleOpenDetail(m)}>
-                {m.studentName}
-              </p>
+      cell: m => {
+        const otherEkskulsCount = members.filter(
+          other => other.studentId === m.studentId && other.extracurricularId !== m.extracurricularId && other.status === 'Aktif'
+        ).length;
+
+        return (
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-bold text-xs flex items-center justify-center shrink-0">
+              {m.studentName.charAt(0)}
             </div>
-            <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">NIS: {m.studentNis} • Kelas: {m.studentClass}</p>
+            <div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {m.studentCode && (
+                  <span className="font-mono text-[10px] font-bold px-1.5 py-0.2 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                    {m.studentCode}
+                  </span>
+                )}
+                <p className="font-bold text-slate-900 dark:text-slate-100 hover:text-indigo-600 transition-colors cursor-pointer" onClick={() => handleOpenDetail(m)}>
+                  {m.studentName}
+                </p>
+                {m.role && m.role !== 'Anggota' && (
+                  <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                    {m.role}
+                  </span>
+                )}
+                {otherEkskulsCount > 0 && (
+                  <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20" title={`Siswa juga aktif di ${otherEkskulsCount} ekskul lainnya`}>
+                    +{otherEkskulsCount} Ekskul
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">NIS: {m.studentNis} • Kelas: {m.studentClass}</p>
+            </div>
           </div>
-        </div>
-      )
+        );
+      }
     },
     {
       header: 'Ekstrakurikuler',
@@ -648,7 +671,7 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
           >
             <Eye className="w-4 h-4" />
           </button>
-          {canCrudMembers && (
+          {canCrudMembers && (isWakaOrAdmin || availableEkskuls.some(e => e.id === m.extracurricularId)) && (
             <>
               <button
                 onClick={e => handleOpenEdit(m, e)}

@@ -138,6 +138,18 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ initialSchedule 
   }, [currentEkskul]);
 
   // Active members for chosen ekskul (Sorted Alphabetically by Student Name)
+  const isPembinaOnly = isPembina && !isWakaOrAdmin;
+  const historyData = useMemo(() => {
+    if (!isPembinaOnly) return attendance;
+    const assignedIds = new Set(assignedExtracurriculars.map(e => e.id));
+    const assignedNames = new Set(assignedExtracurriculars.map(e => e.name.toLowerCase().trim()));
+    return attendance.filter(r => 
+      assignedIds.has(r.extracurricularId) || 
+      assignedNames.has((r.extracurricularName || '').toLowerCase().trim())
+    );
+  }, [attendance, isPembinaOnly, assignedExtracurriculars]);
+
+  // Active members for chosen ekskul (Sorted Alphabetically by Student Name)
   const activeEkskulMembers = useMemo(() => {
     return members
       .filter(m => m.extracurricularId === selectedEkskulId && m.status === 'Aktif')
@@ -418,25 +430,38 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ initialSchedule 
                     Ekstrakurikuler
                   </label>
                   <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-1.5 py-0.5 rounded border border-emerald-200 dark:border-emerald-800">
-                    Otomatis Sesuai Binaan
+                    {assignedExtracurriculars.length > 1 ? `Multi-Binaan (${assignedExtracurriculars.length})` : 'Otomatis Sesuai Binaan'}
                   </span>
                 </div>
                 
-                {/* Auto-filled Extracurricular Display - No dropdown */}
-                <div className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-indigo-200 dark:border-indigo-800/80 flex items-center justify-between shadow-xs">
-                  <div className="flex items-center gap-2 overflow-hidden">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0 animate-pulse" />
-                    <div className="truncate">
-                      <span className="font-extrabold text-slate-900 dark:text-slate-100 text-xs truncate block">
-                        {currentEkskul?.name || 'Ekstrakurikuler Binaan'}
-                      </span>
-                      <span className="text-[10px] text-slate-400 dark:text-slate-400 block font-medium">
-                        Kategori: {currentEkskul?.category || 'Umum'} • Hari {currentEkskul?.day || 'Rutin'}
-                      </span>
+                {assignedExtracurriculars.length > 1 || isWakaOrAdmin ? (
+                  <select
+                    value={selectedEkskulId}
+                    onChange={e => setSelectedEkskulId(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-indigo-300 dark:border-indigo-700 font-bold text-xs text-slate-900 dark:text-slate-100 shadow-xs focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    {(isWakaOrAdmin ? extracurriculars : assignedExtracurriculars).map(e => (
+                      <option key={e.id} value={e.id}>
+                        {e.name} ({e.category} - Hari {e.day})
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/90 border border-indigo-200 dark:border-indigo-800/80 flex items-center justify-between shadow-xs">
+                    <div className="flex items-center gap-2 overflow-hidden">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0 animate-pulse" />
+                      <div className="truncate">
+                        <span className="font-extrabold text-slate-900 dark:text-slate-100 text-xs truncate block">
+                          {currentEkskul?.name || 'Ekstrakurikuler Binaan'}
+                        </span>
+                        <span className="text-[10px] text-slate-400 dark:text-slate-400 block font-medium">
+                          Kategori: {currentEkskul?.category || 'Umum'} • Hari {currentEkskul?.day || 'Rutin'}
+                        </span>
+                      </div>
                     </div>
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0 ml-2" />
                   </div>
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0 ml-2" />
-                </div>
+                )}
               </div>
 
               <div>
@@ -624,7 +649,7 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ initialSchedule 
         >
           <DataTable
             id="attendance-history-table"
-            data={attendance}
+            data={historyData}
             columns={historyColumns}
             searchPlaceholder="Cari sesi pertemuan atau nama ekstrakurikuler..."
             searchableKeys={['meetingTopic', 'extracurricularName', 'coachName', 'date']}

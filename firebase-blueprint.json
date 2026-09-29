@@ -126,9 +126,37 @@
         "timestamp": { "type": "string" }
       },
       "required": ["action", "module", "details", "timestamp"]
+    },
+    "teachers": {
+      "title": "Teachers & Staff Roster",
+      "description": "Dewan guru and ekstrakurikuler coaches with standardized sequential IDs (guru_01, guru_02...)",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "code": { "type": "string", "maxLength": 32 },
+        "fullName": { "type": "string", "maxLength": 128 },
+        "nip": { "type": "string", "maxLength": 64 },
+        "gender": { "type": "string", "enum": ["L", "P"] },
+        "role": { "type": "string", "maxLength": 128 },
+        "subject": { "type": "string", "maxLength": 128 },
+        "email": { "type": "string", "maxLength": 128 },
+        "phone": { "type": "string", "maxLength": 64 },
+        "isActive": { "type": "boolean" },
+        "isCashManager": { "type": "boolean" },
+        "cashManagerTitle": { "type": "string", "maxLength": 128 },
+        "assignedExtracurriculars": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["id", "fullName", "role"]
     }
   },
   "firestore": {
+    "/teachers/{teacherId}": {
+      "schema": "teachers",
+      "description": "Teachers roster with standardized document IDs guru_XX"
+    },
     "/users/{userId}": {
       "schema": "users",
       "description": "User profiles and RBAC directory"

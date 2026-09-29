@@ -77,7 +77,8 @@ import {
 import { getDefaultOsimPassword } from '../services/seedData';
 import { getUserSlipCredentials } from '../utils/osimAccountHelper';
 import { getEkskulTheme } from '../utils/ekskulColors';
-import { getUserHierarchyClassification, sortUsersByHierarchy } from '../utils/syncUtils';
+import { getUserHierarchyClassification, sortUsersByHierarchy, canonicalizeAssignedEkskulIds } from '../utils/syncUtils';
+import { canResetUserPassword } from '../utils/rbacRules';
 
 export const CPanelPage: React.FC = () => {
   const { allUsers, currentUser, isSuperAdmin, addUser, updateUser, deleteUser, resetUserPassword, loginWithUser, loginWithDemoRole, syncUsersFromTeachers, syncUsersFromOsim } = useAuth();
@@ -156,10 +157,16 @@ export const CPanelPage: React.FC = () => {
 
   // Quick Role Testing state & users groupings
   const bkUsers = useMemo(() => allUsers.filter(u => u.role === 'guru_bk'), [allUsers]);
-  const pembinaEkskulUsers = useMemo(() => allUsers.filter(u => u.role === 'pembina_ekskul' || u.role === 'pembina'), [allUsers]);
+  const pembinaEkskulUsers = useMemo(
+    () => allUsers.filter(u => u.role === 'coach_ekstrakurikuler' || u.role === 'pembina_ekskul' || u.role === 'pembina' || (u.role as string) === 'pembina_ekstrakurikuler'),
+    [allUsers]
+  );
   const pembinaOsimUsers = useMemo(() => allUsers.filter(u => u.role === 'pembina_osim'), [allUsers]);
-  const osimPengurusUsers = useMemo(() => allUsers.filter(u => u.role === 'pengurus_osim'), [allUsers]);
-  const wakaUsers = useMemo(() => allUsers.filter(u => u.role === 'waka_kesiswaan'), [allUsers]);
+  const osimPengurusUsers = useMemo(
+    () => allUsers.filter(u => u.role === 'anggota_osim' || u.role === 'pengurus_osim'),
+    [allUsers]
+  );
+  const wakaUsers = useMemo(() => allUsers.filter(u => u.role === 'waka_kesiswaan' || (u.role as string) === 'waka'), [allUsers]);
   const adminUsers = useMemo(() => allUsers.filter(u => u.role === 'super_admin'), [allUsers]);
 
   const [selectedBkUserId, setSelectedBkUserId] = useState<string>('');
@@ -496,13 +503,9 @@ export const CPanelPage: React.FC = () => {
     // Auto-match extracurriculars
     let matchedEkskulIds: string[] = [];
     if (teacher.assignedExtracurriculars && teacher.assignedExtracurriculars.length > 0) {
-      matchedEkskulIds = teacher.assignedExtracurriculars.map(name => {
-        const found = extracurriculars.find(e => e.name.toLowerCase().trim() === name.toLowerCase().trim() || e.id === name);
-        return found ? found.id : name;
-      });
+      matchedEkskulIds = canonicalizeAssignedEkskulIds(teacher.assignedExtracurriculars, extracurriculars);
     } else if (teacher.extracurricularName) {
-      const found = extracurriculars.find(e => e.name.toLowerCase().trim() === teacher.extracurricularName?.toLowerCase().trim());
-      if (found) matchedEkskulIds = [found.id];
+      matchedEkskulIds = canonicalizeAssignedEkskulIds([teacher.extracurricularName], extracurriculars);
     }
 
     const cleanUsername = teacher.email ? teacher.email.split('@')[0] : (teacher.nip ? `guru_${teacher.nip}` : teacher.fullName.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 15));
@@ -642,7 +645,7 @@ export const CPanelPage: React.FC = () => {
       role: formData.role,
       phone: formData.phone.trim() || undefined,
       counselorSpecialization: formData.role === 'guru_bk' ? formData.counselorSpecialization : undefined,
-      extracurricularIds: formData.role === 'pembina_ekskul' ? formData.extracurricularIds : undefined,
+      extracurricularIds: (formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul') ? formData.extracurricularIds : undefined,
       status: formData.status,
       isCashManager: formData.isCashManager,
       cashManagerTitle: formData.isCashManager ? (formData.cashManagerTitle.trim() || 'Bendahara') : undefined
@@ -672,7 +675,7 @@ export const CPanelPage: React.FC = () => {
       role: formData.role,
       phone: formData.phone.trim() || undefined,
       counselorSpecialization: formData.role === 'guru_bk' ? formData.counselorSpecialization : undefined,
-      extracurricularIds: formData.role === 'pembina_ekskul' ? formData.extracurricularIds : undefined,
+      extracurricularIds: (formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul') ? formData.extracurricularIds : undefined,
       status: formData.status,
       isCashManager: formData.isCashManager,
       cashManagerTitle: formData.isCashManager ? (formData.cashManagerTitle.trim() || 'Bendahara') : undefined
@@ -713,6 +716,11 @@ export const CPanelPage: React.FC = () => {
   };
 
   const handlePromptResetPassword = (u: UserProfile) => {
+    const check = canResetUserPassword(currentUser, u);
+    if (!check.allowed) {
+      showToast(check.reason || 'Anda tidak memiliki wewenang untuk mereset kata sandi akun ini.', 'error');
+      return;
+    }
     setSelectedUserForAction(u);
     const defaultP = u.role === 'pengurus_osim'
       ? ((u.password && u.password !== 'password') ? u.password : getDefaultOsimPassword(u.osimDepartmentCode || u.osimRole || u.username))
@@ -725,6 +733,12 @@ export const CPanelPage: React.FC = () => {
   const handleConfirmResetPassword = async () => {
     if (!selectedUserForAction) return;
     const u = selectedUserForAction;
+    const check = canResetUserPassword(currentUser, u);
+    if (!check.allowed) {
+      showToast(check.reason || 'Anda tidak memiliki wewenang untuk mereset kata sandi akun ini.', 'error');
+      setIsResetModalOpen(false);
+      return;
+    }
     const passToSet = customResetPassword.trim() || 'password';
     const res = await resetUserPassword(u.uid, passToSet);
     if (res.success) {
@@ -1051,9 +1065,11 @@ export const CPanelPage: React.FC = () => {
         return { label: '3. GURU BK', color: 'bg-purple-500/10 text-purple-400 border-purple-500/30' };
       case 'pembina_osim':
         return { label: '4. PEMBINA OSIM', color: 'bg-amber-500/10 text-amber-400 border-amber-500/30' };
+      case 'coach_ekstrakurikuler':
       case 'pembina_ekskul':
       case 'pembina':
         return { label: '5. PEMBINA EKSKUL', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' };
+      case 'anggota_osim':
       case 'pengurus_osim':
         return { label: '6-7. PENGURUS OSIM', color: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' };
       default:
@@ -1068,20 +1084,42 @@ export const CPanelPage: React.FC = () => {
         if (rolePillFilter === 'cash_manager') {
           if (!u.isCashManager) return false;
         } else if (rolePillFilter === 'admin_waka') {
-          if (u.role !== 'super_admin' && u.role !== 'waka_kesiswaan') return false;
+          if (u.role !== 'super_admin' && u.role !== 'waka_kesiswaan' && (u.role as string) !== 'waka') return false;
         } else if (rolePillFilter === 'bph_osim') {
           const h = getUserHierarchyClassification(u);
           if (h.rank !== 6) return false;
         } else if (rolePillFilter === 'sekbid_osim') {
           const h = getUserHierarchyClassification(u);
           if (h.rank !== 7) return false;
+        } else if (rolePillFilter === 'coach_ekstrakurikuler' || rolePillFilter === 'pembina_ekskul') {
+          if (
+            u.role !== 'coach_ekstrakurikuler' &&
+            u.role !== 'pembina_ekskul' &&
+            u.role !== 'pembina' &&
+            (u.role as string) !== 'pembina_ekstrakurikuler'
+          ) return false;
+        } else if (rolePillFilter === 'anggota_osim' || rolePillFilter === 'pengurus_osim') {
+          if (u.role !== 'anggota_osim' && u.role !== 'pengurus_osim') return false;
         } else if (u.role !== rolePillFilter) {
           return false;
         }
       }
 
       // Dropdown Filter
-      if (roleFilter !== 'all' && u.role !== roleFilter) return false;
+      if (roleFilter !== 'all') {
+        if (roleFilter === 'coach_ekstrakurikuler' || roleFilter === 'pembina_ekskul') {
+          if (
+            u.role !== 'coach_ekstrakurikuler' &&
+            u.role !== 'pembina_ekskul' &&
+            u.role !== 'pembina' &&
+            (u.role as string) !== 'pembina_ekstrakurikuler'
+          ) return false;
+        } else if (roleFilter === 'anggota_osim' || roleFilter === 'pengurus_osim') {
+          if (u.role !== 'anggota_osim' && u.role !== 'pengurus_osim') return false;
+        } else if (u.role !== roleFilter) {
+          return false;
+        }
+      }
 
       // Search
       if (!searchTerm) return true;
@@ -1104,13 +1142,15 @@ export const CPanelPage: React.FC = () => {
     return {
       all: allUsers.length,
       super_admin: allUsers.filter(u => u.role === 'super_admin').length,
-      waka_kesiswaan: allUsers.filter(u => u.role === 'waka_kesiswaan').length,
+      waka_kesiswaan: allUsers.filter(u => u.role === 'waka_kesiswaan' || (u.role as string) === 'waka').length,
       guru_bk: allUsers.filter(u => u.role === 'guru_bk').length,
       pembina_osim: allUsers.filter(u => u.role === 'pembina_osim').length,
-      pembina_ekskul: allUsers.filter(u => u.role === 'pembina_ekskul' || u.role === 'pembina').length,
+      pembina_ekskul: allUsers.filter(
+        u => u.role === 'coach_ekstrakurikuler' || u.role === 'pembina_ekskul' || u.role === 'pembina' || (u.role as string) === 'pembina_ekstrakurikuler'
+      ).length,
       bph_osim: allUsers.filter(u => getUserHierarchyClassification(u).rank === 6).length,
       sekbid_osim: allUsers.filter(u => getUserHierarchyClassification(u).rank === 7).length,
-      pengurus_osim: allUsers.filter(u => u.role === 'pengurus_osim').length,
+      pengurus_osim: allUsers.filter(u => u.role === 'anggota_osim' || u.role === 'pengurus_osim').length,
       cash_manager: allUsers.filter(u => u.isCashManager).length
     };
   }, [allUsers]);
@@ -2131,7 +2171,7 @@ export const CPanelPage: React.FC = () => {
             </div>
           )}
 
-          {formData.role === 'pembina_ekskul' && (
+          {(formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul') && (
             <div className="bg-[#18181d] border border-emerald-500/30 rounded-xl p-3 space-y-2">
               <label className="block text-emerald-300 font-bold">Ekstrakurikuler yang Diampu (Pilih dari Daftar)</label>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-36 overflow-y-auto p-1 bg-[#121215] rounded-lg border border-[#27272a]">
@@ -2381,7 +2421,7 @@ export const CPanelPage: React.FC = () => {
             </div>
           )}
 
-          {formData.role === 'pembina_ekskul' && (
+          {(formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul') && (
             <div className="bg-[#18181d] border border-emerald-500/30 rounded-xl p-3 space-y-2">
               <label className="block text-emerald-300 font-bold">Ekstrakurikuler yang Diampu</label>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-36 overflow-y-auto p-1 bg-[#121215] rounded-lg border border-[#27272a]">
@@ -2774,6 +2814,18 @@ export const CPanelPage: React.FC = () => {
                 </div>
               </div>
             </div>
+
+            {(selectedUserForAction.role === 'pembina_ekstrakurikuler' || selectedUserForAction.role === 'pembina_ekskul' || selectedUserForAction.role === 'pembina_ekstra' || selectedUserForAction.role === 'pembina') && (
+              <div className="p-2.5 rounded-lg bg-sky-500/10 border border-sky-500/30 text-sky-300 text-[11px] flex items-start gap-2">
+                <ShieldCheck className="w-4 h-4 shrink-0 text-sky-400 mt-0.5" />
+                <div>
+                  <p className="font-bold">Akun Pembina Ekstrakurikuler Terkelola Terpusat</p>
+                  <p className="text-zinc-300 mt-0.5 leading-relaxed">
+                    Akun ini dikunci dari pergantian sandi mandiri di halaman profil pengguna. Seluruh pembaruan kredensial dilakukan eksklusif oleh Super Admin melalui cPanel ini.
+                  </p>
+                </div>
+              </div>
+            )}
 
             <div>
               <label className="block text-xs font-semibold text-zinc-300 mb-1.5 flex items-center justify-between">

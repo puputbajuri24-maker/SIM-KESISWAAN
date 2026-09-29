@@ -86,6 +86,13 @@ export const ProfileSettingsPage: React.FC = () => {
     }
   }, [currentUser]);
 
+  const isPembinaEkstra = Boolean(
+    currentUser?.role === 'pembina_ekstrakurikuler' ||
+    currentUser?.role === 'pembina_ekskul' ||
+    currentUser?.role === 'pembina_ekstra' ||
+    currentUser?.role === 'pembina'
+  );
+
   const getRoleBadgeInfo = (role?: UserRole) => {
     switch (role) {
       case 'pembina_osim':
@@ -286,6 +293,11 @@ export const ProfileSettingsPage: React.FC = () => {
     e.preventDefault();
     setPasswordError(null);
     setPasswordSuccess(null);
+
+    if (isPembinaEkstra) {
+      setPasswordError('Akun Pembina Ekstrakurikuler dikelola secara terpusat. Penggantian kata sandi hanya dapat dilakukan melalui cPanel oleh Administrator Madrasah.');
+      return;
+    }
 
     if (!currentPassword) {
       setPasswordError('Masukkan kata sandi akun Anda saat ini.');
@@ -715,6 +727,41 @@ export const ProfileSettingsPage: React.FC = () => {
                 </div>
                 <span className="text-[10px] font-mono text-zinc-400 bg-zinc-800/80 px-2 py-1 rounded border border-zinc-700/60 shrink-0">
                   POLICY: MANAGED-BY-ADMIN-&-PEMBINA
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : isPembinaEkstra ? (
+        <div className="bg-[#151518] border border-blue-500/30 rounded-xl overflow-hidden p-6 shadow-sm">
+          <div className="flex items-start space-x-4">
+            <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
+              <ShieldAlert className="w-6 h-6" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-base font-bold text-white">
+                  Pengelolaan Kata Sandi Terpusat
+                </h2>
+                <span className="text-[10px] font-mono px-2.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 font-semibold">
+                  AKUN PEMBINA EKSTRAKURIKULER
+                </span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700 font-medium">
+                  MANAGED BY ADMIN
+                </span>
+              </div>
+              <p className="text-xs text-zinc-300 mt-2 leading-relaxed">
+                Fitur penggantian kata sandi mandiri dinonaktifkan untuk akun Pembina Ekstrakurikuler. Sesuai standar tata kelola madrasah, seluruh akun pembina ekstrakurikuler bersifat institusional dan dikelola secara terpusat oleh <strong>Super Admin / Admin cPanel Kesiswaan</strong> demi sinkronisasi data master guru pembina dan kelancaran serah terima program kerja kegiatan ekstrakurikuler.
+              </p>
+              <div className="mt-4 p-3.5 rounded-xl bg-[#1c1c20] border border-[#2e2e34] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-zinc-400">
+                <div className="flex items-center space-x-2.5">
+                  <Lock className="w-4 h-4 text-blue-400 shrink-0" />
+                  <span>
+                    Jika Anda lupa kata sandi atau membutuhkan pergantian kredensial, silakan hubungi <strong>Administrator SIM Kesiswaan / Super Admin</strong> untuk mendapatkan bantuan reset melalui cPanel.
+                  </span>
+                </div>
+                <span className="text-[10px] font-mono text-zinc-400 bg-zinc-800/80 px-2 py-1 rounded border border-zinc-700/60 shrink-0">
+                  POLICY: MANAGED-BY-ADMIN
                 </span>
               </div>
             </div>

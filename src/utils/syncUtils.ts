@@ -96,9 +96,16 @@ export const getDeletedUids = (): Set<string> => {
 
 export const addDeletedUid = (uid: string) => {
   if (!uid || isProtectedFunctionalUid(uid)) return;
-  // Never tombstone student NIS numbers (pure numeric <= 10 digits)
+  // Never tombstone student NIS numbers (pure numeric <= 10 digits) or empty / root prefixes
   const cleanTrimmed = uid.trim();
-  if (/^\d{4,10}$/.test(cleanTrimmed) || /^user_\d{4,10}$/.test(cleanTrimmed)) return;
+  if (
+    !cleanTrimmed ||
+    cleanTrimmed === '-' ||
+    cleanTrimmed === 'user_' ||
+    cleanTrimmed === 'guru_' ||
+    /^\d{4,10}$/.test(cleanTrimmed) ||
+    /^user_\d{4,10}$/.test(cleanTrimmed)
+  ) return;
 
   try {
     const set = getDeletedUids();
@@ -106,7 +113,7 @@ export const addDeletedUid = (uid: string) => {
     // Also add related prefix variations if applicable
     if (uid.startsWith('user_')) {
       const clean = uid.replace(/^user_/, '');
-      if (!isProtectedFunctionalUid(clean) && !/^\d{4,10}$/.test(clean)) {
+      if (!isProtectedFunctionalUid(clean) && clean !== 'guru_' && !/^\d{4,10}$/.test(clean)) {
         set.add(clean);
       }
     }
@@ -127,6 +134,8 @@ export const removeDeletedUid = (uid: string) => {
 
 export const isDeletedUid = (uid?: string): boolean => {
   if (!uid) return false;
+  const clean = uid.trim();
+  if (!clean || clean === '-' || clean === 'user_' || clean === 'guru_') return false;
   const set = getDeletedUids();
   return set.has(uid) || set.has(`user_${uid}`) || set.has(uid.replace(/^user_/, ''));
 };
@@ -141,8 +150,8 @@ export const isTeacherUserMatch = (u: UserProfile, t: Teacher): boolean => {
   if (u.uid === t.id) return true;
   if (u.uid === `user_${t.id}`) return true;
   if (t.id === `user_${u.uid}`) return true;
-  const rawU = u.uid.replace(/^user_/, '');
-  const rawT = t.id.replace(/^t_/, '').replace(/^teacher_/, '');
+  const rawU = u.uid.replace(/^user_/, '').replace(/^guru_/, '');
+  const rawT = t.id.replace(/^t_/, '').replace(/^teacher_/, '').replace(/^guru_/, '');
   if (rawU && rawT && rawU === rawT) return true;
 
   // 2. NIP match (ignoring spaces & non-digits, at least 6 digits)
@@ -339,10 +348,101 @@ export const deduplicateUsersList = (users: UserProfile[]): UserProfile[] => {
 };
 
 /**
+ * Canonicalizes assigned extracurricular items to unique canonical IDs (e.g. ['ekskul_pramuka']).
+ * Resolves legacy human-readable names to valid IDs, removes duplicates, and ensures an array is returned.
+ */
+export const canonicalizeAssignedEkskulIds = (
+  items: string[] | undefined,
+  allEkskuls?: Array<{ id: string; name: string }>
+): string[] => {
+  if (!items || !Array.isArray(items) || items.length === 0) return [];
+
+  const canonicalIds: string[] = [];
+
+  for (const item of items) {
+    if (!item || typeof item !== 'string') continue;
+    const cleanItem = item.trim();
+    if (!cleanItem) continue;
+
+    // 1. If an extracurricular list is provided, match against it
+    if (allEkskuls && allEkskuls.length > 0) {
+      const matchedById = allEkskuls.find(e => e.id.toLowerCase() === cleanItem.toLowerCase());
+      if (matchedById) {
+        canonicalIds.push(matchedById.id);
+        continue;
+      }
+      const matchedByName = allEkskuls.find(e => 
+        e.name.toLowerCase().trim() === cleanItem.toLowerCase() ||
+        cleanItem.toLowerCase().startsWith(e.name.toLowerCase().trim()) ||
+        e.name.toLowerCase().includes(cleanItem.toLowerCase())
+      );
+      if (matchedByName) {
+        canonicalIds.push(matchedByName.id);
+        continue;
+      }
+    }
+
+    // 2. Direct ID check
+    if (cleanItem.startsWith('ekskul_')) {
+      canonicalIds.push(cleanItem);
+      continue;
+    }
+
+    // 3. Fallback normalization for standard names
+    const lower = cleanItem.toLowerCase();
+    if (lower.includes('pramuka')) {
+      canonicalIds.push('ekskul_pramuka');
+    } else if (lower.includes('paskibra')) {
+      canonicalIds.push('ekskul_paskibra');
+    } else if (lower.includes('pmr') || lower.includes('palang merah')) {
+      canonicalIds.push('ekskul_pmr');
+    } else if (lower.includes('futsal')) {
+      canonicalIds.push('ekskul_futsal');
+    } else if (lower.includes('basket')) {
+      canonicalIds.push('ekskul_basket');
+    } else if (lower.includes('volly') || lower.includes('voli')) {
+      canonicalIds.push('ekskul_voli');
+    } else if (lower.includes('hadroh') || lower.includes('rebana')) {
+      canonicalIds.push('ekskul_hadroh');
+    } else if (lower.includes('tahfidz') || lower.includes('tahfiz')) {
+      canonicalIds.push('ekskul_tahfidz');
+    } else if (lower.includes('kir') || lower.includes('karya ilmiah')) {
+      canonicalIds.push('ekskul_kir');
+    } else if (lower.includes('english') || lower.includes('inggris')) {
+      canonicalIds.push('ekskul_english_club');
+    } else if (lower.includes('jurnalistik')) {
+      canonicalIds.push('ekskul_jurnalistik');
+    } else if (lower.includes('kaligrafi')) {
+      canonicalIds.push('ekskul_kaligrafi');
+    } else if (lower.includes('silat')) {
+      canonicalIds.push('ekskul_pencak_silat');
+    } else if (lower.includes('bulutangkis') || lower.includes('badminton')) {
+      canonicalIds.push('ekskul_bulutangkis');
+    } else {
+      const slug = cleanItem.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+      canonicalIds.push(`ekskul_${slug}`);
+    }
+  }
+
+  // Deduplicate and filter empty
+  return Array.from(new Set(canonicalIds.filter(Boolean)));
+};
+
+/**
  * Deduplicate Teachers array to guarantee strictly ONE record per teacher.
  * Merges entries where IDs are 't_...' vs 'user_t_...' or where NIP/name matches.
  */
-export const deduplicateTeachersList = (teachers: Teacher[]): Teacher[] => {
+export const deduplicateTeachersList = (teachers: Teacher[], allEkskuls?: Array<{ id: string; name: string }>): Teacher[] => {
+  if (!Array.isArray(teachers) || teachers.length <= 1) {
+    if (Array.isArray(teachers) && teachers.length === 1) {
+      return [{
+        ...teachers[0],
+        assignedExtracurriculars: canonicalizeAssignedEkskulIds(teachers[0].assignedExtracurriculars, allEkskuls)
+      }];
+    }
+    return teachers || [];
+  }
+
   const result: Teacher[] = [];
   const seenIds = new Set<string>();
   const seenNips = new Set<string>();
@@ -378,7 +478,10 @@ export const deduplicateTeachersList = (teachers: Teacher[]): Teacher[] => {
         phone: existing.phone || t.phone,
         email: existing.email || t.email,
         nip: existing.nip && existing.nip !== '-' ? existing.nip : t.nip,
-        assignedExtracurriculars: Array.from(new Set([...(existing.assignedExtracurriculars || []), ...(t.assignedExtracurriculars || [])]))
+        assignedExtracurriculars: canonicalizeAssignedEkskulIds([
+          ...(existing.assignedExtracurriculars || []),
+          ...(t.assignedExtracurriculars || [])
+        ], allEkskuls)
       };
       result[duplicateIdx] = merged;
     } else {
@@ -386,7 +489,10 @@ export const deduplicateTeachersList = (teachers: Teacher[]): Teacher[] => {
       if (cleanNip && cleanNip.length >= 6) seenNips.add(cleanNip);
       if (email) seenEmails.add(email);
       if (normName && normName.length >= 6) seenNormNames.add(normName);
-      result.push(t);
+      result.push({
+        ...t,
+        assignedExtracurriculars: canonicalizeAssignedEkskulIds(t.assignedExtracurriculars, allEkskuls)
+      });
     }
   }
 
@@ -567,14 +673,20 @@ export const getUserHierarchyClassification = (u: UserProfile): UserHierarchyCla
     return { rank: 4, categoryLabel: 'Pembina OSIM', orderWeight: 400, subOrder: 1 };
   }
 
-  // 5. Pembina Ekstrakurikuler
-  if (u.role === 'pembina_ekskul' || u.role === 'pembina') {
-    return { rank: 5, categoryLabel: 'Pembina Ekstrakurikuler', orderWeight: 500, subOrder: 1 };
+  // 5. Pembina Ekstrakurikuler (Canonical: coach_ekstrakurikuler, Legacy: pembina_ekskul, pembina, pembina_ekstrakurikuler)
+  if (
+    u.role === 'coach_ekstrakurikuler' ||
+    u.role === 'pembina_ekskul' ||
+    u.role === 'pembina' ||
+    (u.role as string) === 'pembina_ekstrakurikuler' ||
+    (u.role as string) === 'pembina_ekstra'
+  ) {
+    return { rank: 5, categoryLabel: 'Pembina / Coach Ekstrakurikuler', orderWeight: 500, subOrder: 1 };
   }
 
-  // 6 & 7. OSIM Student Accounts (BPH & Sekbid 1-8)
-  if (u.role === 'pengurus_osim' || (u as any).role === 'anggota_osim') {
-    const pos = (u.osimPosition || '').toLowerCase();
+  // 6 & 7. OSIM Student Accounts (BPH & Sekbid 1-8) (Canonical: anggota_osim, Legacy: pengurus_osim)
+  if (u.role === 'anggota_osim' || u.role === 'pengurus_osim') {
+    const pos = (u.osimPosition || u.position || '').toLowerCase();
     const role = (u.osimRole || '').toLowerCase();
     const dName = (u.osimDepartmentName || '').toLowerCase();
     const dCode = (u.osimDepartmentCode || '').toLowerCase();

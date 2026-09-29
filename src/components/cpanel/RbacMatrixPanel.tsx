@@ -29,6 +29,7 @@ import {
   Edit3
 } from 'lucide-react';
 import { UserRole, UserProfile } from '../../types';
+import { normalizeUserRole, normalizeOsimPosition } from '../../permissions';
 import { db } from '../../services/firebase';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 
@@ -130,6 +131,22 @@ export const DEFAULT_RBAC_MATRIX: ModulePermissionRow[] = [
       pembina_osim: { canInput: false, canView: true, note: 'Kelola anggota OSIM via cPanel' },
       pembina_ekskul: { canInput: false, canView: true, note: 'Kelola anggota ekskul via cPanel' },
       bph: { canInput: false, canView: true, note: 'Terkunci' },
+      sekbid: { canInput: false, canView: false, note: 'Tertutup' }
+    }
+  },
+  {
+    id: 'crud_password_reset',
+    category: 'Hak CRUD Terpusat (Di Luar cPanel)',
+    module: 'Reset Sandi Pengguna (Helpdesk Delegasi)',
+    desc: 'Wewenang mereset kata sandi akun Siswa / Pengurus OSIM yang lupa sandi tanpa akses penuh cPanel. Proteksi hirarki: tidak dapat mereset akun pimpinan/admin.',
+    isCriticalSecurity: true,
+    permissions: {
+      sa: { canInput: true, canView: true, note: 'Akses penuh seluruh akun' },
+      waka: { canInput: false, canView: true, note: 'Delegasi reset sandi siswa/ekskul (Opsional)' },
+      bk: { canInput: false, canView: false, note: 'Dibatasi sistem' },
+      pembina_osim: { canInput: false, canView: true, note: 'Delegasi reset sandi pengurus OSIM (Opsional)' },
+      pembina_ekskul: { canInput: false, canView: false, note: 'Dibatasi sistem' },
+      bph: { canInput: false, canView: false, note: 'Tertutup' },
       sekbid: { canInput: false, canView: false, note: 'Tertutup' }
     }
   },
@@ -607,6 +624,12 @@ export const RbacMatrixPanel: React.FC<RbacMatrixPanelProps> = ({
       return;
     }
 
+    // Protect password reset module: Pembina Ekskul, BK, Siswa OSIM are restricted by system policy
+    if (moduleId === 'crud_password_reset' && (roleKey === 'pembina_ekskul' || roleKey === 'bk' || roleKey === 'bph' || roleKey === 'sekbid')) {
+      alert('Kebijakan Sistem: Peran Pembina Ekstrakurikuler, Guru BK, dan Siswa Pengurus OSIM dibatasi oleh sistem dan tidak dapat diberikan hak delegasi reset kata sandi.');
+      return;
+    }
+
     setMatrixData(prev =>
       prev.map(row => {
         if (row.id === moduleId) {
@@ -640,6 +663,11 @@ export const RbacMatrixPanel: React.FC<RbacMatrixPanelProps> = ({
 
     if (roleKey === 'sa' && (moduleId === 'cpanel_users' || moduleId === 'backup_restore')) {
       alert('Keamanan Kritis: Hak akses melihat cPanel untuk Super Admin tidak boleh dinonaktifkan.');
+      return;
+    }
+
+    if (moduleId === 'crud_password_reset' && (roleKey === 'pembina_ekskul' || roleKey === 'bk' || roleKey === 'bph' || roleKey === 'sekbid')) {
+      alert('Kebijakan Sistem: Modul Reset Kata Sandi dibatasi oleh sistem dan tidak dapat dibuka untuk peran Pembina Ekstrakurikuler, BK, maupun Siswa OSIM.');
       return;
     }
 
@@ -1257,6 +1285,9 @@ export const RbacMatrixPanel: React.FC<RbacMatrixPanelProps> = ({
                       const perm = row.permissions[col.key];
                       const canInput = perm?.canInput ?? false;
                       const canView = perm?.canView ?? false;
+                      const isPasswordResetRestricted = row.id === 'crud_password_reset' && (col.key === 'pembina_ekskul' || col.key === 'bk' || col.key === 'bph' || col.key === 'sekbid');
+                      const inputDisabled = !isSuperAdmin || isPasswordResetRestricted;
+                      const viewDisabled = !isSuperAdmin || isPasswordResetRestricted;
 
                       return (
                         <td key={`${row.id}-${col.key}`} className="py-2.5 px-2 text-center align-middle">
@@ -1264,27 +1295,29 @@ export const RbacMatrixPanel: React.FC<RbacMatrixPanelProps> = ({
                             {/* Kotak Centang Utama: Hak Akses Input */}
                             <label
                               className={`group inline-flex items-center space-x-1.5 px-2 py-1.5 rounded-lg border transition-all select-none ${
-                                isSuperAdmin ? 'cursor-pointer' : 'cursor-not-allowed opacity-80'
+                                !inputDisabled ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
                               } ${
                                 canInput
                                   ? 'bg-emerald-950/30 border-emerald-500/50 hover:border-emerald-400 text-emerald-300'
                                   : 'bg-[#18181c] border-[#292932] hover:border-[#383844] text-zinc-400'
                               }`}
                               title={
-                                isSuperAdmin
-                                  ? `Klik untuk ${canInput ? 'mencabut' : 'memberikan'} hak akses input bagi ${col.label}`
-                                  : 'Hanya Super Admin yang dapat mengubah hak akses'
+                                isPasswordResetRestricted
+                                  ? 'Dibatasi Kebijakan Sistem: Peran ini tidak dapat diberikan wewenang delegasi reset kata sandi'
+                                  : isSuperAdmin
+                                    ? `Klik untuk ${canInput ? 'mencabut' : 'memberikan'} hak akses input bagi ${col.label}`
+                                    : 'Hanya Super Admin yang dapat mengubah hak akses'
                               }
                             >
                               <input
                                 type="checkbox"
                                 checked={canInput}
-                                disabled={!isSuperAdmin}
+                                disabled={inputDisabled}
                                 onChange={() => handleToggleInput(row.id, col.key)}
-                                className="w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0 transition-colors accent-emerald-500 cursor-pointer"
+                                className="w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-0 transition-colors accent-emerald-500 cursor-pointer disabled:cursor-not-allowed"
                               />
                               <span className={`text-[10px] font-mono font-bold ${canInput ? 'text-emerald-300' : 'text-zinc-400'}`}>
-                                {canInput ? 'Input Aktif' : 'Terkunci (403)'}
+                                {canInput ? 'Input Aktif' : isPasswordResetRestricted ? 'Dibatasi' : 'Terkunci (403)'}
                               </span>
                             </label>
 
@@ -1292,24 +1325,26 @@ export const RbacMatrixPanel: React.FC<RbacMatrixPanelProps> = ({
                             {matrixViewMode === 'dual_checkbox' && (
                               <label
                                 className={`inline-flex items-center space-x-1 px-1.5 py-0.5 rounded text-[9px] font-mono transition-all select-none ${
-                                  isSuperAdmin ? 'cursor-pointer' : 'cursor-not-allowed'
+                                  !viewDisabled ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
                                 } ${
                                   canView
                                     ? 'text-sky-300 bg-sky-950/25 border border-sky-800/40'
                                     : 'text-zinc-500 bg-zinc-900 border border-zinc-800'
                                 }`}
                                 title={
-                                  isSuperAdmin
-                                    ? `Klik untuk ${canView ? 'mencabut' : 'memberikan'} hak akses melihat data bagi ${col.label}`
-                                    : 'Hanya Super Admin yang dapat mengubah hak akses'
+                                  isPasswordResetRestricted
+                                    ? 'Dibatasi Kebijakan Sistem: Modul ini tidak dibuka untuk peran ini'
+                                    : isSuperAdmin
+                                      ? `Klik untuk ${canView ? 'mencabut' : 'memberikan'} hak akses melihat data bagi ${col.label}`
+                                      : 'Hanya Super Admin yang dapat mengubah hak akses'
                                 }
                               >
                                 <input
                                   type="checkbox"
                                   checked={canView}
-                                  disabled={!isSuperAdmin}
+                                  disabled={viewDisabled}
                                   onChange={() => handleToggleView(row.id, col.key)}
-                                  className="w-3 h-3 rounded border-zinc-700 bg-zinc-900 text-sky-500 accent-sky-500 cursor-pointer"
+                                  className="w-3 h-3 rounded border-zinc-700 bg-zinc-900 text-sky-500 accent-sky-500 cursor-pointer disabled:cursor-not-allowed"
                                 />
                                 <span>{canView ? 'Bisa Lihat' : 'Tutup'}</span>
                               </label>
@@ -1414,15 +1449,42 @@ export const getActiveRbacMatrix = (): ModulePermissionRow[] => {
   return DEFAULT_RBAC_MATRIX;
 };
 
-export const canRoleInputModule = (role: UserRole | string, moduleId: string): boolean => {
+/**
+ * Resolves a UserRole or UserProfile into the corresponding RBAC matrix column key.
+ * Strictly returns null for unknown/missing roles to enforce deny-by-default.
+ */
+export const resolveRoleKey = (role?: UserRole | string, user?: UserProfile | null): RoleKey | null => {
+  if (!role) return null;
+  const canonical = normalizeUserRole(role);
+  if (!canonical) return null;
+
+  if (canonical === 'super_admin') return 'sa';
+  if (canonical === 'waka_kesiswaan') return 'waka';
+  if (canonical === 'guru_bk') return 'bk';
+  if (canonical === 'pembina_osim') return 'pembina_osim';
+  if (canonical === 'coach_ekstrakurikuler') return 'pembina_ekskul';
+  if (canonical === 'anggota_osim') {
+    const pos = normalizeOsimPosition(user || ({ role: 'anggota_osim' } as any));
+    if (
+      pos === 'ketua_osim' ||
+      pos === 'wakil_ketua_osim' ||
+      pos === 'sekretaris_osim' ||
+      pos === 'sekretaris' ||
+      pos === 'bendahara_osim' ||
+      pos === 'bendahara'
+    ) {
+      return 'bph';
+    }
+    return 'sekbid';
+  }
+  return null;
+};
+
+export const canRoleInputModule = (role: UserRole | string | undefined, moduleId: string, user?: UserProfile | null): boolean => {
+  if (!role) return false;
   if (role === 'super_admin') return true;
-  let roleKey: RoleKey = 'sekbid';
-  if (role === 'super_admin') roleKey = 'sa';
-  else if (role === 'waka_kesiswaan' || role === 'waka') roleKey = 'waka';
-  else if (role === 'guru_bk') roleKey = 'bk';
-  else if (role === 'pembina_osim') roleKey = 'pembina_osim';
-  else if (role === 'pembina_ekskul' || role === 'pembina_ekstra' || role === 'pembina') roleKey = 'pembina_ekskul';
-  else if (role === 'pengurus_osim' || role === 'anggota_osim') roleKey = 'bph';
+  const roleKey = resolveRoleKey(role, user);
+  if (!roleKey) return false;
 
   const matrix = getActiveRbacMatrix();
   const found = matrix.find(m => m.id === moduleId);
@@ -1431,3 +1493,18 @@ export const canRoleInputModule = (role: UserRole | string, moduleId: string): b
   const perm = found.permissions[roleKey] || (found.permissions as any)?.pembina;
   return Boolean(perm?.canInput);
 };
+
+export const canRoleViewModule = (role: UserRole | string | undefined, moduleId: string, user?: UserProfile | null): boolean => {
+  if (!role) return false;
+  if (role === 'super_admin') return true;
+  const roleKey = resolveRoleKey(role, user);
+  if (!roleKey) return false;
+
+  const matrix = getActiveRbacMatrix();
+  const found = matrix.find(m => m.id === moduleId);
+  if (!found) return false;
+  
+  const perm = found.permissions[roleKey] || (found.permissions as any)?.pembina;
+  return Boolean(perm?.canView);
+};
+

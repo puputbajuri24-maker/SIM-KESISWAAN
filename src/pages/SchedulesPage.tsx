@@ -29,8 +29,23 @@ interface SchedulesPageProps {
 }
 
 export const SchedulesPage: React.FC<SchedulesPageProps> = ({ onStartAttendance }) => {
-  const { isWakaOrAdmin, isPembina, currentUser } = useAuth();
+  const { isWakaOrAdmin, isPembina, currentUser, canManageExtracurricular } = useAuth();
   const { schedules, extracurriculars, addSchedule, updateSchedule, deleteSchedule, activeAcademicYear } = useSchool();
+
+  const isPembinaOnly = isPembina && !isWakaOrAdmin;
+  const myAssignedIds = currentUser?.extracurricularIds || [];
+
+  const availableEkskuls = useMemo(() => {
+    if (isPembinaOnly) {
+      return extracurriculars.filter(e =>
+        myAssignedIds.includes(e.id) ||
+        e.coachId === currentUser?.uid ||
+        (currentUser?.displayName && e.coachName?.toLowerCase().includes(currentUser.displayName.toLowerCase().split(' ')[0])) ||
+        canManageExtracurricular(e.id)
+      );
+    }
+    return extracurriculars;
+  }, [extracurriculars, isPembinaOnly, myAssignedIds, currentUser, canManageExtracurricular]);
 
   const [selectedEkskul, setSelectedEkskul] = useState<string>('all');
   const [selectedType, setSelectedType] = useState<string>('all');
@@ -57,11 +72,15 @@ export const SchedulesPage: React.FC<SchedulesPageProps> = ({ onStartAttendance 
 
   const filteredSchedules = useMemo(() => {
     return schedules.filter(s => {
+      if (isPembinaOnly) {
+        const isMyEkskul = availableEkskuls.some(e => e.id === s.extracurricularId);
+        if (!isMyEkskul) return false;
+      }
       if (selectedEkskul !== 'all' && s.extracurricularId !== selectedEkskul) return false;
       if (selectedType !== 'all' && s.type !== selectedType) return false;
       return true;
     });
-  }, [schedules, selectedEkskul, selectedType]);
+  }, [schedules, selectedEkskul, selectedType, isPembinaOnly, availableEkskuls]);
 
   const handleOpenDetail = (schedule: Schedule, e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -71,7 +90,7 @@ export const SchedulesPage: React.FC<SchedulesPageProps> = ({ onStartAttendance 
 
   const handleOpenAdd = () => {
     setSelectedSchedule(null);
-    const defaultEkskul = extracurriculars[0];
+    const defaultEkskul = availableEkskuls[0] || extracurriculars[0];
     setFormData({
       title: defaultEkskul ? `Latihan Rutin ${defaultEkskul.name}` : 'Latihan Rutin',
       extracurricularId: defaultEkskul?.id || '',
@@ -219,20 +238,24 @@ export const SchedulesPage: React.FC<SchedulesPageProps> = ({ onStartAttendance 
           >
             <Eye className="w-4 h-4" />
           </button>
-          <button
-            onClick={e => handleOpenEdit(s, e)}
-            className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:hover:bg-amber-900 dark:text-amber-400 transition-colors"
-            title="Edit Jadwal"
-          >
-            <Edit2 className="w-4 h-4" />
-          </button>
-          <button
-            onClick={e => handleOpenDelete(s, e)}
-            className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-400 transition-colors"
-            title="Hapus Jadwal"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
+          {(isWakaOrAdmin || canManageExtracurricular(s.extracurricularId)) && (
+            <>
+              <button
+                onClick={e => handleOpenEdit(s, e)}
+                className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:hover:bg-amber-900 dark:text-amber-400 transition-colors"
+                title="Edit Jadwal"
+              >
+                <Edit2 className="w-4 h-4" />
+              </button>
+              <button
+                onClick={e => handleOpenDelete(s, e)}
+                className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-400 transition-colors"
+                title="Hapus Jadwal"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </>
+          )}
         </div>
       )
     }
@@ -310,8 +333,10 @@ export const SchedulesPage: React.FC<SchedulesPageProps> = ({ onStartAttendance 
           onChange={e => setSelectedEkskul(e.target.value)}
           className="px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-medium"
         >
-          <option value="all">Semua Ekstrakurikuler ({schedules.length})</option>
-          {extracurriculars.map(e => (
+          <option value="all">
+            {isPembinaOnly ? `Semua Ekskul Binaan Saya (${availableEkskuls.length})` : `Semua Ekstrakurikuler (${extracurriculars.length})`}
+          </option>
+          {availableEkskuls.map(e => (
             <option key={e.id} value={e.id}>
               {e.name}
             </option>
@@ -404,20 +429,24 @@ export const SchedulesPage: React.FC<SchedulesPageProps> = ({ onStartAttendance 
                     >
                       <Eye className="w-4 h-4" />
                     </button>
-                    <button
-                      onClick={e => handleOpenEdit(sch, e)}
-                      className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:hover:bg-amber-900 dark:text-amber-400 transition-colors"
-                      title="Edit Jadwal"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={e => handleOpenDelete(sch, e)}
-                      className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-400 transition-colors"
-                      title="Hapus Jadwal"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {(isWakaOrAdmin || canManageExtracurricular(sch.extracurricularId)) && (
+                      <>
+                        <button
+                          onClick={e => handleOpenEdit(sch, e)}
+                          className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:hover:bg-amber-900 dark:text-amber-400 transition-colors"
+                          title="Edit Jadwal"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={e => handleOpenDelete(sch, e)}
+                          className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-400 transition-colors"
+                          title="Hapus Jadwal"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -593,7 +622,7 @@ export const SchedulesPage: React.FC<SchedulesPageProps> = ({ onStartAttendance 
               }}
               className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-semibold"
             >
-              {extracurriculars.map(e => (
+              {availableEkskuls.map(e => (
                 <option key={e.id} value={e.id}>
                   {e.name}
                 </option>

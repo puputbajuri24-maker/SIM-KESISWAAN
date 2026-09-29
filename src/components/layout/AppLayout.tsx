@@ -137,7 +137,11 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
   const [hasPromptedPopup, setHasPromptedPopup] = useState(false);
 
   const bkUsers = useMemo(() => (allUsers || []).filter(u => u && normalizeUserRole(u.role) === 'guru_bk'), [allUsers]);
-  const pembinaEkskulUsers = useMemo(() => (allUsers || []).filter(u => u && normalizeUserRole(u.role) === 'pembina_ekstrakurikuler'), [allUsers]);
+  const pembinaEkskulUsers = useMemo(() => (allUsers || []).filter(u => {
+    if (!u) return false;
+    const r = normalizeUserRole(u.role);
+    return r === 'coach_ekstrakurikuler' || (r as any) === 'pembina_ekstrakurikuler';
+  }), [allUsers]);
   const wakaUsers = useMemo(() => (allUsers || []).filter(u => u && normalizeUserRole(u.role) === 'waka_kesiswaan'), [allUsers]);
 
   const { mode, resolvedMode, toggleMode, palette, currentPaletteInfo } = useTheme();

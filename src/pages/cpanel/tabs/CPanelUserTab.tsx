@@ -651,7 +651,7 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
               <option value="waka_kesiswaan">2. Waka Kesiswaan</option>
               <option value="guru_bk">3. Guru Bimbingan Konseling (BK)</option>
               <option value="pembina_osim">4. Pembina OSIM</option>
-              <option value="pembina_ekskul">5. Pembina Ekstrakurikuler</option>
+              <option value="pembina_ekskul">5. Pembina / Coach Ekstrakurikuler</option>
               <option value="pengurus_osim">6-7. Pengurus OSIM (BPH & Sekbid)</option>
             </select>
           </div>

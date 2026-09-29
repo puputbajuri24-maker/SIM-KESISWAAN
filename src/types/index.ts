@@ -3,11 +3,12 @@ export type CanonicalUserRole =
   | 'waka_kesiswaan' 
   | 'guru_bk' 
   | 'pembina_osim' 
-  | 'pembina_ekstrakurikuler' 
+  | 'coach_ekstrakurikuler' 
   | 'anggota_osim';
 
 export type LegacyUserRole = 
   | 'waka' 
+  | 'pembina_ekstrakurikuler'
   | 'pembina_ekstra' 
   | 'pembina_ekskul' 
   | 'pembina' 
@@ -18,7 +19,9 @@ export type UserRole = CanonicalUserRole | LegacyUserRole;
 export type CanonicalOsimPosition = 
   | 'ketua_osim' 
   | 'wakil_ketua_osim' 
+  | 'sekretaris_osim'
   | 'sekretaris' 
+  | 'bendahara_osim'
   | 'bendahara' 
   | 'ketua_sekbid' 
   | 'anggota_sekbid';

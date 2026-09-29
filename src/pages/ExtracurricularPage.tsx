@@ -460,9 +460,24 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
                       {ekskul.name.charAt(0)}
                     </div>
                     <div>
-                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${theme.badgeClass}`}>
-                        {ekskul.category}
-                      </span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${theme.badgeClass}`}>
+                          {ekskul.category}
+                        </span>
+                        {isPembinaOnly && (
+                          canManageExtracurricular(ekskul.id) ? (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                              <CheckCircle2 className="w-2.5 h-2.5" />
+                              Binaan Anda
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center gap-1">
+                              <Lock className="w-2.5 h-2.5" />
+                              Di Luar Scope
+                            </span>
+                          )
+                        )}
+                      </div>
                       <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 group-hover:opacity-85 transition-opacity mt-1">
                         {ekskul.name}
                       </h3>
