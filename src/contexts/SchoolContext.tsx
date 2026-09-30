@@ -1010,6 +1010,40 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     } catch (e) {}
   }, []);
 
+  // Proactively fetch main school institutional identity on mount so any device (even unauthenticated) sees identical school branding
+  useEffect(() => {
+    const fetchPublicSchoolProfile = async () => {
+      try {
+        const snap = await getDoc(doc(db, 'schools', 'main_school'));
+        if (snap.exists()) {
+          const loadedSchool = snap.data() as SchoolSetting;
+          if (loadedSchool && (loadedSchool.name || loadedSchool.address)) {
+            setSchoolSetting(prev => {
+              const merged = {
+                ...INITIAL_SCHOOL_SETTING,
+                ...prev,
+                ...loadedSchool
+              };
+              try {
+                localStorage.setItem('sim_school_setting', JSON.stringify(merged));
+              } catch (e) {}
+              return merged;
+            });
+            if (loadedSchool.currentAcademicYear) {
+              setActiveAcademicYearState(loadedSchool.currentAcademicYear);
+            }
+            if (loadedSchool.currentSemester) {
+              setActiveSemesterState(loadedSchool.currentSemester);
+            }
+          }
+        }
+      } catch (e) {
+        // Silently fallback to local / default
+      }
+    };
+    fetchPublicSchoolProfile();
+  }, []);
+
   // Sync with Firestore if collections exist with timeout resilience
   const syncWithFirebase = async () => {
     setIsSyncing(true);
@@ -1542,6 +1576,17 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // Bidirectionally synchronize any local device data up to Firestore so that neither HP nor tablet data is lost
   const syncLocalChangesToFirestore = async () => {
     try {
+      // 0. Sync school settings from local cache to Firestore if present
+      const savedSchool = localStorage.getItem('sim_school_setting');
+      if (savedSchool) {
+        try {
+          const parsedSchool: SchoolSetting = JSON.parse(savedSchool);
+          if (parsedSchool && (parsedSchool.name || parsedSchool.address)) {
+            await setDoc(doc(db, 'schools', 'main_school'), { ...parsedSchool, id: 'main_school' }, { merge: true });
+          }
+        } catch (e) {}
+      }
+
       // 1. Sync students from local cache
       const savedStudents = localStorage.getItem('sim_students');
       if (savedStudents) {

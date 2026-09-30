@@ -337,7 +337,7 @@ service cloud.firestore {
     // 12. INSTITUTIONAL SETTINGS & SCHOOL CONFIG
     // =========================================================================
     match /schools/{schoolId} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow write: if isWakaOrAdmin() && isValidId(schoolId);
     }
 
