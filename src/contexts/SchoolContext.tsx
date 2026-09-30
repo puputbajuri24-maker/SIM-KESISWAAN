@@ -4807,7 +4807,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setSchedules(prev => [newEvent, ...prev]);
     try {
-      setDoc(doc(db, 'schedules', newEvent.id), newEvent);
+      if (auth.currentUser) {
+        setDoc(doc(db, 'schedules', newEvent.id), newEvent).catch(() => {});
+      }
     } catch (e) {}
     logAction('CREATE_SCHEDULE', 'Jadwal', `Membuat jadwal kegiatan: ${newEvent.title} pada ${newEvent.date}`);
     return { success: true };
@@ -4816,7 +4818,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateSchedule = async (id: string, data: Partial<ScheduleEvent>) => {
     setSchedules(prev => prev.map(s => s.id === id ? { ...s, ...data } : s));
     try {
-      updateDoc(doc(db, 'schedules', id), data);
+      if (auth.currentUser) {
+        updateDoc(doc(db, 'schedules', id), data).catch(() => {});
+      }
     } catch (e) {}
     return { success: true };
   };
@@ -4824,7 +4828,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const deleteSchedule = async (id: string) => {
     setSchedules(prev => prev.filter(s => s.id !== id));
     try {
-      deleteDoc(doc(db, 'schedules', id));
+      if (auth.currentUser) {
+        deleteDoc(doc(db, 'schedules', id)).catch(() => {});
+      }
     } catch (e) {}
   };
 
@@ -4837,7 +4843,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setAttendance(prev => [newSession, ...prev]);
     try {
-      setDoc(doc(db, 'attendance', newSession.id), newSession);
+      if (auth.currentUser) {
+        setDoc(doc(db, 'attendance', newSession.id), newSession).catch(() => {});
+      }
     } catch (e) {}
     logAction('SUBMIT_ATTENDANCE', 'Presensi', `Menyimpan presensi ${data.extracurricularName} tanggal ${data.date} (Hadir: ${data.presentCount}/${data.totalMembers})`);
   };
@@ -4855,7 +4863,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setActivities(prev => [newAct, ...prev]);
     try {
-      setDoc(doc(db, 'activities', newAct.id), newAct);
+      if (auth.currentUser) {
+        setDoc(doc(db, 'activities', newAct.id), newAct).catch(() => {});
+      }
     } catch (e) {}
     logAction('CREATE_ACTIVITY', 'Kegiatan Siswa', `Mendaftarkan agenda kegiatan: ${newAct.title}`);
   };
@@ -4863,7 +4873,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateActivity = async (id: string, data: Partial<SchoolActivity>) => {
     setActivities(prev => prev.map(a => a.id === id ? { ...a, ...data } : a));
     try {
-      updateDoc(doc(db, 'activities', id), data);
+      if (auth.currentUser) {
+        updateDoc(doc(db, 'activities', id), data).catch(() => {});
+      }
     } catch (e) {}
     logAction('UPDATE_ACTIVITY', 'Kegiatan Siswa', `Memperbarui status/data kegiatan ID: ${id}`);
   };
@@ -4871,7 +4883,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const deleteActivity = async (id: string) => {
     setActivities(prev => prev.filter(a => a.id !== id));
     try {
-      deleteDoc(doc(db, 'activities', id));
+      if (auth.currentUser) {
+        deleteDoc(doc(db, 'activities', id)).catch(() => {});
+      }
     } catch (e) {}
   };
 
@@ -4884,7 +4898,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setActivityReports(prev => [newRep, ...prev]);
     try {
-      setDoc(doc(db, 'activity_reports', newRep.id), newRep);
+      if (auth.currentUser) {
+        setDoc(doc(db, 'activity_reports', newRep.id), newRep).catch(() => {});
+      }
     } catch (e) {}
     logAction('CREATE_REPORT', 'Laporan Kegiatan', `Mengajukan laporan kegiatan: ${newRep.activityTitle}`);
   };
@@ -4892,14 +4908,18 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateReport = async (id: string, data: Partial<ActivityReport>) => {
     setActivityReports(prev => prev.map(r => r.id === id ? { ...r, ...data } : r));
     try {
-      updateDoc(doc(db, 'activity_reports', id), data);
+      if (auth.currentUser) {
+        updateDoc(doc(db, 'activity_reports', id), data).catch(() => {});
+      }
     } catch (e) {}
   };
 
   const deleteActivityReport = async (id: string) => {
     setActivityReports(prev => prev.filter(r => r.id !== id));
     try {
-      deleteDoc(doc(db, 'activity_reports', id));
+      if (auth.currentUser) {
+        deleteDoc(doc(db, 'activity_reports', id)).catch(() => {});
+      }
     } catch (e) {}
   };
 
@@ -5095,7 +5115,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setCounseling(prev => [newCs, ...prev]);
     try {
-      setDoc(doc(db, 'counseling', newCs.id), newCs);
+      if (auth.currentUser) {
+        setDoc(doc(db, 'counseling', newCs.id), newCs).catch(() => {});
+      }
     } catch (e) {}
     logAction('RECORD_COUNSELING', 'Pembinaan & BK', `Mencatat sesi pembinaan siswa: ${finalStudentName}`);
   };
@@ -5103,14 +5125,18 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateCounseling = async (id: string, data: Partial<StudentCounseling>) => {
     setCounseling(prev => prev.map(c => c.id === id ? { ...c, ...data } : c));
     try {
-      updateDoc(doc(db, 'counseling', id), data);
+      if (auth.currentUser) {
+        updateDoc(doc(db, 'counseling', id), data).catch(() => {});
+      }
     } catch (e) {}
   };
 
   const deleteCounselingSession = async (id: string) => {
     setCounseling(prev => prev.filter(c => c.id !== id));
     try {
-      deleteDoc(doc(db, 'counseling', id));
+      if (auth.currentUser) {
+        deleteDoc(doc(db, 'counseling', id)).catch(() => {});
+      }
     } catch (e) {}
   };
 
@@ -5123,7 +5149,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setHomeVisits(prev => [newHv, ...prev]);
     try {
-      setDoc(doc(db, 'home_visits', newHv.id), newHv);
+      if (auth.currentUser) {
+        setDoc(doc(db, 'home_visits', newHv.id), newHv).catch(() => {});
+      }
     } catch (e) {}
     logAction('RECORD_HOME_VISIT', 'Bimbingan Konseling', `Mencatat kunjungan rumah siswa: ${data.studentName}`);
   };
@@ -5131,14 +5159,18 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateHomeVisit = async (id: string, data: Partial<HomeVisitRecord>) => {
     setHomeVisits(prev => prev.map(h => h.id === id ? { ...h, ...data } : h));
     try {
-      updateDoc(doc(db, 'home_visits', id), data);
+      if (auth.currentUser) {
+        updateDoc(doc(db, 'home_visits', id), data).catch(() => {});
+      }
     } catch (e) {}
   };
 
   const deleteHomeVisit = async (id: string) => {
     setHomeVisits(prev => prev.filter(h => h.id !== id));
     try {
-      deleteDoc(doc(db, 'home_visits', id));
+      if (auth.currentUser) {
+        deleteDoc(doc(db, 'home_visits', id)).catch(() => {});
+      }
     } catch (e) {}
   };
 
@@ -5151,7 +5183,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setParentCallLetters(prev => [newLetter, ...prev]);
     try {
-      setDoc(doc(db, 'parent_call_letters', newLetter.id), newLetter);
+      if (auth.currentUser) {
+        setDoc(doc(db, 'parent_call_letters', newLetter.id), newLetter).catch(() => {});
+      }
     } catch (e) {}
     logAction('ISSUE_PARENT_CALL_LETTER', 'Bimbingan Konseling', `Menerbitkan surat panggilan orang tua No: ${data.letterNumber} untuk siswa ${data.studentName}`);
   };
@@ -5159,14 +5193,18 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateParentCallLetter = async (id: string, data: Partial<ParentCallLetter>) => {
     setParentCallLetters(prev => prev.map(l => l.id === id ? { ...l, ...data } : l));
     try {
-      updateDoc(doc(db, 'parent_call_letters', id), data);
+      if (auth.currentUser) {
+        updateDoc(doc(db, 'parent_call_letters', id), data).catch(() => {});
+      }
     } catch (e) {}
   };
 
   const deleteParentCallLetter = async (id: string) => {
     setParentCallLetters(prev => prev.filter(l => l.id !== id));
     try {
-      deleteDoc(doc(db, 'parent_call_letters', id));
+      if (auth.currentUser) {
+        deleteDoc(doc(db, 'parent_call_letters', id)).catch(() => {});
+      }
     } catch (e) {}
   };
 
@@ -5179,7 +5217,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setCareerGuidances(prev => [newCg, ...prev]);
     try {
-      setDoc(doc(db, 'career_guidances', newCg.id), newCg);
+      if (auth.currentUser) {
+        setDoc(doc(db, 'career_guidances', newCg.id), newCg).catch(() => {});
+      }
     } catch (e) {}
     logAction('RECORD_CAREER_GUIDANCE', 'Bimbingan Karir', `Mencatat asesmen peminatan karir siswa: ${data.studentName} (${data.careerInterest})`);
   };
@@ -5187,14 +5227,18 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateCareerGuidance = async (id: string, data: Partial<CareerGuidanceRecord>) => {
     setCareerGuidances(prev => prev.map(c => c.id === id ? { ...c, ...data } : c));
     try {
-      updateDoc(doc(db, 'career_guidances', id), data);
+      if (auth.currentUser) {
+        updateDoc(doc(db, 'career_guidances', id), data).catch(() => {});
+      }
     } catch (e) {}
   };
 
   const deleteCareerGuidance = async (id: string) => {
     setCareerGuidances(prev => prev.filter(c => c.id !== id));
     try {
-      deleteDoc(doc(db, 'career_guidances', id));
+      if (auth.currentUser) {
+        deleteDoc(doc(db, 'career_guidances', id)).catch(() => {});
+      }
     } catch (e) {}
   };
 
@@ -5214,7 +5258,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return s;
     }));
     try {
-      setDoc(doc(db, 'achievements', newAch.id), newAch);
+      if (auth.currentUser) {
+        setDoc(doc(db, 'achievements', newAch.id), newAch).catch(() => {});
+      }
     } catch (e) {}
     logAction('RECORD_ACHIEVEMENT', 'Prestasi Siswa', `Mencatat prestasi: ${data.title} oleh ${data.studentName}`);
   };
@@ -5222,14 +5268,18 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateAchievement = async (id: string, data: Partial<StudentAchievement>) => {
     setAchievements(prev => prev.map(a => a.id === id ? { ...a, ...data } : a));
     try {
-      updateDoc(doc(db, 'achievements', id), data);
+      if (auth.currentUser) {
+        updateDoc(doc(db, 'achievements', id), data).catch(() => {});
+      }
     } catch (e) {}
   };
 
   const deleteAchievement = async (id: string, _arg2?: any, _arg3?: any) => {
     setAchievements(prev => prev.filter(a => a.id !== id));
     try {
-      deleteDoc(doc(db, 'achievements', id));
+      if (auth.currentUser) {
+        deleteDoc(doc(db, 'achievements', id)).catch(() => {});
+      }
     } catch (e) {}
   };
 
@@ -5242,7 +5292,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setPermissions(prev => [newPerm, ...prev]);
     try {
-      setDoc(doc(db, 'permissions', newPerm.id), newPerm);
+      if (auth.currentUser) {
+        setDoc(doc(db, 'permissions', newPerm.id), newPerm).catch(() => {});
+      }
     } catch (e) {}
     logAction('RECORD_PERMISSION', 'Perizinan Siswa', `Mengajukan perizinan siswa: ${data.studentName} (${data.type})`);
   };
@@ -5250,21 +5302,27 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updatePermission = async (id: string, data: Partial<StudentPermission>) => {
     setPermissions(prev => prev.map(p => p.id === id ? { ...p, ...data } : p));
     try {
-      updateDoc(doc(db, 'permissions', id), data);
+      if (auth.currentUser) {
+        updateDoc(doc(db, 'permissions', id), data).catch(() => {});
+      }
     } catch (e) {}
   };
 
   const deletePermission = async (id: string) => {
     setPermissions(prev => prev.filter(p => p.id !== id));
     try {
-      deleteDoc(doc(db, 'permissions', id));
+      if (auth.currentUser) {
+        deleteDoc(doc(db, 'permissions', id)).catch(() => {});
+      }
     } catch (e) {}
   };
 
   const updatePermissionStatus = async (id: string, status: 'Menunggu' | 'Disetujui' | 'Ditolak' | 'Selesai') => {
     setPermissions(prev => prev.map(p => p.id === id ? { ...p, status, approvedBy: currentUser?.displayName } : p));
     try {
-      updateDoc(doc(db, 'permissions', id), { status, approvedBy: currentUser?.displayName });
+      if (auth.currentUser) {
+        updateDoc(doc(db, 'permissions', id), { status, approvedBy: currentUser?.displayName }).catch(() => {});
+      }
     } catch (e) {}
   };
 
@@ -5277,7 +5335,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setNeedsRequests(prev => [newNeed, ...prev]);
     try {
-      setDoc(doc(db, 'needs_requests', newNeed.id), newNeed);
+      if (auth.currentUser) {
+        setDoc(doc(db, 'needs_requests', newNeed.id), newNeed).catch(() => {});
+      }
     } catch (e) {}
     logAction('SUBMIT_NEEDS_REQUEST', 'Kebutuhan Ekstrakurikuler', `Mengajukan kebutuhan: ${data.itemName} (${data.extracurricularName})`);
   };
@@ -5285,7 +5345,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const reviewNeedsRequest = async (id: string, status: 'Disetujui' | 'Ditolak' | 'Revisi', adminNotes?: string, approvedBudget?: number) => {
     setNeedsRequests(prev => prev.map(n => n.id === id ? { ...n, status, adminNotes, approvedBudget: approvedBudget ?? n.approvedBudget } : n));
     try {
-      updateDoc(doc(db, 'needs_requests', id), { status, adminNotes, approvedBudget });
+      if (auth.currentUser) {
+        updateDoc(doc(db, 'needs_requests', id), { status, adminNotes, approvedBudget }).catch(() => {});
+      }
     } catch (e) {}
     logAction('REVIEW_NEEDS_REQUEST', 'Kebutuhan Ekstrakurikuler', `Verifikasi kebutuhan ID ${id} menjadi [${status}]`);
   };
@@ -5293,7 +5355,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const deleteNeedsRequest = async (id: string) => {
     setNeedsRequests(prev => prev.filter(n => n.id !== id));
     try {
-      deleteDoc(doc(db, 'needs_requests', id));
+      if (auth.currentUser) {
+        deleteDoc(doc(db, 'needs_requests', id)).catch(() => {});
+      }
     } catch (e) {}
     logAction('DELETE_NEEDS_REQUEST', 'Kebutuhan Ekstrakurikuler', `Menghapus pengajuan kebutuhan ID ${id}`);
   };
@@ -5309,7 +5373,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setAnnouncements(prev => [newAnn, ...prev]);
     try {
-      setDoc(doc(db, 'announcements', newAnn.id), newAnn);
+      if (auth.currentUser) {
+        setDoc(doc(db, 'announcements', newAnn.id), newAnn).catch(() => {});
+      }
     } catch (e) {}
     logAction('CREATE_ANNOUNCEMENT', 'Pengumuman', `Membuat pengumuman: ${newAnn.title} (${newAnn.targetRole})`);
   };
@@ -5318,7 +5384,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const updated = { ...data, updatedAt: new Date().toISOString().split('T')[0] };
     setAnnouncements(prev => prev.map(a => a.id === id ? { ...a, ...updated } : a));
     try {
-      setDoc(doc(db, 'announcements', id), updated, { merge: true });
+      if (auth.currentUser) {
+        setDoc(doc(db, 'announcements', id), updated, { merge: true }).catch(() => {});
+      }
     } catch (e) {}
     logAction('UPDATE_ANNOUNCEMENT', 'Pengumuman', `Memperbarui pengumuman ID ${id}`);
   };
@@ -5327,7 +5395,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const target = announcements.find(a => a.id === id);
     setAnnouncements(prev => prev.filter(a => a.id !== id));
     try {
-      deleteDoc(doc(db, 'announcements', id));
+      if (auth.currentUser) {
+        deleteDoc(doc(db, 'announcements', id)).catch(() => {});
+      }
     } catch (e) {}
     logAction('DELETE_ANNOUNCEMENT', 'Pengumuman', `Menghapus pengumuman: ${target?.title || id}`);
   };
@@ -5576,7 +5646,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setOsimPrograms(prev => [newProg, ...prev]);
     try {
-      setDoc(doc(db, 'osim_programs', newProg.id), newProg);
+      if (auth.currentUser) {
+        setDoc(doc(db, 'osim_programs', newProg.id), newProg).catch(() => {});
+      }
     } catch (e) {}
     logAction('ADD_OSIM_PROGRAM', 'Intrakurikuler & OSIM', `Membuat program kerja OSIM: ${newProg.title}`);
   };
@@ -5584,7 +5656,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateOsimProgram = async (id: string, data: Partial<OsimWorkProgram>) => {
     setOsimPrograms(prev => prev.map(p => p.id === id ? { ...p, ...data } : p));
     try {
-      updateDoc(doc(db, 'osim_programs', id), data);
+      if (auth.currentUser) {
+        updateDoc(doc(db, 'osim_programs', id), data).catch(() => {});
+      }
     } catch (e) {}
     logAction('UPDATE_OSIM_PROGRAM', 'Intrakurikuler & OSIM', `Memperbarui program kerja OSIM: ${data.title || id}`);
   };
@@ -5592,7 +5666,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const deleteOsimProgram = async (id: string) => {
     setOsimPrograms(prev => prev.filter(p => p.id !== id));
     try {
-      deleteDoc(doc(db, 'osim_programs', id));
+      if (auth.currentUser) {
+        deleteDoc(doc(db, 'osim_programs', id)).catch(() => {});
+      }
     } catch (e) {}
     logAction('DELETE_OSIM_PROGRAM', 'Intrakurikuler & OSIM', `Menghapus program kerja OSIM ID ${id}`);
   };
@@ -5606,7 +5682,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setOsimAspirations(prev => [newAsp, ...prev]);
     try {
-      setDoc(doc(db, 'osim_aspirations', newAsp.id), newAsp);
+      if (auth.currentUser) {
+        setDoc(doc(db, 'osim_aspirations', newAsp.id), newAsp).catch(() => {});
+      }
     } catch (e) {}
     logAction('ADD_OSIM_ASPIRATION', 'Intrakurikuler & OSIM', `Mengirim aspirasi siswa: ${newAsp.title}`);
   };
@@ -5614,7 +5692,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateOsimAspiration = async (id: string, data: Partial<OsimAspiration>) => {
     setOsimAspirations(prev => prev.map(a => a.id === id ? { ...a, ...data } : a));
     try {
-      updateDoc(doc(db, 'osim_aspirations', id), data);
+      if (auth.currentUser) {
+        updateDoc(doc(db, 'osim_aspirations', id), data).catch(() => {});
+      }
     } catch (e) {}
     logAction('UPDATE_OSIM_ASPIRATION', 'Intrakurikuler & OSIM', `Memperbarui respon aspirasi ID ${id}`);
   };
@@ -5622,7 +5702,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const deleteOsimAspiration = async (id: string) => {
     setOsimAspirations(prev => prev.filter(a => a.id !== id));
     try {
-      deleteDoc(doc(db, 'osim_aspirations', id));
+      if (auth.currentUser) {
+        deleteDoc(doc(db, 'osim_aspirations', id)).catch(() => {});
+      }
     } catch (e) {}
     logAction('DELETE_OSIM_ASPIRATION', 'Intrakurikuler & OSIM', `Menghapus aspirasi siswa ID ${id}`);
   };
@@ -5636,7 +5718,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setOsimMeetings(prev => [newMeet, ...prev]);
     try {
-      setDoc(doc(db, 'osim_meetings', newMeet.id), newMeet);
+      if (auth.currentUser) {
+        setDoc(doc(db, 'osim_meetings', newMeet.id), newMeet).catch(() => {});
+      }
     } catch (e) {}
     logAction('ADD_OSIM_MEETING', 'Intrakurikuler & OSIM', `Mencatat notulensi rapat OSIM: ${newMeet.title}`);
   };
@@ -5644,7 +5728,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateOsimMeeting = async (id: string, data: Partial<OsimMeeting>) => {
     setOsimMeetings(prev => prev.map(m => m.id === id ? { ...m, ...data } : m));
     try {
-      updateDoc(doc(db, 'osim_meetings', id), data);
+      if (auth.currentUser) {
+        updateDoc(doc(db, 'osim_meetings', id), data).catch(() => {});
+      }
     } catch (e) {}
     logAction('UPDATE_OSIM_MEETING', 'Intrakurikuler & OSIM', `Memperbarui notulensi rapat OSIM: ${data.title || id}`);
   };
@@ -5652,7 +5738,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const deleteOsimMeeting = async (id: string) => {
     setOsimMeetings(prev => prev.filter(m => m.id !== id));
     try {
-      deleteDoc(doc(db, 'osim_meetings', id));
+      if (auth.currentUser) {
+        deleteDoc(doc(db, 'osim_meetings', id)).catch(() => {});
+      }
     } catch (e) {}
     logAction('DELETE_OSIM_MEETING', 'Intrakurikuler & OSIM', `Menghapus notulensi rapat OSIM ID ${id}`);
   };
@@ -5669,7 +5757,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setOsimDepartments(next);
     try {
       localStorage.setItem('sim_osim_departments', JSON.stringify(next));
-      setDoc(doc(db, 'osim_departments', newDept.id), newDept);
+      if (auth.currentUser) {
+        setDoc(doc(db, 'osim_departments', newDept.id), newDept).catch(() => {});
+      }
     } catch (e) {}
     logAction('ADD_OSIM_DEPARTMENT', 'Intrakurikuler & OSIM', `Menambahkan bidang/sekbid baru: ${newDept.name}`);
   };
@@ -5683,7 +5773,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setOsimDepartments(next);
     try {
       localStorage.setItem('sim_osim_departments', JSON.stringify(next));
-      updateDoc(doc(db, 'osim_departments', id), { ...data, updatedAt: new Date().toISOString() });
+      if (auth.currentUser) {
+        updateDoc(doc(db, 'osim_departments', id), { ...data, updatedAt: new Date().toISOString() }).catch(() => {});
+      }
     } catch (e) {}
 
     // Cascade rename to members & proker if name changed
@@ -5711,7 +5803,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setOsimDepartments(next);
     try {
       localStorage.setItem('sim_osim_departments', JSON.stringify(next));
-      deleteDoc(doc(db, 'osim_departments', id));
+      if (auth.currentUser) {
+        deleteDoc(doc(db, 'osim_departments', id)).catch(() => {});
+      }
     } catch (e) {}
 
     // Reassign any members and proker in deleted department to first available or BPH
@@ -5734,8 +5828,10 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setOsimDepartments(INITIAL_OSIM_DEPARTMENTS);
     try {
       localStorage.setItem('sim_osim_departments', JSON.stringify(INITIAL_OSIM_DEPARTMENTS));
-      for (const d of INITIAL_OSIM_DEPARTMENTS) {
-        setDoc(doc(db, 'osim_departments', d.id), d);
+      if (auth.currentUser) {
+        for (const d of INITIAL_OSIM_DEPARTMENTS) {
+          setDoc(doc(db, 'osim_departments', d.id), d).catch(() => {});
+        }
       }
     } catch (e) {}
     logAction('RESET_OSIM_DEPARTMENTS', 'Intrakurikuler & OSIM', 'Mereset struktur bidang kabinet OSIM ke 8 Sekbid standar');
@@ -5754,7 +5850,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setCashAccounts(prev => [newAcc, ...prev]);
     try {
-      setDoc(doc(db, 'cash_accounts', newAcc.id), newAcc);
+      if (auth.currentUser) {
+        setDoc(doc(db, 'cash_accounts', newAcc.id), newAcc).catch(() => {});
+      }
     } catch (e) {}
     logAction('ADD_CASH_ACCOUNT', 'Neraca Kas', `Membuat akun kas baru: ${newAcc.name} (${newAcc.code})`);
   };
@@ -5762,7 +5860,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateCashAccount = async (id: string, data: Partial<CashAccount>) => {
     setCashAccounts(prev => prev.map(a => a.id === id ? { ...a, ...data, updatedAt: new Date().toISOString() } : a));
     try {
-      updateDoc(doc(db, 'cash_accounts', id), { ...data, updatedAt: new Date().toISOString() });
+      if (auth.currentUser) {
+        updateDoc(doc(db, 'cash_accounts', id), { ...data, updatedAt: new Date().toISOString() }).catch(() => {});
+      }
     } catch (e) {}
     logAction('UPDATE_CASH_ACCOUNT', 'Neraca Kas', `Memperbarui akun kas: ${data.name || id}`);
   };
@@ -5773,7 +5873,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // Also remove associated transactions
     setCashTransactions(prev => prev.filter(t => t.accountId !== id));
     try {
-      deleteDoc(doc(db, 'cash_accounts', id));
+      if (auth.currentUser) {
+        deleteDoc(doc(db, 'cash_accounts', id)).catch(() => {});
+      }
     } catch (e) {}
     logAction('DELETE_CASH_ACCOUNT', 'Neraca Kas', `Menghapus akun kas: ${target?.name || id}`);
   };
@@ -5837,7 +5939,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     setCashTransactions(prev => [newTrx, ...prev]);
     try {
-      setDoc(doc(db, 'cash_transactions', newTrx.id), newTrx);
+      if (auth.currentUser) {
+        setDoc(doc(db, 'cash_transactions', newTrx.id), newTrx).catch(() => {});
+      }
     } catch (e) {}
     logAction(
       data.type === 'MASUK' ? 'CASH_INFLOW' : 'CASH_OUTFLOW',
@@ -5849,7 +5953,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const updateCashTransaction = async (id: string, data: Partial<CashTransaction>) => {
     setCashTransactions(prev => prev.map(t => t.id === id ? { ...t, ...data, updatedAt: new Date().toISOString() } : t));
     try {
-      updateDoc(doc(db, 'cash_transactions', id), { ...data, updatedAt: new Date().toISOString() });
+      if (auth.currentUser) {
+        updateDoc(doc(db, 'cash_transactions', id), { ...data, updatedAt: new Date().toISOString() }).catch(() => {});
+      }
     } catch (e) {}
     logAction('UPDATE_CASH_TRANSACTION', 'Neraca Kas', `Memperbarui transaksi kas ID ${id}`);
   };
@@ -5858,7 +5964,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const target = cashTransactions.find(t => t.id === id);
     setCashTransactions(prev => prev.filter(t => t.id !== id));
     try {
-      deleteDoc(doc(db, 'cash_transactions', id));
+      if (auth.currentUser) {
+        deleteDoc(doc(db, 'cash_transactions', id)).catch(() => {});
+      }
     } catch (e) {}
     logAction('DELETE_CASH_TRANSACTION', 'Neraca Kas', `Menghapus transaksi kas: ${target?.title || id} (Rp ${target?.amount.toLocaleString('id-ID') || 0})`);
   };
@@ -5876,7 +5984,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setSchoolRules(prev => [...prev, newRule]);
     try {
-      setDoc(doc(db, 'school_rules', newRule.id), newRule);
+      if (auth.currentUser) {
+        setDoc(doc(db, 'school_rules', newRule.id), newRule).catch(() => {});
+      }
     } catch (e) {}
     logAction('ADD_SCHOOL_RULE', 'Buku Tata Tertib', `Menambahkan pasal tata tertib: ${newRule.articleNumber} - ${newRule.title}`);
   };
@@ -5889,7 +5999,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setSchoolRules(prev => prev.map(r => r.id === id ? { ...r, ...updatedData } : r));
     try {
-      updateDoc(doc(db, 'school_rules', id), updatedData);
+      if (auth.currentUser) {
+        updateDoc(doc(db, 'school_rules', id), updatedData).catch(() => {});
+      }
     } catch (e) {}
     logAction('UPDATE_SCHOOL_RULE', 'Buku Tata Tertib', `Memperbarui aturan tata tertib: ${data.articleNumber || ''} ${data.title || id}`);
   };
@@ -5898,7 +6010,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const target = schoolRules.find(r => r.id === id);
     setSchoolRules(prev => prev.filter(r => r.id !== id));
     try {
-      deleteDoc(doc(db, 'school_rules', id));
+      if (auth.currentUser) {
+        deleteDoc(doc(db, 'school_rules', id)).catch(() => {});
+      }
     } catch (e) {}
     logAction('DELETE_SCHOOL_RULE', 'Buku Tata Tertib', `Menghapus pasal aturan: ${target?.articleNumber || ''} ${target?.title || id}`);
   };
@@ -5907,10 +6021,12 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setSchoolRules(INITIAL_SCHOOL_RULES);
     setHandbookMeta(INITIAL_HANDBOOK_META);
     try {
-      for (const r of INITIAL_SCHOOL_RULES) {
-        setDoc(doc(db, 'school_rules', r.id), r);
+      if (auth.currentUser) {
+        for (const r of INITIAL_SCHOOL_RULES) {
+          setDoc(doc(db, 'school_rules', r.id), r).catch(() => {});
+        }
+        setDoc(doc(db, 'settings', 'handbook_meta'), INITIAL_HANDBOOK_META).catch(() => {});
       }
-      setDoc(doc(db, 'settings', 'handbook_meta'), INITIAL_HANDBOOK_META);
     } catch (e) {}
     logAction('RESET_SCHOOL_RULES', 'Buku Tata Tertib', 'Mereset pasal aturan tata tertib ke standar baku nasional');
   };
@@ -5923,7 +6039,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setHandbookMeta(updated);
     try {
-      setDoc(doc(db, 'settings', 'handbook_meta'), updated);
+      if (auth.currentUser) {
+        setDoc(doc(db, 'settings', 'handbook_meta'), updated).catch(() => {});
+      }
     } catch (e) {}
     logAction('UPDATE_HANDBOOK_META', 'Buku Tata Tertib', `Memperbarui SK & Ambang Poin Tata Tertib (${updated.decreeNumber})`);
   };

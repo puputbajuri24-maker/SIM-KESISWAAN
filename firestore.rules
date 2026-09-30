@@ -39,15 +39,17 @@ service cloud.firestore {
     function isSuperAdmin() {
       return isSignedIn() && (
         (hasUserDoc(request.auth.uid) && (userDoc(request.auth.uid).role == 'super_admin' || userDoc(request.auth.uid).role == 'admin')) ||
-        request.auth.token.email == 'admin@sekolah.sch.id' ||
-        request.auth.token.email == 'puputbajuri24@gmail.com' ||
+        ('email' in request.auth.token && (
+          request.auth.token.email.matches('(?i)^puputbajuri24@gmail\\.com$') ||
+          request.auth.token.email == 'admin@sekolah.sch.id'
+        )) ||
         request.auth.uid == 'user_super_admin'
       );
     }
 
     function isWakaKesiswaan() {
       return isSignedIn() && (
-        request.auth.token.email == 'puputbajuri24@gmail.com' ||
+        ('email' in request.auth.token && request.auth.token.email.matches('(?i)^puputbajuri24@gmail\\.com$')) ||
         (hasUserDoc(request.auth.uid) && (
           userDoc(request.auth.uid).role == 'waka_kesiswaan' ||
           userDoc(request.auth.uid).role == 'waka' ||
@@ -202,7 +204,7 @@ service cloud.firestore {
     // 4. TEACHERS & STAFF (CENTRALIZED CPANEL MANAGEMENT)
     // =========================================================================
     match /teachers/{teacherId} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow write: if isWakaOrAdmin() && isValidId(teacherId) && (request.method == 'delete' || isValidTeacher(incoming()));
     }
 
@@ -216,13 +218,13 @@ service cloud.firestore {
     }
 
     match /classes/{classId} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow create, update: if isStaff() && isValidId(classId);
       allow delete: if isWakaOrAdmin() && isValidId(classId);
     }
 
     match /academic_years/{yearId} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow write: if isWakaOrAdmin() && isValidId(yearId);
     }
 
@@ -236,7 +238,7 @@ service cloud.firestore {
     }
 
     match /school_rules/{ruleId} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow write: if isBkOrWakaOrAdmin() && isValidId(ruleId);
     }
 
@@ -244,19 +246,23 @@ service cloud.firestore {
     // 7. COUNSELING & DISCIPLINARY ISOLATION (HIGH SENSITIVITY BK MODULE)
     // =========================================================================
     match /counseling/{counselingId} {
-      allow read, write: if isBkOrWakaOrAdmin() && isValidId(counselingId) && (request.method in ['get', 'list', 'delete'] || isValidCounseling(incoming()));
+      allow read: if isSignedIn();
+      allow write: if isBkOrWakaOrAdmin() && isValidId(counselingId) && (request.method in ['get', 'list', 'delete'] || isValidCounseling(incoming()));
     }
 
     match /home_visits/{visitId} {
-      allow read, write: if isBkOrWakaOrAdmin() && isValidId(visitId);
+      allow read: if isSignedIn();
+      allow write: if isBkOrWakaOrAdmin() && isValidId(visitId);
     }
 
     match /parent_call_letters/{letterId} {
-      allow read, write: if isBkOrWakaOrAdmin() && isValidId(letterId);
+      allow read: if isSignedIn();
+      allow write: if isBkOrWakaOrAdmin() && isValidId(letterId);
     }
 
     match /career_guidances/{guidanceId} {
-      allow read, write: if isBkOrWakaOrAdmin() && isValidId(guidanceId);
+      allow read: if isSignedIn();
+      allow write: if isBkOrWakaOrAdmin() && isValidId(guidanceId);
     }
 
     // =========================================================================
@@ -299,7 +305,7 @@ service cloud.firestore {
     // 9. EXTRACURRICULARS & MEMBERSHIP
     // =========================================================================
     match /extracurriculars/{clubId} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow create, update: if (isPembinaEkskul() || isWakaOrAdmin()) && isValidId(clubId);
       allow delete: if isWakaOrAdmin() && isValidId(clubId);
     }
@@ -342,7 +348,7 @@ service cloud.firestore {
     }
 
     match /settings/{settingId} {
-      allow read: if settingId == 'theme_config' || isSignedIn();
+      allow read: if settingId in ['theme_config', 'rbac_matrix', 'handbook_meta'] || isSignedIn();
       allow write: if isValidId(settingId) && (
         isWakaOrAdmin() ||
         (settingId == 'theme_config' && isSignedIn())
@@ -365,7 +371,7 @@ service cloud.firestore {
     }
 
     match /activities/{activityId} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow create, update: if (isStaff() || isPengurusOsim()) && isValidId(activityId);
       allow delete: if isWakaOrAdmin() && isValidId(activityId);
     }
@@ -383,7 +389,7 @@ service cloud.firestore {
     }
 
     match /announcements/{announcementId} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow create, update: if (isStaff() || isPengurusOsim()) && isValidId(announcementId);
       allow delete: if isWakaOrAdmin() && isValidId(announcementId);
     }
@@ -400,9 +406,19 @@ service cloud.firestore {
     }
 
     match /achievements/{achievementId} {
-      allow read: if isSignedIn();
+      allow read: if true;
       allow create, update: if isStaff() && isValidId(achievementId);
       allow delete: if isWakaOrAdmin() && isValidId(achievementId);
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidId(notificationId);
+      allow delete: if isWakaOrAdmin() && isValidId(notificationId);
+    }
+
+    match /test/{testId} {
+      allow read: if true;
     }
   }
 }
