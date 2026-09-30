@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { UserProfile, UserRole, CanonicalUserRole, OsimPosition, Teacher, Extracurricular, AuditLogItem, OsimDepartment, OsimMember, OsimRoleType } from '../types';
 import { DEMO_USERS, DEFAULT_SUPER_ADMIN, PURGED_DEMO_UIDS, PURGED_DEMO_EMAILS, isBlacklistedDemoName, getDefaultOsimPassword } from '../services/seedData';
 import { auth, db } from '../services/firebase';
+import { handleFirestoreError, OperationType, isPermissionError } from '../services/firestoreErrors';
 import { doc, getDoc, getDocs, collection, setDoc, deleteDoc } from 'firebase/firestore';
 import { onAuthStateChanged, signOut as fbSignOut, signInWithEmailAndPassword } from 'firebase/auth';
 import {
@@ -19,6 +20,7 @@ import {
   canAccessMenu,
   Permission
 } from '../permissions';
+import { canRoleViewModule, canRoleInputModule } from '../services/rbacService';
 import {
   addDeletedUid,
   isDeletedUid,
@@ -190,6 +192,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Fetch Firestore users on mount to ensure fresh state, clean deleted uids & eliminate duplicates
   useEffect(() => {
     const fetchFirestoreUsers = async () => {
+      if (!auth.currentUser) return;
       try {
         // Permanently delete purged demo accounts from Firestore if present
         for (const purgedUid of PURGED_DEMO_UIDS) {
@@ -307,11 +310,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setCurrentUser(data);
           } else {
             // Create user doc if not exists
+            const isBootstrappedAdmin = fbUser.email === 'puputbajuri24@gmail.com' || fbUser.email === 'admin@sekolah.sch.id';
             const newUser: UserProfile = {
               uid: fbUser.uid,
               email: fbUser.email || '',
-              displayName: fbUser.displayName || 'Pengguna Baru',
-              role: 'pembina_ekskul',
+              displayName: fbUser.displayName || (isBootstrappedAdmin ? 'Puput Eka Bajuri, S. Pd., M. Or (Super Admin)' : 'Pengguna Baru'),
+              role: isBootstrappedAdmin ? 'super_admin' : 'anggota_osim',
               status: 'Aktif',
               photoURL: fbUser.photoURL || undefined,
               createdAt: new Date().toISOString()
@@ -686,7 +690,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       try {
         await setDoc(doc(db, 'users', newUser.uid), newUser, { merge: true });
-      } catch (e) {}
+      } catch (e) {
+        if (isPermissionError(e)) {
+          handleFirestoreError(e, OperationType.CREATE, `users/${newUser.uid}`);
+        }
+      }
 
       recordSystemAuditLog('CREATE_USER', 'Manajemen Pengguna', `Administrator membuat akun baru: ${newUser.displayName} (${newUser.email || newUser.nip}) [${newUser.role.toUpperCase()}]`, currentUser);
 
@@ -753,7 +761,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
       } catch (e) {
-        console.warn('Firestore updateUser sync note:', e);
+        if (isPermissionError(e)) {
+          handleFirestoreError(e, OperationType.UPDATE, `users/${uid}`);
+        } else {
+          console.warn('Firestore updateUser sync note:', e);
+        }
       }
 
       recordSystemAuditLog('UPDATE_USER', 'Manajemen Pengguna', `Administrator memperbarui akun: ${targetUserDisplayName} (ID: ${uid})`, currentUser);
@@ -810,7 +822,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             deleteDoc(doc(db, 'users', `user_osim_${targetUser.osimDepartmentId}`)).catch(() => {});
           }
         }
-      } catch (e) {}
+      } catch (e) {
+        if (isPermissionError(e)) {
+          handleFirestoreError(e, OperationType.DELETE, `users/${uid}`);
+        }
+      }
 
       recordSystemAuditLog('DELETE_USER', 'Manajemen Pengguna', `Administrator menghapus akun: ${targetUser?.displayName || uid} (${targetUser?.email || '-'})`, currentUser);
 
@@ -1371,15 +1387,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!currentUser || !canonicalRole) return false;
 
     // Dashboard, Profile, Announcements Center, and Buku Tata Tertib Siswa are accessible by all authenticated users
-    if (tabId === 'dashboard' || tabId === 'profile' || tabId === 'announcements' || tabId === 'rules' || tabId === 'handbook' || tabId === 'tatib') return true;
+    if (
+      tabId === 'dashboard' ||
+      tabId === 'profile' ||
+      tabId === 'announcements' ||
+      tabId === 'rules' ||
+      tabId === 'handbook' ||
+      tabId === 'tatib'
+    ) {
+      return true;
+    }
 
     // Super admin has unrestricted root access to all tabs including cpanel and root settings
     if (isSuperAdmin) return true;
 
-    // Strict security rule: cpanel and settings configuration are exclusively for super_admin
-    if (tabId === 'settings' || tabId === 'cpanel') return false;
+    // System Settings: Allowed for Super Admin, Waka Kesiswaan (Master Config & Kelas), or roles granted config_master in RBAC
+    if (tabId === 'settings') {
+      return Boolean(isWaka || canRoleViewModule(currentUser.role, 'config_master', currentUser));
+    }
 
-    // Waka kesiswaan has access to all operational student affairs tabs
+    // cPanel User Provisioning: Allowed for Super Admin or roles granted cpanel_users in RBAC matrix
+    if (tabId === 'cpanel') {
+      return Boolean(
+        canRoleViewModule(currentUser.role, 'cpanel_users', currentUser) ||
+        canRoleInputModule(currentUser.role, 'cpanel_users', currentUser)
+      );
+    }
+
+    // Waka kesiswaan has access to all operational student affairs tabs + settings
     if (isWaka) {
       const allowedWakaTabs = [
         'dashboard',
@@ -1398,9 +1433,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         'permissions',
         'cash',
         'cash_ledger',
+        'settings',
         'profile'
       ];
-      return allowedWakaTabs.includes(tabId);
+      if (allowedWakaTabs.includes(tabId)) return true;
     }
 
     // Guru BK has access to counseling hub, discipline/violations, student directory, reports, permissions, cash (transparansi), profile
@@ -1410,13 +1446,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (isAlsoPembinaEkskul) {
         allowedBkTabs.push('extracurriculars', 'members', 'schedules', 'attendance', 'activities', 'achievements');
       }
-      return allowedBkTabs.includes(tabId);
+      if (allowedBkTabs.includes(tabId)) return true;
     }
 
     // Pembina OSIM has access to OSIM / Intrakurikuler menus, reports, activities, cash (transparansi), profile
     if (isPembinaOsim) {
       const allowedOsimTabs = ['dashboard', 'osim', 'activities', 'reports', 'cash', 'cash_ledger', 'profile'];
-      return allowedOsimTabs.includes(tabId);
+      if (allowedOsimTabs.includes(tabId)) return true;
     }
 
     // Pembina Ekstrakurikuler has access to Extracurricular menus, reports, achievements, cash (transparansi), profile
@@ -1435,19 +1471,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         'cash_ledger',
         'profile'
       ];
-      return allowedEkskulTabs.includes(tabId);
+      if (allowedEkskulTabs.includes(tabId)) return true;
     }
 
     // Anggota OSIM (Akun Fungsional Bidang/Departemen Siswa dan Pengurus Inti BPH)
-    // Diberikan akses ke Dashboard OSIM, Pengurus & Proker OSIM, Agenda Kegiatan & Laporan OSIM, Pengumuman, Tatib
-    // Kas hanya jika diamanahkan sebagai Bendahara / Cash Manager
     if (isPengurusOsim) {
       const allowedPengurusTabs = ['dashboard', 'osim', 'announcements', 'rules', 'tatib', 'activities', 'reports', 'profile'];
       if (checkCanManageCash() || isOsimBendahara) {
         allowedPengurusTabs.push('cash', 'cash_ledger');
       }
-      return allowedPengurusTabs.includes(tabId);
+      if (allowedPengurusTabs.includes(tabId)) return true;
     }
+
+    // Dynamic RBAC Matrix Module checks fallback
+    if (tabId === 'teachers' && canRoleViewModule(currentUser.role, 'crud_teachers', currentUser)) return true;
+    if (tabId === 'violations' && canRoleViewModule(currentUser.role, 'violations_discipline', currentUser)) return true;
+    if (tabId === 'counseling' && canRoleViewModule(currentUser.role, 'counseling_confidential', currentUser)) return true;
+    if ((tabId === 'cash' || tabId === 'cash_ledger') && (canRoleViewModule(currentUser.role, 'cash_osim', currentUser) || checkCanManageCash())) return true;
+    if (tabId === 'permissions' && canRoleViewModule(currentUser.role, 'dispensation_letters', currentUser)) return true;
+    if (tabId === 'reports' && canRoleViewModule(currentUser.role, 'reports_rekap', currentUser)) return true;
+    if (tabId === 'osim' && (canRoleViewModule(currentUser.role, 'osim_structure', currentUser) || canRoleViewModule(currentUser.role, 'proposal_lpj', currentUser))) return true;
+    if ((tabId === 'extracurriculars' || tabId === 'members') && (canRoleViewModule(currentUser.role, 'extracurricular_grading', currentUser) || canRoleViewModule(currentUser.role, 'crud_members', currentUser))) return true;
 
     return false;
   };

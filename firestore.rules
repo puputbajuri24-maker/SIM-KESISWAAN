@@ -2,10 +2,407 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Allow full read/write for all school management collections to ensure seamless real-time multi-device sync
+    // =========================================================================
+    // 0. GLOBAL SAFETY NET & DEFAULT-DENY CATCH-ALL
+    // =========================================================================
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
+    }
+
+    // =========================================================================
+    // 1. CORE PRIMITIVES & IDENTITY HELPERS
+    // =========================================================================
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function userDoc(uid) {
+      return get(/databases/$(database)/documents/users/$(uid)).data;
+    }
+
+    function hasUserDoc(uid) {
+      return exists(/databases/$(database)/documents/users/$(uid));
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && (
+        (hasUserDoc(request.auth.uid) && (userDoc(request.auth.uid).role == 'super_admin' || userDoc(request.auth.uid).role == 'admin')) ||
+        request.auth.token.email == 'admin@sekolah.sch.id' ||
+        request.auth.token.email == 'puputbajuri24@gmail.com' ||
+        request.auth.uid == 'user_super_admin'
+      );
+    }
+
+    function isWakaKesiswaan() {
+      return isSignedIn() && (
+        request.auth.token.email == 'puputbajuri24@gmail.com' ||
+        (hasUserDoc(request.auth.uid) && (
+          userDoc(request.auth.uid).role == 'waka_kesiswaan' ||
+          userDoc(request.auth.uid).role == 'waka' ||
+          userDoc(request.auth.uid).role == 'admin_kesiswaan'
+        ))
+      );
+    }
+
+    function isWakaOrAdmin() {
+      return isSuperAdmin() || isWakaKesiswaan();
+    }
+
+    function isGuruBk() {
+      return isSignedIn() && hasUserDoc(request.auth.uid) && (
+        userDoc(request.auth.uid).role == 'guru_bk' ||
+        userDoc(request.auth.uid).role == 'bk'
+      );
+    }
+
+    function isBkOrWakaOrAdmin() {
+      return isWakaOrAdmin() || isGuruBk();
+    }
+
+    function isPembinaOsim() {
+      return isSignedIn() && hasUserDoc(request.auth.uid) && (
+        userDoc(request.auth.uid).role == 'pembina_osim' ||
+        userDoc(request.auth.uid).role == 'pembina'
+      );
+    }
+
+    function isPembinaEkskul() {
+      return isSignedIn() && hasUserDoc(request.auth.uid) && (
+        userDoc(request.auth.uid).role == 'pembina_ekstrakurikuler' ||
+        userDoc(request.auth.uid).role == 'pembina_ekskul' ||
+        userDoc(request.auth.uid).role == 'coach_ekstrakurikuler' ||
+        userDoc(request.auth.uid).role == 'pembina'
+      );
+    }
+
+    function isStaff() {
+      return isWakaOrAdmin() || isGuruBk() || isPembinaOsim() || isPembinaEkskul();
+    }
+
+    function isCashManager() {
+      return isSignedIn() && (
+        isWakaOrAdmin() ||
+        (hasUserDoc(request.auth.uid) && (
+          userDoc(request.auth.uid).isCashManager == true ||
+          userDoc(request.auth.uid).osimPosition == 'bendahara' ||
+          userDoc(request.auth.uid).osimPosition == 'bendahara_osim'
+        ))
+      );
+    }
+
+    function isPengurusOsim() {
+      return isSignedIn() && (
+        isPembinaOsim() ||
+        isWakaOrAdmin() ||
+        (hasUserDoc(request.auth.uid) && (
+          userDoc(request.auth.uid).role == 'anggota_osim' ||
+          userDoc(request.auth.uid).role == 'pengurus_osim'
+        ))
+      );
+    }
+
+    // =========================================================================
+    // 2. VALIDATION BLUEPRINTS (ANTI-UPDATE-GAP)
+    // =========================================================================
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role']) &&
+        data.uid is string && data.uid.size() > 0 && data.uid.size() <= 128 &&
+        data.email is string && data.email.size() > 0 && data.email.size() <= 256 &&
+        data.role is string && data.role.size() <= 64;
+    }
+
+    function isValidTeacher(data) {
+      return data.keys().hasAll(['id', 'fullName', 'role']) &&
+        data.id is string && data.id.size() > 0 && data.id.size() <= 64 &&
+        data.fullName is string && data.fullName.size() > 0 && data.fullName.size() <= 128 &&
+        data.role is string && data.role.size() <= 128;
+    }
+
+    function isValidStudent(data) {
+      return data.keys().hasAll(['name', 'nis']) &&
+        data.name is string && data.name.size() > 0 && data.name.size() <= 128 &&
+        data.nis is string && data.nis.size() > 0 && data.nis.size() <= 64;
+    }
+
+    function isValidViolation(data) {
+      return data.keys().hasAll(['studentId', 'violationType', 'points']) &&
+        data.studentId is string && data.studentId.size() <= 128 &&
+        data.violationType is string && data.violationType.size() <= 256 &&
+        data.points is number;
+    }
+
+    function isValidCounseling(data) {
+      return data.keys().hasAll(['studentId', 'counselorId']) &&
+        data.studentId is string && data.studentId.size() <= 128 &&
+        data.counselorId is string && data.counselorId.size() <= 128;
+    }
+
+    function isValidOsimProgram(data) {
+      return data.keys().hasAll(['title', 'status']) &&
+        data.title is string && data.title.size() > 0 && data.title.size() <= 256 &&
+        data.status is string && data.status.size() <= 64;
+    }
+
+    function isValidCashTransaction(data) {
+      return data.keys().hasAll(['accountId', 'type', 'amount', 'title']) &&
+        data.accountId is string && data.accountId.size() <= 128 &&
+        data.type in ['MASUK', 'KELUAR'] &&
+        data.amount is number &&
+        data.title is string && data.title.size() <= 256;
+    }
+
+    function isValidAuditLog(data) {
+      return data.keys().hasAll(['action', 'module', 'details']) &&
+        data.action is string && data.action.size() <= 128 &&
+        data.module is string && data.module.size() <= 128 &&
+        data.details is string && data.details.size() <= 4096;
+    }
+
+    // =========================================================================
+    // 3. USERS COLLECTION (RBAC DIRECTORY & SELF-ESCALATION PREVENTION)
+    // =========================================================================
+    match /users/{userId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn() &&
+        isValidId(userId) &&
+        isValidUser(incoming()) && (
+          isWakaOrAdmin() || (
+            request.auth.uid == userId &&
+            incoming().role in ['anggota_osim', 'siswa', 'guru', 'user'] &&
+            (!incoming().keys().hasAny(['isCashManager']) || incoming().isCashManager == false)
+          )
+        );
+
+      allow update: if isSignedIn() &&
+        isValidId(userId) &&
+        isValidUser(incoming()) && (
+          isWakaOrAdmin() || (
+            request.auth.uid == userId &&
+            incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'updatedAt', 'phone', 'themePreference', 'lastLogin'])
+          )
+        );
+
+      allow delete: if isWakaOrAdmin() && isValidId(userId);
+    }
+
+    // =========================================================================
+    // 4. TEACHERS & STAFF (CENTRALIZED CPANEL MANAGEMENT)
+    // =========================================================================
+    match /teachers/{teacherId} {
+      allow read: if isSignedIn();
+      allow write: if isWakaOrAdmin() && isValidId(teacherId) && (request.method == 'delete' || isValidTeacher(incoming()));
+    }
+
+    // =========================================================================
+    // 5. STUDENTS, CLASSES & ACADEMIC YEARS
+    // =========================================================================
+    match /students/{studentId} {
+      allow read: if isSignedIn();
+      allow create, update: if isStaff() && isValidId(studentId) && isValidStudent(incoming());
+      allow delete: if isWakaOrAdmin() && isValidId(studentId);
+    }
+
+    match /classes/{classId} {
+      allow read: if isSignedIn();
+      allow create, update: if isStaff() && isValidId(classId);
+      allow delete: if isWakaOrAdmin() && isValidId(classId);
+    }
+
+    match /academic_years/{yearId} {
+      allow read: if isSignedIn();
+      allow write: if isWakaOrAdmin() && isValidId(yearId);
+    }
+
+    // =========================================================================
+    // 6. VIOLATIONS & DISCIPLINARY RULES
+    // =========================================================================
+    match /violations/{violationId} {
+      allow read: if isSignedIn();
+      allow create, update: if isBkOrWakaOrAdmin() && isValidId(violationId) && isValidViolation(incoming());
+      allow delete: if isBkOrWakaOrAdmin() && isValidId(violationId);
+    }
+
+    match /school_rules/{ruleId} {
+      allow read: if isSignedIn();
+      allow write: if isBkOrWakaOrAdmin() && isValidId(ruleId);
+    }
+
+    // =========================================================================
+    // 7. COUNSELING & DISCIPLINARY ISOLATION (HIGH SENSITIVITY BK MODULE)
+    // =========================================================================
+    match /counseling/{counselingId} {
+      allow read, write: if isBkOrWakaOrAdmin() && isValidId(counselingId) && (request.method in ['get', 'list', 'delete'] || isValidCounseling(incoming()));
+    }
+
+    match /home_visits/{visitId} {
+      allow read, write: if isBkOrWakaOrAdmin() && isValidId(visitId);
+    }
+
+    match /parent_call_letters/{letterId} {
+      allow read, write: if isBkOrWakaOrAdmin() && isValidId(letterId);
+    }
+
+    match /career_guidances/{guidanceId} {
+      allow read, write: if isBkOrWakaOrAdmin() && isValidId(guidanceId);
+    }
+
+    // =========================================================================
+    // 8. OSIM WORK PROGRAMS, CABINET & MEETINGS
+    // =========================================================================
+    match /osim_programs/{programId} {
+      allow read: if isSignedIn();
+      allow create: if isPengurusOsim() && isValidId(programId) && isValidOsimProgram(incoming());
+      allow update: if isValidId(programId) && isValidOsimProgram(incoming()) && (
+        isPembinaOsim() ||
+        isWakaOrAdmin() ||
+        (isPengurusOsim() && existing().status in ['Draft', 'Diajukan', 'Revisi'] && (!incoming().diff(existing()).affectedKeys().hasAny(['status']) || incoming().status in ['Draft', 'Diajukan']))
+      );
+      allow delete: if (isPembinaOsim() || isWakaOrAdmin()) && isValidId(programId);
+    }
+
+    match /osim_members/{memberId} {
+      allow read: if isSignedIn();
+      allow write: if (isPembinaOsim() || isWakaOrAdmin()) && isValidId(memberId);
+    }
+
+    match /osim_departments/{departmentId} {
+      allow read: if isSignedIn();
+      allow write: if (isPembinaOsim() || isWakaOrAdmin()) && isValidId(departmentId);
+    }
+
+    match /osim_meetings/{meetingId} {
+      allow read: if isSignedIn();
+      allow create, update: if isPengurusOsim() && isValidId(meetingId);
+      allow delete: if (isPembinaOsim() || isWakaOrAdmin()) && isValidId(meetingId);
+    }
+
+    match /osim_aspirations/{aspirationId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(aspirationId);
+      allow update, delete: if isPengurusOsim() && isValidId(aspirationId);
+    }
+
+    // =========================================================================
+    // 9. EXTRACURRICULARS & MEMBERSHIP
+    // =========================================================================
+    match /extracurriculars/{clubId} {
+      allow read: if isSignedIn();
+      allow create, update: if (isPembinaEkskul() || isWakaOrAdmin()) && isValidId(clubId);
+      allow delete: if isWakaOrAdmin() && isValidId(clubId);
+    }
+
+    match /extracurricular_members/{memberId} {
+      allow read: if isSignedIn();
+      allow create, update: if (isPembinaEkskul() || isWakaOrAdmin()) && isValidId(memberId);
+      allow delete: if (isPembinaEkskul() || isWakaOrAdmin()) && isValidId(memberId);
+    }
+
+    // =========================================================================
+    // 10. CASH LEDGER & FINANCIAL ACCOUNTS (FINANCIAL SEGREGATION)
+    // =========================================================================
+    match /cash_accounts/{accountId} {
+      allow read: if isSignedIn();
+      allow write: if isWakaOrAdmin() && isValidId(accountId);
+    }
+
+    match /cash_transactions/{transactionId} {
+      allow read: if isSignedIn();
+      allow create, update: if isCashManager() && isValidId(transactionId) && isValidCashTransaction(incoming());
+      allow delete: if isWakaOrAdmin() && isValidId(transactionId);
+    }
+
+    // =========================================================================
+    // 11. AUDIT LOGS (IMMUTABLE AUDIT TRAIL)
+    // =========================================================================
+    match /audit_logs/{logId} {
+      allow read: if isWakaOrAdmin();
+      allow create: if isSignedIn() && isValidId(logId) && isValidAuditLog(incoming());
+      allow update, delete: if false;
+    }
+
+    // =========================================================================
+    // 12. INSTITUTIONAL SETTINGS & SCHOOL CONFIG
+    // =========================================================================
+    match /schools/{schoolId} {
+      allow read: if isSignedIn();
+      allow write: if isWakaOrAdmin() && isValidId(schoolId);
+    }
+
+    match /settings/{settingId} {
+      allow read: if settingId == 'theme_config' || isSignedIn();
+      allow write: if isValidId(settingId) && (
+        isWakaOrAdmin() ||
+        (settingId == 'theme_config' && isSignedIn())
+      );
+    }
+
+    // =========================================================================
+    // 13. SCHEDULES, ATTENDANCE, ACTIVITIES, ANNOUNCEMENTS & PERMISSIONS
+    // =========================================================================
+    match /schedules/{scheduleId} {
+      allow read: if isSignedIn();
+      allow create, update: if isStaff() && isValidId(scheduleId);
+      allow delete: if isWakaOrAdmin() && isValidId(scheduleId);
+    }
+
+    match /attendance/{attendanceId} {
+      allow read: if isSignedIn();
+      allow create, update: if isStaff() && isValidId(attendanceId);
+      allow delete: if isWakaOrAdmin() && isValidId(attendanceId);
+    }
+
+    match /activities/{activityId} {
+      allow read: if isSignedIn();
+      allow create, update: if (isStaff() || isPengurusOsim()) && isValidId(activityId);
+      allow delete: if isWakaOrAdmin() && isValidId(activityId);
+    }
+
+    match /activity_reports/{reportId} {
+      allow read: if isSignedIn();
+      allow create, update: if (isStaff() || isPengurusOsim()) && isValidId(reportId);
+      allow delete: if isWakaOrAdmin() && isValidId(reportId);
+    }
+
+    match /needs_requests/{requestId} {
+      allow read: if isSignedIn();
+      allow create, update: if (isStaff() || isPengurusOsim()) && isValidId(requestId);
+      allow delete: if isWakaOrAdmin() && isValidId(requestId);
+    }
+
+    match /announcements/{announcementId} {
+      allow read: if isSignedIn();
+      allow create, update: if (isStaff() || isPengurusOsim()) && isValidId(announcementId);
+      allow delete: if isWakaOrAdmin() && isValidId(announcementId);
+    }
+
+    match /permissions/{permissionId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(permissionId);
+      allow update: if isValidId(permissionId) && (
+        isStaff() ||
+        isPengurusOsim() ||
+        (isSignedIn() && incoming().diff(existing()).affectedKeys().hasOnly(['reason', 'note', 'updatedAt', 'evidenceUrl']))
+      );
+      allow delete: if isWakaOrAdmin() && isValidId(permissionId);
+    }
+
+    match /achievements/{achievementId} {
+      allow read: if isSignedIn();
+      allow create, update: if isStaff() && isValidId(achievementId);
+      allow delete: if isWakaOrAdmin() && isValidId(achievementId);
     }
   }
 }
-

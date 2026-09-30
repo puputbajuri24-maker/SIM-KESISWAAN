@@ -58,7 +58,7 @@ import {
 
 export const TeachersPage: React.FC = () => {
   const { isWakaOrAdmin, currentUser } = useAuth();
-  const canCrudTeachers = useCrudPermission('teachers', currentUser?.role);
+  const canCrudTeachers = useCrudPermission('teachers', currentUser?.role, currentUser);
   const {
     teachers,
     extracurriculars,

@@ -10,6 +10,7 @@
  */
 
 import { CanonicalUserRole, OsimPosition, UserProfile, UserRole } from '../types';
+import { canRoleViewModule, canRoleInputModule } from '../services/rbacService';
 
 export type Permission =
   // Dashboard
@@ -272,9 +273,11 @@ export function hasPermission(
 
   // 2. Waka Kesiswaan permissions
   if (role === 'waka_kesiswaan') {
-    // Has full managerial access except system-level administrative configurations
-    if (permission === 'settings.manage' || permission === 'permissions.manage_system') {
-      return false; // Reserved for Super Admin
+    if (permission === 'settings.manage') {
+      return canRoleInputModule(user.role, 'config_master', user);
+    }
+    if (permission === 'permissions.manage_system') {
+      return canRoleInputModule(user.role, 'cpanel_users', user);
     }
     return true;
   }
@@ -483,44 +486,81 @@ export function canAccessMenu(
       return true;
 
     case 'students':
-      return role === 'waka_kesiswaan' || role === 'guru_bk' || role === 'pembina_osim' || role === 'coach_ekstrakurikuler' || (role as any) === 'pembina_ekstrakurikuler';
+      return (
+        role === 'waka_kesiswaan' ||
+        role === 'guru_bk' ||
+        role === 'pembina_osim' ||
+        role === 'coach_ekstrakurikuler'
+      );
 
     case 'teachers':
-      return role === 'waka_kesiswaan';
+      return role === 'waka_kesiswaan' || canRoleViewModule(user.role, 'crud_teachers', user);
 
     case 'osim':
-      return role === 'waka_kesiswaan' || role === 'pembina_osim' || role === 'anggota_osim';
+      return (
+        role === 'waka_kesiswaan' ||
+        role === 'pembina_osim' ||
+        role === 'anggota_osim' ||
+        canRoleViewModule(user.role, 'osim_structure', user) ||
+        canRoleViewModule(user.role, 'proposal_lpj', user)
+      );
 
     case 'extracurricular':
+    case 'extracurriculars':
       return (
         role === 'waka_kesiswaan' ||
         role === 'coach_ekstrakurikuler' ||
-        (role as any) === 'pembina_ekstrakurikuler' ||
-        (user.extracurricularIds && user.extracurricularIds.length > 0)
+        (user.extracurricularIds && user.extracurricularIds.length > 0) ||
+        canRoleViewModule(user.role, 'extracurricular_grading', user) ||
+        canRoleViewModule(user.role, 'crud_pembina_ekstra', user)
+      );
+
+    case 'members':
+      return (
+        role === 'waka_kesiswaan' ||
+        role === 'coach_ekstrakurikuler' ||
+        (user.extracurricularIds && user.extracurricularIds.length > 0) ||
+        canRoleViewModule(user.role, 'crud_members', user)
       );
 
     case 'cash':
-      return role === 'waka_kesiswaan' || pos === 'bendahara' || pos === 'bendahara_osim' || user.isCashManager === true;
+    case 'cash_ledger':
+      return (
+        role === 'waka_kesiswaan' ||
+        role === 'guru_bk' ||
+        role === 'pembina_osim' ||
+        role === 'coach_ekstrakurikuler' ||
+        pos === 'bendahara' ||
+        pos === 'bendahara_osim' ||
+        user.isCashManager === true ||
+        canRoleViewModule(user.role, 'cash_osim', user)
+      );
 
     case 'counseling':
-      return role === 'waka_kesiswaan' || role === 'guru_bk';
+      return role === 'waka_kesiswaan' || role === 'guru_bk' || canRoleViewModule(user.role, 'counseling_confidential', user);
 
     case 'violations':
-      return role === 'waka_kesiswaan' || role === 'guru_bk';
+      return role === 'waka_kesiswaan' || role === 'guru_bk' || canRoleViewModule(user.role, 'violations_discipline', user);
 
     case 'dispensations':
     case 'permissions':
-      return role === 'waka_kesiswaan' || role === 'guru_bk';
+      return (
+        role === 'waka_kesiswaan' ||
+        role === 'guru_bk' ||
+        role === 'pembina_osim' ||
+        role === 'coach_ekstrakurikuler' ||
+        canRoleViewModule(user.role, 'dispensation_letters', user)
+      );
 
     case 'reports':
       return true;
 
     case 'cpanel':
     case 'users':
-      return role === 'waka_kesiswaan';
+      return canRoleViewModule(user.role, 'cpanel_users', user) || canRoleInputModule(user.role, 'cpanel_users', user);
 
     case 'settings':
-      return false;
+      return role === 'waka_kesiswaan' || canRoleViewModule(user.role, 'config_master', user);
 
     default:
       return true;

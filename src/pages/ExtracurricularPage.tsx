@@ -43,7 +43,8 @@ interface ExtracurricularPageProps {
 
 export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavigateToMembers }) => {
   const { isWakaOrAdmin, isPembina, currentUser, canManageExtracurricular } = useAuth();
-  const canCrudPembinaEkstra = useCrudPermission('pembina_ekstra', currentUser?.role);
+  const canCrudPembinaEkstra = useCrudPermission('pembina_ekstra', currentUser?.role, currentUser);
+  const canManageEkstra = Boolean(canCrudPembinaEkstra || isWakaOrAdmin);
   const { extracurriculars, teachers, addExtracurricular, updateExtracurricular, deleteExtracurricular, members } = useSchool();
 
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -351,7 +352,7 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
             ]}
           />
 
-          {canCrudPembinaEkstra && (
+          {canManageEkstra && (
             <button
               onClick={handleOpenAdd}
               className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/20 flex items-center gap-2 transition-all hover:scale-105"
@@ -363,7 +364,7 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
         </div>
       </div>
 
-      {!canCrudPembinaEkstra && (
+      {!canManageEkstra && (
         <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-between gap-3 text-amber-900 dark:text-amber-200">
           <div className="flex items-center gap-2.5">
             <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-700 dark:text-amber-300 shrink-0">

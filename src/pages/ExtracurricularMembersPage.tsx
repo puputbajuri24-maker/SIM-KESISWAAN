@@ -53,7 +53,7 @@ interface MembersPageProps {
 
 export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initialEkskulId, onNavigate }) => {
   const { isWakaOrAdmin, isPembina, currentUser } = useAuth();
-  const canCrudMembers = useCrudPermission('members', currentUser?.role);
+  const canCrudMembers = useCrudPermission('members', currentUser?.role, currentUser);
   const {
     classes,
     members,
@@ -85,6 +85,13 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
     }
     return extracurriculars;
   }, [extracurriculars, isPembinaOnly, myAssignedIds, currentUser]);
+
+  // Operational authorization: Super Admin / Waka, roles granted members CRUD in RBAC, or Pembina managing assigned club
+  const canManageMembers = Boolean(
+    isWakaOrAdmin ||
+    canCrudMembers ||
+    (isPembina && availableEkskuls.length > 0)
+  );
 
   const [selectedClass, setSelectedClass] = useState<string>('all');
   const [selectedEkskul, setSelectedEkskul] = useState<string>(() => {
@@ -671,7 +678,7 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
           >
             <Eye className="w-4 h-4" />
           </button>
-          {canCrudMembers && (isWakaOrAdmin || availableEkskuls.some(e => e.id === m.extracurricularId)) && (
+          {canManageMembers && (isWakaOrAdmin || availableEkskuls.some(e => e.id === m.extracurricularId)) && (
             <>
               <button
                 onClick={e => handleOpenEdit(m, e)}
@@ -722,7 +729,7 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
             ]}
           />
 
-          {canCrudMembers && (
+          {canManageMembers && (
             <button
               onClick={handleOpenAdd}
               className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/20 flex items-center gap-2 transition-all hover:scale-105"
@@ -734,7 +741,7 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
         </div>
       </div>
 
-      {!canCrudMembers && (
+      {!canManageMembers && (
         <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/25 flex items-center justify-between gap-3 text-amber-900 dark:text-amber-200">
           <div className="flex items-center gap-2.5">
             <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-700 dark:text-amber-300 shrink-0">
@@ -969,7 +976,7 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
       </div>
 
       {/* Batch Actions Toolbar when members are selected */}
-      {canCrudMembers && selectedMemberIds.size > 0 && (
+      {canManageMembers && selectedMemberIds.size > 0 && (
         <div className="p-3.5 rounded-2xl bg-indigo-50/90 dark:bg-indigo-950/70 border-2 border-indigo-300 dark:border-indigo-700/80 flex flex-wrap items-center justify-between gap-3 shadow-md animate-in fade-in slide-in-from-top-2 duration-200">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white font-black text-xs flex items-center justify-center shadow-xs">
@@ -1038,7 +1045,7 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
         data={filteredMembers}
         columns={columns}
         onRowClick={m => handleOpenDetail(m)}
-        selectable={canCrudMembers}
+        selectable={canManageMembers}
         selectedIds={selectedMemberIds}
         onToggleSelect={handleToggleSelectMember}
         onToggleSelectAll={handleToggleSelectAllMembers}
@@ -1046,7 +1053,7 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
         searchableKeys={['studentName', 'studentNis', 'studentClass', 'extracurricularName']}
         emptyTitle="Tidak Ada Anggota"
         emptySubtitle="Belum ada siswa yang terdaftar dalam kriteria filter ini."
-        batchActions={canCrudMembers ? (ids) => (
+        batchActions={canManageMembers ? (ids) => (
           <div className="flex items-center gap-2">
             <button
               type="button"
@@ -1079,7 +1086,7 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
         maxWidth="lg"
         footer={
           <>
-            {canCrudMembers && (
+            {canManageMembers && (
               <button
                 type="button"
                 onClick={() => {

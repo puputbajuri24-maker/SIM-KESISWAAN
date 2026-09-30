@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '../services/firebase';
+import { handleFirestoreError, OperationType } from '../services/firestoreErrors';
 import { doc, setDoc, onSnapshot } from 'firebase/firestore';
 
 export type ThemeMode = 'dark' | 'light' | 'system';
@@ -187,29 +189,43 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // 5. Global Real-Time Theme Listener (doc: settings/theme_config)
   // Ensures ALL devices (HP, Tablet, Desktop) immediately display identical theme
   useEffect(() => {
-    const unsubscribe = onSnapshot(doc(db, 'settings', 'theme_config'), (docSnap) => {
-      if (!docSnap.exists()) return;
-      const data = docSnap.data();
-      if (data?.mode && (data.mode === 'dark' || data.mode === 'light' || data.mode === 'system')) {
-        setModeState(prev => (prev !== data.mode ? data.mode : prev));
+    let unsubTheme: (() => void) | null = null;
+    const unsubscribeAuth = onAuthStateChanged(auth, () => {
+      if (unsubTheme) {
+        unsubTheme();
+        unsubTheme = null;
       }
-      if (data?.palette && THEME_PALETTES.some(p => p.id === data.palette)) {
-        setPaletteState(prev => (prev !== data.palette ? data.palette : prev));
+      try {
+        unsubTheme = onSnapshot(doc(db, 'settings', 'theme_config'), (docSnap) => {
+          if (!docSnap.exists()) return;
+          const data = docSnap.data();
+          if (data?.mode && (data.mode === 'dark' || data.mode === 'light' || data.mode === 'system')) {
+            setModeState(prev => (prev !== data.mode ? data.mode : prev));
+          }
+          if (data?.palette && THEME_PALETTES.some(p => p.id === data.palette)) {
+            setPaletteState(prev => (prev !== data.palette ? data.palette : prev));
+          }
+          if (data?.fontSize && ['compact', 'normal', 'comfortable'].includes(data.fontSize)) {
+            setFontSizeState(prev => (prev !== data.fontSize ? data.fontSize : prev));
+          }
+          if (data?.fontContrast && ['standard', 'high'].includes(data.fontContrast)) {
+            setFontContrastState(prev => (prev !== data.fontContrast ? data.fontContrast : prev));
+          }
+          if (data?.fontFamily && ['jakarta', 'inter', 'system'].includes(data.fontFamily)) {
+            setFontFamilyState(prev => (prev !== data.fontFamily ? data.fontFamily : prev));
+          }
+        }, (err) => {
+          handleFirestoreError(err, OperationType.GET, 'settings/theme_config');
+        });
+      } catch (e) {
+        console.warn('Theme listener attach warning:', e);
       }
-      if (data?.fontSize && ['compact', 'normal', 'comfortable'].includes(data.fontSize)) {
-        setFontSizeState(prev => (prev !== data.fontSize ? data.fontSize : prev));
-      }
-      if (data?.fontContrast && ['standard', 'high'].includes(data.fontContrast)) {
-        setFontContrastState(prev => (prev !== data.fontContrast ? data.fontContrast : prev));
-      }
-      if (data?.fontFamily && ['jakarta', 'inter', 'system'].includes(data.fontFamily)) {
-        setFontFamilyState(prev => (prev !== data.fontFamily ? data.fontFamily : prev));
-      }
-    }, (err) => {
-      console.warn('Global theme onSnapshot notice:', err);
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribeAuth();
+      if (unsubTheme) unsubTheme();
+    };
   }, []);
 
   // Helper to persist preference to Cloud Firestore in background
@@ -231,7 +247,9 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       };
 
       // 1. Save to global theme config in Firestore so all devices match immediately
-      setDoc(doc(db, 'settings', 'theme_config'), updatedPref, { merge: true }).catch(() => {});
+      setDoc(doc(db, 'settings', 'theme_config'), updatedPref, { merge: true }).catch((err) => {
+        handleFirestoreError(err, OperationType.WRITE, 'settings/theme_config');
+      });
 
       // 2. Also save to user doc if logged in
       let uid: string | null = null;
@@ -248,7 +266,9 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (uid) {
         setDoc(doc(db, 'users', uid), {
           themePreference: updatedPref
-        }, { merge: true }).catch(() => {});
+        }, { merge: true }).catch((err) => {
+          handleFirestoreError(err, OperationType.WRITE, `users/${uid}`);
+        });
       }
     } catch (err) {
       console.warn('Failed to sync theme preference to cloud:', err);

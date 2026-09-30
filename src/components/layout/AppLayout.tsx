@@ -121,7 +121,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
     returnToAdminSession,
     logout,
     loginWithDemoRole,
-    loginWithUser
+    loginWithUser,
+    canAccessTab
   } = useAuth();
   const { schoolSetting, activeAcademicYear, activeSemester, notifications, markNotificationAsRead, markAllNotificationsAsRead, isSyncing, extracurriculars, announcements, markAnnouncementAsRead, markAllAnnouncementsAsReadForUser } = useSchool();
   const { timezoneMode, resolvedTimezone, timezoneAbbr, utcOffsetString, formattedTime, formattedDate } = useAppTimezone();
@@ -608,8 +609,18 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
         }
       ];
 
+  // Dynamically filter navigation sections based on active user role permissions
+  const visibleNavSections = useMemo(() => {
+    return (navSections || [])
+      .map(sec => ({
+        ...sec,
+        items: (sec.items || []).filter(item => canAccessTab(item.id))
+      }))
+      .filter(sec => sec.items.length > 0);
+  }, [navSections, canAccessTab]);
+
   const currentNavItem = useMemo(() => {
-    for (const section of navSections) {
+    for (const section of visibleNavSections) {
       const found = section.items.find(item => item.id === activeTab);
       if (found) return found;
     }
@@ -618,7 +629,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
       label: activeTab === 'dashboard' ? 'Command Center' : String(activeTab).toUpperCase(),
       icon: LayoutDashboard
     };
-  }, [navSections, activeTab]);
+  }, [visibleNavSections, activeTab]);
   const CurrentNavIcon = currentNavItem.icon;
 
   const handleNavClick = (id: string) => {
@@ -671,7 +682,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
 
         {/* Navigation Sections */}
         <div className="flex-1 px-3 py-3 space-y-4 overflow-y-auto custom-scrollbar">
-          {(navSections || []).map(sec => (
+          {(visibleNavSections || []).map(sec => (
             <div key={sec.title} className="space-y-1">
               <div className="px-3 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                 {sec.title}
@@ -1508,7 +1519,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                 </div>
 
                 <div className="py-3 space-y-4">
-                  {(navSections || []).map(sec => (
+                  {(visibleNavSections || []).map(sec => (
                     <div key={sec.title} className="space-y-1">
                       <div className="px-2 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                         {sec.title}

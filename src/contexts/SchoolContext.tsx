@@ -80,9 +80,12 @@ import {
   clearAllFirebaseOperationalData,
   uploadAllStateToFirebase
 } from '../services/seedData';
-import { db } from '../services/firebase';
+import { db, auth } from '../services/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
+import { handleFirestoreError, OperationType } from '../services/firestoreErrors';
 import { collection, getDocs, getDoc, doc, setDoc, updateDoc, deleteDoc, addDoc, writeBatch, onSnapshot, query, where } from 'firebase/firestore';
 import { useAuth } from './AuthContext';
+import { initGlobalRbacSync } from '../services/rbacService';
 import { findMatchingClass, resolveStudentClass, isStudentInClass } from '../utils/classResolver';
 import { normalizeTeacherCode, formatTeacherCode, formatStudentCode, formatTeacherDocId, getNextTeacherDocId } from '../utils/idGenerator';
 import { resolveStudent, resolveTeacher } from '../utils/relationResolvers';
@@ -1285,38 +1288,42 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             localStorage.setItem('sim_achievements', JSON.stringify(loadedAch));
           } catch (e) {}
 
-          // BK Collections Sync
-          const csSnap = await getDocs(collection(db, 'counseling'));
-          const loadedCs: StudentCounseling[] = [];
-          csSnap.forEach(doc => loadedCs.push({ id: doc.id, ...doc.data() } as StudentCounseling));
-          setCounseling(loadedCs);
+          // BK Collections Sync (Restricted to Guru BK and Waka/Admin)
           try {
-            localStorage.setItem('sim_counseling', JSON.stringify(loadedCs));
-          } catch (e) {}
+            const csSnap = await getDocs(collection(db, 'counseling'));
+            const loadedCs: StudentCounseling[] = [];
+            csSnap.forEach(doc => loadedCs.push({ id: doc.id, ...doc.data() } as StudentCounseling));
+            setCounseling(loadedCs);
+            try {
+              localStorage.setItem('sim_counseling', JSON.stringify(loadedCs));
+            } catch (e) {}
 
-          const hvSnap = await getDocs(collection(db, 'home_visits'));
-          const loadedHv: HomeVisitRecord[] = [];
-          hvSnap.forEach(doc => loadedHv.push({ id: doc.id, ...doc.data() } as HomeVisitRecord));
-          setHomeVisits(loadedHv);
-          try {
-            localStorage.setItem('sim_home_visits', JSON.stringify(loadedHv));
-          } catch (e) {}
+            const hvSnap = await getDocs(collection(db, 'home_visits'));
+            const loadedHv: HomeVisitRecord[] = [];
+            hvSnap.forEach(doc => loadedHv.push({ id: doc.id, ...doc.data() } as HomeVisitRecord));
+            setHomeVisits(loadedHv);
+            try {
+              localStorage.setItem('sim_home_visits', JSON.stringify(loadedHv));
+            } catch (e) {}
 
-          const pclSnap = await getDocs(collection(db, 'parent_call_letters'));
-          const loadedPcl: ParentCallLetter[] = [];
-          pclSnap.forEach(doc => loadedPcl.push({ id: doc.id, ...doc.data() } as ParentCallLetter));
-          setParentCallLetters(loadedPcl);
-          try {
-            localStorage.setItem('sim_parent_call_letters', JSON.stringify(loadedPcl));
-          } catch (e) {}
+            const pclSnap = await getDocs(collection(db, 'parent_call_letters'));
+            const loadedPcl: ParentCallLetter[] = [];
+            pclSnap.forEach(doc => loadedPcl.push({ id: doc.id, ...doc.data() } as ParentCallLetter));
+            setParentCallLetters(loadedPcl);
+            try {
+              localStorage.setItem('sim_parent_call_letters', JSON.stringify(loadedPcl));
+            } catch (e) {}
 
-          const cgSnap = await getDocs(collection(db, 'career_guidances'));
-          const loadedCg: CareerGuidanceRecord[] = [];
-          cgSnap.forEach(doc => loadedCg.push({ id: doc.id, ...doc.data() } as CareerGuidanceRecord));
-          setCareerGuidances(loadedCg);
-          try {
-            localStorage.setItem('sim_career_guidances', JSON.stringify(loadedCg));
-          } catch (e) {}
+            const cgSnap = await getDocs(collection(db, 'career_guidances'));
+            const loadedCg: CareerGuidanceRecord[] = [];
+            cgSnap.forEach(doc => loadedCg.push({ id: doc.id, ...doc.data() } as CareerGuidanceRecord));
+            setCareerGuidances(loadedCg);
+            try {
+              localStorage.setItem('sim_career_guidances', JSON.stringify(loadedCg));
+            } catch (e) {}
+          } catch (bkErr) {
+            // Unprivileged roles do not have read permission for BK confidential collections
+          }
 
           // Permissions Sync
           const permSnap = await getDocs(collection(db, 'permissions'));
@@ -1498,17 +1505,21 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             } catch (e) {}
           }
 
-          // Audit Logs Sync from Firestore
-          const auditSnap = await getDocs(collection(db, 'audit_logs'));
-          if (!auditSnap.empty) {
-            const loadedLogs: AuditLogItem[] = [];
-            auditSnap.forEach(doc => loadedLogs.push({ id: doc.id, ...doc.data() } as AuditLogItem));
-            // Sort newest first
-            loadedLogs.sort((a, b) => (b.id > a.id ? 1 : -1));
-            setAuditLogs(loadedLogs);
-            try {
-              localStorage.setItem('sim_audit_logs', JSON.stringify(loadedLogs));
-            } catch (e) {}
+          // Audit Logs Sync from Firestore (Restricted to Waka/Admin)
+          try {
+            const auditSnap = await getDocs(collection(db, 'audit_logs'));
+            if (!auditSnap.empty) {
+              const loadedLogs: AuditLogItem[] = [];
+              auditSnap.forEach(doc => loadedLogs.push({ id: doc.id, ...doc.data() } as AuditLogItem));
+              // Sort newest first
+              loadedLogs.sort((a, b) => (b.id > a.id ? 1 : -1));
+              setAuditLogs(loadedLogs);
+              try {
+                localStorage.setItem('sim_audit_logs', JSON.stringify(loadedLogs));
+              } catch (e) {}
+            }
+          } catch (auditErr) {
+            // Unprivileged roles do not have read permission for audit logs
           }
         } else {
           // Cloud database is empty: auto initialize master data to Firestore
@@ -1620,12 +1631,32 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   // Real-time synchronization across all devices via Firestore onSnapshot
+  // CRITICAL (React Firebase Setup): Only attach onSnapshot listeners if auth is ready and user is authenticated.
   useEffect(() => {
-    const unsubscribers: (() => void)[] = [];
+    let unsubscribers: (() => void)[] = [];
 
-    // Trigger initial load and ensure local device changes are reconciled to Firestore
-    syncWithFirebase();
-    syncLocalChangesToFirestore().catch(() => {});
+    const unsubscribeAuth = onAuthStateChanged(auth, (fbUser) => {
+      unsubscribers.forEach(unsub => unsub());
+      unsubscribers = [];
+
+      if (!fbUser) {
+        setIsRealTimeConnected(false);
+        return;
+      }
+
+      // Trigger initial load and ensure local device changes are reconciled to Firestore
+      syncWithFirebase();
+      syncLocalChangesToFirestore().catch(() => {});
+
+    // 0. Real-time Global RBAC Matrix Listener (Firestore settings/rbac_matrix)
+    try {
+      const unsubRbac = initGlobalRbacSync();
+      if (typeof unsubRbac === 'function') {
+        unsubscribers.push(unsubRbac);
+      }
+    } catch (e) {
+      console.warn('RBAC Global sync listener error:', e);
+    }
 
     // 1. Real-time Students Listener
     try {
@@ -1654,7 +1685,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           }
         }
       }, (err) => {
-        console.warn('Real-time students listener notice:', err);
+        handleFirestoreError(err, OperationType.GET, 'students');
       });
       unsubscribers.push(unsub);
     } catch (e) {}
@@ -1681,7 +1712,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           return { ...ekskul, memberCount: count };
         }));
       }, (err) => {
-        console.warn('Real-time members listener notice:', err);
+        handleFirestoreError(err, OperationType.GET, 'extracurricular_members');
       });
       unsubscribers.push(unsub);
     } catch (e) {}
@@ -1703,7 +1734,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           } catch (e) {}
         }
       }, (err) => {
-        console.warn('Real-time extracurriculars listener notice:', err);
+        handleFirestoreError(err, OperationType.GET, 'extracurriculars');
       });
       unsubscribers.push(unsub);
     } catch (e) {}
@@ -1729,7 +1760,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           } catch (e) {}
         }
       }, (err) => {
-        console.warn('Real-time classes listener notice:', err);
+        handleFirestoreError(err, OperationType.GET, 'classes');
       });
       unsubscribers.push(unsub);
     } catch (e) {}
@@ -1771,7 +1802,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           });
         }
       }, (err) => {
-        console.warn('Real-time teachers listener notice:', err);
+        handleFirestoreError(err, OperationType.GET, 'teachers');
       });
       unsubscribers.push(unsub);
     } catch (e) {}
@@ -1822,7 +1853,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           }
         }
       }, (err) => {
-        console.warn('Real-time schools listener notice:', err);
+        handleFirestoreError(err, OperationType.GET, 'schools');
       });
       unsubscribers.push(unsub);
     } catch (e) {}
@@ -1841,7 +1872,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           } catch (e) {}
         }
       }, (err) => {
-        console.warn('Real-time academic_years listener notice:', err);
+        handleFirestoreError(err, OperationType.GET, 'academic_years');
       });
       unsubscribers.push(unsub);
     } catch (e) {}
@@ -1858,7 +1889,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           localStorage.setItem('sim_attendance', JSON.stringify(loaded));
         } catch (e) {}
       }, (err) => {
-        console.warn('Real-time attendance listener notice:', err);
+        handleFirestoreError(err, OperationType.GET, 'attendance');
       });
       unsubscribers.push(unsub);
     } catch (e) {}
@@ -1875,7 +1906,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           localStorage.setItem('sim_activities', JSON.stringify(loaded));
         } catch (e) {}
       }, (err) => {
-        console.warn('Real-time activities listener notice:', err);
+        handleFirestoreError(err, OperationType.GET, 'activities');
       });
       unsubscribers.push(unsub);
     } catch (e) {}
@@ -1892,7 +1923,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           localStorage.setItem('sim_activity_reports', JSON.stringify(loaded));
         } catch (e) {}
       }, (err) => {
-        console.warn('Real-time activity_reports listener notice:', err);
+        handleFirestoreError(err, OperationType.GET, 'activity_reports');
       });
       unsubscribers.push(unsub);
     } catch (e) {}
@@ -1912,7 +1943,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           localStorage.setItem('sim_schedules', JSON.stringify(loaded));
         } catch (e) {}
       }, (err) => {
-        console.warn('Real-time schedules listener notice:', err);
+        handleFirestoreError(err, OperationType.GET, 'schedules');
       });
       unsubscribers.push(unsub);
     } catch (e) {}
@@ -1929,7 +1960,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           localStorage.setItem('sim_violations', JSON.stringify(loaded));
         } catch (e) {}
       }, (err) => {
-        console.warn('Real-time violations listener notice:', err);
+        handleFirestoreError(err, OperationType.GET, 'violations');
       });
       unsubscribers.push(unsub);
     } catch (e) {}
@@ -1946,7 +1977,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           localStorage.setItem('sim_counseling', JSON.stringify(loaded));
         } catch (e) {}
       }, (err) => {
-        console.warn('Real-time counseling listener notice:', err);
+        handleFirestoreError(err, OperationType.GET, 'counseling');
       });
       unsubscribers.push(unsub);
     } catch (e) {}
@@ -1963,7 +1994,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           localStorage.setItem('sim_achievements', JSON.stringify(loaded));
         } catch (e) {}
       }, (err) => {
-        console.warn('Real-time achievements listener notice:', err);
+        handleFirestoreError(err, OperationType.GET, 'achievements');
       });
       unsubscribers.push(unsub);
     } catch (e) {}
@@ -1980,7 +2011,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           localStorage.setItem('sim_permissions', JSON.stringify(loaded));
         } catch (e) {}
       }, (err) => {
-        console.warn('Real-time permissions listener notice:', err);
+        handleFirestoreError(err, OperationType.GET, 'permissions');
       });
       unsubscribers.push(unsub);
     } catch (e) {}
@@ -2002,7 +2033,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           localStorage.setItem('sim_osim_members', JSON.stringify(deduplicated));
         } catch (e) {}
       }, (err) => {
-        console.warn('Real-time osim_members listener notice:', err);
+        handleFirestoreError(err, OperationType.GET, 'osim_members');
       });
       unsubscribers.push(unsub);
     } catch (e) {}
@@ -2019,7 +2050,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           localStorage.setItem('sim_osim_programs', JSON.stringify(loaded));
         } catch (e) {}
       }, (err) => {
-        console.warn('Real-time osim_programs listener notice:', err);
+        handleFirestoreError(err, OperationType.GET, 'osim_programs');
       });
       unsubscribers.push(unsub);
     } catch (e) {}
@@ -2036,14 +2067,16 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           localStorage.setItem('sim_announcements', JSON.stringify(loaded));
         } catch (e) {}
       }, (err) => {
-        console.warn('Real-time announcements listener notice:', err);
+        handleFirestoreError(err, OperationType.GET, 'announcements');
       });
       unsubscribers.push(unsub);
     } catch (e) {}
 
-    setIsRealTimeConnected(true);
+      setIsRealTimeConnected(true);
+    });
 
     return () => {
+      unsubscribeAuth();
       unsubscribers.forEach(unsub => unsub());
     };
   }, []);

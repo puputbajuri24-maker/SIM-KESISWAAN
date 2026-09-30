@@ -130,21 +130,20 @@ export const OsimPage: React.FC = () => {
     deleteUser,
     syncUsersFromOsim
   } = useAuth();
-  const canCrudMembers = useCrudPermission('members', currentUser?.role);
-  const canCrudPembinaIntra = useCrudPermission('pembina_intra', currentUser?.role);
-  const canResetPasswords = useCrudPermission('password_reset', currentUser?.role);
+  const canCrudMembers = useCrudPermission('members', currentUser?.role, currentUser);
+  const canCrudPembinaIntra = useCrudPermission('pembina_intra', currentUser?.role, currentUser);
+  const canResetPasswords = useCrudPermission('password_reset', currentUser?.role, currentUser);
 
   const canManageOsim = isSupervisoryVetoAuthorized || isPengurusOsim;
-  const canManageOsimAccounts = (isPembinaOsim || isWakaOrAdmin) && (canCrudMembers || canResetPasswords);
+  const canManageOsimAccounts = (isPembinaOsim || isWakaOrAdmin) && (canCrudMembers || canResetPasswords || isSupervisoryVetoAuthorized);
   const isOsimTeacher = isSupervisoryVetoAuthorized;
   const hasSupervisionVeto = isSupervisoryVetoAuthorized;
 
   // Kebijakan Khusus RBAC Kesiswaan:
-  // Seluruh akun anggota OSIM (baik BPH maupun Sekbid) TIDAK memiliki akses untuk CRUD (Create, Read, Update, Delete)
-  // pada tab menu "Struktur Kabinet & Bidang", hanya diizinkan untuk melihat saja (Read-Only).
-  // Hak akses CRUD struktur kabinet & bidang eksklusif dikendalikan terpusat di cPanel Kesiswaan.
+  // Seluruh akun anggota OSIM (baik BPH maupun Sekbid) TIDAK memiliki akses untuk CRUD struktur kabinet
+  // Hak akses CRUD struktur kabinet & bidang dipegang oleh Pembina OSIM, Waka Kesiswaan, dan Admin.
   const isOsimMemberAccount = Boolean(isPengurusOsim || currentUser?.role === 'pengurus_osim' || currentUser?.role === 'anggota_osim');
-  const canManageCabinetStructure = !isOsimMemberAccount && Boolean(isSupervisoryVetoAuthorized || isPembinaOsim || isWakaOrAdmin) && canCrudMembers;
+  const canManageCabinetStructure = !isOsimMemberAccount && Boolean(isSupervisoryVetoAuthorized || isPembinaOsim || isWakaOrAdmin) && (canCrudMembers || isSupervisoryVetoAuthorized || isPembinaOsim);
 
   const {
     osimMembers,

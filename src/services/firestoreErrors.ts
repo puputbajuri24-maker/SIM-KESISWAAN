@@ -26,6 +26,17 @@ export interface FirestoreErrorInfo {
   };
 }
 
+export function isPermissionError(error: unknown): boolean {
+  if (!error) return false;
+  const msg = error instanceof Error ? error.message : String(error);
+  const code = (error as any)?.code;
+  return (
+    code === 'permission-denied' ||
+    msg.toLowerCase().includes('permission') ||
+    msg.toLowerCase().includes('insufficient')
+  );
+}
+
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
   const currentUser = auth.currentUser;
   const errInfo: FirestoreErrorInfo = {
@@ -44,6 +55,6 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path
   };
-  console.error('Firestore Security / Operation Error: ', JSON.stringify(errInfo));
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }

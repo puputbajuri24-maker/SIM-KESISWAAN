@@ -1,6 +1,14 @@
 import { useState, useEffect } from 'react';
 import { UserRole, UserProfile } from '../types';
-import { canRoleInputModule } from '../components/cpanel/RbacMatrixPanel';
+import { normalizeUserRole } from '../permissions';
+import {
+  canRoleInputModule,
+  canRoleViewModule,
+  getActiveRbacMatrix,
+  RoleKey,
+  ModulePermissionRow,
+  initGlobalRbacSync
+} from '../services/rbacService';
 
 export type CrudTarget = 'teachers' | 'pembina_intra' | 'pembina_ekstra' | 'guru_bk' | 'members' | 'password_reset';
 
@@ -39,30 +47,49 @@ export const CRUD_MODULE_MAP: Record<CrudTarget, { moduleId: string; label: stri
 
 /**
  * Evaluates whether a role is authorized to perform CRUD operations on a given target.
- * Rule: Outside cPanel, CRUD is strictly restricted/prohibited UNLESS explicitly granted
+ * Rule: Outside cPanel, CRUD is restricted UNLESS explicitly granted
  * by Super Admin in the RBAC permission matrix checklist.
  */
-export const canPerformCrud = (role: UserRole | string | undefined, target: CrudTarget): boolean => {
+export const canPerformCrud = (
+  role: UserRole | string | undefined,
+  target: CrudTarget,
+  user?: UserProfile | null
+): boolean => {
   if (!role) return false;
+  const canonical = normalizeUserRole(role);
   // Super admin always has unrestricted root authorization
-  if (role === 'super_admin') return true;
+  if (canonical === 'super_admin' || role === 'super_admin' || role === 'admin') {
+    return true;
+  }
 
   const mapping = CRUD_MODULE_MAP[target];
   if (!mapping) return false;
 
-  return canRoleInputModule(role, mapping.moduleId);
+  return canRoleInputModule(role, mapping.moduleId, user);
 };
 
 /**
- * React hook that reactively listens to changes in the RBAC matrix (via custom events or storage)
- * so that when the cPanel admin updates matrix checkboxes, all active modules update without reload.
+ * React hook that reactively listens to global changes in the RBAC matrix
+ * (via Firestore onSnapshot, custom events, or storage) so that all active modules
+ * update immediately across tabs and devices without needing a page reload.
  */
-export const useCrudPermission = (target: CrudTarget, userRole: UserRole | string | undefined): boolean => {
-  const [hasPermission, setHasPermission] = useState<boolean>(() => canPerformCrud(userRole, target));
+export const useCrudPermission = (
+  target: CrudTarget,
+  userRole: UserRole | string | undefined,
+  user?: UserProfile | null
+): boolean => {
+  // Ensure sync listener is active
+  useEffect(() => {
+    initGlobalRbacSync();
+  }, []);
+
+  const [hasPermission, setHasPermission] = useState<boolean>(() =>
+    canPerformCrud(userRole, target, user)
+  );
 
   useEffect(() => {
     const check = () => {
-      setHasPermission(canPerformCrud(userRole, target));
+      setHasPermission(canPerformCrud(userRole, target, user));
     };
 
     check();
@@ -78,7 +105,7 @@ export const useCrudPermission = (target: CrudTarget, userRole: UserRole | strin
       window.removeEventListener('rbac-matrix-updated', handleUpdate);
       window.removeEventListener('storage', handleUpdate);
     };
-  }, [target, userRole]);
+  }, [target, userRole, user]);
 
   return hasPermission;
 };
@@ -94,14 +121,17 @@ export const canResetUserPassword = (
   targetUser: UserProfile | null | undefined
 ): { allowed: boolean; reason?: string } => {
   if (!actor || !targetUser) return { allowed: false, reason: 'Pengguna tidak valid.' };
-  
+
+  const canonicalActor = normalizeUserRole(actor.role);
+
   // Super Admin has unrestricted authority
-  if (actor.role === 'super_admin') {
+  if (canonicalActor === 'super_admin' || actor.role === 'super_admin') {
     return { allowed: true };
   }
 
   // Strict check: Pembina Ekstrakurikuler has NO authority to reset any password
-  const isActorPembinaEkstra = 
+  const isActorPembinaEkstra =
+    canonicalActor === 'coach_ekstrakurikuler' ||
     actor.role === 'coach_ekstrakurikuler' ||
     actor.role === 'pembina_ekstrakurikuler' ||
     actor.role === 'pembina_ekskul' ||
@@ -115,26 +145,28 @@ export const canResetUserPassword = (
     };
   }
 
-  // Check if actor's role has permission for password reset
-  const hasPerm = canPerformCrud(actor.role, 'password_reset');
+  // Check if actor's role has permission for password reset in active dynamic matrix
+  const hasPerm = canPerformCrud(actor.role, 'password_reset', actor);
   if (!hasPerm) {
-    return { 
-      allowed: false, 
-      reason: 'Peran Anda belum diberikan checklist izin "Reset Sandi Pengguna (Helpdesk Delegasi)" pada Matriks Hak Akses Peran.' 
+    return {
+      allowed: false,
+      reason: 'Peran Anda belum diberikan checklist izin "Reset Sandi Pengguna (Helpdesk Delegasi)" pada Matriks Hak Akses Peran.'
     };
   }
 
   // Super Admin target is ALWAYS protected
-  if (targetUser.role === 'super_admin') {
-    return { 
-      allowed: false, 
-      reason: 'Proteksi Hirarki Kritis: Akun Super Admin tidak dapat direset oleh peran lain.' 
+  const canonicalTarget = normalizeUserRole(targetUser.role);
+  if (canonicalTarget === 'super_admin' || targetUser.role === 'super_admin') {
+    return {
+      allowed: false,
+      reason: 'Proteksi Hirarki Kritis: Akun Super Admin tidak dapat direset oleh peran lain.'
     };
   }
 
   // Protection for Pembina Ekstrakurikuler target:
   // Pembina Ekstrakurikuler accounts can ONLY be reset centrally by Super Admin in cPanel
-  const isTargetPembinaEkstra = 
+  const isTargetPembinaEkstra =
+    canonicalTarget === 'coach_ekstrakurikuler' ||
     targetUser.role === 'coach_ekstrakurikuler' ||
     targetUser.role === 'pembina_ekstrakurikuler' ||
     targetUser.role === 'pembina_ekskul' ||
@@ -149,27 +181,28 @@ export const canResetUserPassword = (
   }
 
   // Target is student or OSIM member
-  const isTargetStudentOrOsim = 
-    targetUser.role === 'pengurus_osim' || 
+  const isTargetStudentOrOsim =
+    canonicalTarget === 'anggota_osim' ||
+    targetUser.role === 'pengurus_osim' ||
     targetUser.role === 'anggota_osim';
 
-  if (actor.role === 'pembina_osim') {
-    if (targetUser.role === 'pengurus_osim' || targetUser.role === 'anggota_osim') {
-      return { allowed: true };
-    }
-    return { 
-      allowed: false, 
-      reason: 'Pembina OSIM hanya memiliki wewenang delegasi untuk mereset kata sandi akun Siswa Pengurus OSIM.' 
-    };
-  }
-
-  if (actor.role === 'waka_kesiswaan') {
+  if (canonicalActor === 'pembina_osim' || actor.role === 'pembina_osim') {
     if (isTargetStudentOrOsim) {
       return { allowed: true };
     }
-    return { 
-      allowed: false, 
-      reason: 'Waka Kesiswaan hanya didelegasikan untuk mereset kata sandi akun Siswa dan Pengurus OSIM.' 
+    return {
+      allowed: false,
+      reason: 'Pembina OSIM hanya memiliki wewenang delegasi untuk mereset kata sandi akun Siswa Pengurus OSIM.'
+    };
+  }
+
+  if (canonicalActor === 'waka_kesiswaan' || actor.role === 'waka_kesiswaan') {
+    if (isTargetStudentOrOsim) {
+      return { allowed: true };
+    }
+    return {
+      allowed: false,
+      reason: 'Waka Kesiswaan hanya didelegasikan untuk mereset kata sandi akun Siswa dan Pengurus OSIM.'
     };
   }
 
@@ -178,9 +211,15 @@ export const canResetUserPassword = (
     return { allowed: true };
   }
 
-  return { 
-    allowed: false, 
-    reason: 'Proteksi Hirarki: Anda tidak memiliki wewenang mereset akun sesama staf pengajar atau pimpinan.' 
+  return {
+    allowed: false,
+    reason: 'Proteksi Hirarki: Anda tidak memiliki wewenang mereset akun sesama staf pengajar atau pimpinan.'
   };
 };
 
+export {
+  canRoleInputModule,
+  canRoleViewModule,
+  getActiveRbacMatrix,
+  initGlobalRbacSync
+};

@@ -16,6 +16,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSchool } from '../contexts/SchoolContext';
+import { auth } from '../services/firebase';
+import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 import man2SbtBuildingImg from '../assets/images/man2_sbt_building_1787643586750.jpg';
 
 // Official Kemenag / Madrasah Seal Emblem SVG
@@ -202,10 +204,20 @@ export const LoginPage: React.FC = () => {
   const handleGoogleLogin = async () => {
     setIsGoogleLoading(true);
     setErrorMsg(null);
-    setTimeout(() => {
+    try {
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      await signInWithPopup(auth, provider);
+    } catch (err: any) {
+      console.warn('Google sign-in notice:', err);
+      if (err?.code === 'auth/popup-closed-by-user') {
+        setErrorMsg('Jendela login Google ditutup sebelum autentikasi selesai.');
+      } else {
+        setErrorMsg(err?.message || 'Gagal masuk menggunakan Google SSO.');
+      }
+    } finally {
       setIsGoogleLoading(false);
-      setErrorMsg('Fitur Google SSO memerlukan akun Google Workspace madrasah terverifikasi. Silakan login manual dengan Username / NIP / NIS Anda.');
-    }, 900);
+    }
   };
 
   const currentSchoolName = schoolSetting?.name || 'MAN 2 SERAM BAGIAN TIMUR';

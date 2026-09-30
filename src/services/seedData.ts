@@ -35,6 +35,7 @@ import {
   SchoolHandbookMeta
 } from '../types';
 import { db } from './firebase';
+import { handleFirestoreError, OperationType, isPermissionError } from './firestoreErrors';
 import { doc, setDoc, writeBatch, collection, getDocs, deleteDoc } from 'firebase/firestore';
 
 export const INITIAL_SCHOOL_SETTING: SchoolSetting = {
@@ -375,6 +376,9 @@ export async function seedAllFirebaseData(): Promise<{ success: boolean; message
 
     return { success: true, message: 'Data struktur sekolah & akun berhasil disinkronkan ke Firebase Firestore.' };
   } catch (error: any) {
+    if (isPermissionError(error)) {
+      handleFirestoreError(error, OperationType.WRITE, 'seedData');
+    }
     console.error('Error seeding data to Firebase:', error);
     return { success: false, message: error.message || 'Gagal melakukan seed data ke Firebase.' };
   }
