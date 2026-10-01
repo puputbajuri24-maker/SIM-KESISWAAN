@@ -288,12 +288,9 @@ export const PURGED_DEMO_EKSKUL_IDS = [
 ];
 
 export const isPurgedExtracurricular = (nameOrId: string = ''): boolean => {
-  const lower = (nameOrId || '').toLowerCase();
-  return (
-    lower.includes('fotografi') ||
-    lower.includes('sinematografi') ||
-    PURGED_DEMO_EKSKUL_IDS.includes(nameOrId)
-  );
+  if (!nameOrId) return false;
+  const lower = nameOrId.toLowerCase();
+  return lower.includes('(demo)') || lower.includes('(dummy)') || lower.includes('sample');
 };
 
 // Operational Collections initialized as CLEAN EMPTY ARRAYS ready for user upload
@@ -508,10 +505,7 @@ export const PURGED_DEMO_NAMES = [
 export function isBlacklistedDemoName(name?: string): boolean {
   if (!name) return false;
   const lower = name.toLowerCase().trim();
-  if (lower.includes('(demo)') || lower.includes('(dummy)') || lower.includes('contoh user') || lower.includes('sample')) {
-    return true;
-  }
-  return PURGED_DEMO_NAMES.some(n => lower === n);
+  return lower.includes('(demo)') || lower.includes('(dummy)') || lower.includes('contoh user') || lower.includes('sample akun');
 }
 
 // Helper to wipe all operational data collections in Firebase Firestore

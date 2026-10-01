@@ -330,6 +330,14 @@ interface SchoolContextType {
   importFullDatabaseJSON: (bundle: any) => Promise<{ success: boolean; message: string }>;
   isSyncing: boolean;
   isRealTimeConnected: boolean;
+  cloudStatus: 'synced' | 'saving' | 'offline' | 'error';
+  verifyCloudDataIntegrity: () => Promise<{
+    teachers: { firestore: number; react: number };
+    students: { firestore: number; react: number };
+    classes: { firestore: number; react: number };
+    extracurriculars: { firestore: number; react: number };
+    users: { firestore: number; react: number };
+  }>;
   syncLocalChangesToFirestore: () => Promise<void>;
 }
 
@@ -348,6 +356,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const { currentUser, syncUsersFromTeachers, syncUsersFromOsim, deleteUser, allUsers } = useAuth();
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [isRealTimeConnected, setIsRealTimeConnected] = useState<boolean>(true);
+  const [cloudStatus, setCloudStatus] = useState<'synced' | 'saving' | 'offline' | 'error'>('synced');
 
   // States initialized with clean defaults and synced with localStorage / Firestore
   const [schoolSetting, setSchoolSetting] = useState<SchoolSetting>(() => {
@@ -419,93 +428,43 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   });
 
   const [classes, setClasses] = useState<SchoolClass[]>(() => {
-    // Proactively register all purged dummy class IDs to tombstone
-    PURGED_DEMO_CLASS_IDS.forEach(id => addDeletedClassId(id));
-
     const saved = localStorage.getItem('sim_classes');
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          const filtered = parsed.filter(c => c && c.id && !isDeletedClassId(c.id) && !isPurgedClassId(c.id) && !isPurgedClassId(c.name));
-          if (filtered.length !== parsed.length) {
-            try {
-              localStorage.setItem('sim_classes', JSON.stringify(filtered));
-            } catch (e) {}
-            parsed.forEach(c => {
-              if (c && (isPurgedClassId(c.id) || isPurgedClassId(c.name))) {
-                addDeletedClassId(c.id);
-                if (c.name) addDeletedClassId(c.name);
-              }
-            });
-          }
-          return filtered;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
         }
       } catch (e) {}
     }
-    return (INITIAL_CLASSES || []).filter(c => c && c.id && !isDeletedClassId(c.id) && !isPurgedClassId(c.id) && !isPurgedClassId(c.name));
+    return [];
   });
 
   const [teachers, setTeachers] = useState<Teacher[]>(() => {
-    const defaultPitria: Teacher = {
-      id: 'teacher_pitria_lawenusa',
-      nip: '199005122020122008',
-      fullName: 'Pitria Lawenusa, S. Pd',
-      role: 'Guru BK',
-      subject: 'Bimbingan Konseling (BK)',
-      phone: '081234567890',
-      email: 'pitria.lawenusa@madrasah.sch.id',
-      assignedExtracurriculars: [],
-      isActive: true
-    };
-
     const saved = localStorage.getItem('sim_teachers');
     if (saved) {
       try {
-        const parsed: Teacher[] = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          const filtered = parsed.filter(t => 
-            !isBlacklistedDemoName(t.fullName || (t as any).name) &&
-            !isDeletedUid(t.id) &&
-            !isDeletedUid(cleanDigits(t.nip))
-          );
-          const hasPitria = filtered.some(t =>
-            (t.fullName || '').toLowerCase().includes('pitria') ||
-            (t.fullName || '').toLowerCase().includes('lawenusa')
-          );
-          if (!hasPitria && !isDeletedUid('teacher_pitria_lawenusa') && !isDeletedUid('user_guru_bk')) {
-            filtered.unshift(defaultPitria);
-          }
-          return deduplicateTeachersList(filtered);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return deduplicateTeachersList(parsed);
         }
       } catch (e) {}
     }
-    const fromInitial = (INITIAL_TEACHERS || []).filter(t => 
-      !isBlacklistedDemoName(t.fullName || (t as any).name) &&
-      !isDeletedUid(t.id) &&
-      !isDeletedUid(cleanDigits(t.nip))
-    );
-    if (!fromInitial.some(t => (t.fullName || '').toLowerCase().includes('pitria') || (t.fullName || '').toLowerCase().includes('lawenusa'))) {
-      if (!isDeletedUid('teacher_pitria_lawenusa') && !isDeletedUid('user_guru_bk')) {
-        fromInitial.unshift(defaultPitria);
-      }
-    }
-    return deduplicateTeachersList(fromInitial);
+    return [];
   });
   
   const [students, setStudents] = useState<Student[]>(() => {
     const saved = localStorage.getItem('sim_students');
     if (saved) {
       try {
-        const parsed: Student[] = JSON.parse(saved);
+        const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
           const { deduplicated } = deduplicateStudentsList(parsed);
           return sortStudentsAlphabetically(deduplicated);
         }
       } catch (e) {}
     }
-    const { deduplicated } = deduplicateStudentsList(INITIAL_STUDENTS || []);
-    return sortStudentsAlphabetically(deduplicated);
+    return [];
   });
 
   const [extracurriculars, setExtracurriculars] = useState<Extracurricular[]>(() => {
@@ -513,21 +472,12 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          // Filter out default bawaan seed extracurriculars and fotografi/sinematografi
-          const userOnly = parsed.filter(
-            (e: any) => !isPurgedExtracurricular(e.name) && !isPurgedExtracurricular(e.id)
-          );
-          if (userOnly.length !== parsed.length) {
-            try {
-              localStorage.setItem('sim_extracurriculars', JSON.stringify(userOnly));
-            } catch (e) {}
-          }
-          return userOnly;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
         }
       } catch (e) {}
     }
-    return INITIAL_EXTRACURRICULARS;
+    return [];
   });
 
   const [members, setMembers] = useState<ExtracurricularMember[]>(() => {
@@ -535,19 +485,12 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          const userOnly = parsed.filter(
-            (m: any) =>
-              m.id !== 'm1' &&
-              m.studentNis !== '24251001' &&
-              !isPurgedExtracurricular(m.extracurricularId) &&
-              !isPurgedExtracurricular(m.extracurricularName || '')
-          );
-          return userOnly;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
         }
       } catch (e) {}
     }
-    return INITIAL_MEMBERS;
+    return [];
   });
 
   const [schedules, setSchedules] = useState<ScheduleEvent[]>(() => {
@@ -1676,22 +1619,13 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   // Real-time synchronization across all devices via Firestore onSnapshot
-  // CRITICAL (React Firebase Setup): Only attach onSnapshot listeners if auth is ready and user is authenticated.
+  // Ensures ALL devices (HP, Tablet, PC, Web App) receive identical settings and data from Firestore immediately
   useEffect(() => {
-    let unsubscribers: (() => void)[] = [];
+    const unsubscribers: (() => void)[] = [];
 
-    const unsubscribeAuth = onAuthStateChanged(auth, (fbUser) => {
-      unsubscribers.forEach(unsub => unsub());
-      unsubscribers = [];
-
-      if (!fbUser) {
-        setIsRealTimeConnected(false);
-        return;
-      }
-
-      // Trigger initial load and ensure local device changes are reconciled to Firestore
-      syncWithFirebase();
-      syncLocalChangesToFirestore().catch(() => {});
+    // Trigger initial load and ensure local device changes are reconciled to Firestore
+    syncWithFirebase().catch(() => {});
+    syncLocalChangesToFirestore().catch(() => {});
 
     // 0. Real-time Global RBAC Matrix Listener (Firestore settings/rbac_matrix)
     try {
@@ -2118,10 +2052,8 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     } catch (e) {}
 
       setIsRealTimeConnected(true);
-    });
 
     return () => {
-      unsubscribeAuth();
       unsubscribers.forEach(unsub => unsub());
     };
   }, []);
@@ -2184,6 +2116,33 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return { success: false, message: err?.message || 'Gagal mengunggah data ke Cloud Firestore', count: 0 };
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const verifyCloudDataIntegrity = async () => {
+    try {
+      const [tSnap, sSnap, cSnap, eSnap, uSnap] = await Promise.all([
+        getDocs(collection(db, 'teachers')),
+        getDocs(collection(db, 'students')),
+        getDocs(collection(db, 'classes')),
+        getDocs(collection(db, 'extracurriculars')),
+        getDocs(collection(db, 'users'))
+      ]);
+      return {
+        teachers: { firestore: tSnap.size, react: teachers.length },
+        students: { firestore: sSnap.size, react: students.length },
+        classes: { firestore: cSnap.size, react: classes.length },
+        extracurriculars: { firestore: eSnap.size, react: extracurriculars.length },
+        users: { firestore: uSnap.size, react: allUsers.length }
+      };
+    } catch (e) {
+      return {
+        teachers: { firestore: 0, react: teachers.length },
+        students: { firestore: 0, react: students.length },
+        classes: { firestore: 0, react: classes.length },
+        extracurriculars: { firestore: 0, react: extracurriculars.length },
+        users: { firestore: 0, react: allUsers.length }
+      };
     }
   };
 
@@ -6216,6 +6175,8 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         importClassesBulk,
         isSyncing,
         isRealTimeConnected,
+        cloudStatus,
+        verifyCloudDataIntegrity,
         syncLocalChangesToFirestore
       }}
     >

@@ -45,6 +45,7 @@ import { ExportActions } from '../components/common/ExportActions';
 import { ClassGridFilter } from '../components/common/ClassGridFilter';
 import { calculateRecordCountsByClass, isStudentInClass, resolveStudentClass } from '../utils/classResolver';
 import { downloadStudentTemplateXLSX, downloadStudentTemplateCSV, parseStudentRows } from '../utils/studentTemplate';
+import { cleanDigits } from '../utils/syncUtils';
 
 interface MembersPageProps {
   initialEkskulId?: string;
@@ -58,6 +59,7 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
     classes,
     members,
     extracurriculars,
+    teachers,
     students,
     attendance,
     achievements,
@@ -77,14 +79,25 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
 
   const availableEkskuls = useMemo(() => {
     if (isPembinaOnly) {
+      const teacherObj = teachers.find(t => 
+        (currentUser?.nip && t.nip && cleanDigits(t.nip) === cleanDigits(currentUser.nip)) ||
+        (currentUser?.uid && (t.id === currentUser.uid || `user_${t.id}` === currentUser.uid || t.id === currentUser.uid.replace('user_', ''))) ||
+        (currentUser?.displayName && t.fullName.toLowerCase() === currentUser.displayName.toLowerCase())
+      );
+
       return extracurriculars.filter(e => 
         myAssignedIds.includes(e.id) || 
         e.coachId === currentUser?.uid || 
-        (currentUser?.displayName && e.coachName?.toLowerCase().includes(currentUser.displayName.toLowerCase().split(' ')[0]))
+        (currentUser?.uid && (e.coachId === currentUser.uid.replace('user_', '') || e.coachId === `user_${currentUser.uid}`)) ||
+        (teacherObj && (e.coachId === teacherObj.id || teacherObj.assignedExtracurriculars?.includes(e.id))) ||
+        (currentUser?.displayName && e.coachName && (
+          e.coachName.toLowerCase().includes(currentUser.displayName.toLowerCase().split(' ')[0]) ||
+          currentUser.displayName.toLowerCase().includes(e.coachName.toLowerCase().split(' ')[0])
+        ))
       );
     }
     return extracurriculars;
-  }, [extracurriculars, isPembinaOnly, myAssignedIds, currentUser]);
+  }, [extracurriculars, teachers, isPembinaOnly, myAssignedIds, currentUser]);
 
   // Operational authorization: Super Admin / Waka, roles granted members CRUD in RBAC, or Pembina managing assigned club
   const canManageMembers = Boolean(

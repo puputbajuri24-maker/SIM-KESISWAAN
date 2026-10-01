@@ -109,7 +109,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const saved = localStorage.getItem('simkesiswaan_theme_palette') as ThemePalette;
       if (THEME_PALETTES.some(p => p.id === saved)) return saved;
     } catch (e) {}
-    return 'navy';
+    return 'sunset';
   });
 
   const [fontSize, setFontSizeState] = useState<FontSize>(() => {
@@ -190,40 +190,33 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Ensures ALL devices (HP, Tablet, Desktop) immediately display identical theme
   useEffect(() => {
     let unsubTheme: (() => void) | null = null;
-    const unsubscribeAuth = onAuthStateChanged(auth, () => {
-      if (unsubTheme) {
-        unsubTheme();
-        unsubTheme = null;
-      }
-      try {
-        unsubTheme = onSnapshot(doc(db, 'settings', 'theme_config'), (docSnap) => {
-          if (!docSnap.exists()) return;
-          const data = docSnap.data();
-          if (data?.mode && (data.mode === 'dark' || data.mode === 'light' || data.mode === 'system')) {
-            setModeState(prev => (prev !== data.mode ? data.mode : prev));
-          }
-          if (data?.palette && THEME_PALETTES.some(p => p.id === data.palette)) {
-            setPaletteState(prev => (prev !== data.palette ? data.palette : prev));
-          }
-          if (data?.fontSize && ['compact', 'normal', 'comfortable'].includes(data.fontSize)) {
-            setFontSizeState(prev => (prev !== data.fontSize ? data.fontSize : prev));
-          }
-          if (data?.fontContrast && ['standard', 'high'].includes(data.fontContrast)) {
-            setFontContrastState(prev => (prev !== data.fontContrast ? data.fontContrast : prev));
-          }
-          if (data?.fontFamily && ['jakarta', 'inter', 'system'].includes(data.fontFamily)) {
-            setFontFamilyState(prev => (prev !== data.fontFamily ? data.fontFamily : prev));
-          }
-        }, (err) => {
-          handleFirestoreError(err, OperationType.GET, 'settings/theme_config');
-        });
-      } catch (e) {
-        console.warn('Theme listener attach warning:', e);
-      }
-    });
+    try {
+      unsubTheme = onSnapshot(doc(db, 'settings', 'theme_config'), (docSnap) => {
+        if (!docSnap.exists()) return;
+        const data = docSnap.data();
+        if (data?.mode && (data.mode === 'dark' || data.mode === 'light' || data.mode === 'system')) {
+          setModeState(prev => (prev !== data.mode ? data.mode : prev));
+        }
+        if (data?.palette && THEME_PALETTES.some(p => p.id === data.palette)) {
+          setPaletteState(prev => (prev !== data.palette ? data.palette : prev));
+        }
+        if (data?.fontSize && ['compact', 'normal', 'comfortable'].includes(data.fontSize)) {
+          setFontSizeState(prev => (prev !== data.fontSize ? data.fontSize : prev));
+        }
+        if (data?.fontContrast && ['standard', 'high'].includes(data.fontContrast)) {
+          setFontContrastState(prev => (prev !== data.fontContrast ? data.fontContrast : prev));
+        }
+        if (data?.fontFamily && ['jakarta', 'inter', 'system'].includes(data.fontFamily)) {
+          setFontFamilyState(prev => (prev !== data.fontFamily ? data.fontFamily : prev));
+        }
+      }, (err) => {
+        handleFirestoreError(err, OperationType.GET, 'settings/theme_config');
+      });
+    } catch (e) {
+      console.warn('Theme listener attach warning:', e);
+    }
 
     return () => {
-      unsubscribeAuth();
       if (unsubTheme) unsubTheme();
     };
   }, []);

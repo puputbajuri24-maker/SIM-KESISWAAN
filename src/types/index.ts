@@ -6,6 +6,9 @@ export type CanonicalUserRole =
   | 'coach_ekstrakurikuler' 
   | 'anggota_osim';
 
+/**
+ * Deprecated legacy role values supported only for migration and backward normalization.
+ */
 export type LegacyUserRole = 
   | 'waka' 
   | 'pembina_ekstrakurikuler'

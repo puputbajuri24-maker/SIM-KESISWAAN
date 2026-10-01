@@ -36,6 +36,7 @@ import {
 } from '../utils/extracurricularPresets';
 import { EKSKUL_COLOR_THEMES, getEkskulTheme } from '../utils/ekskulColors';
 import { getTeacherInitials } from '../utils/initials';
+import { cleanDigits } from '../utils/syncUtils';
 
 interface ExtracurricularPageProps {
   onNavigateToMembers?: (ekskulId: string) => void;
@@ -152,9 +153,19 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
 
   const filteredEkskul = extracurriculars.filter(e => {
     if (isPembinaOnly) {
+      const teacherObj = teachers.find(t => 
+        (currentUser?.nip && t.nip && cleanDigits(t.nip) === cleanDigits(currentUser.nip)) ||
+        (currentUser?.uid && (t.id === currentUser.uid || `user_${t.id}` === currentUser.uid || t.id === currentUser.uid.replace('user_', ''))) ||
+        (currentUser?.displayName && t.fullName.toLowerCase() === currentUser.displayName.toLowerCase())
+      );
       const isAssigned = myAssignedIds.includes(e.id) || 
         e.coachId === currentUser?.uid || 
-        (currentUser?.displayName && e.coachName?.toLowerCase().includes(currentUser.displayName.toLowerCase().split(' ')[0]));
+        (currentUser?.uid && (e.coachId === currentUser.uid.replace('user_', '') || e.coachId === `user_${currentUser.uid}`)) ||
+        (teacherObj && (e.coachId === teacherObj.id || teacherObj.assignedExtracurriculars?.includes(e.id))) ||
+        (currentUser?.displayName && e.coachName && (
+          e.coachName.toLowerCase().includes(currentUser.displayName.toLowerCase().split(' ')[0]) ||
+          currentUser.displayName.toLowerCase().includes(e.coachName.toLowerCase().split(' ')[0])
+        ));
       if (!isAssigned) return false;
     }
     if (selectedCategory !== 'all' && e.category !== selectedCategory) return false;

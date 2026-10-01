@@ -132,12 +132,10 @@ export const removeDeletedUid = (uid: string) => {
   } catch (e) {}
 };
 
-export const isDeletedUid = (uid?: string): boolean => {
-  if (!uid) return false;
-  const clean = uid.trim();
-  if (!clean || clean === '-' || clean === 'user_' || clean === 'guru_') return false;
-  const set = getDeletedUids();
-  return set.has(uid) || set.has(`user_${uid}`) || set.has(uid.replace(/^user_/, ''));
+export const isDeletedUid = (_uid?: string): boolean => {
+  // Local storage tombstone must never dictate whether a Firestore document is valid.
+  // Firestore is the single source of truth.
+  return false;
 };
 
 /**
@@ -371,11 +369,24 @@ export const canonicalizeAssignedEkskulIds = (
         canonicalIds.push(matchedById.id);
         continue;
       }
-      const matchedByName = allEkskuls.find(e => 
-        e.name.toLowerCase().trim() === cleanItem.toLowerCase() ||
-        cleanItem.toLowerCase().startsWith(e.name.toLowerCase().trim()) ||
-        e.name.toLowerCase().includes(cleanItem.toLowerCase())
-      );
+      const cleanStripped = cleanItem.replace(/^ekskul_/, '').replace(/[_-]/g, ' ').toLowerCase();
+      const matchedByName = allEkskuls.find(e => {
+        const eLower = e.name.toLowerCase().trim();
+        return (
+          eLower === cleanItem.toLowerCase() ||
+          eLower === cleanStripped ||
+          eLower.includes(cleanStripped) ||
+          cleanStripped.includes(eLower) ||
+          ((cleanStripped.includes('inggris') || cleanStripped.includes('english')) && (eLower.includes('inggris') || eLower.includes('english') || eLower.includes('debate'))) ||
+          ((cleanStripped.includes('pramuka')) && eLower.includes('pramuka')) ||
+          ((cleanStripped.includes('tari') || cleanStripped.includes('seni')) && (eLower.includes('tari') || eLower.includes('seni'))) ||
+          ((cleanStripped.includes('pmr') || cleanStripped.includes('uks')) && (eLower.includes('pmr') || eLower.includes('uks'))) ||
+          ((cleanStripped.includes('tahfidz') || cleanStripped.includes('tahfiz') || cleanStripped.includes('qur')) && (eLower.includes('tahfidz') || eLower.includes('qur'))) ||
+          ((cleanStripped.includes('multimedia') || cleanStripped.includes('tik')) && eLower.includes('multimedia')) ||
+          ((cleanStripped.includes('arab')) && eLower.includes('arab')) ||
+          ((cleanStripped.includes('talim') || cleanStripped.includes("ta'lim")) && (eLower.includes('talim') || eLower.includes("ta'lim")))
+        );
+      });
       if (matchedByName) {
         canonicalIds.push(matchedByName.id);
         continue;
@@ -865,81 +876,21 @@ export const PURGED_DEMO_CLASS_IDS = [
   'dummy_class'
 ];
 
-export const isPurgedClassId = (classId?: string): boolean => {
-  if (!classId) return false;
-  const clean = classId.toLowerCase().trim();
-  if (PURGED_DEMO_CLASS_IDS.includes(clean)) return true;
-  if (
-    clean.includes('rpl') ||
-    clean.includes('tkj') ||
-    clean.includes('dummy') ||
-    clean.includes('c_x_iis') ||
-    clean.includes('c_xi_iis') ||
-    clean.includes('c_xii_iis') ||
-    clean.includes('c_x_mia') ||
-    clean.includes('c_xi_mia') ||
-    clean.includes('c_xii_mia') ||
-    clean.includes('c_x_keagamaan') ||
-    clean.includes('c_xi_keagamaan') ||
-    clean.includes('c_xii_keagamaan')
-  ) {
-    return true;
-  }
-  const normalizedName = clean.replace(/[^a-z0-9]/g, '');
-  if (
-    normalizedName.startsWith('xiis') ||
-    normalizedName.startsWith('xmia') ||
-    normalizedName.startsWith('xkeagamaan') ||
-    normalizedName.startsWith('xiiis') ||
-    normalizedName.startsWith('ximia') ||
-    normalizedName.startsWith('xikeagamaan') ||
-    normalizedName.startsWith('xiiiis') ||
-    normalizedName.startsWith('xiimia') ||
-    normalizedName.startsWith('xiikeagamaan')
-  ) {
-    return true;
-  }
-  return isDeletedClassId(classId);
+export const isPurgedClassId = (_classId?: string): boolean => {
+  // Never purge classes automatically during read/load. Firestore is the Source of Truth.
+  return false;
 };
 
 export const getDeletedClassIds = (): Set<string> => {
-  try {
-    const raw = localStorage.getItem(DELETED_CLASS_IDS_KEY);
-    if (raw) {
-      const arr = JSON.parse(raw);
-      if (Array.isArray(arr)) {
-        return new Set(arr);
-      }
-    }
-  } catch (e) {}
   return new Set();
 };
 
-export const addDeletedClassId = (classId: string) => {
-  if (!classId) return;
-  try {
-    const set = getDeletedClassIds();
-    set.add(classId);
-    set.add(classId.toLowerCase().trim());
-    localStorage.setItem(DELETED_CLASS_IDS_KEY, JSON.stringify(Array.from(set)));
-  } catch (e) {}
-};
+export const addDeletedClassId = (_classId: string) => {};
 
-export const removeDeletedClassId = (classId: string) => {
-  if (!classId) return;
-  try {
-    const set = getDeletedClassIds();
-    set.delete(classId);
-    set.delete(classId.toLowerCase().trim());
-    localStorage.setItem(DELETED_CLASS_IDS_KEY, JSON.stringify(Array.from(set)));
-  } catch (e) {}
-};
+export const removeDeletedClassId = (_classId: string) => {};
 
-export const isDeletedClassId = (classId?: string): boolean => {
-  if (!classId) return false;
-  const clean = classId.toLowerCase().trim();
-  const set = getDeletedClassIds();
-  return set.has(classId) || set.has(clean) || PURGED_DEMO_CLASS_IDS.includes(clean);
+export const isDeletedClassId = (_classId?: string): boolean => {
+  return false;
 };
 
 // ==========================================

@@ -24,6 +24,7 @@ import { StatusBadge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { ExportActions } from '../components/common/ExportActions';
+import { cleanDigits } from '../utils/syncUtils';
 
 interface AttendancePageProps {
   initialSchedule?: Schedule | null;
@@ -49,9 +50,11 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ initialSchedule 
     if (!currentUser) return null;
     return teachers.find(
       t =>
-        (currentUser.nip && t.nip && t.nip !== '-' && t.nip === currentUser.nip) ||
+        (currentUser.nip && t.nip && t.nip !== '-' && cleanDigits(t.nip) === cleanDigits(currentUser.nip)) ||
+        (currentUser.uid && (t.id === currentUser.uid || `user_${t.id}` === currentUser.uid || t.id === currentUser.uid.replace('user_', ''))) ||
         t.fullName.toLowerCase() === currentUser.displayName.toLowerCase() ||
-        (currentUser.email && t.email && t.email === currentUser.email)
+        (currentUser.displayName && (t.fullName.toLowerCase().includes(currentUser.displayName.toLowerCase()) || currentUser.displayName.toLowerCase().includes(t.fullName.toLowerCase()))) ||
+        (currentUser.email && t.email && t.email.toLowerCase() === currentUser.email.toLowerCase())
     );
   }, [currentUser, teachers]);
 
