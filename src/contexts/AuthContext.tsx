@@ -200,7 +200,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const data = d.data() as UserProfile;
             const uid = data.uid || d.id;
             const userWithId = { ...data, uid };
-            if (isPurgedUser(userWithId) || isDeletedUid(uid)) {
+            if (isPurgedUser(userWithId) || isDeletedUid(uid) || d.id === 'user_guru_01' || d.id === 'user_teacher_pitria_lawenusa') {
               deleteDoc(d.ref).catch(() => {});
             } else {
               firestoreUsers.push(userWithId);
@@ -1123,16 +1123,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           ? cleanNip 
           : email.split('@')[0];
 
-        // 3. Resolve extracurricular IDs (strictly canonical format)
+        // 3. Resolve extracurricular IDs and human-readable names (for Firestore readability)
         const assignedEkskulIds = canonicalizeAssignedEkskulIds(t.assignedExtracurriculars, extracurricularsList);
+        const assignedEkskulNames = assignedEkskulIds.map(id => {
+          const match = (extracurricularsList || []).find(e => e.id === id);
+          return match ? match.name : id;
+        });
+        const assignedEkskulNameStr = assignedEkskulNames.join(', ');
 
         // 4. Find existing user with comprehensive matching
         const existingIdx = updatedUsers.findIndex(u => isTeacherUserMatch(u, t));
 
         if (existingIdx >= 0) {
           const existing = updatedUsers[existingIdx];
-          const standardUid = t.id.startsWith('user_') ? t.id : `user_${t.id}`;
-          const isUidMigrated = standardUid.startsWith('user_guru_') && existing.uid !== standardUid && !existing.uid.startsWith('user_guru_') && existing.uid !== 'user_super_admin';
+          const isSuperAdminUser = t.role?.toLowerCase().includes('super') || t.fullName?.toLowerCase().includes('puput') || existing.role === 'super_admin' || existing.uid === 'user_super_admin';
+          const standardUid = isSuperAdminUser ? 'user_super_admin' : (t.id.startsWith('user_') ? t.id : `user_${t.id}`);
+          const isUidMigrated = !isSuperAdminUser && standardUid.startsWith('user_guru_') && existing.uid !== standardUid && !existing.uid.startsWith('user_guru_') && existing.uid !== 'user_super_admin';
           const targetUid = isUidMigrated ? standardUid : existing.uid;
 
           const merged: UserProfile = {
@@ -1147,6 +1153,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             isCashManager: t.isCashManager !== undefined ? t.isCashManager : existing.isCashManager,
             cashManagerTitle: t.cashManagerTitle || existing.cashManagerTitle,
             extracurricularIds: assignedEkskulIds.length > 0 ? assignedEkskulIds : existing.extracurricularIds,
+            extracurricularNames: assignedEkskulNames.length > 0 ? assignedEkskulNames : existing.extracurricularNames,
+            extracurricularName: assignedEkskulNameStr || existing.extracurricularName,
             counselorSpecialization: role === 'guru_bk' ? (t.subject || existing.counselorSpecialization || 'Bimbingan Konseling Siswa & Karir') : existing.counselorSpecialization,
             photoURL: t.photoUrl || (t as any).photoURL || existing.photoURL,
             updatedAt: new Date().toISOString()
@@ -1156,21 +1164,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (isUidMigrated && existing.uid) {
             firestorePromises.push(deleteDoc(doc(db, 'users', existing.uid)));
           }
+          if (isSuperAdminUser) {
+            // Guarantee removal of any legacy user_guru_01 duplicate in users
+            firestorePromises.push(deleteDoc(doc(db, 'users', 'user_guru_01')));
+          }
           count++;
         } else {
+          const isSuperAdminUser = t.role?.toLowerCase().includes('super') || t.fullName?.toLowerCase().includes('puput');
+          const finalUid = isSuperAdminUser ? 'user_super_admin' : (t.id.startsWith('user_') ? t.id : `user_${t.id}`);
           const newUser: UserProfile = {
-            uid: t.id.startsWith('user_') ? t.id : `user_${t.id}`,
+            uid: finalUid,
             displayName: t.fullName,
             nip: t.nip || undefined,
             email: email,
             username: username,
             password: 'password', // Default login password
-            role: role,
+            role: isSuperAdminUser ? 'super_admin' : role,
             phone: t.phone || undefined,
             status: t.isActive !== false ? 'Aktif' : 'Nonaktif',
             isCashManager: t.isCashManager || false,
             cashManagerTitle: t.cashManagerTitle || undefined,
             extracurricularIds: assignedEkskulIds.length > 0 ? assignedEkskulIds : undefined,
+            extracurricularNames: assignedEkskulNames.length > 0 ? assignedEkskulNames : undefined,
+            extracurricularName: assignedEkskulNameStr || undefined,
             counselorSpecialization: role === 'guru_bk' ? (t.subject || 'Bimbingan Konseling Siswa & Karir') : undefined,
             photoURL: t.photoUrl || (t as any).photoURL || undefined,
             createdAt: new Date().toISOString()
@@ -1261,8 +1277,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             osimRoleVal === 'bendahara' ? 'bendahara' :
             'ketua_sekbid';
 
+          // Canonical OSIM user UID: always prefer user_osim_<nis> when NIS is available
+          const canonicalOsimUid = cleanNis ? `user_osim_${cleanNis}` : (m.id.startsWith('user_') ? m.id : `user_${m.id}`);
+
           // Match existing user by ID, username, NIS, or member match
           const existingIdx = updatedUsers.findIndex(u =>
+            u.uid === canonicalOsimUid ||
             u.uid === m.id ||
             u.uid === `user_${m.id}` ||
             (cleanNis && cleanDigits(u.nip) === cleanNis) ||
@@ -1270,13 +1290,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             isOsimMemberUserMatch(u, m)
           );
 
-          const targetUid = existingIdx >= 0 ? updatedUsers[existingIdx].uid : (m.id.startsWith('user_') ? m.id : `user_${m.id}`);
-
           if (existingIdx >= 0) {
             const existing = updatedUsers[existingIdx];
+            const isUidMigrated = cleanNis && existing.uid !== canonicalOsimUid;
+            const targetUid = isUidMigrated ? canonicalOsimUid : existing.uid;
             const currentPassword = (existing.password && existing.password !== 'password') ? existing.password : defaultPassword;
             const merged: UserProfile = {
               ...existing,
+              uid: targetUid,
               displayName: m.fullName,
               nip: m.studentNis || existing.nip,
               phone: m.phone && m.phone !== '-' ? m.phone : existing.phone,
@@ -1297,10 +1318,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             };
             updatedUsers[existingIdx] = merged;
             firestorePromises.push(setDoc(doc(db, 'users', merged.uid), merged, { merge: true }));
+            if (isUidMigrated && existing.uid) {
+              firestorePromises.push(deleteDoc(doc(db, 'users', existing.uid)));
+            }
             count++;
           } else {
             const newUser: UserProfile = {
-              uid: targetUid,
+              uid: canonicalOsimUid,
               displayName: m.fullName,
               username,
               email,

@@ -1754,10 +1754,13 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const id = docSnap.id;
             const cleanNip = cleanDigits(data.nip);
             if (
+              id === 'user_super_admin' ||
+              id === 'teacher_pitria_lawenusa' ||
               isBlacklistedDemoName(data.fullName || (data as any).name) ||
               isDeletedUid(id) ||
               (cleanNip.length >= 6 && isDeletedUid(cleanNip))
             ) {
+              deleteDoc(docSnap.ref).catch(() => {});
               return;
             }
             raw.push({ id, ...data });
@@ -1768,14 +1771,23 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             localStorage.setItem('sim_teachers', JSON.stringify(loaded));
           } catch (e) {}
 
-          // Auto-heal dirty assignedExtracurriculars in Firestore
+          // Auto-heal dirty assignedExtracurriculars and missing readable names in Firestore
           raw.forEach(t => {
             if (Array.isArray(t.assignedExtracurriculars)) {
               const cleaned = canonicalizeAssignedEkskulIds(t.assignedExtracurriculars, extracurriculars);
+              const cleanNames = cleaned.map(eid => {
+                const match = (extracurriculars || []).find(e => e.id === eid);
+                return match ? match.name : eid;
+              });
               const isDirty = t.assignedExtracurriculars.some(item => !item.startsWith('ekskul_')) ||
-                t.assignedExtracurriculars.length !== cleaned.length;
+                t.assignedExtracurriculars.length !== cleaned.length ||
+                !t.extracurricularNames || t.extracurricularNames.length !== cleanNames.length;
               if (isDirty) {
-                setDoc(doc(db, 'teachers', t.id), { assignedExtracurriculars: cleaned }, { merge: true }).catch(() => {});
+                setDoc(doc(db, 'teachers', t.id), { 
+                  assignedExtracurriculars: cleaned,
+                  extracurricularNames: cleanNames,
+                  extracurricularName: cleanNames.join(', ') || undefined
+                }, { merge: true }).catch(() => {});
               }
             }
           });
@@ -3319,6 +3331,16 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       removeDeletedUid(`user_${cleanNip}`);
     }
 
+    if (newT.assignedExtracurriculars !== undefined) {
+      newT.assignedExtracurriculars = canonicalizeAssignedEkskulIds(newT.assignedExtracurriculars, extracurriculars);
+      const cleanNames = newT.assignedExtracurriculars.map(eid => {
+        const match = (extracurriculars || []).find(e => e.id === eid);
+        return match ? match.name : eid;
+      });
+      newT.extracurricularNames = cleanNames;
+      newT.extracurricularName = cleanNames.join(', ') || undefined;
+    }
+
     setTeachers(prev => {
       const merged = [newT, ...prev.filter(t => t.id !== newDocId)];
       try {
@@ -3356,6 +3378,12 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const cleanData = { ...data };
     if (data.assignedExtracurriculars !== undefined) {
       cleanData.assignedExtracurriculars = canonicalizeAssignedEkskulIds(data.assignedExtracurriculars, extracurriculars);
+      const cleanNames = cleanData.assignedExtracurriculars.map(eid => {
+        const match = (extracurriculars || []).find(e => e.id === eid);
+        return match ? match.name : eid;
+      });
+      cleanData.extracurricularNames = cleanNames;
+      cleanData.extracurricularName = cleanNames.join(', ') || undefined;
     }
     let updatedTeacher: Teacher | undefined;
     setTeachers(prev => {
@@ -3626,10 +3654,17 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           removeDeletedUid(cleanNip);
           removeDeletedUid(`user_${cleanNip}`);
         }
+        const cleanAssigned = canonicalizeAssignedEkskulIds(t.assignedExtracurriculars, extracurriculars);
+        const cleanNames = cleanAssigned.map(id => {
+          const match = (extracurriculars || []).find(e => e.id === id);
+          return match ? match.name : id;
+        });
         const newTeacher: Teacher = {
           id: newDocId,
           ...t,
-          assignedExtracurriculars: canonicalizeAssignedEkskulIds(t.assignedExtracurriculars, extracurriculars),
+          assignedExtracurriculars: cleanAssigned,
+          extracurricularNames: cleanNames,
+          extracurricularName: cleanNames.join(', ') || undefined,
           code: standardCode,
           isActive: t.isActive !== false
         };
@@ -3640,7 +3675,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     let finalTeachers: Teacher[] = [];
     if (mode === 'replace') {
       // Pada mode replace, daftar baru menggantikan total daftar guru
-      finalTeachers = deduplicateTeachersList(processedTeachers);
+      finalTeachers = deduplicateTeachersList(processedTeachers, extracurriculars);
 
       // Hapus permanen data guru lama yang tidak ada di daftar baru dari Firestore & Akun Login
       const newIds = new Set(finalTeachers.map(t => t.id));
@@ -3662,7 +3697,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       // Pada mode append, gabungkan guru baru dengan sisa guru yang belum ada
       const processedIds = new Set(processedTeachers.map(pt => pt.id));
       const untouchedTeachers = currentTeachers.filter(ct => !processedIds.has(ct.id));
-      finalTeachers = deduplicateTeachersList([...processedTeachers, ...untouchedTeachers]);
+      finalTeachers = deduplicateTeachersList([...processedTeachers, ...untouchedTeachers], extracurriculars);
     }
 
     setTeachers(finalTeachers);
@@ -3711,14 +3746,20 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     try {
       setIsSyncing(true);
       const teacherSnap = await getDocs(collection(db, 'teachers'));
+      const oldDocIdsToDelete: string[] = ['user_super_admin', 'teacher_pitria_lawenusa'];
       const rawList: Teacher[] = [];
       teacherSnap.forEach(d => {
-        rawList.push({ id: d.id, ...(d.data() as Teacher) });
+        if (d.id === 'user_super_admin' || d.id === 'teacher_pitria_lawenusa' || !/^guru_\d{2,}$/.test(d.id)) {
+          oldDocIdsToDelete.push(d.id);
+        }
+        if (d.id !== 'user_super_admin') {
+          rawList.push({ id: d.id, ...(d.data() as Teacher) });
+        }
       });
 
       // Merge with current state in memory
       teachers.forEach(t => {
-        if (!rawList.some(r => r.id === t.id || (r.nip && t.nip && r.nip !== '-' && cleanDigits(r.nip) === cleanDigits(t.nip)))) {
+        if (t.id !== 'user_super_admin' && !rawList.some(r => r.id === t.id || (r.nip && t.nip && r.nip !== '-' && cleanDigits(r.nip) === cleanDigits(t.nip)))) {
           rawList.push(t);
         }
       });
@@ -3735,7 +3776,6 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const sorted = sortTeachersByHierarchy(deduplicated);
 
       let migratedCount = 0;
-      const oldDocIdsToDelete: string[] = [];
       const updatedTeachers: Teacher[] = [];
 
       for (let i = 0; i < sorted.length; i++) {
@@ -3743,6 +3783,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const targetSeqId = formatTeacherDocId(i + 1); // guru_01, guru_02, ...
         const targetCode = formatTeacherCode(i + 1, item.fullName);
         const cleanAssigned = canonicalizeAssignedEkskulIds(item.assignedExtracurriculars, extracurriculars);
+        const cleanAssignedNames = cleanAssigned.map(id => {
+          const match = (extracurriculars || []).find(e => e.id === id);
+          return match ? match.name : id;
+        });
+        const cleanAssignedNameStr = cleanAssignedNames.join(', ');
 
         if (item.id !== targetSeqId) {
           oldDocIdsToDelete.push(item.id);
@@ -3761,6 +3806,8 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           phone: item.phone && item.phone.trim() ? item.phone.trim() : '-',
           email: item.email ? item.email.trim() : '',
           assignedExtracurriculars: cleanAssigned,
+          extracurricularNames: cleanAssignedNames,
+          extracurricularName: cleanAssignedNameStr || undefined,
           isActive: item.isActive !== false,
           isCashManager: !!item.isCashManager,
           cashManagerTitle: item.isCashManager ? (item.cashManagerTitle || 'Bendahara Kesiswaan') : undefined
@@ -3790,6 +3837,8 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (syncUsersFromTeachers) {
         try {
           await syncUsersFromTeachers(updatedTeachers, extracurriculars);
+          await deleteDoc(doc(db, 'users', 'user_guru_01')).catch(() => {});
+          await deleteDoc(doc(db, 'users', 'user_teacher_pitria_lawenusa')).catch(() => {});
         } catch (e) {}
       }
 

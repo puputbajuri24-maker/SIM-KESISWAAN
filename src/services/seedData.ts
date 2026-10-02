@@ -284,7 +284,18 @@ export const PURGED_DEMO_EKSKUL_IDS = [
   'ekskul_silat',
   'ekskul_tahfidz',
   'ekskul_kir',
-  'ekskul_robotik'
+  'ekskul_robotik',
+  'ekskul_1788508166467',
+  'ekskul_1788508812838',
+  'ekskul_1788508829222',
+  'ekskul_1788508979493',
+  'ekskul_1788509775561',
+  'ekskul_1788509843457',
+  'ekskul_1788509860882',
+  'ekskul_1788509907393',
+  'ekskul_1789976787553',
+  'ekskul_1790685273909',
+  'ekskul_1790810445554'
 ];
 
 export const isPurgedExtracurricular = (nameOrId: string = ''): boolean => {
@@ -416,10 +427,27 @@ export const PURGED_DEMO_UIDS = [
   'user_osim_dept_sekbid_5',
   'user_osim_dept_sekbid_6',
   'user_osim_dept_sekbid_7',
-  'user_osim_dept_sekbid_8'
+  'user_osim_dept_sekbid_8',
+  // Stale duplicate teacher and OSIM account UIDs (Tahap 3 Permanent Guard)
+  'user_guru_01',
+  'user_teacher_pitria_lawenusa',
+  'osim_1789532015097',
+  'osim_20240152',
+  'osim_20240194',
+  'osim_20240210',
+  'osim_20240227',
+  'user_osim_m_1790368982539',
+  'user_osim_m_1790369076967',
+  'user_osim_m_1790369294283',
+  'user_osim_m_1790377865840',
+  'user_osim_m_1790385965655',
+  'user_osim_m_1790392735512',
+  'student_s_imp_1787737572163_74'
 ];
 
 export const PURGED_DEMO_TEACHER_IDS = [
+  'user_super_admin',
+  'teacher_pitria_lawenusa',
   't1',
   't_bk',
   't_osim',

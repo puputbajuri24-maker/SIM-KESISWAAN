@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import { Extracurricular, Teacher } from '../types';
 import { normalizeTeacherCode } from './idGenerator';
+import { canonicalizeAssignedEkskulIds } from './syncUtils';
 
 export interface ParsedImportTeacher extends Omit<Teacher, 'id'> {
   isValid: boolean;
@@ -246,23 +247,28 @@ export const parseTeacherRows = (rawRows: any[], existingEkskul: Extracurricular
 
     // 9. Resolve Assigned Extracurriculars
     const rawEkskul = item['Binaan Ekstrakurikuler'] || item['Ekskul Binaan'] || item['assignedExtracurriculars'] || item['Ekstrakurikuler'] || item['Binaan'];
-    let assignedExtracurriculars: string[] = [];
+    let rawAssignedList: string[] = [];
     if (rawEkskul) {
       if (Array.isArray(rawEkskul)) {
-        assignedExtracurriculars = rawEkskul.map(String);
+        rawAssignedList = rawEkskul.map(String);
       } else {
-        assignedExtracurriculars = String(rawEkskul)
+        rawAssignedList = String(rawEkskul)
           .split(/[,;\n]+/)
           .map(s => s.trim())
           .filter(Boolean);
       }
     }
+    const cleanAssignedIds = canonicalizeAssignedEkskulIds(rawAssignedList, existingEkskul);
+    const cleanAssignedNames = cleanAssignedIds.map(id => {
+      const match = (existingEkskul || []).find(e => e.id === id);
+      return match ? match.name : id;
+    });
 
     // 10. Resolve Status
     const rawStatus = String(item['Status'] || item['status'] || 'Aktif').trim();
     const isActive = !rawStatus.toLowerCase().includes('non') && !rawStatus.toLowerCase().includes('tidak') && !rawStatus.toLowerCase().includes('pasif');
 
-    const isPembina = role.toLowerCase().includes('pembina') || assignedExtracurriculars.length > 0;
+    const isPembina = role.toLowerCase().includes('pembina') || cleanAssignedIds.length > 0;
 
     return {
       code,
@@ -273,7 +279,9 @@ export const parseTeacherRows = (rawRows: any[], existingEkskul: Extracurricular
       subject,
       phone,
       email,
-      assignedExtracurriculars,
+      assignedExtracurriculars: cleanAssignedIds,
+      extracurricularNames: cleanAssignedNames,
+      extracurricularName: cleanAssignedNames.join(', ') || undefined,
       isPembina,
       isActive,
       isValid: errors.length === 0,

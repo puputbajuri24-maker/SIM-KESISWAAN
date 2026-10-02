@@ -326,7 +326,9 @@ export const deduplicateUsersList = (users: UserProfile[]): UserProfile[] => {
         password: (existing.password && existing.password !== 'password') ? existing.password : (u.password || existing.password),
         phone: existing.phone || u.phone,
         nip: existing.nip || u.nip,
-        extracurricularIds: Array.from(new Set([...(existing.extracurricularIds || []), ...(u.extracurricularIds || [])]))
+        extracurricularIds: Array.from(new Set([...(existing.extracurricularIds || []), ...(u.extracurricularIds || [])])),
+        extracurricularNames: Array.from(new Set([...(existing.extracurricularNames || []), ...(u.extracurricularNames || [])])),
+        extracurricularName: u.extracurricularName || existing.extracurricularName
       };
       result[duplicateIdx] = merged;
     } else {
@@ -482,6 +484,14 @@ export const deduplicateTeachersList = (teachers: Teacher[], allEkskuls?: Array<
 
     if (duplicateIdx >= 0) {
       const existing = result[duplicateIdx];
+      const cleanAssigned = canonicalizeAssignedEkskulIds([
+        ...(existing.assignedExtracurriculars || []),
+        ...(t.assignedExtracurriculars || [])
+      ], allEkskuls);
+      const cleanNames = cleanAssigned.map(id => {
+        const match = (allEkskuls || []).find(e => e.id === id);
+        return match ? match.name : id;
+      });
       const merged: Teacher = {
         ...existing,
         ...t,
@@ -489,10 +499,9 @@ export const deduplicateTeachersList = (teachers: Teacher[], allEkskuls?: Array<
         phone: existing.phone || t.phone,
         email: existing.email || t.email,
         nip: existing.nip && existing.nip !== '-' ? existing.nip : t.nip,
-        assignedExtracurriculars: canonicalizeAssignedEkskulIds([
-          ...(existing.assignedExtracurriculars || []),
-          ...(t.assignedExtracurriculars || [])
-        ], allEkskuls)
+        assignedExtracurriculars: cleanAssigned,
+        extracurricularNames: cleanNames,
+        extracurricularName: cleanNames.join(', ') || undefined
       };
       result[duplicateIdx] = merged;
     } else {
@@ -500,9 +509,16 @@ export const deduplicateTeachersList = (teachers: Teacher[], allEkskuls?: Array<
       if (cleanNip && cleanNip.length >= 6) seenNips.add(cleanNip);
       if (email) seenEmails.add(email);
       if (normName && normName.length >= 6) seenNormNames.add(normName);
+      const cleanAssigned = canonicalizeAssignedEkskulIds(t.assignedExtracurriculars, allEkskuls);
+      const cleanNames = cleanAssigned.map(id => {
+        const match = (allEkskuls || []).find(e => e.id === id);
+        return match ? match.name : id;
+      });
       result.push({
         ...t,
-        assignedExtracurriculars: canonicalizeAssignedEkskulIds(t.assignedExtracurriculars, allEkskuls)
+        assignedExtracurriculars: cleanAssigned,
+        extracurricularNames: cleanNames,
+        extracurricularName: cleanNames.join(', ') || undefined
       });
     }
   }

@@ -112,13 +112,25 @@ export const TeachersPage: React.FC = () => {
   });
 
   // Helper: Penerjemah ID/Kode ekskul ke Nama yang mudah dibaca
-  const getEkskulDisplayName = (item: string) => {
+  const getEkskulDisplayName = (
+    item: string,
+    teacherContext?: { extracurricularNames?: string[]; extracurricularName?: string } | null,
+    idx?: number
+  ) => {
     if (!item) return '';
     const found = extracurriculars.find(e => e.id === item || e.name.toLowerCase() === item.toLowerCase());
     if (found) return found.name;
+    if (teacherContext?.extracurricularNames && idx !== undefined && teacherContext.extracurricularNames[idx]) {
+      return teacherContext.extracurricularNames[idx];
+    }
+    if (teacherContext?.extracurricularName && !teacherContext.extracurricularName.startsWith('ekskul_')) {
+      return teacherContext.extracurricularName;
+    }
     if (item.startsWith('ekskul_')) {
       const clean = item.replace(/^ekskul_/, '').replace(/[_-]/g, ' ');
-      if (/^\d+$/.test(clean.replace(/\s+/g, ''))) return item;
+      if (/^\d+$/.test(clean.replace(/\s+/g, ''))) {
+        return clean;
+      }
       return clean.charAt(0).toUpperCase() + clean.slice(1);
     }
     return item;
@@ -559,19 +571,43 @@ export const TeachersPage: React.FC = () => {
     },
     {
       header: 'Binaan Ekstrakurikuler',
-      cell: t => (
-        <div className="flex flex-wrap gap-1 max-w-[200px]">
-          {t.assignedExtracurriculars && t.assignedExtracurriculars.length > 0 ? (
-            t.assignedExtracurriculars.map((e, idx) => (
-              <span key={idx} className="px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 text-[10px] font-semibold">
-                {getEkskulDisplayName(e)}
-              </span>
-            ))
-          ) : (
-            <span className="text-[11px] text-slate-500 dark:text-slate-400">-</span>
-          )}
-        </div>
-      )
+      cell: t => {
+        const seenNames = new Set<string>();
+        const uniqueEkskuls: string[] = [];
+        if (t.assignedExtracurriculars && t.assignedExtracurriculars.length > 0) {
+          t.assignedExtracurriculars.forEach((e, idx) => {
+            const name = getEkskulDisplayName(e, t, idx);
+            if (name) {
+              const lower = name.toLowerCase().trim();
+              if (
+                !seenNames.has(lower) && 
+                lower !== 'ekskul' && 
+                !lower.includes('admin') && 
+                lower !== 'ekskul_admin_super' && 
+                lower !== 'ekskul_osim_mpk' &&
+                lower !== 'pembina osim' &&
+                lower !== 'pembina_osim'
+              ) {
+                seenNames.add(lower);
+                uniqueEkskuls.push(name.trim());
+              }
+            }
+          });
+        }
+        return (
+          <div className="flex flex-wrap gap-1 max-w-[200px]">
+            {uniqueEkskuls.length > 0 ? (
+              uniqueEkskuls.map((name, idx) => (
+                <span key={idx} className="px-2 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 text-[10px] font-semibold">
+                  {name}
+                </span>
+              ))
+            ) : (
+              <span className="text-[11px] text-slate-500 dark:text-slate-400">-</span>
+            )}
+          </div>
+        );
+      }
     },
     {
       header: 'Status',
@@ -1411,7 +1447,7 @@ export const TeachersPage: React.FC = () => {
                             <div className="flex flex-wrap gap-1 max-w-[150px]">
                               {t.assignedExtracurriculars.map((ekskul, eIdx) => (
                                 <span key={eIdx} className="px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 rounded text-[10px] text-slate-700 dark:text-slate-300">
-                                  {getEkskulDisplayName(ekskul)}
+                                  {getEkskulDisplayName(ekskul, t, eIdx)}
                                 </span>
                               ))}
                             </div>
@@ -1516,11 +1552,34 @@ export const TeachersPage: React.FC = () => {
               <div className="mt-2">
                 <p className="font-bold mb-1">Ekskul Binaan:</p>
                 <div className="flex flex-wrap gap-1">
-                  {selectedTeacher.assignedExtracurriculars?.map((e, idx) => (
-                    <span key={idx} className="px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded font-semibold text-[11px]">
-                      {getEkskulDisplayName(e)}
-                    </span>
-                  )) || <span className="text-slate-400">-</span>}
+                  {(() => {
+                    const seenNames = new Set<string>();
+                    const uniqueNames: string[] = [];
+                    selectedTeacher.assignedExtracurriculars?.forEach((e, idx) => {
+                      const name = getEkskulDisplayName(e, selectedTeacher, idx);
+                      if (name) {
+                        const lower = name.toLowerCase().trim();
+                        if (
+                          !seenNames.has(lower) && 
+                          lower !== 'ekskul' && 
+                          !lower.includes('admin') && 
+                          lower !== 'ekskul_admin_super' && 
+                          lower !== 'ekskul_osim_mpk' &&
+                          lower !== 'pembina osim' &&
+                          lower !== 'pembina_osim'
+                        ) {
+                          seenNames.add(lower);
+                          uniqueNames.push(name.trim());
+                        }
+                      }
+                    });
+                    if (uniqueNames.length === 0) return <span className="text-slate-400">-</span>;
+                    return uniqueNames.map((name, idx) => (
+                      <span key={idx} className="px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded font-semibold text-[11px]">
+                        {name}
+                      </span>
+                    ));
+                  })()}
                 </div>
               </div>
             </div>

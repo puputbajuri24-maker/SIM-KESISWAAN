@@ -664,9 +664,12 @@ export const ProfileSettingsPage: React.FC = () => {
                   <div className="flex flex-wrap gap-1.5">
                     {currentUser.extracurricularIds.map(eid => {
                       const ek = extracurriculars.find(e => e.id === eid);
+                      const matchedName = ek?.name || 
+                        currentUser.extracurricularNames?.[currentUser.extracurricularIds.indexOf(eid)] || 
+                        (currentUser.extracurricularName && !currentUser.extracurricularName.startsWith('ekskul_') ? currentUser.extracurricularName : eid);
                       return (
                         <span key={eid} className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-medium">
-                          {ek ? ek.name : eid}
+                          {matchedName}
                         </span>
                       );
                     })}

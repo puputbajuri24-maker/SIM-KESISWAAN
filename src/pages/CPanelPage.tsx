@@ -175,11 +175,47 @@ export const CPanelPage: React.FC = () => {
   const [isSyncingOsim, setIsSyncingOsim] = useState(false);
 
   const getPembinaEkskulName = (u: UserProfile) => {
-    if (!u.extracurricularIds || u.extracurricularIds.length === 0) return 'Ekstrakurikuler';
-    const names = u.extracurricularIds
-      .map(id => extracurriculars.find(e => e.id === id)?.name)
-      .filter(Boolean);
-    return names.length > 0 ? names.join(', ') : 'Ekstrakurikuler';
+    const list: string[] = [];
+    const seen = new Set<string>();
+
+    const addName = (rawName?: string) => {
+      if (!rawName) return;
+      const clean = rawName.trim();
+      if (!clean) return;
+      const lower = clean.toLowerCase();
+      if (
+        lower === 'ekskul' || 
+        lower.includes('admin') || 
+        lower === 'ekskul_admin_super' || 
+        lower === 'ekskul_osim_mpk' ||
+        lower === 'pembina osim' ||
+        lower === 'pembina_osim'
+      ) return;
+      if (seen.has(lower)) return;
+      seen.add(lower);
+      list.push(clean);
+    };
+
+    if (u.extracurricularNames && u.extracurricularNames.length > 0) {
+      u.extracurricularNames.forEach(n => addName(n));
+    }
+    if (u.extracurricularName && !u.extracurricularName.startsWith('ekskul_')) {
+      u.extracurricularName.split(',').forEach(n => addName(n));
+    }
+    if (u.extracurricularIds && u.extracurricularIds.length > 0) {
+      u.extracurricularIds.forEach((id, idx) => {
+        const found = extracurriculars.find(e => e.id === id || e.name.toLowerCase() === id.toLowerCase());
+        if (found) addName(found.name);
+        else if (u.extracurricularNames && u.extracurricularNames[idx]) addName(u.extracurricularNames[idx]);
+        else if (id.startsWith('ekskul_')) {
+          addName(id.replace(/^ekskul_/, '').replace(/[_-]/g, ' ').toUpperCase());
+        } else {
+          addName(id);
+        }
+      });
+    }
+
+    return list.length > 0 ? list.join(', ') : 'Ekstrakurikuler';
   };
 
   const getOsimPositionName = (u: UserProfile) => {
@@ -235,6 +271,8 @@ export const CPanelPage: React.FC = () => {
     phone: string;
     counselorSpecialization: string;
     extracurricularIds: string[];
+    extracurricularNames?: string[];
+    extracurricularName?: string;
     status: 'Aktif' | 'Nonaktif';
     isCashManager: boolean;
     cashManagerTitle: string;
@@ -248,6 +286,8 @@ export const CPanelPage: React.FC = () => {
     phone: '',
     counselorSpecialization: 'Bimbingan Konseling Siswa & Karir',
     extracurricularIds: [],
+    extracurricularNames: [],
+    extracurricularName: '',
     status: 'Aktif',
     isCashManager: false,
     cashManagerTitle: 'Bendahara Kesiswaan'
@@ -521,6 +561,8 @@ export const CPanelPage: React.FC = () => {
       phone: teacher.phone || '',
       counselorSpecialization: role === 'guru_bk' ? 'Bimbingan Konseling Siswa & Karir' : '',
       extracurricularIds: matchedEkskulIds,
+      extracurricularNames: matchedEkskulIds.map(id => extracurriculars.find(e => e.id === id || e.name.toLowerCase() === id.toLowerCase())?.name || id).filter(Boolean),
+      extracurricularName: matchedEkskulIds.map(id => extracurriculars.find(e => e.id === id || e.name.toLowerCase() === id.toLowerCase())?.name || id).filter(Boolean).join(', '),
       status: 'Aktif',
       isCashManager: !!teacher.isCashManager,
       cashManagerTitle: teacher.cashManagerTitle || (teacher.isCashManager ? 'Bendahara Kesiswaan' : '')
@@ -646,6 +688,12 @@ export const CPanelPage: React.FC = () => {
       phone: formData.phone.trim() || undefined,
       counselorSpecialization: formData.role === 'guru_bk' ? formData.counselorSpecialization : undefined,
       extracurricularIds: (formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul') ? formData.extracurricularIds : undefined,
+      extracurricularNames: (formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul')
+        ? (formData.extracurricularIds || []).map(id => extracurriculars.find(e => e.id === id || e.name.toLowerCase() === id.toLowerCase())?.name || id).filter(Boolean)
+        : undefined,
+      extracurricularName: (formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul')
+        ? (formData.extracurricularIds || []).map(id => extracurriculars.find(e => e.id === id || e.name.toLowerCase() === id.toLowerCase())?.name || id).filter(Boolean).join(', ')
+        : undefined,
       status: formData.status,
       isCashManager: formData.isCashManager,
       cashManagerTitle: formData.isCashManager ? (formData.cashManagerTitle.trim() || 'Bendahara') : undefined
@@ -676,6 +724,12 @@ export const CPanelPage: React.FC = () => {
       phone: formData.phone.trim() || undefined,
       counselorSpecialization: formData.role === 'guru_bk' ? formData.counselorSpecialization : undefined,
       extracurricularIds: (formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul') ? formData.extracurricularIds : undefined,
+      extracurricularNames: (formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul')
+        ? (formData.extracurricularIds || []).map(id => extracurriculars.find(e => e.id === id || e.name.toLowerCase() === id.toLowerCase())?.name || id).filter(Boolean)
+        : undefined,
+      extracurricularName: (formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul')
+        ? (formData.extracurricularIds || []).map(id => extracurriculars.find(e => e.id === id || e.name.toLowerCase() === id.toLowerCase())?.name || id).filter(Boolean).join(', ')
+        : undefined,
       status: formData.status,
       isCashManager: formData.isCashManager,
       cashManagerTitle: formData.isCashManager ? (formData.cashManagerTitle.trim() || 'Bendahara') : undefined
@@ -1131,7 +1185,13 @@ export const CPanelPage: React.FC = () => {
         (u.username && u.username.toLowerCase().includes(q)) ||
         (u.phone && u.phone.includes(q)) ||
         (u.osimPosition && u.osimPosition.toLowerCase().includes(q)) ||
-        (u.osimDepartmentName && u.osimDepartmentName.toLowerCase().includes(q))
+        (u.osimDepartmentName && u.osimDepartmentName.toLowerCase().includes(q)) ||
+        (u.extracurricularName && u.extracurricularName.toLowerCase().includes(q)) ||
+        (u.extracurricularNames && u.extracurricularNames.some(en => en.toLowerCase().includes(q))) ||
+        (u.extracurricularIds && u.extracurricularIds.some(eid => {
+          const ek = extracurriculars.find(e => e.id === eid || e.name.toLowerCase() === eid.toLowerCase());
+          return ek && ek.name.toLowerCase().includes(q);
+        }))
       );
     });
 
@@ -2760,21 +2820,45 @@ export const CPanelPage: React.FC = () => {
                   <span className="text-zinc-200 font-sans">{selectedUserForAction.counselorSpecialization}</span>
                 </div>
               )}
-              {selectedUserForAction.extracurricularIds && selectedUserForAction.extracurricularIds.length > 0 && (
-                <div className="py-1">
-                  <span className="text-emerald-300 font-bold block mb-1">EKSKUL BINAAN:</span>
-                  <div className="flex flex-wrap gap-1">
-                    {selectedUserForAction.extracurricularIds.map((eid, idx) => {
-                      const ek = extracurriculars.find(e => e.id === eid);
-                      return (
-                        <span key={eid ? `cpanel-user-ek-${eid}-${idx}` : `cpanel-user-ek-idx-${idx}`} className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-sans font-semibold">
-                          {ek ? ek.name : eid}
+              {(() => {
+                const userEkskuls: { id: string; name: string }[] = [];
+                const seen = new Set<string>();
+                const rawItems = (selectedUserForAction.extracurricularIds && selectedUserForAction.extracurricularIds.length > 0)
+                  ? selectedUserForAction.extracurricularIds
+                  : (selectedUserForAction.extracurricularNames || (selectedUserForAction.extracurricularName ? selectedUserForAction.extracurricularName.split(',') : []));
+
+                rawItems.forEach((item, idx) => {
+                  if (!item) return;
+                  const ek = extracurriculars.find(e => e.id === item || e.name.toLowerCase() === item.toLowerCase());
+                  const ekName = ek?.name || 
+                    selectedUserForAction.extracurricularNames?.[idx] || 
+                    (selectedUserForAction.extracurricularName && !selectedUserForAction.extracurricularName.startsWith('ekskul_') ? selectedUserForAction.extracurricularName : null) ||
+                    (item.startsWith('ekskul_') ? item.replace(/^ekskul_/, '').replace(/[_-]/g, ' ') : item);
+                  if (ekName) {
+                    const clean = ekName.trim();
+                    const norm = clean.toLowerCase();
+                    if (!seen.has(norm) && !norm.includes('admin') && norm !== 'ekskul_admin_super' && norm !== 'ekskul_osim_mpk' && norm !== 'pembina osim' && norm !== 'pembina_osim') {
+                      seen.add(norm);
+                      userEkskuls.push({ id: ek?.id || item, name: clean });
+                    }
+                  }
+                });
+
+                if (userEkskuls.length === 0) return null;
+
+                return (
+                  <div className="py-1">
+                    <span className="text-emerald-300 font-bold block mb-1">EKSKUL BINAAN:</span>
+                    <div className="flex flex-wrap gap-1">
+                      {userEkskuls.map((ekItem, idx) => (
+                        <span key={`cpanel-user-ek-${ekItem.id}-${idx}`} className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-sans font-semibold">
+                          {ekItem.name}
                         </span>
-                      );
-                    })}
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
 
             <div className="flex justify-end gap-2 pt-2">

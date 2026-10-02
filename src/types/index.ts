@@ -62,6 +62,8 @@ export interface UserProfile {
   position?: OsimPosition; // Canonical internal OSIM position
   assignments?: UserAssignment[]; // Multi-assignment support (e.g. Guru BK + Pembina Ekskul)
   extracurricularIds?: string[]; // If pembina, club IDs they manage
+  extracurricularNames?: string[]; // Readable names of extracurricular clubs
+  extracurricularName?: string; // Primary or formatted extracurricular name
   osimDepartmentId?: string; // ID of department/sekbid managed by this account, e.g. 'dept_sekbid_1' or 'dept_bph'
   osimDepartmentCode?: string; // e.g. 'SEKBID-1' or 'BPH'
   osimDepartmentName?: string; // e.g. 'Sekbid 1: Keimanan, Ketaqwaan & Moderasi Beragama'
@@ -240,6 +242,7 @@ export interface Teacher {
   photoUrl?: string;
   photoURL?: string;
   extracurricularName?: string;
+  extracurricularNames?: string[];
   assignedExtracurriculars?: string[];
   isActive?: boolean;
   isDeleted?: boolean;

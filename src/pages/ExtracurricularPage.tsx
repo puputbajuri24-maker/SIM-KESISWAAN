@@ -126,6 +126,7 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
   const teacherAssignedEkskulNames = useMemo(() => {
     const rawItems = teachers.flatMap(t => [
       ...(t.assignedExtracurriculars || []),
+      ...(t.extracurricularNames || []),
       ...(t.extracurricularName ? [t.extracurricularName] : [])
     ]).filter(Boolean);
 

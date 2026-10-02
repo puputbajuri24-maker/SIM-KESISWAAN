@@ -130,6 +130,65 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
   extracurriculars,
   getEkskulTheme,
 }) => {
+  // Helper: Dapatkan daftar tugas binaan ekstrakurikuler yang valid, unik (tanpa duplikasi nama), dan terbaca manusia
+  const getUserEkskuls = (u: UserProfile) => {
+    const list: { id: string; name: string; category?: string }[] = [];
+    const seenNames = new Set<string>();
+
+    const addEkskul = (id: string, rawName?: string, category?: string) => {
+      if (!rawName) return;
+      const cleanName = rawName.trim();
+      if (!cleanName) return;
+      const norm = cleanName.toLowerCase();
+      // Abaikan pseudo roles atau ID yang bukan ekstrakurikuler sebenarnya
+      if (
+        norm === 'ekskul' || 
+        norm.includes('admin') || 
+        norm.includes('super_admin') || 
+        norm === 'ekskul_admin_super' || 
+        norm === 'ekskul_osim_mpk' ||
+        norm === 'pembina osim' ||
+        norm === 'pembina_osim'
+      ) {
+        return;
+      }
+      if (seenNames.has(norm)) return;
+      seenNames.add(norm);
+      list.push({
+        id,
+        name: cleanName,
+        category
+      });
+    };
+
+    if (u.extracurricularIds && u.extracurricularIds.length > 0) {
+      u.extracurricularIds.forEach((eid, idx) => {
+        if (!eid) return;
+        const ek = extracurriculars.find(e => e.id === eid || e.name.toLowerCase() === eid.toLowerCase());
+        const ekName = ek?.name || 
+          u.extracurricularNames?.[idx] || 
+          (u.extracurricularName && !u.extracurricularName.startsWith('ekskul_') ? u.extracurricularName : null) ||
+          (eid.startsWith('ekskul_') ? eid.replace(/^ekskul_/, '').replace(/[_-]/g, ' ') : eid);
+        addEkskul(ek?.id || eid, ekName, ek?.category);
+      });
+    } else if (u.extracurricularNames && u.extracurricularNames.length > 0) {
+      u.extracurricularNames.forEach((name, idx) => {
+        if (!name) return;
+        const ek = extracurriculars.find(e => e.name.toLowerCase() === name.toLowerCase());
+        addEkskul(ek?.id || `ek-${idx}`, name, ek?.category);
+      });
+    } else if (u.extracurricularName && !u.extracurricularName.startsWith('ekskul_')) {
+      const parts = u.extracurricularName.split(',');
+      parts.forEach((p, idx) => {
+        const trimmed = p.trim();
+        if (!trimmed) return;
+        const ek = extracurriculars.find(e => e.name.toLowerCase() === trimmed.toLowerCase());
+        addEkskul(ek?.id || `ek-${idx}`, trimmed, ek?.category);
+      });
+    }
+    return list;
+  };
+
   return (
     <div className="space-y-4" id="view-cpanel-users">
       {/* Unsynced Teachers Alert Banner */}
@@ -801,31 +860,41 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
                   </div>
 
                   {/* Assigned Tasks / Binaan */}
-                  {(u.counselorSpecialization || (u.extracurricularIds && u.extracurricularIds.length > 0)) && (
+                  {(u.role === 'pembina_osim' || u.counselorSpecialization || getUserEkskuls(u).length > 0) && (
                     <div className="bg-[#1a1a1f] p-2 rounded-lg border border-[#27272a] space-y-1">
+                      {u.role === 'pembina_osim' && (
+                        <div className="text-[10px] text-amber-300 font-semibold flex items-center gap-1">
+                          <Crown className="w-3 h-3 text-amber-400 shrink-0" />
+                          <span>Binaan: Pembina OSIM</span>
+                        </div>
+                      )}
                       {u.counselorSpecialization && (
                         <div className="text-[10px] text-purple-300 font-medium flex items-center gap-1">
                           <Compass className="w-3 h-3 text-purple-400 shrink-0" />
                           <span className="truncate">BK: {u.counselorSpecialization}</span>
                         </div>
                       )}
-                      {u.extracurricularIds && u.extracurricularIds.length > 0 && (
-                        <div className="flex flex-wrap gap-1 items-center">
-                          <Tent className="w-3 h-3 text-emerald-400 shrink-0 mr-0.5" />
-                          {u.extracurricularIds.map((eid, eIdx) => {
-                            const ek = extracurriculars.find(e => e.id === eid);
-                            const ekTheme = getEkskulTheme(eid, ek?.category);
-                            return (
-                              <span
-                                key={`grid-ek-${eid}-${eIdx}`}
-                                className={`px-1.5 py-0.2 rounded text-[9px] font-semibold border ${ekTheme.bgLight} ${ekTheme.textLight} ${ekTheme.borderLight}`}
-                              >
-                                {ek ? ek.name : eid.replace(/ekskul_/g, '').toUpperCase()}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      )}
+                      {(() => {
+                        const userEkskuls = getUserEkskuls(u);
+                        if (userEkskuls.length === 0) return null;
+                        return (
+                          <div className="flex flex-wrap gap-1 items-center">
+                            <Tent className="w-3 h-3 text-emerald-400 shrink-0 mr-0.5" />
+                            {userEkskuls.map((ekItem, eIdx) => {
+                              const ekTheme = getEkskulTheme(ekItem.id, ekItem.category);
+                              return (
+                                <span
+                                  key={`grid-ek-${ekItem.id}-${eIdx}`}
+                                  className={`px-1.5 py-0.2 rounded text-[9px] font-semibold border ${ekTheme.bgLight} ${ekTheme.textLight} ${ekTheme.borderLight}`}
+                                  title={`Tugas Binaan: ${ekItem.name}`}
+                                >
+                                  {ekItem.name}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
 
@@ -1023,16 +1092,39 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
                             {u.status || 'Aktif'}
                           </span>
                         </div>
+                        {u.role === 'pembina_osim' && (
+                          <div className="text-[10px] text-amber-300 font-semibold flex items-center gap-1 mb-0.5">
+                            <Crown className="w-2.5 h-2.5 text-amber-400 shrink-0" />
+                            <span>Binaan: Pembina OSIM</span>
+                          </div>
+                        )}
                         {u.counselorSpecialization && (
-                          <span className="text-[10px] text-purple-300 font-medium block line-clamp-1">
-                            BK: {u.counselorSpecialization}
-                          </span>
+                          <div className="text-[10px] text-purple-300 font-medium flex items-center gap-1 mb-0.5">
+                            <Compass className="w-2.5 h-2.5 text-purple-400 shrink-0" />
+                            <span className="line-clamp-1">BK: {u.counselorSpecialization}</span>
+                          </div>
                         )}
-                        {u.extracurricularIds && u.extracurricularIds.length > 0 && (
-                          <span className="text-[10px] text-emerald-300 font-medium block line-clamp-1">
-                            Ekskul: {u.extracurricularIds.join(', ').replace(/ekskul_/g, '').toUpperCase()}
-                          </span>
-                        )}
+                        {(() => {
+                          const userEkskuls = getUserEkskuls(u);
+                          if (userEkskuls.length === 0) return null;
+                          return (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {userEkskuls.map((ekItem, eIdx) => {
+                                const ekTheme = getEkskulTheme(ekItem.id, ekItem.category);
+                                return (
+                                  <span
+                                    key={`table-ek-${ekItem.id}-${eIdx}`}
+                                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold border ${ekTheme.bgLight} ${ekTheme.textLight} ${ekTheme.borderLight}`}
+                                    title={`Tugas Binaan: ${ekItem.name}`}
+                                  >
+                                    <Tent className="w-2.5 h-2.5 shrink-0" />
+                                    <span>{ekItem.name}</span>
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
                         <div className="mt-1">
                           {u.isCashManager ? (
                             <button
