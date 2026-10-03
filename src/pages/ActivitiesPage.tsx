@@ -14,10 +14,12 @@ import {
   Sparkles,
   ArrowRight,
   Filter,
-  Printer
+  Printer,
+  RefreshCw
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { Activity } from '../types';
 import { DataTable, Column } from '../components/common/DataTable';
 import { StatusBadge } from '../components/common/Badge';
@@ -47,6 +49,8 @@ export const ActivitiesPage: React.FC = () => {
   // Print LPJ Document State
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [printDocumentData, setPrintDocumentData] = useState<UnifiedPrintDocumentData | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { toast } = useToast();
 
   const [formData, setFormData] = useState<Partial<Activity>>({
     title: '',
@@ -190,10 +194,11 @@ export const ActivitiesPage: React.FC = () => {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title || !formData.date || !formData.location) {
-      alert('Mohon lengkapi judul kegiatan, tanggal, dan lokasi.');
+      toast.warning('Mohon lengkapi judul kegiatan, tanggal, dan lokasi.');
       return;
     }
 
+    setIsSubmitting(true);
     try {
       const ekskul = extracurriculars.find(e => e.id === formData.extracurricularId);
 
@@ -202,6 +207,7 @@ export const ActivitiesPage: React.FC = () => {
           ...formData,
           extracurricularName: ekskul?.name || formData.extracurricularName
         });
+        toast.success(`Kegiatan "${formData.title}" berhasil diperbarui!`);
       } else {
         await addActivity({
           title: formData.title!,
@@ -216,12 +222,15 @@ export const ActivitiesPage: React.FC = () => {
           participantCount: Number(formData.participantCount) || 0,
           status: (formData.status as any) || 'Rencana'
         });
+        toast.success(`Kegiatan baru "${formData.title}" berhasil disimpan!`);
       }
-    } catch (err) {
-      console.error('Error saving activity:', err);
-    } finally {
       setIsFormOpen(false);
       setSelectedActivity(null);
+    } catch (err: any) {
+      console.error('Error saving activity:', err);
+      toast.error('Gagal menyimpan kegiatan: ' + (err?.message || 'Terjadi kesalahan sistem'));
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -390,10 +399,20 @@ export const ActivitiesPage: React.FC = () => {
             </button>
             <button
               type="button"
+              disabled={isSubmitting}
               onClick={handleSave}
-              className="px-5 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md"
+              className={`px-5 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md flex items-center gap-2 transition-all ${
+                isSubmitting ? 'opacity-60 cursor-not-allowed' : ''
+              }`}
             >
-              Simpan Kegiatan
+              {isSubmitting ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Menyimpan Kegiatan...</span>
+                </>
+              ) : (
+                <span>Simpan Kegiatan</span>
+              )}
             </button>
           </>
         }

@@ -25,10 +25,12 @@ import {
   Key,
   Copy,
   Eye,
-  EyeOff
+  EyeOff,
+  RefreshCw
 } from 'lucide-react';
 import { useSchool } from '../../contexts/SchoolContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import { Teacher, Extracurricular, ExtracurricularMember, OsimMember, UserProfile, UserRole } from '../../types';
 import { extractSekbidNumber, cleanDigits, isBphMember, getDefaultOsimUsername, getDefaultOsimPasswordForMember } from '../../utils/osimAccountHelper';
 import { getDefaultOsimPassword } from '../../services/seedData';
@@ -115,10 +117,11 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
     const passToSet = newPasswordInput.trim() || 'password';
     const res = await resetUserPassword(selectedUserForReset.uid, passToSet);
     if (res.success) {
-      showToast(`Kata sandi akun ${selectedUserForReset.displayName} (@${selectedUserForReset.username || selectedUserForReset.email}) berhasil diperbarui menjadi "${passToSet}"!`);
+      const successMsg = `Kata sandi akun ${selectedUserForReset.displayName} (@${selectedUserForReset.username || selectedUserForReset.email}) berhasil diperbarui menjadi "${passToSet}"!`;
+      showToast(successMsg, 'success');
       setIsResetModalOpen(false);
     } else {
-      alert(res.error || 'Gagal mengubah kata sandi.');
+      showToast(res.error || 'Gagal mengubah kata sandi.', 'error');
     }
   };
 
@@ -126,10 +129,16 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCategory, setFilterCategory] = useState('all');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { toast } = useToast();
 
-  const showToast = (msg: string) => {
+  const showToast = (msg: string, type: 'success' | 'error' | 'warning' | 'info' = 'info') => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
+    if (type === 'success') toast.success(msg);
+    else if (type === 'error') toast.error(msg);
+    else if (type === 'warning') toast.warning(msg);
+    else toast.info(msg);
   };
 
   // ==================== 1. MODAL STATES: TEACHER ====================
@@ -185,10 +194,11 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
   const handleSaveTeacher = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!teacherForm.fullName.trim()) {
-      alert('Nama guru tidak boleh kosong.');
+      showToast('Nama guru tidak boleh kosong.', 'warning');
       return;
     }
 
+    setIsSubmitting(true);
     try {
       if (editingTeacher) {
         await updateTeacher(editingTeacher.id, {
@@ -203,7 +213,7 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
           extracurricularName: teacherForm.extracurricularName,
           isActive: teacherForm.status === 'Aktif'
         });
-        showToast(`Data dewan guru "${teacherForm.fullName}" berhasil diperbarui.`);
+        showToast(`Data dewan guru "${teacherForm.fullName}" berhasil diperbarui.`, 'success');
       } else {
         await addTeacher({
           fullName: teacherForm.fullName.trim(),
@@ -217,12 +227,14 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
           extracurricularName: teacherForm.extracurricularName,
           isActive: teacherForm.status === 'Aktif'
         });
-        showToast(`Guru baru "${teacherForm.fullName}" berhasil ditambahkan.`);
+        showToast(`Guru baru "${teacherForm.fullName}" berhasil ditambahkan.`, 'success');
       }
       setIsTeacherModalOpen(false);
     } catch (err) {
       console.error(err);
-      alert('Gagal menyimpan data guru.');
+      showToast('Gagal menyimpan data guru.', 'error');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -230,10 +242,10 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
     if (window.confirm(`Hapus guru "${t.fullName}" dari database master dewan guru? Tindakan ini akan disinkronkan ke seluruh modul terkait.`)) {
       try {
         await deleteTeacher(t.id);
-        showToast(`Guru "${t.fullName}" telah berhasil dihapus.`);
+        showToast(`Guru "${t.fullName}" telah berhasil dihapus.`, 'success');
       } catch (err) {
         console.error(err);
-        alert('Gagal menghapus data guru.');
+        showToast('Gagal menghapus data guru.', 'error');
       }
     }
   };
@@ -325,10 +337,11 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
     const targetName = selectedTeacher ? selectedTeacher.fullName : pembinaIntraForm.customName;
 
     if (!targetName.trim()) {
-      alert('Nama Pembina OSIM harus diisi.');
+      showToast('Nama Pembina OSIM harus diisi.', 'warning');
       return;
     }
 
+    setIsSubmitting(true);
     try {
       if (selectedTeacher) {
         await updateTeacher(selectedTeacher.id, {
@@ -337,11 +350,13 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
           extracurricularName: 'OSIM'
         });
       }
-      showToast(`Penugasan "${targetName}" sebagai ${pembinaIntraForm.position} berhasil disahkan.`);
+      showToast(`Penugasan "${targetName}" sebagai ${pembinaIntraForm.position} berhasil disahkan.`, 'success');
       setIsPembinaIntraModalOpen(false);
     } catch (err) {
       console.error(err);
-      alert('Gagal menyimpan penugasan pembina OSIM.');
+      showToast('Gagal menyimpan penugasan pembina OSIM.', 'error');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -405,13 +420,14 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
   const handleSaveEkskul = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!ekskulForm.name.trim()) {
-      alert('Nama Ekstrakurikuler tidak boleh kosong.');
+      showToast('Nama Ekstrakurikuler tidak boleh kosong.', 'warning');
       return;
     }
 
     const selectedTeacher = teachers.find(t => t.id === ekskulForm.coachTeacherId);
     const resolvedCoachName = selectedTeacher ? selectedTeacher.fullName : ekskulForm.coachName;
 
+    setIsSubmitting(true);
     try {
       if (editingEkskul) {
         await updateExtracurricular(editingEkskul.id, {
@@ -427,7 +443,7 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
           quota: Number(ekskulForm.quota) || 30,
           status: ekskulForm.status
         });
-        showToast(`Data ekstrakurikuler & pembina "${ekskulForm.name}" berhasil diperbarui.`);
+        showToast(`Data ekstrakurikuler & pembina "${ekskulForm.name}" berhasil diperbarui.`, 'success');
       } else {
         await addExtracurricular({
           name: ekskulForm.name.trim(),
@@ -448,12 +464,14 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
           target: 'Juara tingkat kabupaten dan provinsi.',
           academicYear: activeAcademicYear || '2024/2025'
         });
-        showToast(`Ekstrakurikuler baru "${ekskulForm.name}" berhasil didaftarkan di cPanel.`);
+        showToast(`Ekstrakurikuler baru "${ekskulForm.name}" berhasil didaftarkan di cPanel.`, 'success');
       }
       setIsEkskulModalOpen(false);
     } catch (err) {
       console.error(err);
-      alert('Gagal menyimpan ekstrakurikuler.');
+      showToast('Gagal menyimpan ekstrakurikuler.', 'error');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -461,10 +479,10 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
     if (window.confirm(`Hapus unit ekstrakurikuler "${e.name}" beserta penetapan pembinanya? Tindakan ini terpusat dan permanen.`)) {
       try {
         await deleteExtracurricular(e.id);
-        showToast(`Ekstrakurikuler "${e.name}" berhasil dihapus.`);
+        showToast(`Ekstrakurikuler "${e.name}" berhasil dihapus.`, 'success');
       } catch (err) {
         console.error(err);
-        alert('Gagal menghapus ekstrakurikuler.');
+        showToast('Gagal menghapus ekstrakurikuler.', 'error');
       }
     }
   };
@@ -532,10 +550,11 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
     e.preventDefault();
     const selTeacher = teachers.find(t => t.id === bkForm.teacherId);
     if (!selTeacher) {
-      alert('Pilih guru dari daftar dewan guru.');
+      showToast('Pilih guru dari daftar dewan guru.', 'warning');
       return;
     }
 
+    setIsSubmitting(true);
     try {
       await updateTeacher(selTeacher.id, {
         subject: 'Bimbingan Konseling (BK)',
@@ -548,11 +567,13 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
         await onUpdateUserRole(matchedUser.uid, 'guru_bk');
       }
 
-      showToast(`Guru "${selTeacher.fullName}" resmi ditetapkan sebagai ${bkForm.counselorTitle}.`);
+      showToast(`Guru "${selTeacher.fullName}" resmi ditetapkan sebagai ${bkForm.counselorTitle}.`, 'success');
       setIsBkModalOpen(false);
     } catch (err) {
       console.error(err);
-      alert('Gagal menetapkan Guru BK.');
+      showToast('Gagal menetapkan Guru BK.', 'error');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -609,10 +630,11 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
   const handleSaveEkskulMember = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!memberForm.extracurricularId) {
-      alert('Pilih ekstrakurikuler tujuan.');
+      showToast('Pilih ekstrakurikuler tujuan.', 'warning');
       return;
     }
 
+    setIsSubmitting(true);
     try {
       const ekskul = extracurriculars.find(e => e.id === memberForm.extracurricularId);
       if (!ekskul) return;
@@ -623,18 +645,18 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
           notes: memberForm.notes,
           role: memberForm.role
         } as any);
-        showToast(`Data keanggotaan "${editingMember.studentName}" berhasil diperbarui.`);
+        showToast(`Data keanggotaan "${editingMember.studentName}" berhasil diperbarui.`, 'success');
       } else {
         const student = students.find(s => s.id === memberForm.studentId);
         if (!student) {
-          alert('Pilih siswa yang akan didaftarkan.');
+          showToast('Pilih siswa yang akan didaftarkan.', 'warning');
           return;
         }
 
         // Check if already registered in this ekskul
         const already = members.some(m => m.studentId === student.id && m.extracurricularId === ekskul.id);
         if (already) {
-          alert(`Siswa ${student.fullName} sudah terdaftar dalam ekstrakurikuler ${ekskul.name}.`);
+          showToast(`Siswa ${student.fullName} sudah terdaftar dalam ekstrakurikuler ${ekskul.name}.`, 'warning');
           return;
         }
 
@@ -652,12 +674,14 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
           academicYear: activeAcademicYear || '2024/2025',
           notes: memberForm.notes
         });
-        showToast(`Siswa "${student.fullName}" berhasil didaftarkan ke ekskul "${ekskul.name}".`);
+        showToast(`Siswa "${student.fullName}" berhasil didaftarkan ke ekskul "${ekskul.name}".`, 'success');
       }
       setIsMemberModalOpen(false);
     } catch (err) {
       console.error(err);
-      alert('Gagal menyimpan anggota ekstrakurikuler.');
+      showToast('Gagal menyimpan anggota ekstrakurikuler.', 'error');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -665,10 +689,10 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
     if (window.confirm(`Hapus keanggotaan "${m.studentName}" dari ekstrakurikuler ${m.extracurricularName}?`)) {
       try {
         await deleteMember(m.id);
-        showToast(`Anggota "${m.studentName}" berhasil dihapus.`);
+        showToast(`Anggota "${m.studentName}" berhasil dihapus.`, 'success');
       } catch (err) {
         console.error(err);
-        alert('Gagal menghapus anggota ekstrakurikuler.');
+        showToast('Gagal menghapus anggota ekstrakurikuler.', 'error');
       }
     }
   };
@@ -795,15 +819,16 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
           await deleteUser(linkedAccount.uid);
         }
 
-        showToast(`Data pengurus OSIM "${editingOsimMember.fullName}" berhasil diperbarui & disinkronkan ke cPanel.`);
+        showToast(`Data pengurus OSIM "${editingOsimMember.fullName}" berhasil diperbarui & disinkronkan ke cPanel.`, 'success');
       } else {
         // Mode Tambah Pengurus OSIM Terpusat
         const student = students.find(s => s.id === osimMemberForm.studentId);
         if (!student) {
-          alert('Pilih siswa yang akan ditugaskan ke OSIM.');
+          showToast('Pilih siswa yang akan ditugaskan ke OSIM.', 'warning');
           return;
         }
 
+        setIsSubmitting(true);
         const defaultUsername = student.nis || `osim.${student.fullName.toLowerCase().split(' ')[0].replace(/[^a-z0-9]/g, '')}`;
         const defaultPassword = getDefaultOsimPassword(sekbidNum ? `sekbid${sekbidNum}` : 'sekbid');
 
@@ -860,12 +885,14 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
           }
         }
 
-        showToast(`Siswa "${student.fullName}" resmi ditambahkan ke OSIM sebagai ${osimMemberForm.position} & disinkronkan ke cPanel.`);
+        showToast(`Siswa "${student.fullName}" resmi ditambahkan ke OSIM sebagai ${osimMemberForm.position} & disinkronkan ke cPanel.`, 'success');
       }
       setIsOsimMemberModalOpen(false);
     } catch (err) {
       console.error(err);
-      alert('Gagal menyimpan pengurus OSIM.');
+      showToast('Gagal menyimpan pengurus OSIM.', 'error');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -897,10 +924,10 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
           }
         }
 
-        showToast(`Pengurus "${om.fullName}" berhasil dihapus dari kabinet OSIM dan akun cPanel.`);
+        showToast(`Pengurus "${om.fullName}" berhasil dihapus dari kabinet OSIM dan akun cPanel.`, 'success');
       } catch (err) {
         console.error(err);
-        alert('Gagal menghapus pengurus OSIM.');
+        showToast('Gagal menghapus pengurus OSIM.', 'error');
       }
     }
   };
@@ -1920,6 +1947,7 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
                 <button
                   type="button"
+                  disabled={isSubmitting}
                   onClick={() => setIsTeacherModalOpen(false)}
                   className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold"
                 >
@@ -1927,9 +1955,19 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-lg shadow-indigo-600/30"
+                  disabled={isSubmitting}
+                  className={`px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-lg shadow-indigo-600/30 flex items-center gap-2 transition-all ${
+                    isSubmitting ? 'opacity-60 cursor-not-allowed' : ''
+                  }`}
                 >
-                  Simpan ke Master cPanel
+                  {isSubmitting ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Menyimpan...</span>
+                    </>
+                  ) : (
+                    <span>Simpan ke Master cPanel</span>
+                  )}
                 </button>
               </div>
             </form>
@@ -1987,6 +2025,7 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
                 <button
                   type="button"
+                  disabled={isSubmitting}
                   onClick={() => setIsPembinaIntraModalOpen(false)}
                   className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold"
                 >
@@ -1994,9 +2033,19 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold shadow-lg shadow-amber-600/30"
+                  disabled={isSubmitting}
+                  className={`px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold shadow-lg shadow-amber-600/30 flex items-center gap-2 transition-all ${
+                    isSubmitting ? 'opacity-60 cursor-not-allowed' : ''
+                  }`}
                 >
-                  Sahkan Pembina OSIM
+                  {isSubmitting ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Mengesahkan...</span>
+                    </>
+                  ) : (
+                    <span>Sahkan Pembina OSIM</span>
+                  )}
                 </button>
               </div>
             </form>
@@ -2155,6 +2204,7 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
                 <button
                   type="button"
+                  disabled={isSubmitting}
                   onClick={() => setIsEkskulModalOpen(false)}
                   className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold"
                 >
@@ -2162,9 +2212,19 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow-lg shadow-emerald-600/30"
+                  disabled={isSubmitting}
+                  className={`px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow-lg shadow-emerald-600/30 flex items-center gap-2 transition-all ${
+                    isSubmitting ? 'opacity-60 cursor-not-allowed' : ''
+                  }`}
                 >
-                  Simpan Ekstrakurikuler
+                  {isSubmitting ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Menyimpan...</span>
+                    </>
+                  ) : (
+                    <span>Simpan Ekstrakurikuler</span>
+                  )}
                 </button>
               </div>
             </form>
@@ -2229,6 +2289,7 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
                 <button
                   type="button"
+                  disabled={isSubmitting}
                   onClick={() => setIsBkModalOpen(false)}
                   className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold"
                 >
@@ -2236,9 +2297,19 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold shadow-lg shadow-purple-600/30"
+                  disabled={isSubmitting}
+                  className={`px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold shadow-lg shadow-purple-600/30 flex items-center gap-2 transition-all ${
+                    isSubmitting ? 'opacity-60 cursor-not-allowed' : ''
+                  }`}
                 >
-                  Sahkan Guru BK
+                  {isSubmitting ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Mengesahkan...</span>
+                    </>
+                  ) : (
+                    <span>Sahkan Guru BK</span>
+                  )}
                 </button>
               </div>
             </form>
@@ -2339,6 +2410,7 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
                 <button
                   type="button"
+                  disabled={isSubmitting}
                   onClick={() => setIsMemberModalOpen(false)}
                   className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold"
                 >
@@ -2346,9 +2418,19 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold shadow-lg shadow-rose-600/30"
+                  disabled={isSubmitting}
+                  className={`px-5 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold shadow-lg shadow-rose-600/30 flex items-center gap-2 transition-all ${
+                    isSubmitting ? 'opacity-60 cursor-not-allowed' : ''
+                  }`}
                 >
-                  Simpan Anggota
+                  {isSubmitting ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Menyimpan...</span>
+                    </>
+                  ) : (
+                    <span>Simpan Anggota</span>
+                  )}
                 </button>
               </div>
             </form>
@@ -2507,6 +2589,7 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
                 <button
                   type="button"
+                  disabled={isSubmitting}
                   onClick={() => setIsOsimMemberModalOpen(false)}
                   className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold"
                 >
@@ -2514,9 +2597,19 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold shadow-lg shadow-amber-600/30"
+                  disabled={isSubmitting}
+                  className={`px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold shadow-lg shadow-amber-600/30 flex items-center gap-2 transition-all ${
+                    isSubmitting ? 'opacity-60 cursor-not-allowed' : ''
+                  }`}
                 >
-                  {editingOsimMember ? 'Simpan Perubahan Pengurus' : 'Sahkan Pengurus OSIM'}
+                  {isSubmitting ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Menyimpan...</span>
+                    </>
+                  ) : (
+                    <span>{editingOsimMember ? 'Simpan Perubahan Pengurus' : 'Sahkan Pengurus OSIM'}</span>
+                  )}
                 </button>
               </div>
             </form>
@@ -2597,6 +2690,7 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
                 <button
                   type="button"
+                  disabled={isSubmitting}
                   onClick={() => setIsResetModalOpen(false)}
                   className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold"
                 >
@@ -2604,10 +2698,22 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold shadow-lg shadow-amber-600/30 flex items-center gap-1.5"
+                  disabled={isSubmitting}
+                  className={`px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold shadow-lg shadow-amber-600/30 flex items-center gap-1.5 transition-all ${
+                    isSubmitting ? 'opacity-60 cursor-not-allowed' : ''
+                  }`}
                 >
-                  <Key className="w-4 h-4" />
-                  <span>Simpan Kata Sandi</span>
+                  {isSubmitting ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Menyimpan...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Key className="w-4 h-4" />
+                      <span>Simpan Kata Sandi</span>
+                    </>
+                  )}
                 </button>
               </div>
             </form>

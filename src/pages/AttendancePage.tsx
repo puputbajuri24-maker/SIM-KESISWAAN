@@ -14,10 +14,12 @@ import {
   Trash2,
   Printer,
   Sparkles,
-  AlertCircle
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { AttendanceRecord, AttendanceItem, AttendanceStatus, Schedule } from '../types';
 import { DataTable, Column } from '../components/common/DataTable';
 import { StatusBadge } from '../components/common/Badge';
@@ -32,6 +34,8 @@ interface AttendancePageProps {
 
 export const AttendancePage: React.FC<AttendancePageProps> = ({ initialSchedule }) => {
   const { isWakaOrAdmin, isPembina, currentUser } = useAuth();
+  const { toast } = useToast();
+  const [isSavingAttendance, setIsSavingAttendance] = useState(false);
   const {
     attendance,
     members,
@@ -224,38 +228,46 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ initialSchedule 
 
   const handleSaveAttendance = async () => {
     if (activeEkskulMembers.length === 0) {
-      alert('Tidak ada anggota aktif pada ekstrakurikuler ini.');
+      toast.warning('Tidak ada anggota aktif pada ekstrakurikuler ini.');
       return;
     }
 
-    const currentEkskul = extracurriculars.find(e => e.id === selectedEkskulId);
+    setIsSavingAttendance(true);
+    try {
+      const currentEkskul = extracurriculars.find(e => e.id === selectedEkskulId);
 
-    const items: AttendanceItem[] = activeEkskulMembers.map(m => ({
-      studentId: m.studentId,
-      studentName: m.studentName,
-      studentClass: m.studentClass,
-      studentNis: m.studentNis,
-      status: attendanceState[m.studentId]?.status || 'Hadir',
-      notes: attendanceState[m.studentId]?.notes || ''
-    }));
+      const items: AttendanceItem[] = activeEkskulMembers.map(m => ({
+        studentId: m.studentId,
+        studentName: m.studentName,
+        studentClass: m.studentClass,
+        studentNis: m.studentNis,
+        status: attendanceState[m.studentId]?.status || 'Hadir',
+        notes: attendanceState[m.studentId]?.notes || ''
+      }));
 
-    await addAttendanceRecord({
-      extracurricularId: selectedEkskulId,
-      extracurricularName: currentEkskul?.name || 'Ekstrakurikuler',
-      date: sessionDate,
-      meetingTopic: meetingTopic || 'Latihan Rutin',
-      coachName: coachName,
-      totalMembers: activeEkskulMembers.length,
-      presentCount: summary.hadir,
-      permissionCount: summary.izin,
-      sickCount: summary.sakit,
-      absentCount: summary.alpa,
-      academicYear: activeAcademicYear,
-      items
-    });
+      await addAttendanceRecord({
+        extracurricularId: selectedEkskulId,
+        extracurricularName: currentEkskul?.name || 'Ekstrakurikuler',
+        date: sessionDate,
+        meetingTopic: meetingTopic || 'Latihan Rutin',
+        coachName: coachName,
+        totalMembers: activeEkskulMembers.length,
+        presentCount: summary.hadir,
+        permissionCount: summary.izin,
+        sickCount: summary.sakit,
+        absentCount: summary.alpa,
+        academicYear: activeAcademicYear,
+        items
+      });
 
-    alert('Presensi berhasil disimpan ke database!');
-    setActiveTab('history');
+      toast.success('Presensi pertemuan berhasil disimpan!');
+      setActiveTab('history');
+    } catch (err: any) {
+      console.error('Error saving attendance:', err);
+      toast.error('Gagal menyimpan presensi: ' + (err?.message || 'Terjadi kesalahan sistem'));
+    } finally {
+      setIsSavingAttendance(false);
+    }
   };
 
   // History & Detail View
@@ -541,11 +553,20 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ initialSchedule 
                 <button
                   type="button"
                   onClick={handleSaveAttendance}
-                  disabled={activeEkskulMembers.length === 0}
-                  className="px-5 py-2 text-xs font-extrabold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20 disabled:opacity-50 flex items-center gap-1.5 transition-all hover:scale-105"
+                  disabled={activeEkskulMembers.length === 0 || isSavingAttendance}
+                  className="px-5 py-2 text-xs font-extrabold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20 disabled:opacity-50 flex items-center gap-1.5 transition-all hover:scale-105 disabled:cursor-not-allowed"
                 >
-                  <Check className="w-4 h-4" />
-                  <span>Simpan Presensi Pertemuan</span>
+                  {isSavingAttendance ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Menyimpan Presensi...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-4 h-4" />
+                      <span>Simpan Presensi Pertemuan</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>

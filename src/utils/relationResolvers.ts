@@ -1,4 +1,4 @@
-import { Student, Teacher, StudentViolation, StudentCounseling, ExtracurricularMember, OsimMember, Extracurricular } from '../types';
+import { Student, Teacher, StudentViolation, StudentCounseling, ExtracurricularMember, OsimMember, Extracurricular, CashAccount, CashTransaction } from '../types';
 import { cleanDigits, normalizeName } from './syncUtils';
 
 /**
@@ -92,7 +92,7 @@ export const resolveTeacher = (
 
 /**
  * Relational integrity check: returns summary of connected relations
- * and warns of any orphan foreign keys.
+ * and warns of any orphan foreign keys or ledger balance drifts.
  */
 export interface RelationalHealthReport {
   totalStudents: number;
@@ -102,10 +102,15 @@ export interface RelationalHealthReport {
   totalCounselings: number;
   totalEkskulMembers: number;
   totalOsimMembers: number;
+  totalCashAccounts: number;
+  totalCashTransactions: number;
   orphanViolations: number;
   orphanCounselings: number;
   orphanEkskulMembers: number;
   orphanCoaches: number;
+  orphanCashTransactions: number;
+  studentPointDiscrepancies: number;
+  cashBalanceDiscrepancies: number;
   isHealthy: boolean;
 }
 
@@ -116,28 +121,53 @@ export const auditRelationalIntegrity = (
   violations: StudentViolation[],
   counselings: StudentCounseling[],
   members: ExtracurricularMember[],
-  osimMembers: OsimMember[]
+  osimMembers: OsimMember[],
+  cashAccounts: CashAccount[] = [],
+  cashTransactions: CashTransaction[] = []
 ): RelationalHealthReport => {
   let orphanViolations = 0;
   let orphanCounselings = 0;
   let orphanEkskulMembers = 0;
   let orphanCoaches = 0;
+  let orphanCashTransactions = 0;
+  let studentPointDiscrepancies = 0;
+  let cashBalanceDiscrepancies = 0;
+
+  // 1. Audit Student links on Violations
+  const activeViolations = violations.filter(v => !v.isDeleted && v.status !== 'Dibatalkan');
+  const pointsMap = new Map<string, number>();
 
   violations.forEach(v => {
     const student = resolveStudent(students, { id: v.studentId, code: v.studentCode, nis: v.studentNis, name: v.studentName });
     if (!student) orphanViolations++;
   });
 
+  activeViolations.forEach(v => {
+    const curr = pointsMap.get(v.studentId) || 0;
+    pointsMap.set(v.studentId, curr + (Number(v.points) || 0));
+  });
+
+  // 2. Audit Student Points Discrepancies
+  students.forEach(s => {
+    const calculatedPoints = pointsMap.get(s.id) || 0;
+    if ((s.violationPoints || 0) !== calculatedPoints) {
+      studentPointDiscrepancies++;
+    }
+  });
+
+  // 3. Audit Counseling student links
   counselings.forEach(c => {
     const student = resolveStudent(students, { id: c.studentId, code: c.studentCode, nis: c.studentNis, name: c.studentName });
     if (!student) orphanCounselings++;
   });
 
+  // 4. Audit Extracurricular Member links
   members.forEach(m => {
     const student = resolveStudent(students, { id: m.studentId, code: m.studentCode, nis: m.studentNis, name: m.studentName });
     if (!student) orphanEkskulMembers++;
   });
 
+  // 5. Audit Extracurricular Coaches
   extracurriculars.forEach(e => {
     if (e.coachId) {
       const teacher = resolveTeacher(teachers, { id: e.coachId, code: e.coachCode, name: e.coachName });
@@ -145,7 +175,35 @@ export const auditRelationalIntegrity = (
     }
   });
 
-  const isHealthy = orphanViolations === 0 && orphanCounselings === 0 && orphanEkskulMembers === 0 && orphanCoaches === 0;
+  // 6. Audit Cash Transactions & Balance Consistency
+  const accountMap = new Map<string, CashAccount>();
+  cashAccounts.forEach(acc => accountMap.set(acc.id, acc));
+
+  const accountNetSum = new Map<string, number>();
+  cashTransactions.forEach(trx => {
+    if (!accountMap.has(trx.accountId)) {
+      orphanCashTransactions++;
+    } else {
+      const delta = trx.type === 'MASUK' ? Number(trx.amount) : -Number(trx.amount);
+      const curr = accountNetSum.get(trx.accountId) || 0;
+      accountNetSum.set(trx.accountId, curr + delta);
+    }
+  });
+
+  cashAccounts.forEach(acc => {
+    const expected = (Number(acc.initialBalance) || 0) + (accountNetSum.get(acc.id) || 0);
+    if ((Number(acc.balance) || 0) !== expected) {
+      cashBalanceDiscrepancies++;
+    }
+  });
+
+  const isHealthy = orphanViolations === 0 && 
+    orphanCounselings === 0 && 
+    orphanEkskulMembers === 0 && 
+    orphanCoaches === 0 &&
+    orphanCashTransactions === 0 &&
+    studentPointDiscrepancies === 0 &&
+    cashBalanceDiscrepancies === 0;
 
   return {
     totalStudents: students.length,
@@ -155,10 +213,15 @@ export const auditRelationalIntegrity = (
     totalCounselings: counselings.length,
     totalEkskulMembers: members.length,
     totalOsimMembers: osimMembers.length,
+    totalCashAccounts: cashAccounts.length,
+    totalCashTransactions: cashTransactions.length,
     orphanViolations,
     orphanCounselings,
     orphanEkskulMembers,
     orphanCoaches,
+    orphanCashTransactions,
+    studentPointDiscrepancies,
+    cashBalanceDiscrepancies,
     isHealthy
   };
 };

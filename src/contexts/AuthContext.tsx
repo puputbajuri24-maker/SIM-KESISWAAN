@@ -191,6 +191,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Real-time synchronization of users collection across all devices via Firestore onSnapshot
   useEffect(() => {
+    // Only subscribe to users directory when user is actively authenticated with Firebase Auth
+    if (!auth.currentUser) {
+      return;
+    }
     let unsub: (() => void) | null = null;
     try {
       unsub = onSnapshot(collection(db, 'users'), (snap) => {
@@ -236,7 +240,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       if (unsub) unsub();
     };
-  }, []);
+  }, [auth.currentUser?.uid]);
 
   // Authentication state: MUST default to null on new browser tab / opening the URL
   // so that the Login Page is presented first, requiring manual username & password entry.
@@ -542,159 +546,85 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               displayName: foundStudent.fullName,
               email: `${foundStudent.nis || 'siswa'}@madrasah.sch.id`,
               username: foundStudent.nis || foundStudent.fullName.toLowerCase().replace(/\s+/g, '.'),
-              role: 'pembina_ekskul', // Read-level access
-              status: foundStudent.status === 'Aktif' ? 'Aktif' : 'Nonaktif',
-              password: 'password'
+              role: 'siswa', // Strictly student role
+              status: foundStudent.status === 'Aktif' ? 'Aktif' : 'Nonaktif'
             };
           }
         }
       } catch (e) {}
     }
 
-    if (foundUser) {
-      // Synchronize latest credential from Firestore with timestamp conflict resolution & self-healing
+    if (foundUser && foundUser.status === 'Nonaktif') {
+      setIsLoading(false);
+      recordSystemAuditLog('LOGIN_FAILED_BLOCKED', 'Keamanan Sistem', `Percobaan login gagal untuk akun dinonaktifkan: ${foundUser.displayName} (${identifier})`, foundUser);
+      return { success: false, error: 'Akun Anda dinonaktifkan oleh Administrator. Hubungi Proktor / Super Admin.' };
+    }
+
+    // 1. Primary Authentication: Firebase Authentication Engine
+    const targetEmail = (foundUser && foundUser.email) 
+      ? foundUser.email 
+      : (cleanId.includes('@') ? cleanId : `${cleanId}@sekolah.sch.id`);
+
+    let fbSuccess = false;
+    let fbProfile: UserProfile | null = null;
+
+    try {
+      const res = await signInWithEmailAndPassword(auth, targetEmail, cleanPass);
+      const userDoc = await getDoc(doc(db, 'users', res.user.uid));
+      if (userDoc.exists()) {
+        fbProfile = { ...userDoc.data(), uid: res.user.uid } as UserProfile;
+      } else {
+        const isBootstrappedAdmin = res.user.email === 'puputbajuri24@gmail.com' || res.user.email === 'admin@sekolah.sch.id';
+        fbProfile = {
+          uid: res.user.uid,
+          email: res.user.email || '',
+          displayName: res.user.displayName || (isBootstrappedAdmin ? 'Puput Eka Bajuri, S. Pd., M. Or (Super Admin)' : 'Pengguna Baru'),
+          role: isBootstrappedAdmin ? 'super_admin' : 'anggota_osim',
+          status: 'Aktif',
+          createdAt: new Date().toISOString()
+        };
+        const { password: _p, ...sanitized } = fbProfile;
+        await setDoc(doc(db, 'users', res.user.uid), sanitized);
+      }
+      fbSuccess = true;
+    } catch (fbErr: any) {
+      // Firebase Auth attempt failed, proceed to dev fallback or report error
+    }
+
+    if (fbSuccess && fbProfile) {
+      setAdminImpersonator(null);
       try {
-        let userDocRef = doc(db, 'users', foundUser.uid);
-        let userDocSnap = await getDoc(userDocRef);
-        
-        // If not found by primary uid, check potential alias uids (e.g. user_ prefix or stripped)
-        if (!userDocSnap.exists()) {
-          const altUid = foundUser.uid.startsWith('user_') ? foundUser.uid.replace(/^user_/, '') : `user_${foundUser.uid}`;
-          const altDocRef = doc(db, 'users', altUid);
-          const altSnap = await getDoc(altDocRef);
-          if (altSnap.exists()) {
-            userDocRef = altDocRef;
-            userDocSnap = altSnap;
-          }
-        }
+        sessionStorage.removeItem('sim_admin_impersonator');
+      } catch {}
+      const updated = { ...fbProfile, lastLogin: new Date().toISOString() };
+      setCurrentUser(updated);
+      setAllUsers(prev => [...prev.filter(u => u.uid !== updated.uid), updated]);
+      recordSystemAuditLog('LOGIN_SUCCESS', 'Autentikasi & Keamanan', `Pengguna ${updated.displayName} (${updated.role.toUpperCase()}) berhasil masuk via Firebase Auth`, updated);
+      setIsLoading(false);
+      return { success: true };
+    }
 
-        if (userDocSnap.exists()) {
-          const freshData = userDocSnap.data() as UserProfile;
-          const localUpdated = foundUser.updatedAt ? new Date(foundUser.updatedAt).getTime() : 0;
-          const remoteUpdated = freshData.updatedAt ? new Date(freshData.updatedAt).getTime() : 0;
-
-          // Conflict resolution logic:
-          // Case 1: Remote in Firestore is newer than local memory -> accept Firestore data
-          if (remoteUpdated > localUpdated && freshData.password && freshData.password.trim()) {
-            foundUser = { ...foundUser, ...freshData };
-            setAllUsers(prev => {
-              const updatedList = prev.map(u => u.uid === foundUser!.uid ? { ...u, ...freshData } : u);
-              try {
-                localStorage.setItem(LOCAL_STORAGE_ALL_USERS_KEY, JSON.stringify(updatedList));
-              } catch {}
-              return updatedList;
-            });
-          }
-          // Case 2: Local is newer than Firestore (Admin changed password locally or Firestore write lagged)
-          else if (localUpdated > remoteUpdated && foundUser.password && foundUser.password.trim()) {
-            // Self-healing push: Update Firestore so cloud storage gets the latest admin-set password
-            setDoc(userDocRef, { password: foundUser.password, updatedAt: foundUser.updatedAt }, { merge: true }).catch(() => {});
-          }
-          // Case 3: Local has a custom password set while Firestore still has stale default 'password'
-          else if (
-            foundUser.password && 
-            foundUser.password !== 'password' && 
-            (!freshData.password || freshData.password === 'password')
-          ) {
-            // Self-healing push: Update Firestore with local's customized password
-            const newTimestamp = foundUser.updatedAt || new Date().toISOString();
-            setDoc(userDocRef, { password: foundUser.password, updatedAt: newTimestamp }, { merge: true }).catch(() => {});
-          }
-          // Case 4: Remote has a customized password and local is default -> adopt remote
-          else if (freshData.password && freshData.password.trim() && freshData.password !== 'password' && (!foundUser.password || foundUser.password === 'password')) {
-            foundUser = { ...foundUser, ...freshData };
-            setAllUsers(prev => {
-              const updatedList = prev.map(u => u.uid === foundUser!.uid ? { ...u, ...freshData } : u);
-              try {
-                localStorage.setItem(LOCAL_STORAGE_ALL_USERS_KEY, JSON.stringify(updatedList));
-              } catch {}
-              return updatedList;
-            });
-          }
-        } else {
-          // Document does not exist in Firestore yet -> self-heal by writing to Firestore
-          setDoc(userDocRef, { ...foundUser, updatedAt: foundUser.updatedAt || new Date().toISOString() }, { merge: true }).catch(() => {});
-        }
-      } catch (e) {
-        console.warn('Firestore credential sync note:', e);
-      }
-
-      if (foundUser.status === 'Nonaktif') {
-        setIsLoading(false);
-        recordSystemAuditLog('LOGIN_FAILED_BLOCKED', 'Keamanan Sistem', `Percobaan login gagal untuk akun dinonaktifkan: ${foundUser.displayName} (${identifier})`, foundUser);
-        return { success: false, error: 'Akun Anda dinonaktifkan oleh Administrator. Hubungi Proktor / Super Admin.' };
-      }
-
-      // Check password: user.password or default fallback 'password' or OSIM default
-      const userPassword = (foundUser.password && foundUser.password.trim()) || 'password';
-      const isOsimAccount = foundUser.role === 'pengurus_osim' || foundUser.role === 'anggota_osim';
-      const osimFallbackPassword = isOsimAccount
-        ? getDefaultOsimPassword(foundUser.osimDepartmentCode || foundUser.position || foundUser.osimRole || foundUser.username)
-        : null;
-
-      const isJohanAccount = (foundUser.displayName && foundUser.displayName.toLowerCase().includes('johan')) ||
-                             foundUser.uid === 'user_guru_06' ||
-                             foundUser.uid === 'guru_06' ||
-                             (foundUser.nip && foundUser.nip.startsWith('19900316'));
-      const isJohanPasswordMatch = Boolean(isJohanAccount && (
-        cleanPass === 'pembina2026' ||
-        cleanPass === 'johan@pembina2026' ||
-        cleanPass === 'password'
-      ));
-
-      const isPasswordCorrect = cleanPass === userPassword || 
-                                (osimFallbackPassword && cleanPass === osimFallbackPassword) ||
-                                isJohanPasswordMatch;
-
-      if (isPasswordCorrect) {
-        // Direct login clears any temporary simulation session
+    // 2. Development Mode / Demo Simulation Fallback (Strictly isolated from Production)
+    const isDevEnv = Boolean((import.meta as any).env?.DEV);
+    if (isDevEnv && foundUser) {
+      const devValidPassword = (foundUser.password && foundUser.password.trim()) || 'password';
+      if (cleanPass === devValidPassword || cleanPass === 'password') {
         setAdminImpersonator(null);
         try {
           sessionStorage.removeItem('sim_admin_impersonator');
         } catch {}
-        let userToSet = { ...foundUser };
-        if (isJohanAccount) {
-          const currentEkskulIds = Array.isArray(userToSet.extracurricularIds) ? userToSet.extracurricularIds : [];
-          userToSet.extracurricularIds = Array.from(new Set([
-            ...currentEkskulIds,
-            'ekskul_1790810445554',
-            'ekskul_1790685328474',
-            'ekskul_english_club'
-          ]));
-        }
-        const updated = { ...userToSet, lastLogin: new Date().toISOString() };
+        const updated = { ...foundUser, lastLogin: new Date().toISOString() };
         setCurrentUser(updated);
         setAllUsers(prev => prev.map(u => u.uid === foundUser!.uid ? updated : u));
-        recordSystemAuditLog('LOGIN_SUCCESS', 'Autentikasi & Keamanan', `Pengguna ${foundUser.displayName} (${foundUser.role.toUpperCase()}) berhasil masuk ke aplikasi`, updated);
+        recordSystemAuditLog('LOGIN_DEV_MODE', 'Autentikasi & Keamanan', `Pengguna ${foundUser.displayName} (${foundUser.role.toUpperCase()}) masuk dalam mode simulasi pengembangan`, updated);
         setIsLoading(false);
         return { success: true };
-      } else {
-        setIsLoading(false);
-        recordSystemAuditLog('LOGIN_FAILED_PASSWORD', 'Keamanan Sistem', `Percobaan login gagal (Password salah) untuk: ${foundUser.displayName} (${identifier})`, foundUser);
-        return {
-          success: false,
-          error: 'Kata sandi (password) yang Anda masukkan salah. Jika Admin App atau Pembina telah mengganti kata sandi akun Anda, kata sandi lama otomatis tidak berlaku lagi dan Anda wajib menggunakan kata sandi yang terbaru.'
-        };
       }
     }
 
-    // Try Firebase auth if not matched locally
-    try {
-      const res = await signInWithEmailAndPassword(auth, identifier, pass);
-      const userDoc = await getDoc(doc(db, 'users', res.user.uid));
-      if (userDoc.exists()) {
-        const data = userDoc.data() as UserProfile;
-        setCurrentUser(data);
-        setAllUsers(prev => [...prev.filter(u => u.uid !== data.uid), data]);
-        recordSystemAuditLog('LOGIN_FIREBASE', 'Autentikasi & Keamanan', `Pengguna ${data.displayName} berhasil login via Firebase Auth`, data);
-      }
-      setIsLoading(false);
-      return { success: true };
-    } catch (err: any) {
-      setIsLoading(false);
-      recordSystemAuditLog('LOGIN_FAILED_NOT_FOUND', 'Keamanan Sistem', `Percobaan login gagal untuk identitas tidak dikenal: ${identifier}`);
-      return { success: false, error: 'Akun tidak ditemukan atau NIP/Email dan Password tidak cocok.' };
-    }
+    setIsLoading(false);
+    recordSystemAuditLog('LOGIN_FAILED', 'Keamanan Sistem', `Percobaan login gagal untuk identitas: ${identifier}`);
+    return { success: false, error: 'Akun tidak ditemukan atau Email/NIP dan Password tidak cocok.' };
   };
 
   const loginWithEmail = async (email: string, pass: string): Promise<{ success: boolean; error?: string }> => {
@@ -766,7 +696,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       try {
-        await setDoc(doc(db, 'users', newUser.uid), newUser, { merge: true });
+        const { password: _pw, ...sanitizedNewUser } = newUser;
+        await setDoc(doc(db, 'users', newUser.uid), sanitizedNewUser, { merge: true });
       } catch (e) {
         if (isPermissionError(e)) {
           handleFirestoreError(e, OperationType.CREATE, `users/${newUser.uid}`);
@@ -814,27 +745,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // Write to Firestore with guaranteed updatedAt
+      // Write to Firestore without storing plaintext passwords
       try {
-        const firestorePayload = { ...updatedWithTimestamp };
-        await setDoc(doc(db, 'users', uid), firestorePayload, { merge: true });
+        const { password: _pw, ...sanitizedPayload } = updatedWithTimestamp;
+        await setDoc(doc(db, 'users', uid), sanitizedPayload, { merge: true });
 
         // Also update alias document IDs if any
         if (uid.startsWith('user_')) {
-          setDoc(doc(db, 'users', uid.replace(/^user_/, '')), firestorePayload, { merge: true }).catch(() => {});
+          setDoc(doc(db, 'users', uid.replace(/^user_/, '')), sanitizedPayload, { merge: true }).catch(() => {});
         } else {
-          setDoc(doc(db, 'users', `user_${uid}`), firestorePayload, { merge: true }).catch(() => {});
+          setDoc(doc(db, 'users', `user_${uid}`), sanitizedPayload, { merge: true }).catch(() => {});
         }
 
         if (mergedUser?.role === 'pengurus_osim') {
           if (mergedUser.osimRole === 'ketua') {
-            setDoc(doc(db, 'users', 'user_osim_dept_bph'), firestorePayload, { merge: true }).catch(() => {});
-            setDoc(doc(db, 'users', 'user_osim_ketua'), firestorePayload, { merge: true }).catch(() => {});
+            setDoc(doc(db, 'users', 'user_osim_dept_bph'), sanitizedPayload, { merge: true }).catch(() => {});
+            setDoc(doc(db, 'users', 'user_osim_ketua'), sanitizedPayload, { merge: true }).catch(() => {});
           } else if (mergedUser.osimRole) {
-            setDoc(doc(db, 'users', `user_osim_${mergedUser.osimRole}`), firestorePayload, { merge: true }).catch(() => {});
+            setDoc(doc(db, 'users', `user_osim_${mergedUser.osimRole}`), sanitizedPayload, { merge: true }).catch(() => {});
           }
           if (mergedUser.osimDepartmentId) {
-            setDoc(doc(db, 'users', `user_osim_${mergedUser.osimDepartmentId}`), firestorePayload, { merge: true }).catch(() => {});
+            setDoc(doc(db, 'users', `user_osim_${mergedUser.osimDepartmentId}`), sanitizedPayload, { merge: true }).catch(() => {});
           }
         }
       } catch (e) {
@@ -939,9 +870,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } catch {}
       }
 
-      // Guaranteed Firestore persistence across primary document & aliases
+      // Guaranteed Firestore persistence across primary document & aliases (excluding plaintext password)
       try {
-        const payload = { password: newPassword, updatedAt: nowIso };
+        const payload = { updatedAt: nowIso };
         await setDoc(doc(db, 'users', uid), payload, { merge: true });
 
         // Update alias IDs
@@ -975,15 +906,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   (m.studentNis && targetUser.nip && m.studentNis === targetUser.nip);
                 if (isMatch) {
                   foundMemberId = m.id;
-                  return { ...m, loginPassword: newPassword, password: newPassword, updatedAt: nowIso };
+                  return { ...m, updatedAt: nowIso };
                 }
                 return m;
               });
               if (foundMemberId) {
                 localStorage.setItem('sim_osim_members', JSON.stringify(updatedMembers));
                 setDoc(doc(db, 'osim_members', foundMemberId), {
-                  loginPassword: newPassword,
-                  password: newPassword,
                   updatedAt: nowIso
                 }, { merge: true }).catch(() => {});
               }
@@ -1063,7 +992,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       try {
-        await setDoc(doc(db, 'users', currentUser.uid), { password: cleanNew, updatedAt: updatedUser.updatedAt }, { merge: true });
+        await setDoc(doc(db, 'users', currentUser.uid), { updatedAt: updatedUser.updatedAt }, { merge: true });
       } catch (e) {
         console.warn('Firestore changePassword sync note:', e);
       }
@@ -1160,7 +1089,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             updatedAt: new Date().toISOString()
           };
           updatedUsers[existingIdx] = merged;
-          firestorePromises.push(setDoc(doc(db, 'users', merged.uid), merged, { merge: true }));
+          const { password: _pw1, ...sanitizedMerged } = merged;
+          firestorePromises.push(setDoc(doc(db, 'users', merged.uid), sanitizedMerged, { merge: true }));
           if (isUidMigrated && existing.uid) {
             firestorePromises.push(deleteDoc(doc(db, 'users', existing.uid)));
           }
@@ -1192,7 +1122,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             createdAt: new Date().toISOString()
           };
           updatedUsers.push(newUser);
-          firestorePromises.push(setDoc(doc(db, 'users', newUser.uid), newUser, { merge: true }));
+          const { password: _pw2, ...sanitizedNewUser } = newUser;
+          firestorePromises.push(setDoc(doc(db, 'users', newUser.uid), sanitizedNewUser, { merge: true }));
           count++;
         }
       }
@@ -1317,7 +1248,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               updatedAt: new Date().toISOString()
             };
             updatedUsers[existingIdx] = merged;
-            firestorePromises.push(setDoc(doc(db, 'users', merged.uid), merged, { merge: true }));
+            const { password: _pw3, ...sanitizedOsimMerged } = merged;
+            firestorePromises.push(setDoc(doc(db, 'users', merged.uid), sanitizedOsimMerged, { merge: true }));
             if (isUidMigrated && existing.uid) {
               firestorePromises.push(deleteDoc(doc(db, 'users', existing.uid)));
             }
@@ -1344,7 +1276,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               createdAt: new Date().toISOString()
             };
             updatedUsers.push(newUser);
-            firestorePromises.push(setDoc(doc(db, 'users', newUser.uid), newUser, { merge: true }));
+            const { password: _pw4, ...sanitizedOsimNew } = newUser;
+            firestorePromises.push(setDoc(doc(db, 'users', newUser.uid), sanitizedOsimNew, { merge: true }));
             count++;
           }
         }
@@ -1381,7 +1314,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             updatedAt: new Date().toISOString()
           };
           updatedUsers[existingAccIdx] = merged;
-          firestorePromises.push(setDoc(doc(db, 'users', merged.uid), merged, { merge: true }));
+          const { password: _pw5, ...sanitizedCoordMerged } = merged;
+          firestorePromises.push(setDoc(doc(db, 'users', merged.uid), sanitizedCoordMerged, { merge: true }));
         } else {
           const newUid = `user_osim_${(deptCode || 'sekbid').toLowerCase().replace(/[^a-z0-9]/g, '_')}_${Date.now()}`;
           const newAcc: UserProfile = {
@@ -1401,7 +1335,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             createdAt: new Date().toISOString()
           };
           updatedUsers.push(newAcc);
-          firestorePromises.push(setDoc(doc(db, 'users', newAcc.uid), newAcc, { merge: true }));
+          const { password: _pw6, ...sanitizedNewAcc } = newAcc;
+          firestorePromises.push(setDoc(doc(db, 'users', newAcc.uid), sanitizedNewAcc, { merge: true }));
           count++;
         }
       }

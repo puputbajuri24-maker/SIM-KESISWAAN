@@ -35,6 +35,7 @@ import {
 import * as XLSX from 'xlsx';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { useCrudPermission } from '../utils/rbacRules';
 import { ExtracurricularMember } from '../types';
 import { DataTable, Column } from '../components/common/DataTable';
@@ -54,6 +55,7 @@ interface MembersPageProps {
 
 export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initialEkskulId, onNavigate }) => {
   const { isWakaOrAdmin, isPembina, currentUser } = useAuth();
+  const { toast } = useToast();
   const canCrudMembers = useCrudPermission('members', currentUser?.role, currentUser);
   const {
     classes,
@@ -342,7 +344,7 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
   const handleSaveQuickStudent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!quickStudentName.trim() || !quickStudentNis.trim() || !targetEkskulId) {
-      alert('Harap lengkapi Nama Siswa, NIS, dan pilih Ekstrakurikuler Tujuan.');
+      toast.warning('Harap lengkapi Nama Siswa, NIS, dan pilih Ekstrakurikuler Tujuan.');
       return;
     }
 
@@ -388,15 +390,17 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
         academicYear: activeAcademicYear
       });
 
+      toast.success(`Siswa "${quickStudentName.trim()}" berhasil didaftarkan ke ${ekskul.name}!`);
+
       // Reset form
       setQuickStudentNis('');
       setQuickStudentNisn('');
       setQuickStudentName('');
       setQuickStudentGender('L');
       setIsAddOpen(false);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error adding quick student:', err);
-      alert('Gagal menambahkan siswa.');
+      toast.error('Gagal menambahkan siswa: ' + (err?.message || 'Terjadi kesalahan'));
     } finally {
       setIsSavingQuickStudent(false);
     }
@@ -514,7 +518,7 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
   const handleSaveMember = async (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedStudentIds.length === 0 || !targetEkskulId) {
-      alert('Pilih minimal satu siswa dan ekstrakurikuler tujuan.');
+      toast.warning('Pilih minimal satu siswa dan ekstrakurikuler tujuan.');
       return;
     }
 
@@ -546,8 +550,11 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
           academicYear: activeAcademicYear
         });
       }
-    } catch (err) {
+
+      toast.success(`Berhasil menambahkan ${newStudentsToEnroll.length} siswa ke ${ekskul.name}!`);
+    } catch (err: any) {
       console.error('Error adding members:', err);
+      toast.error('Gagal mendaftarkan anggota: ' + (err?.message || 'Terjadi kesalahan'));
     } finally {
       setIsSavingEnroll(false);
       setIsAddOpen(false);

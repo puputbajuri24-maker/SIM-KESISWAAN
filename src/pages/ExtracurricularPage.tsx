@@ -19,10 +19,12 @@ import {
   Award,
   Palette,
   Check,
-  Lock
+  Lock,
+  RefreshCw
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { useCrudPermission } from '../utils/rbacRules';
 import { Extracurricular, ExtracurricularCategory } from '../types';
 import { StatusBadge } from '../components/common/Badge';
@@ -46,6 +48,8 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
   const { isWakaOrAdmin, isPembina, currentUser, canManageExtracurricular } = useAuth();
   const canCrudPembinaEkstra = useCrudPermission('pembina_ekstra', currentUser?.role, currentUser);
   const canManageEkstra = Boolean(canCrudPembinaEkstra || isWakaOrAdmin);
+  const { toast } = useToast();
+  const [isSavingEkskul, setIsSavingEkskul] = useState(false);
   const { extracurriculars, teachers, addExtracurricular, updateExtracurricular, deleteExtracurricular, members } = useSchool();
 
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -283,13 +287,15 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name || !formData.category) {
-      alert('Mohon isi nama dan kategori ekstrakurikuler.');
+      toast.warning('Mohon isi nama dan kategori ekstrakurikuler.');
       return;
     }
 
+    setIsSavingEkskul(true);
     try {
       if (selectedEkskul) {
         await updateExtracurricular(selectedEkskul.id, formData);
+        toast.success(`Ekstrakurikuler "${formData.name}" berhasil diperbarui!`);
       } else {
         await addExtracurricular({
           name: formData.name!,
@@ -311,12 +317,15 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
           target: formData.target || '',
           academicYear: formData.academicYear || '2026/2027'
         });
+        toast.success(`Ekstrakurikuler baru "${formData.name}" berhasil ditambahkan!`);
       }
-    } catch (err) {
-      console.error('Error saving extracurricular:', err);
-    } finally {
       setIsFormOpen(false);
       setSelectedEkskul(null);
+    } catch (err: any) {
+      console.error('Error saving extracurricular:', err);
+      toast.error('Gagal menyimpan ekstrakurikuler: ' + (err?.message || 'Terjadi kesalahan sistem'));
+    } finally {
+      setIsSavingEkskul(false);
     }
   };
 
@@ -604,10 +613,20 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
             </button>
             <button
               type="button"
+              disabled={isSavingEkskul}
               onClick={handleSave}
-              className="px-5 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20"
+              className={`px-5 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20 flex items-center gap-2 transition-all ${
+                isSavingEkskul ? 'opacity-60 cursor-not-allowed' : ''
+              }`}
             >
-              Simpan Ekstrakurikuler
+              {isSavingEkskul ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Menyimpan...</span>
+                </>
+              ) : (
+                <span>Simpan Ekstrakurikuler</span>
+              )}
             </button>
           </>
         }

@@ -103,7 +103,15 @@ export const CPanelPage: React.FC = () => {
     syncDeleteUserFromCPanel,
     syncAllCPanelUsers,
     osimDepartments,
-    osimMembers
+    osimMembers,
+    checkDatabaseRelationalHealth,
+    runFullDatabaseHarmonization,
+    autoHealOrphanRecords,
+    createDisasterRecoverySnapshot,
+    restoreFromDisasterSnapshot,
+    getDisasterRecoverySnapshots,
+    deleteDisasterRecoverySnapshot,
+    verifyCloudDataIntegrity
   } = useSchool();
 
   const [activeSubTab, setActiveSubTab] = useState<'users' | 'crud_center' | 'announcements' | 'school' | 'matrix' | 'sync' | 'logs'>('users');
@@ -1726,6 +1734,14 @@ export const CPanelPage: React.FC = () => {
           uploadAllDataToFirestore={uploadAllDataToFirestore}
           studentsCount={students.length}
           classesCount={classes.length}
+          checkDatabaseRelationalHealth={checkDatabaseRelationalHealth}
+          runFullDatabaseHarmonization={runFullDatabaseHarmonization}
+          autoHealOrphanRecords={autoHealOrphanRecords}
+          createDisasterRecoverySnapshot={createDisasterRecoverySnapshot}
+          restoreFromDisasterSnapshot={restoreFromDisasterSnapshot}
+          getDisasterRecoverySnapshots={getDisasterRecoverySnapshots}
+          deleteDisasterRecoverySnapshot={deleteDisasterRecoverySnapshot}
+          verifyCloudDataIntegrity={verifyCloudDataIntegrity}
         />
       )}
 

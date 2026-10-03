@@ -24,10 +24,12 @@ import {
   Scale,
   RefreshCw,
   Info,
+  Loader2,
   X
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { useAppTimezone } from '../contexts/TimezoneContext';
 import { CashAccount, CashTransaction, UserProfile, CashAccountCategory, CashTransactionType } from '../types';
 import { formatRupiah, parseRupiahInput, terbilang, generateReceiptNumber } from '../utils/currencyUtils';
@@ -87,6 +89,10 @@ export const CashLedgerPage: React.FC = () => {
     activeSemester
   } = useSchool();
   const { timezoneAbbr } = useAppTimezone();
+  const { toast } = useToast();
+  const [isSavingTrx, setIsSavingTrx] = useState(false);
+  const [isSavingAccount, setIsSavingAccount] = useState(false);
+  const [isSavingAmanah, setIsSavingAmanah] = useState(false);
 
   // Active view tab
   const [activeTab, setActiveTab] = useState<'buku_kas' | 'daftar_akun' | 'rekap_laporan'>('buku_kas');
@@ -299,51 +305,63 @@ export const CashLedgerPage: React.FC = () => {
   const handleSaveTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!trxAccountId || trxAmount <= 0 || !trxTitle) {
-      alert('Mohon lengkapi Akun Kas, Jumlah Uang (Rp), dan Judul Transaksi!');
+      toast.warning('Mohon lengkapi Akun Kas, Jumlah Uang (Rp), dan Judul Transaksi!');
       return;
     }
 
     const targetAccount = cashAccounts.find(a => a.id === trxAccountId);
-    if (!targetAccount) return;
-
-    if (selectedTransaction) {
-      await updateCashTransaction(selectedTransaction.id, {
-        accountId: trxAccountId,
-        accountName: targetAccount.name,
-        accountCode: targetAccount.code,
-        type: trxType,
-        amount: trxAmount,
-        date: trxDate,
-        title: trxTitle,
-        description: trxDescription,
-        category: trxCategory,
-        recipientOrPayer: trxRecipientOrPayer,
-        receiptUrl: trxReceiptUrl,
-        referenceNumber: trxRefNumber
-      });
-    } else {
-      await addCashTransaction({
-        accountId: trxAccountId,
-        accountName: targetAccount.name,
-        accountCode: targetAccount.code,
-        type: trxType,
-        amount: trxAmount,
-        date: trxDate,
-        title: trxTitle,
-        description: trxDescription,
-        category: trxCategory,
-        recipientOrPayer: trxRecipientOrPayer,
-        receiptUrl: trxReceiptUrl,
-        referenceNumber: trxRefNumber,
-        recordedByUid: currentUser?.uid || 'system',
-        recordedByName: currentUser?.displayName || 'Petugas Kas Madrasah',
-        recordedByRole: currentUser?.cashManagerTitle || (isSuperAdmin ? 'Super Administrator' : isWaka ? 'Waka Kesiswaan' : 'Pemegang Kas'),
-        status: 'VERIFIED',
-        academicYear: activeAcademicYear
-      });
+    if (!targetAccount) {
+      toast.error('Akun kas yang dipilih tidak valid.');
+      return;
     }
 
-    setIsTransactionModalOpen(false);
+    setIsSavingTrx(true);
+    try {
+      if (selectedTransaction) {
+        await updateCashTransaction(selectedTransaction.id, {
+          accountId: trxAccountId,
+          accountName: targetAccount.name,
+          accountCode: targetAccount.code,
+          type: trxType,
+          amount: trxAmount,
+          date: trxDate,
+          title: trxTitle,
+          description: trxDescription,
+          category: trxCategory,
+          recipientOrPayer: trxRecipientOrPayer,
+          receiptUrl: trxReceiptUrl,
+          referenceNumber: trxRefNumber
+        });
+        toast.success('Catatan kas berhasil diperbarui!');
+      } else {
+        await addCashTransaction({
+          accountId: trxAccountId,
+          accountName: targetAccount.name,
+          accountCode: targetAccount.code,
+          type: trxType,
+          amount: trxAmount,
+          date: trxDate,
+          title: trxTitle,
+          description: trxDescription,
+          category: trxCategory,
+          recipientOrPayer: trxRecipientOrPayer,
+          receiptUrl: trxReceiptUrl,
+          referenceNumber: trxRefNumber,
+          recordedByUid: currentUser?.uid || 'system',
+          recordedByName: currentUser?.displayName || 'Petugas Kas Madrasah',
+          recordedByRole: currentUser?.cashManagerTitle || (isSuperAdmin ? 'Super Administrator' : isWaka ? 'Waka Kesiswaan' : 'Pemegang Kas'),
+          status: 'VERIFIED',
+          academicYear: activeAcademicYear
+        });
+        toast.success(`Transaksi ${trxType === 'MASUK' ? 'pemasukan' : 'pengeluaran'} berhasil dicatat!`);
+      }
+      setIsTransactionModalOpen(false);
+    } catch (err: any) {
+      console.error('Error saving transaction:', err);
+      toast.error('Gagal menyimpan transaksi: ' + (err?.message || 'Terjadi kesalahan sistem'));
+    } finally {
+      setIsSavingTrx(false);
+    }
   };
 
   // Open Amanah Delegation Modal
@@ -357,12 +375,21 @@ export const CashLedgerPage: React.FC = () => {
   const handleSaveAmanah = async () => {
     if (!selectedAccountForAmanah) return;
 
-    const selectedTeacherNames = allUsers
-      .filter(u => amanahSelectedUserIds.includes(u.uid))
-      .map(u => u.displayName);
+    setIsSavingAmanah(true);
+    try {
+      const selectedTeacherNames = allUsers
+        .filter(u => amanahSelectedUserIds.includes(u.uid))
+        .map(u => u.displayName);
 
-    await assignCashManager(selectedAccountForAmanah.id, amanahSelectedUserIds, selectedTeacherNames);
-    setIsAmanahModalOpen(false);
+      await assignCashManager(selectedAccountForAmanah.id, amanahSelectedUserIds, selectedTeacherNames);
+      toast.success(`Delegasi amanah untuk akun "${selectedAccountForAmanah.name}" berhasil disimpan!`);
+      setIsAmanahModalOpen(false);
+    } catch (err: any) {
+      console.error('Error assigning manager:', err);
+      toast.error('Gagal menyimpan delegasi: ' + (err?.message || 'Terjadi kesalahan sistem'));
+    } finally {
+      setIsSavingAmanah(false);
+    }
   };
 
   // Open Add / Edit Account Modal
@@ -391,33 +418,42 @@ export const CashLedgerPage: React.FC = () => {
   const handleSaveAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!accName || !accCode) {
-      alert('Nama dan Kode Akun Kas wajib diisi!');
+      toast.warning('Nama dan Kode Akun Kas wajib diisi!');
       return;
     }
 
-    if (selectedAccountForEdit) {
-      await updateCashAccount(selectedAccountForEdit.id, {
-        name: accName,
-        code: accCode,
-        category: accCategory,
-        initialBalance: accInitialBalance,
-        description: accDescription
-      });
-    } else {
-      await addCashAccount({
-        name: accName,
-        code: accCode,
-        category: accCategory,
-        initialBalance: accInitialBalance,
-        description: accDescription,
-        isActive: true,
-        academicYear: activeAcademicYear,
-        assignedManagerUserIds: [],
-        assignedManagerNames: []
-      });
+    setIsSavingAccount(true);
+    try {
+      if (selectedAccountForEdit) {
+        await updateCashAccount(selectedAccountForEdit.id, {
+          name: accName,
+          code: accCode,
+          category: accCategory,
+          initialBalance: accInitialBalance,
+          description: accDescription
+        });
+        toast.success('Data akun kas berhasil diperbarui!');
+      } else {
+        await addCashAccount({
+          name: accName,
+          code: accCode,
+          category: accCategory,
+          initialBalance: accInitialBalance,
+          description: accDescription,
+          isActive: true,
+          academicYear: activeAcademicYear,
+          assignedManagerUserIds: [],
+          assignedManagerNames: []
+        });
+        toast.success(`Akun kas "${accName}" berhasil dibuat!`);
+      }
+      setIsAccountModalOpen(false);
+    } catch (err: any) {
+      console.error('Error saving cash account:', err);
+      toast.error('Gagal menyimpan akun kas: ' + (err?.message || 'Terjadi kesalahan sistem'));
+    } finally {
+      setIsSavingAccount(false);
     }
-
-    setIsAccountModalOpen(false);
   };
 
   // Open Receipt Print Slip Modal
@@ -1374,19 +1410,30 @@ export const CashLedgerPage: React.FC = () => {
           <div className="flex items-center justify-end space-x-2 pt-3 border-t border-zinc-800">
             <button
               type="button"
+              disabled={isSavingTrx}
               onClick={() => setIsTransactionModalOpen(false)}
-              className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium text-xs transition-colors"
+              className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium text-xs transition-colors disabled:opacity-50"
             >
               Batal
             </button>
             <button
               type="submit"
+              disabled={isSavingTrx}
               className={`px-5 py-2 rounded-lg font-bold text-xs text-white transition-all shadow-md flex items-center space-x-1.5 ${
                 trxType === 'MASUK' ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-rose-600 hover:bg-rose-500'
-              }`}
+              } disabled:opacity-60 disabled:cursor-not-allowed`}
             >
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Simpan Catatan Kas</span>
+              {isSavingTrx ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Menyimpan...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Simpan Catatan Kas</span>
+                </>
+              )}
             </button>
           </div>
         </form>
@@ -1454,16 +1501,25 @@ export const CashLedgerPage: React.FC = () => {
 
           <div className="flex items-center justify-end space-x-2 pt-3 border-t border-zinc-800">
             <button
+              disabled={isSavingAmanah}
               onClick={() => setIsAmanahModalOpen(false)}
-              className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium text-xs"
+              className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium text-xs disabled:opacity-50"
             >
               Batal
             </button>
             <button
+              disabled={isSavingAmanah}
               onClick={handleSaveAmanah}
-              className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md"
+              className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-md flex items-center space-x-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              Simpan Delegasi Amanah
+              {isSavingAmanah ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Menyimpan...</span>
+                </>
+              ) : (
+                <span>Simpan Delegasi Amanah</span>
+              )}
             </button>
           </div>
         </div>
@@ -1558,16 +1614,25 @@ export const CashLedgerPage: React.FC = () => {
           <div className="flex items-center justify-end space-x-2 pt-3 border-t border-zinc-800">
             <button
               type="button"
+              disabled={isSavingAccount}
               onClick={() => setIsAccountModalOpen(false)}
-              className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium text-xs"
+              className="px-4 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium text-xs disabled:opacity-50"
             >
               Batal
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md"
+              disabled={isSavingAccount}
+              className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-md flex items-center space-x-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              Simpan Akun Kas
+              {isSavingAccount ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Menyimpan...</span>
+                </>
+              ) : (
+                <span>Simpan Akun Kas</span>
+              )}
             </button>
           </div>
         </form>

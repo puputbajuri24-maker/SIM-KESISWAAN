@@ -13,10 +13,12 @@ import {
   Sparkles,
   Send,
   Building,
-  UserCheck
+  UserCheck,
+  RefreshCw
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { StudentPermission, PermissionType, PermissionStatus } from '../types';
 import { DataTable, Column } from '../components/common/DataTable';
 import { StatusBadge } from '../components/common/Badge';
@@ -29,6 +31,8 @@ import { calculateRecordCountsByClass, isStudentInClass } from '../utils/classRe
 
 export const PermissionsPage: React.FC = () => {
   const { isWakaOrAdmin, currentUser } = useAuth();
+  const { toast } = useToast();
+  const [isSavingPermission, setIsSavingPermission] = useState(false);
   const {
     permissions,
     students,
@@ -121,10 +125,11 @@ export const PermissionsPage: React.FC = () => {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.studentId || !formData.startDate || !formData.reason) {
-      alert('Mohon lengkapi siswa, tanggal, dan alasan izin/dispensasi.');
+      toast.warning('Mohon lengkapi siswa, tanggal, dan alasan izin/dispensasi.');
       return;
     }
 
+    setIsSavingPermission(true);
     try {
       const student = students.find(s => s.id === formData.studentId);
 
@@ -135,6 +140,7 @@ export const PermissionsPage: React.FC = () => {
           studentNis: student?.nis || formData.studentNis,
           studentClass: student?.className || formData.studentClass
         });
+        toast.success(`Surat izin untuk ${student?.fullName || 'siswa'} berhasil diperbarui!`);
       } else {
         await addPermission({
           studentId: formData.studentId!,
@@ -150,12 +156,15 @@ export const PermissionsPage: React.FC = () => {
           approvedBy: currentUser?.displayName || 'Waka Kesiswaan',
           academicYear: activeAcademicYear
         });
+        toast.success(`Surat izin/dispensasi untuk ${student?.fullName || 'siswa'} berhasil diterbitkan!`);
       }
-    } catch (err) {
-      console.error('Error saving permission:', err);
-    } finally {
       setIsFormOpen(false);
       setSelectedPerm(null);
+    } catch (err: any) {
+      console.error('Error saving permission:', err);
+      toast.error('Gagal menyimpan surat izin: ' + (err?.message || 'Terjadi kesalahan sistem'));
+    } finally {
+      setIsSavingPermission(false);
     }
   };
 
@@ -509,10 +518,20 @@ export const PermissionsPage: React.FC = () => {
             </button>
             <button
               type="button"
+              disabled={isSavingPermission}
               onClick={handleSave}
-              className="px-5 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md"
+              className={`px-5 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md flex items-center gap-2 transition-all ${
+                isSavingPermission ? 'opacity-60 cursor-not-allowed' : ''
+              }`}
             >
-              Simpan & Terbitkan
+              {isSavingPermission ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Menerbitkan...</span>
+                </>
+              ) : (
+                <span>Simpan & Terbitkan</span>
+              )}
             </button>
           </>
         }

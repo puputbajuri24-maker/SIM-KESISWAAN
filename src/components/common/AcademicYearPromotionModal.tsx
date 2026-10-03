@@ -12,6 +12,7 @@ import {
   X
 } from 'lucide-react';
 import { useSchool } from '../../contexts/SchoolContext';
+import { useToast } from '../../contexts/ToastContext';
 import { Modal } from '../common/Modal';
 
 interface AcademicYearPromotionModalProps {
@@ -82,13 +83,15 @@ export const AcademicYearPromotionModal: React.FC<AcademicYearPromotionModalProp
     };
   }, [students, classes]);
 
+  const { toast } = useToast();
+
   const handleExecutePromotion = async () => {
     if (!targetYear) {
-      alert('Silakan tentukan tahun ajaran baru tujuan.');
+      toast.warning('Silakan tentukan tahun ajaran baru tujuan.');
       return;
     }
     if (!isConfirmed) {
-      alert('Silakan centang persetujuan konfirmasi sebelum melanjutkan.');
+      toast.warning('Silakan centang persetujuan konfirmasi sebelum melanjutkan.');
       return;
     }
 
@@ -100,12 +103,14 @@ export const AcademicYearPromotionModal: React.FC<AcademicYearPromotionModalProp
           resetViolationPoints: resetPoints,
           demisionerOsim: demisionerOsim
         });
-        setResultMessage(`Proses transisi berhasil! ${res.graduatedCount} siswa lulus, ${res.promotedCount} siswa naik kelas, dan tahun ajaran kini aktif pada ${targetYear}.`);
+        const successMsg = `Proses transisi berhasil! ${res.graduatedCount} siswa lulus, ${res.promotedCount} siswa naik kelas, dan tahun ajaran kini aktif pada ${targetYear}.`;
+        setResultMessage(successMsg);
+        toast.success(successMsg);
         if (onSuccess) onSuccess();
       }
     } catch (e: any) {
       console.error('Error promoting academic year:', e);
-      alert('Terjadi kesalahan saat memproses kenaikan kelas: ' + (e?.message || 'Gagal terhubung ke database.'));
+      toast.error('Terjadi kesalahan saat memproses kenaikan kelas: ' + (e?.message || 'Gagal terhubung ke database.'));
     } finally {
       setIsProcessing(false);
     }

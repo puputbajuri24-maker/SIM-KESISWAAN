@@ -34,6 +34,7 @@ import {
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { Student } from '../types';
 import { DataTable, Column } from '../components/common/DataTable';
 import { StatusBadge } from '../components/common/Badge';
@@ -62,6 +63,9 @@ import {
 
 export const StudentsPage: React.FC = () => {
   const { isWakaOrAdmin } = useAuth();
+  const { toast } = useToast();
+  const [isSavingStudent, setIsSavingStudent] = useState(false);
+  const [isSavingHomeroom, setIsSavingHomeroom] = useState(false);
   const {
     students,
     classes,
@@ -362,10 +366,11 @@ export const StudentsPage: React.FC = () => {
   const handleSaveStudent = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.nis || !formData.fullName || !formData.classId) {
-      alert('Mohon lengkapi NIS, Nama Siswa, dan Kelas.');
+      toast.warning('Mohon lengkapi NIS, Nama Siswa, dan Kelas.');
       return;
     }
 
+    setIsSavingStudent(true);
     try {
       const targetClass = classes.find(c => c.id === formData.classId);
       let targetStudentId = selectedStudent?.id;
@@ -380,6 +385,7 @@ export const StudentsPage: React.FC = () => {
           className: targetClass?.name || formData.className,
           major: targetClass?.major || formData.major
         });
+        toast.success(`Data siswa "${studentName}" berhasil diperbarui!`);
       } else {
         const created = await addStudent({
           nis: studentNis,
@@ -400,6 +406,7 @@ export const StudentsPage: React.FC = () => {
         if (created) {
           targetStudentId = created.id;
         }
+        toast.success(`Data siswa baru "${studentName}" berhasil ditambahkan!`);
       }
 
       // Handle multi-extracurricular enrollment
@@ -472,9 +479,11 @@ export const StudentsPage: React.FC = () => {
           await deleteOsimMember(existingOsim.id);
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error saving student:', err);
+      toast.error('Gagal menyimpan data siswa: ' + (err?.message || 'Terjadi kesalahan sistem'));
     } finally {
+      setIsSavingStudent(false);
       setIsFormOpen(false);
       setSelectedStudent(null);
     }
@@ -557,17 +566,18 @@ export const StudentsPage: React.FC = () => {
   const handleSaveHomeroom = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!homeroomFormData.classId) {
-      alert('Pilih kelas terlebih dahulu.');
+      toast.warning('Pilih kelas terlebih dahulu.');
       return;
     }
 
+    setIsSavingHomeroom(true);
     try {
       let finalTeacherName = '';
       let finalTeacherId: string | undefined = undefined;
 
       if (homeroomFormData.mode === 'new') {
         if (!homeroomFormData.newFullName.trim()) {
-          alert('Nama Guru Baru wajib diisi.');
+          toast.warning('Nama Guru Baru wajib diisi.');
           return;
         }
         finalTeacherName = homeroomFormData.newFullName.trim();
@@ -585,7 +595,7 @@ export const StudentsPage: React.FC = () => {
       } else {
         const found = teachers.find(t => t.id === homeroomFormData.teacherId || t.fullName === homeroomFormData.teacherName);
         if (!found) {
-          alert('Pilih guru yang tersedia.');
+          toast.warning('Pilih guru yang tersedia.');
           return;
         }
         finalTeacherName = found.fullName;
@@ -593,9 +603,12 @@ export const StudentsPage: React.FC = () => {
       }
 
       await assignHomeroomTeacher(homeroomFormData.classId, finalTeacherName, finalTeacherId);
+      toast.success(`Wali kelas "${finalTeacherName}" berhasil ditetapkan!`);
       setIsAddHomeroomModalOpen(false);
     } catch (err: any) {
-      alert('Gagal menetapkan wali kelas: ' + err?.message);
+      toast.error('Gagal menetapkan wali kelas: ' + (err?.message || 'Terjadi kesalahan'));
+    } finally {
+      setIsSavingHomeroom(false);
     }
   };
 
@@ -603,8 +616,9 @@ export const StudentsPage: React.FC = () => {
     try {
       const foundTeacher = teachers.find(t => t.fullName === teacherName);
       await assignHomeroomTeacher(classId, teacherName, foundTeacher?.id);
+      toast.success(`Wali kelas berhasil diubah ke ${teacherName}`);
     } catch (err: any) {
-      alert('Gagal mengubah wali kelas: ' + err?.message);
+      toast.error('Gagal mengubah wali kelas: ' + (err?.message || 'Terjadi kesalahan'));
     }
   };
 
@@ -682,7 +696,7 @@ export const StudentsPage: React.FC = () => {
   const handleConfirmImport = async () => {
     const validStudents = previewStudents.filter(s => s.isValid);
     if (validStudents.length === 0) {
-      alert('Tidak ada baris data siswa yang valid untuk diimpor. Periksa kembali NIS dan Nama Siswa.');
+      toast.warning('Tidak ada baris data siswa yang valid untuk diimpor. Periksa kembali NIS dan Nama Siswa.');
       return;
     }
 
@@ -690,12 +704,12 @@ export const StudentsPage: React.FC = () => {
     try {
       const cleanStudents = validStudents.map(({ isValid, errors, ...rest }) => rest);
       const count = await importStudentsBulk(cleanStudents, importMode);
-      alert(`Berhasil mengimpor ${count} data siswa ke database kesiswaan!`);
+      toast.success(`Berhasil mengimpor ${count} data siswa ke database kesiswaan!`);
       handleResetImport();
       setIsImportOpen(false);
-    } catch (e) {
+    } catch (e: any) {
       console.error('Error bulk saving students:', e);
-      alert('Terjadi kendala saat menyimpan data siswa. Silakan coba lagi.');
+      toast.error('Terjadi kendala saat menyimpan data siswa. Silakan coba lagi.');
     } finally {
       setIsImporting(false);
     }
@@ -1089,10 +1103,20 @@ export const StudentsPage: React.FC = () => {
             </button>
             <button
               type="button"
+              disabled={isSavingStudent}
               onClick={handleSaveStudent}
-              className="px-5 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20"
+              className={`px-5 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20 flex items-center gap-2 transition-all ${
+                isSavingStudent ? 'opacity-60 cursor-not-allowed' : ''
+              }`}
             >
-              Simpan Data Siswa
+              {isSavingStudent ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Menyimpan...</span>
+                </>
+              ) : (
+                <span>Simpan Data Siswa</span>
+              )}
             </button>
           </>
         }
@@ -2585,10 +2609,20 @@ export const StudentsPage: React.FC = () => {
             </button>
             <button
               type="button"
+              disabled={isSavingHomeroom}
               onClick={handleSaveHomeroom}
-              className="px-5 py-2 text-xs font-bold rounded-xl bg-amber-600 hover:bg-amber-700 text-white shadow-md shadow-amber-600/20"
+              className={`px-5 py-2 text-xs font-bold rounded-xl bg-amber-600 hover:bg-amber-700 text-white shadow-md shadow-amber-600/20 flex items-center gap-2 transition-all ${
+                isSavingHomeroom ? 'opacity-60 cursor-not-allowed' : ''
+              }`}
             >
-              Simpan & Tetapkan Wali Kelas
+              {isSavingHomeroom ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Menyimpan...</span>
+                </>
+              ) : (
+                <span>Simpan & Tetapkan Wali Kelas</span>
+              )}
             </button>
           </>
         }

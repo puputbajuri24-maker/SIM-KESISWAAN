@@ -64,7 +64,8 @@ export const CANONICAL_ROLES: CanonicalUserRole[] = [
   'guru_bk',
   'pembina_osim',
   'coach_ekstrakurikuler',
-  'anggota_osim'
+  'anggota_osim',
+  'siswa'
 ];
 
 export const OSIM_POSITIONS: OsimPosition[] = [
@@ -79,7 +80,7 @@ export const OSIM_POSITIONS: OsimPosition[] = [
 ];
 
 /**
- * Normalizes any legacy or custom role string to one of the 6 canonical roles.
+ * Normalizes any legacy or custom role string to one of the canonical roles.
  * CRITICAL SECURITY RULE: Returns null if the role is missing, unrecognized, or invalid.
  * Strictly prevents dangerous fallbacks (e.g. unknown role -> anggota_osim).
  */
@@ -102,6 +103,9 @@ export function normalizeUserRole(role: UserRole | string | undefined | null): C
   }
   if (r === 'pengurus_osim' || r === 'anggota_osim' || r === 'osim') {
     return 'anggota_osim';
+  }
+  if (r === 'siswa' || r === 'student' || r === 'santri') {
+    return 'siswa';
   }
 
   // Deny-by-default for any unrecognized role string
@@ -380,6 +384,17 @@ export function hasPermission(
       case 'reports.view':
         return true;
 
+      default:
+        return false;
+    }
+  }
+
+  // 7. Siswa (Restricted Student Portal: Read-only Dashboard and Reports)
+  if (role === 'siswa') {
+    switch (permission) {
+      case 'dashboard.view':
+      case 'reports.view':
+        return true;
       default:
         return false;
     }

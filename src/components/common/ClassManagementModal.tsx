@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { useSchool } from '../../contexts/SchoolContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import { SchoolClass, Teacher } from '../../types';
 import { Modal } from './Modal';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -76,6 +77,7 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({ isOp
 
   // Form State for Add / Edit
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [isSavingClass, setIsSavingClass] = useState(false);
   const [selectedClass, setSelectedClass] = useState<SchoolClass | null>(null);
   const [formData, setFormData] = useState<Omit<SchoolClass, 'id'>>({
     name: '',
@@ -87,10 +89,12 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({ isOp
 
   // Delete State
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [isDeletingClass, setIsDeletingClass] = useState(false);
   const [classToDelete, setClassToDelete] = useState<SchoolClass | null>(null);
 
   // Clear All State
   const [isClearAllOpen, setIsClearAllOpen] = useState(false);
+  const { toast } = useToast();
 
   // Import State
   const [isImportOpen, setIsImportOpen] = useState(false);
@@ -151,10 +155,11 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({ isOp
   const handleSaveClass = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name.trim()) {
-      alert('Nama Rombel Kelas wajib diisi.');
+      toast.warning('Nama Rombel Kelas wajib diisi.');
       return;
     }
 
+    setIsSavingClass(true);
     try {
       if (selectedClass) {
         await updateClass(selectedClass.id, {
@@ -163,6 +168,7 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({ isOp
           major: formData.major.trim(),
           homeroomTeacher: formData.homeroomTeacher
         });
+        toast.success(`Rombel "${formData.name.trim()}" berhasil diperbarui!`);
       } else {
         await addClass({
           name: formData.name.trim(),
@@ -171,11 +177,14 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({ isOp
           homeroomTeacher: formData.homeroomTeacher,
           studentCount: 0
         });
+        toast.success(`Rombel baru "${formData.name.trim()}" berhasil ditambahkan!`);
       }
       setIsFormOpen(false);
       setSelectedClass(null);
     } catch (err: any) {
-      alert('Gagal menyimpan rombel kelas: ' + err?.message);
+      toast.error('Gagal menyimpan rombel kelas: ' + err?.message);
+    } finally {
+      setIsSavingClass(false);
     }
   };
 
@@ -188,12 +197,16 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({ isOp
 
   const handleDeleteConfirm = async () => {
     if (!classToDelete) return;
+    setIsDeletingClass(true);
     try {
       await deleteClass(classToDelete.id);
+      toast.success(`Rombel "${classToDelete.name}" berhasil dihapus.`);
       setIsDeleteOpen(false);
       setClassToDelete(null);
     } catch (err: any) {
-      alert('Gagal menghapus rombel kelas: ' + err?.message);
+      toast.error('Gagal menghapus rombel kelas: ' + err?.message);
+    } finally {
+      setIsDeletingClass(false);
     }
   };
 
@@ -218,11 +231,13 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({ isOp
   const handleBulkDeleteConfirm = async () => {
     if (selectedClassIds.size === 0) return;
     try {
+      const count = selectedClassIds.size;
       await deleteClassesBulk(Array.from(selectedClassIds));
+      toast.success(`Berhasil menghapus ${count} rombel kelas.`);
       setSelectedClassIds(new Set());
       setIsBulkDeleteOpen(false);
     } catch (err: any) {
-      alert('Gagal menghapus kelas terpilih: ' + err?.message);
+      toast.error('Gagal menghapus kelas terpilih: ' + err?.message);
     }
   };
 
@@ -230,9 +245,10 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({ isOp
   const handleClearAllConfirm = async () => {
     try {
       await clearAllClasses();
+      toast.success('Seluruh data rombel kelas berhasil dibersihkan.');
       setIsClearAllOpen(false);
     } catch (err: any) {
-      alert('Gagal membersihkan data kelas: ' + err?.message);
+      toast.error('Gagal membersihkan data kelas: ' + err?.message);
     }
   };
 
@@ -299,7 +315,7 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({ isOp
   const handleConfirmImport = async () => {
     const valid = previewClasses.filter(c => c.isValid);
     if (valid.length === 0) {
-      alert('Tidak ada data rombel kelas yang valid untuk diimpor.');
+      toast.warning('Tidak ada data rombel kelas yang valid untuk diimpor.');
       return;
     }
 
@@ -315,12 +331,12 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({ isOp
       }));
 
       const count = await importClassesBulk(cleanClasses, importMode);
-      alert(`Berhasil mengimpor ${count} rombel kelas ke database!`);
+      toast.success(`Berhasil mengimpor ${count} rombel kelas ke database!`);
       setPreviewClasses([]);
       setImportFileName('');
       setIsImportOpen(false);
     } catch (err: any) {
-      alert('Gagal mengimpor rombel kelas: ' + err?.message);
+      toast.error('Gagal mengimpor rombel kelas: ' + err?.message);
     } finally {
       setIsImporting(false);
     }
@@ -658,9 +674,19 @@ export const ClassManagementModal: React.FC<ClassManagementModalProps> = ({ isOp
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-sm"
+              disabled={isSavingClass}
+              className={`px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold shadow-sm flex items-center gap-2 transition-all ${
+                isSavingClass ? 'opacity-60 cursor-not-allowed' : ''
+              }`}
             >
-              {selectedClass ? 'Simpan Perubahan' : 'Tambah Rombel'}
+              {isSavingClass ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Menyimpan...</span>
+                </>
+              ) : (
+                <span>{selectedClass ? 'Simpan Perubahan' : 'Tambah Rombel'}</span>
+              )}
             </button>
           </div>
         </form>

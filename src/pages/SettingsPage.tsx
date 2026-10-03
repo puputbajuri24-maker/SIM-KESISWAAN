@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { UserRole, SchoolSetting, PrintSignatory } from '../types';
 import { INITIAL_SCHOOL_SETTING } from '../services/seedData';
 import { LogoUploader } from '../components/common/LogoUploader';
@@ -79,6 +80,7 @@ const RIGHT_LOGO_PRESETS = [
 
 export const SettingsPage: React.FC = () => {
   const { currentUser, switchRole, userRole, isSuperAdmin, isWaka, isPembinaOsim, isPembinaEkskul } = useAuth();
+  const { toast } = useToast();
   const {
     schoolInfo,
     updateSchoolInfo,
@@ -293,7 +295,7 @@ export const SettingsPage: React.FC = () => {
 
   const handleSeedDatabase = async () => {
     if (!isSuperAdmin) {
-      alert('Akses Dibatasi: Hanya akun dengan peran Super Administrator (Root) yang berwenang melakukan Reset / Seeding Database Firestore.');
+      toast.error('Akses Dibatasi: Hanya akun dengan peran Super Administrator (Root) yang berwenang melakukan Reset / Seeding Database Firestore.');
       return;
     }
 
@@ -307,10 +309,11 @@ export const SettingsPage: React.FC = () => {
     try {
       await seedFirebaseDatabase();
       setSeedSuccess(true);
+      toast.success('Inisialisasi data sampel berhasil dilakukan!');
       setTimeout(() => setSeedSuccess(false), 4000);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert('Gagal inisialisasi data: ' + err);
+      toast.error('Gagal inisialisasi data: ' + (err?.message || err));
     } finally {
       setIsSeeding(false);
     }
@@ -328,13 +331,14 @@ export const SettingsPage: React.FC = () => {
       const res = await uploadAllDataToFirestore();
       if (res.success) {
         setUploadSuccessCount(res.count);
+        toast.success(`Berhasil mengunggah ${res.count} data aktif ke Firebase Firestore!`);
         setTimeout(() => setUploadSuccessCount(null), 5000);
       } else {
-        alert('Gagal mengunggah data: ' + res.message);
+        toast.error('Gagal mengunggah data: ' + res.message);
       }
     } catch (err: any) {
       console.error(err);
-      alert('Gagal mengunggah data: ' + (err?.message || err));
+      toast.error('Gagal mengunggah data: ' + (err?.message || err));
     } finally {
       setIsUploadingCloud(false);
     }

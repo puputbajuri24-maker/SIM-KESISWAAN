@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { ToastProvider } from './contexts/ToastContext';
 import { SchoolProvider } from './contexts/SchoolContext';
 import { TimezoneProvider } from './contexts/TimezoneContext';
 import { AppLayout, NavTab } from './components/layout/AppLayout';
@@ -270,18 +271,20 @@ export default function App() {
       fallbackMessage="Aplikasi mendeteksi kendala pada inisialisasi modul. Silakan muat ulang halaman atau bersihkan sesi login untuk masuk kembali."
     >
       <ThemeProvider>
-        <AuthProvider>
-          <TimezoneProvider>
-            <SchoolProvider>
-              <ErrorBoundary
-                fallbackTitle="Kendala Memuat Ruang Kerja Madrasah"
-                fallbackMessage="Terjadi gangguan saat memuat data sesi kerja. Klik tombol di bawah untuk menyegarkan tampilan."
-              >
-                <MainContent />
-              </ErrorBoundary>
-            </SchoolProvider>
-          </TimezoneProvider>
-        </AuthProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <TimezoneProvider>
+              <SchoolProvider>
+                <ErrorBoundary
+                  fallbackTitle="Kendala Memuat Ruang Kerja Madrasah"
+                  fallbackMessage="Terjadi gangguan saat memuat data sesi kerja. Klik tombol di bawah untuk menyegarkan tampilan."
+                >
+                  <MainContent />
+                </ErrorBoundary>
+              </SchoolProvider>
+            </TimezoneProvider>
+          </AuthProvider>
+        </ToastProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );

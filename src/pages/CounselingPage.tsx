@@ -27,10 +27,12 @@ import {
   GraduationCap,
   Lock,
   Shield,
-  Scale
+  Scale,
+  RefreshCw
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import {
   StudentCounseling,
   HomeVisitRecord,
@@ -60,6 +62,11 @@ interface CounselingPageProps {
 
 export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral, onClearReferral }) => {
   const { isWakaOrAdmin, isGuruBK, currentUser } = useAuth();
+  const { toast } = useToast();
+  const [isSavingCounseling, setIsSavingCounseling] = useState(false);
+  const [isSavingHomeVisit, setIsSavingHomeVisit] = useState(false);
+  const [isSavingLetter, setIsSavingLetter] = useState(false);
+  const [isSavingCareer, setIsSavingCareer] = useState(false);
   const {
     counseling,
     homeVisits,
@@ -281,9 +288,10 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
   const handleSaveCounseling = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!counselingForm.studentId || !counselingForm.topic || !counselingForm.notes) {
-      alert('Mohon lengkapi siswa, topik, dan catatan pembinaan.');
+      toast.warning('Mohon lengkapi siswa, topik, dan catatan pembinaan.');
       return;
     }
+    setIsSavingCounseling(true);
     try {
       const student = students.find(s => s.id === counselingForm.studentId);
       if (editingCounseling) {
@@ -295,6 +303,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
           isConfidential: Boolean(counselingForm.isConfidential),
           confidentialNotes: counselingForm.confidentialNotes || ''
         });
+        toast.success(`Catatan konseling untuk "${student?.fullName || 'siswa'}" berhasil diperbarui!`);
       } else {
         await addCounseling({
           studentId: counselingForm.studentId!,
@@ -316,12 +325,15 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
           status: (counselingForm.status as any) || 'Selesai',
           academicYear: activeAcademicYear
         });
+        toast.success(`Sesi konseling baru untuk "${student?.fullName || 'siswa'}" berhasil disimpan!`);
       }
-    } catch (err) {
-      console.error('Error saving counseling:', err);
-    } finally {
       setIsCounselingModalOpen(false);
       setEditingCounseling(null);
+    } catch (err: any) {
+      console.error('Error saving counseling:', err);
+      toast.error('Gagal menyimpan sesi konseling: ' + (err?.message || 'Terjadi kesalahan sistem'));
+    } finally {
+      setIsSavingCounseling(false);
     }
   };
 
@@ -364,9 +376,10 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
   const handleSaveHomeVisit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!homeVisitForm.studentId || !homeVisitForm.purpose || !homeVisitForm.findings) {
-      alert('Mohon lengkapi siswa, alasan kunjungan, dan hasil temuan kunjungan.');
+      toast.warning('Mohon lengkapi siswa, alasan kunjungan, dan hasil temuan kunjungan.');
       return;
     }
+    setIsSavingHomeVisit(true);
     try {
       const student = students.find(s => s.id === homeVisitForm.studentId);
       if (editingHomeVisit) {
@@ -376,6 +389,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
           studentClass: student?.className || homeVisitForm.studentClass,
           studentNis: student?.nis || homeVisitForm.studentNis
         });
+        toast.success(`Berita acara kunjungan rumah untuk "${student?.fullName || 'siswa'}" berhasil diperbarui!`);
       } else {
         await addHomeVisit({
           studentId: homeVisitForm.studentId!,
@@ -398,12 +412,15 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
           status: homeVisitForm.status || 'Terlaksana',
           academicYear: activeAcademicYear
         });
+        toast.success(`Berita acara kunjungan rumah untuk "${student?.fullName || 'siswa'}" berhasil disimpan!`);
       }
-    } catch (err) {
-      console.error('Error saving home visit:', err);
-    } finally {
       setIsHomeVisitModalOpen(false);
       setEditingHomeVisit(null);
+    } catch (err: any) {
+      console.error('Error saving home visit:', err);
+      toast.error('Gagal menyimpan berita acara kunjungan: ' + (err?.message || 'Terjadi kendala'));
+    } finally {
+      setIsSavingHomeVisit(false);
     }
   };
 
@@ -500,9 +517,10 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
   const handleSaveParentCall = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!parentCallForm.studentId || !parentCallForm.letterNumber || !parentCallForm.reason) {
-      alert('Mohon lengkapi data siswa, nomor surat, dan perihal pemanggilan.');
+      toast.warning('Mohon lengkapi data siswa, nomor surat, dan perihal pemanggilan.');
       return;
     }
+    setIsSavingLetter(true);
     try {
       const student = students.find(s => s.id === parentCallForm.studentId);
       const studentPts = student ? getStudentViolationPoints(student.id) : (parentCallForm.pointsAtIssuance || 0);
@@ -524,6 +542,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
 
       if (editingParentCall) {
         await updateParentCallLetter(editingParentCall.id, payload);
+        toast.success(`Dokumen panggilan orang tua untuk "${student?.fullName || 'siswa'}" berhasil diperbarui!`);
       } else {
         await addParentCallLetter({
           studentId: parentCallForm.studentId!,
@@ -554,12 +573,15 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
           notes: parentCallForm.notes || '',
           academicYear: activeAcademicYear
         });
+        toast.success(`Surat Panggilan Orang Tua (${payload.spType}) untuk "${student?.fullName || 'siswa'}" berhasil diterbitkan!`);
       }
-    } catch (err) {
-      console.error('Error saving parent call:', err);
-    } finally {
       setIsParentCallModalOpen(false);
       setEditingParentCall(null);
+    } catch (err: any) {
+      console.error('Error saving parent call:', err);
+      toast.error('Gagal menerbitkan surat panggilan: ' + (err?.message || 'Terjadi kendala'));
+    } finally {
+      setIsSavingLetter(false);
     }
   };
 
@@ -598,9 +620,10 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
   const handleSaveCareer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!careerForm.studentId || !careerForm.careerInterest || !careerForm.counselorRecommendation) {
-      alert('Mohon lengkapi data siswa, minat karir, dan rekomendasi BK.');
+      toast.warning('Mohon lengkapi data siswa, minat karir, dan rekomendasi BK.');
       return;
     }
+    setIsSavingCareer(true);
     try {
       const student = students.find(s => s.id === careerForm.studentId);
       if (editingCareer) {
@@ -610,6 +633,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
           studentClass: student?.className || careerForm.studentClass,
           studentNis: student?.nis || careerForm.studentNis
         });
+        toast.success(`Data bimbingan karir untuk "${student?.fullName || 'siswa'}" berhasil diperbarui!`);
       } else {
         await addCareerGuidance({
           studentId: careerForm.studentId!,
@@ -628,12 +652,15 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
           status: careerForm.status || 'Sudah Terarah',
           academicYear: activeAcademicYear
         });
+        toast.success(`Asesmen karir baru untuk "${student?.fullName || 'siswa'}" berhasil dicatat!`);
       }
-    } catch (err) {
-      console.error('Error saving career:', err);
-    } finally {
       setIsCareerModalOpen(false);
       setEditingCareer(null);
+    } catch (err: any) {
+      console.error('Error saving career:', err);
+      toast.error('Gagal menyimpan asesmen karir: ' + (err?.message || 'Terjadi kendala'));
+    } finally {
+      setIsSavingCareer(false);
     }
   };
 
@@ -1735,10 +1762,20 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
             </button>
             <button
               type="button"
+              disabled={isSavingCounseling}
               onClick={handleSaveCounseling}
-              className="px-4 py-1.5 rounded bg-pink-600 hover:bg-pink-500 text-white font-mono text-xs font-bold shadow-[0_0_10px_rgba(236,72,153,0.3)]"
+              className={`px-4 py-1.5 rounded bg-pink-600 hover:bg-pink-500 text-white font-mono text-xs font-bold shadow-[0_0_10px_rgba(236,72,153,0.3)] flex items-center gap-1.5 transition-all ${
+                isSavingCounseling ? 'opacity-60 cursor-not-allowed' : ''
+              }`}
             >
-              SIMPAN_REKAM_BK
+              {isSavingCounseling ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>MENYIMPAN...</span>
+                </>
+              ) : (
+                <span>SIMPAN_REKAM_BK</span>
+              )}
             </button>
           </>
         }
@@ -1982,10 +2019,20 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
             </button>
             <button
               type="button"
+              disabled={isSavingHomeVisit}
               onClick={handleSaveHomeVisit}
-              className="px-4 py-1.5 rounded bg-purple-600 hover:bg-purple-500 text-white font-mono text-xs font-bold shadow-[0_0_10px_rgba(168,85,247,0.3)]"
+              className={`px-4 py-1.5 rounded bg-purple-600 hover:bg-purple-500 text-white font-mono text-xs font-bold shadow-[0_0_10px_rgba(168,85,247,0.3)] flex items-center gap-1.5 transition-all ${
+                isSavingHomeVisit ? 'opacity-60 cursor-not-allowed' : ''
+              }`}
             >
-              SIMPAN_BERITA_ACARA
+              {isSavingHomeVisit ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>MENYIMPAN...</span>
+                </>
+              ) : (
+                <span>SIMPAN_BERITA_ACARA</span>
+              )}
             </button>
           </>
         }
@@ -2140,10 +2187,20 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
             </button>
             <button
               type="button"
+              disabled={isSavingLetter}
               onClick={handleSaveParentCall}
-              className="px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white font-mono text-xs font-bold shadow-[0_0_10px_rgba(59,130,246,0.3)]"
+              className={`px-4 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white font-mono text-xs font-bold shadow-[0_0_10px_rgba(59,130,246,0.3)] flex items-center gap-1.5 transition-all ${
+                isSavingLetter ? 'opacity-60 cursor-not-allowed' : ''
+              }`}
             >
-              SIMPAN_&_TERBITKAN_DOKUMEN
+              {isSavingLetter ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>MENERBITKAN...</span>
+                </>
+              ) : (
+                <span>SIMPAN_&_TERBITKAN_DOKUMEN</span>
+              )}
             </button>
           </>
         }
@@ -2484,10 +2541,20 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
             </button>
             <button
               type="button"
+              disabled={isSavingCareer}
               onClick={handleSaveCareer}
-              className="px-4 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-xs font-bold shadow-[0_0_10px_rgba(16,185,129,0.3)]"
+              className={`px-4 py-1.5 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-mono text-xs font-bold shadow-[0_0_10px_rgba(16,185,129,0.3)] flex items-center gap-1.5 transition-all ${
+                isSavingCareer ? 'opacity-60 cursor-not-allowed' : ''
+              }`}
             >
-              SIMPAN_ASESMEN_KARIR
+              {isSavingCareer ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>MENYIMPAN...</span>
+                </>
+              ) : (
+                <span>SIMPAN_ASESMEN_KARIR</span>
+              )}
             </button>
           </>
         }

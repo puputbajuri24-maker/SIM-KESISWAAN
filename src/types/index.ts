@@ -4,7 +4,8 @@ export type CanonicalUserRole =
   | 'guru_bk' 
   | 'pembina_osim' 
   | 'coach_ekstrakurikuler' 
-  | 'anggota_osim';
+  | 'anggota_osim'
+  | 'siswa';
 
 /**
  * Deprecated legacy role values supported only for migration and backward normalization.
@@ -15,7 +16,8 @@ export type LegacyUserRole =
   | 'pembina_ekstra' 
   | 'pembina_ekskul' 
   | 'pembina' 
-  | 'pengurus_osim';
+  | 'pengurus_osim'
+  | 'student';
 
 export type UserRole = CanonicalUserRole | LegacyUserRole;
 
@@ -457,7 +459,16 @@ export interface ActivityReport {
 }
 
 export type ViolationCategory = 'Ringan' | 'Sedang' | 'Berat' | 'Sangat Berat';
-export type ViolationStatus = 'Tercatat' | 'Diproses' | 'Dalam Proses' | 'Dalam Pembinaan' | 'Selesai' | 'Dibatalkan';
+export type ViolationStatus =
+  | 'Tercatat'
+  | 'Diproses'
+  | 'Dalam Proses'
+  | 'Dalam Pembinaan'
+  | 'Selesai'
+  | 'Dibatalkan'
+  | 'Baru'
+  | 'Ditindak'
+  | 'Dirujuk ke BK';
 
 export interface StudentViolation {
   id: string;
@@ -474,8 +485,8 @@ export interface StudentViolation {
   description?: string;
   location?: string;
   witness?: string;
-  actionTaken: string;
-  officerName: string;
+  actionTaken?: string;
+  officerName?: string;
   status: ViolationStatus;
   followUpNotes?: string;
   academicYear?: string;
@@ -513,11 +524,19 @@ export interface StudentCounseling {
   solution?: string;
   counselingResult?: string;
   agreements?: string;
-  followUpPlan: string;
+  followUpPlan?: string;
   parentInvolved?: boolean;
   isConfidential?: boolean; // Catatan Rahasia (Hanya bisa dilihat oleh sesama Guru BK dan Waka Kesiswaan)
   confidentialNotes?: string; // Isi catatan rahasia hasil konseling mendalam
-  status: 'Terbuka' | 'Dijadwalkan' | 'Berlangsung' | 'Dalam Pembinaan' | 'Selesai' | 'Perlu Tindak Lanjut';
+  status:
+    | 'Terbuka'
+    | 'Dijadwalkan'
+    | 'Berlangsung'
+    | 'Dalam Pembinaan'
+    | 'Selesai'
+    | 'Perlu Tindak Lanjut'
+    | 'Tindak Lanjut'
+    | 'Dirujuk';
   nextSessionDate?: string;
   academicYear?: string;
   attachmentUrl?: string;
@@ -886,6 +905,7 @@ export type OsimProgramStatus =
   | 'Berlangsung'
   | 'Menunggu Verifikasi LPJ'
   | 'Selesai & Sah'
+  | 'Selesai & Disahkan'
   | 'Selesai'
   | 'Dibatalkan';
 
@@ -995,6 +1015,7 @@ export interface CashAccount {
   assignedManagerNames?: string[];
   initialBalance: number;
   currentBalance?: number; // Calculated dynamic balance
+  balance?: number; // Normalized dynamic balance alias
   targetEkskulId?: string; // If tied to specific extracurricular
   academicYear: string;
   isActive: boolean;
@@ -1005,7 +1026,7 @@ export interface CashAccount {
 
 export type CashTransactionType = 'MASUK' | 'KELUAR';
 
-export type CashTransactionStatus = 'VERIFIED' | 'PENDING' | 'DRAFT';
+export type CashTransactionStatus = 'VERIFIED' | 'PENDING' | 'DRAFT' | 'REJECTED' | 'VOID';
 
 export interface CashTransaction {
   id: string;

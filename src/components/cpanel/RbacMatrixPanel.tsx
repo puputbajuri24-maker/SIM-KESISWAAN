@@ -26,8 +26,10 @@ import {
   AlertCircle,
   HelpCircle,
   Eye,
-  Edit3
+  Edit3,
+  RefreshCw
 } from 'lucide-react';
+import { useToast } from '../../contexts/ToastContext';
 import { UserRole, UserProfile } from '../../types';
 import {
   RoleKey,
@@ -84,6 +86,8 @@ export const RbacMatrixPanel: React.FC<RbacMatrixPanelProps> = ({
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [saveSuccessToast, setSaveSuccessToast] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const { toast } = useToast();
 
   // Filters & View Mode
   const [activeRoleView, setActiveRoleView] = useState<string>('all');
@@ -115,7 +119,7 @@ export const RbacMatrixPanel: React.FC<RbacMatrixPanelProps> = ({
   // Save changes to Cloud Firestore and local cache with real-time broadcast
   const handleSaveMatrix = async () => {
     if (!isSuperAdmin) {
-      alert('Hanya Super Admin yang memiliki wewenang untuk menyimpan perubahan matriks hak akses.');
+      toast.warning('Hanya Super Admin yang memiliki wewenang untuk menyimpan perubahan matriks hak akses.');
       return;
     }
     setIsSaving(true);
@@ -125,10 +129,12 @@ export const RbacMatrixPanel: React.FC<RbacMatrixPanelProps> = ({
         currentUser?.displayName || currentUser?.username || 'Super Admin'
       );
       setHasUnsavedChanges(false);
-      setSaveSuccessToast('Hak akses berhasil disesuaikan dan disinkronkan ke seluruh sistem secara real-time!');
+      const msg = 'Hak akses berhasil disesuaikan dan disinkronkan ke seluruh sistem secara real-time!';
+      setSaveSuccessToast(msg);
+      toast.success(msg);
       setTimeout(() => setSaveSuccessToast(null), 4000);
     } catch (e) {
-      alert('Gagal menyimpan matriks hak akses ke server. Silakan periksa koneksi.');
+      toast.error('Gagal menyimpan matriks hak akses ke server. Silakan periksa koneksi.');
     } finally {
       setIsSaving(false);
     }
@@ -137,23 +143,25 @@ export const RbacMatrixPanel: React.FC<RbacMatrixPanelProps> = ({
   // Reset to default standard recommendations
   const handleResetToDefault = async () => {
     if (!isSuperAdmin) {
-      alert('Hanya Super Admin yang berwenang mereset hak akses.');
+      toast.warning('Hanya Super Admin yang berwenang mereset hak akses.');
       return;
     }
     if (window.confirm('Apakah Anda yakin ingin mengembalikan seluruh hak akses ke standar rekomendasi RBAC madrasah? Perubahan kustom yang belum disimpan akan direset.')) {
-      setIsSaving(true);
+      setIsResetting(true);
       try {
         await resetRbacMatrixToDefaultInFirestore(
           currentUser?.displayName || currentUser?.username || 'Super Admin'
         );
         setMatrixData(DEFAULT_RBAC_MATRIX);
         setHasUnsavedChanges(false);
-        setSaveSuccessToast('Seluruh hak akses berhasil dikembalikan ke standar rekomendasi madrasah!');
+        const msg = 'Seluruh hak akses berhasil dikembalikan ke standar rekomendasi madrasah!';
+        setSaveSuccessToast(msg);
+        toast.success(msg);
         setTimeout(() => setSaveSuccessToast(null), 4000);
       } catch (e) {
-        alert('Gagal mereset matriks hak akses.');
+        toast.error('Gagal mereset matriks hak akses.');
       } finally {
-        setIsSaving(false);
+        setIsResetting(false);
       }
     }
   };
@@ -161,19 +169,19 @@ export const RbacMatrixPanel: React.FC<RbacMatrixPanelProps> = ({
   // Toggle Input permission for a specific module & role
   const handleToggleInput = (moduleId: string, roleKey: RoleKey) => {
     if (!isSuperAdmin) {
-      alert('Hanya Super Admin yang berwenang mengubah kotak centang hak akses. Silakan masuk sebagai Super Admin.');
+      toast.warning('Hanya Super Admin yang berwenang mengubah kotak centang hak akses. Silakan masuk sebagai Super Admin.');
       return;
     }
 
     // Protect Super Admin from locking itself out of cPanel & backup
     if (roleKey === 'sa' && (moduleId === 'cpanel_users' || moduleId === 'backup_restore')) {
-      alert('Keamanan Kritis: Hak akses input cPanel & Backup untuk Super Admin tidak boleh dinonaktifkan.');
+      toast.error('Keamanan Kritis: Hak akses input cPanel & Backup untuk Super Admin tidak boleh dinonaktifkan.');
       return;
     }
 
     // Protect password reset module: Pembina Ekskul, BK, Siswa OSIM are restricted by system policy
     if (moduleId === 'crud_password_reset' && (roleKey === 'pembina_ekskul' || roleKey === 'bk' || roleKey === 'bph' || roleKey === 'sekbid')) {
-      alert('Kebijakan Sistem: Peran Pembina Ekstrakurikuler, Guru BK, dan Siswa Pengurus OSIM dibatasi oleh sistem dan tidak dapat diberikan hak delegasi reset kata sandi.');
+      toast.warning('Kebijakan Sistem: Peran Pembina Ekstrakurikuler, Guru BK, dan Siswa Pengurus OSIM dibatasi oleh sistem dan tidak dapat diberikan hak delegasi reset kata sandi.');
       return;
     }
 
@@ -204,17 +212,17 @@ export const RbacMatrixPanel: React.FC<RbacMatrixPanelProps> = ({
   // Toggle View permission for a specific module & role
   const handleToggleView = (moduleId: string, roleKey: RoleKey) => {
     if (!isSuperAdmin) {
-      alert('Hanya Super Admin yang berwenang mengubah kotak centang hak akses.');
+      toast.warning('Hanya Super Admin yang berwenang mengubah kotak centang hak akses.');
       return;
     }
 
     if (roleKey === 'sa' && (moduleId === 'cpanel_users' || moduleId === 'backup_restore')) {
-      alert('Keamanan Kritis: Hak akses melihat cPanel untuk Super Admin tidak boleh dinonaktifkan.');
+      toast.error('Keamanan Kritis: Hak akses melihat cPanel untuk Super Admin tidak boleh dinonaktifkan.');
       return;
     }
 
     if (moduleId === 'crud_password_reset' && (roleKey === 'pembina_ekskul' || roleKey === 'bk' || roleKey === 'bph' || roleKey === 'sekbid')) {
-      alert('Kebijakan Sistem: Modul Reset Kata Sandi dibatasi oleh sistem dan tidak dapat dibuka untuk peran Pembina Ekstrakurikuler, BK, maupun Siswa OSIM.');
+      toast.warning('Kebijakan Sistem: Modul Reset Kata Sandi dibatasi oleh sistem dan tidak dapat dibuka untuk peran Pembina Ekstrakurikuler, BK, maupun Siswa OSIM.');
       return;
     }
 
@@ -246,7 +254,7 @@ export const RbacMatrixPanel: React.FC<RbacMatrixPanelProps> = ({
   const handleBatchToggleRole = (roleKey: RoleKey, allowAll: boolean) => {
     if (!isSuperAdmin) return;
     if (roleKey === 'sa' && !allowAll) {
-      alert('Perlindungan Sistem: Kolom Super Admin tidak dapat dikosongkan seluruhnya.');
+      toast.error('Perlindungan Sistem: Kolom Super Admin tidak dapat dikosongkan seluruhnya.');
       return;
     }
 
@@ -683,11 +691,18 @@ export const RbacMatrixPanel: React.FC<RbacMatrixPanelProps> = ({
             {isSuperAdmin && (
               <button
                 onClick={handleResetToDefault}
-                className="px-2.5 py-1.5 rounded-lg bg-[#202026] hover:bg-[#282832] border border-[#2f2f38] text-zinc-300 hover:text-white text-xs font-semibold transition-colors flex items-center space-x-1"
+                disabled={isResetting || isSaving}
+                className={`px-2.5 py-1.5 rounded-lg bg-[#202026] hover:bg-[#282832] border border-[#2f2f38] text-zinc-300 hover:text-white text-xs font-semibold transition-colors flex items-center space-x-1 ${
+                  isResetting ? 'opacity-60 cursor-not-allowed' : ''
+                }`}
                 title="Kembalikan semua centang ke standar rekomendasi RBAC"
               >
-                <RotateCcw className="w-3 h-3 text-zinc-400" />
-                <span>Reset Default</span>
+                {isResetting ? (
+                  <RefreshCw className="w-3 h-3 text-zinc-400 animate-spin" />
+                ) : (
+                  <RotateCcw className="w-3 h-3 text-zinc-400" />
+                )}
+                <span>{isResetting ? 'Mereset...' : 'Reset Default'}</span>
               </button>
             )}
 
@@ -695,15 +710,26 @@ export const RbacMatrixPanel: React.FC<RbacMatrixPanelProps> = ({
             {isSuperAdmin && (
               <button
                 onClick={handleSaveMatrix}
-                disabled={isSaving}
+                disabled={isSaving || isResetting}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center space-x-1.5 ${
+                  isSaving ? 'opacity-70 cursor-not-allowed' : ''
+                } ${
                   hasUnsavedChanges
                     ? 'bg-emerald-500 hover:bg-emerald-400 text-zinc-950 shadow-md shadow-emerald-500/20'
                     : 'bg-[#222228] hover:bg-[#2a2a32] text-zinc-300 border border-[#30303a]'
                 }`}
               >
-                <Save className="w-3 h-3" />
-                <span>{hasUnsavedChanges ? 'Simpan Perubahan' : 'Tersimpan'}</span>
+                {isSaving ? (
+                  <>
+                    <RefreshCw className="w-3 h-3 animate-spin" />
+                    <span>Menyimpan...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-3 h-3" />
+                    <span>{hasUnsavedChanges ? 'Simpan Perubahan' : 'Tersimpan'}</span>
+                  </>
+                )}
               </button>
             )}
           </div>

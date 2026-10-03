@@ -12,6 +12,7 @@ import {
   Zap
 } from 'lucide-react';
 import { useAppTimezone, INDONESIAN_TIMEZONES } from '../../contexts/TimezoneContext';
+import { useToast } from '../../contexts/ToastContext';
 
 export const TimezoneSettingsCard: React.FC = () => {
   const {
@@ -59,6 +60,8 @@ export const TimezoneSettingsCard: React.FC = () => {
     setTimeout(() => setFeedbackMsg(null), 3000);
   };
 
+  const { toast } = useToast();
+
   const handleApplyCustom = (e: React.FormEvent) => {
     e.preventDefault();
     if (customIana.trim()) {
@@ -67,10 +70,9 @@ export const TimezoneSettingsCard: React.FC = () => {
         setTimezone(customIana.trim(), 'manual');
         setShowCustomInput(false);
         setCustomIana('');
-        setFeedbackMsg(`Zona waktu kustom aktif: ${customIana.trim()}`);
-        setTimeout(() => setFeedbackMsg(null), 3000);
+        toast.success(`Zona waktu kustom aktif: ${customIana.trim()}`);
       } catch (err) {
-        alert(`Zona waktu "${customIana}" tidak valid.`);
+        toast.error(`Zona waktu "${customIana}" tidak valid.`);
       }
     }
   };

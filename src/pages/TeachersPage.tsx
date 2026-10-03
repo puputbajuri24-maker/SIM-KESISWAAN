@@ -31,6 +31,7 @@ import {
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { useCrudPermission } from '../utils/rbacRules';
 import { Teacher } from '../types';
 import { DataTable, Column } from '../components/common/DataTable';
@@ -58,6 +59,8 @@ import {
 
 export const TeachersPage: React.FC = () => {
   const { isWakaOrAdmin, currentUser } = useAuth();
+  const { toast } = useToast();
+  const [isSavingTeacher, setIsSavingTeacher] = useState(false);
   const canCrudTeachers = useCrudPermission('teachers', currentUser?.role, currentUser);
   const {
     teachers,
@@ -303,7 +306,7 @@ export const TeachersPage: React.FC = () => {
   const handleConfirmImport = async () => {
     const validTeachers = previewTeachers.filter(t => t.isValid);
     if (validTeachers.length === 0) {
-      alert('Tidak ada baris data guru/pembina yang valid untuk diimpor. Periksa kembali nama lengkap dan jabatan.');
+      toast.warning('Tidak ada baris data guru/pembina yang valid untuk diimpor. Periksa kembali nama lengkap dan jabatan.');
       return;
     }
 
@@ -311,12 +314,12 @@ export const TeachersPage: React.FC = () => {
     try {
       const cleanTeachers = validTeachers.map(({ isValid, errors, ...rest }) => rest);
       const count = await importTeachersBulk(cleanTeachers, importMode);
-      alert(`Berhasil mengimpor ${count} data guru & pembina ke database!`);
+      toast.success(`Berhasil mengimpor ${count} data guru & pembina ke database!`);
       handleResetImport();
       setIsImportOpen(false);
-    } catch (e) {
+    } catch (e: any) {
       console.error('Error bulk saving teachers:', e);
-      alert('Terjadi kendala saat menyimpan data guru. Silakan coba lagi.');
+      toast.error('Terjadi kendala saat menyimpan data guru. Silakan coba lagi.');
     } finally {
       setIsImporting(false);
     }
@@ -325,10 +328,11 @@ export const TeachersPage: React.FC = () => {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.fullName || !formData.role) {
-      alert('Mohon lengkapi nama guru dan jabatan.');
+      toast.warning('Mohon lengkapi nama guru dan jabatan.');
       return;
     }
 
+    setIsSavingTeacher(true);
     try {
       const cleanAssigned = canonicalizeAssignedEkskulIds(formData.assignedExtracurriculars, extracurriculars);
       if (selectedTeacher) {
@@ -338,6 +342,7 @@ export const TeachersPage: React.FC = () => {
           isCashManager: formData.isCashManager,
           cashManagerTitle: formData.isCashManager ? (formData.cashManagerTitle || 'Bendahara Kesiswaan') : undefined
         });
+        toast.success(`Data guru "${formData.fullName}" berhasil diperbarui!`);
       } else {
         await addTeacher({
           nip: formData.nip || '-',
@@ -351,12 +356,15 @@ export const TeachersPage: React.FC = () => {
           isCashManager: formData.isCashManager,
           cashManagerTitle: formData.isCashManager ? (formData.cashManagerTitle || 'Bendahara Kesiswaan') : undefined
         });
+        toast.success(`Guru & Pembina baru "${formData.fullName}" berhasil ditambahkan!`);
       }
-    } catch (err) {
-      console.error('Error saving teacher:', err);
-    } finally {
       setIsFormOpen(false);
       setSelectedTeacher(null);
+    } catch (err: any) {
+      console.error('Error saving teacher:', err);
+      toast.error('Gagal menyimpan data guru: ' + (err?.message || 'Terjadi kesalahan sistem'));
+    } finally {
+      setIsSavingTeacher(false);
     }
   };
 
@@ -937,10 +945,20 @@ export const TeachersPage: React.FC = () => {
             </button>
             <button
               type="button"
+              disabled={isSavingTeacher}
               onClick={handleSave}
-              className="px-5 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md"
+              className={`px-5 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md flex items-center gap-2 transition-all ${
+                isSavingTeacher ? 'opacity-60 cursor-not-allowed' : ''
+              }`}
             >
-              Simpan Data
+              {isSavingTeacher ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Menyimpan...</span>
+                </>
+              ) : (
+                <span>Simpan Data</span>
+              )}
             </button>
           </>
         }

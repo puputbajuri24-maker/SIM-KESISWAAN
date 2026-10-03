@@ -22,10 +22,12 @@ import {
   Layers,
   Scale,
   BookOpenCheck,
-  ShieldCheck
+  ShieldCheck,
+  Loader2
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { ActivityReport, ReportStatus, StudentViolation, StudentCounseling, ParentCallLetter } from '../types';
 import { DataTable, Column } from '../components/common/DataTable';
 import { StatusBadge } from '../components/common/Badge';
@@ -41,6 +43,9 @@ type ReportTab = 'katalog' | 'lpj' | 'violations' | 'discipline_sk380' | 'counse
 
 export const ReportsPage: React.FC = () => {
   const { isWakaOrAdmin, isGuruBK, isPembina, currentUser } = useAuth();
+  const { toast } = useToast();
+  const [isSavingReport, setIsSavingReport] = useState(false);
+  const [isSavingReview, setIsSavingReview] = useState(false);
   const {
     activityReports,
     extracurriculars,
@@ -514,44 +519,63 @@ export const ReportsPage: React.FC = () => {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.activityTitle || !formData.extracurricularId || !formData.summary) {
-      alert('Mohon lengkapi judul kegiatan, ekstrakurikuler, dan ringkasan pelaksanaan.');
+      toast.warning('Mohon lengkapi judul kegiatan, ekstrakurikuler, dan ringkasan pelaksanaan.');
       return;
     }
 
-    const ekskul = extracurriculars.find(e => e.id === formData.extracurricularId);
+    setIsSavingReport(true);
+    try {
+      const ekskul = extracurriculars.find(e => e.id === formData.extracurricularId);
 
-    if (selectedReport) {
-      await updateActivityReport(selectedReport.id, {
-        ...formData,
-        extracurricularName: ekskul?.name || formData.extracurricularName
-      });
-    } else {
-      await addActivityReport({
-        activityTitle: formData.activityTitle!,
-        extracurricularId: formData.extracurricularId!,
-        extracurricularName: ekskul?.name || 'Ekstrakurikuler',
-        coachName: formData.coachName || currentUser?.displayName || 'Pembina',
-        date: formData.date!,
-        summary: formData.summary!,
-        attendanceCount: Number(formData.attendanceCount) || 0,
-        totalBudgetSpent: Number(formData.totalBudgetSpent) || 0,
-        achievements: formData.achievements || '',
-        challenges: formData.challenges || '',
-        status: 'Diajukan',
-        academicYear: activeAcademicYear
-      });
+      if (selectedReport) {
+        await updateActivityReport(selectedReport.id, {
+          ...formData,
+          extracurricularName: ekskul?.name || formData.extracurricularName
+        });
+        toast.success('Laporan kegiatan (LPJ) berhasil diperbarui!');
+      } else {
+        await addActivityReport({
+          activityTitle: formData.activityTitle!,
+          extracurricularId: formData.extracurricularId!,
+          extracurricularName: ekskul?.name || 'Ekstrakurikuler',
+          coachName: formData.coachName || currentUser?.displayName || 'Pembina',
+          date: formData.date!,
+          summary: formData.summary!,
+          attendanceCount: Number(formData.attendanceCount) || 0,
+          totalBudgetSpent: Number(formData.totalBudgetSpent) || 0,
+          achievements: formData.achievements || '',
+          challenges: formData.challenges || '',
+          status: 'Diajukan',
+          academicYear: activeAcademicYear
+        });
+        toast.success('Laporan kegiatan (LPJ) berhasil diajukan!');
+      }
+      setIsFormOpen(false);
+    } catch (err: any) {
+      console.error('Error saving report:', err);
+      toast.error('Gagal menyimpan laporan: ' + (err?.message || 'Terjadi kesalahan sistem'));
+    } finally {
+      setIsSavingReport(false);
     }
-    setIsFormOpen(false);
   };
 
   const handleSaveReview = async () => {
     if (!selectedReport) return;
-    await updateActivityReport(selectedReport.id, {
-      status: reviewStatus,
-      feedbackNotes: reviewNotes,
-      approvedBy: currentUser?.displayName || 'Waka Kesiswaan'
-    });
-    setIsReviewOpen(false);
+    setIsSavingReview(true);
+    try {
+      await updateActivityReport(selectedReport.id, {
+        status: reviewStatus,
+        feedbackNotes: reviewNotes,
+        approvedBy: currentUser?.displayName || 'Waka Kesiswaan'
+      });
+      toast.success(`Status verifikasi LPJ diperbarui menjadi "${reviewStatus}"!`);
+      setIsReviewOpen(false);
+    } catch (err: any) {
+      console.error('Error reviewing report:', err);
+      toast.error('Gagal memperbarui verifikasi: ' + (err?.message || 'Terjadi kesalahan sistem'));
+    } finally {
+      setIsSavingReview(false);
+    }
   };
 
   const handleDeleteConfirm = async () => {
@@ -1963,17 +1987,26 @@ export const ReportsPage: React.FC = () => {
           <>
             <button
               type="button"
+              disabled={isSavingReport}
               onClick={() => setIsFormOpen(false)}
-              className="px-4 py-2 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700"
+              className="px-4 py-2 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 disabled:opacity-50"
             >
               Batal
             </button>
             <button
               type="submit"
               form="report-form"
-              className="px-5 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md"
+              disabled={isSavingReport}
+              className="px-5 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md flex items-center space-x-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              Simpan & Ajukan LPJ
+              {isSavingReport ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Menyimpan...</span>
+                </>
+              ) : (
+                <span>Simpan & Ajukan LPJ</span>
+              )}
             </button>
           </>
         }
@@ -2125,17 +2158,26 @@ export const ReportsPage: React.FC = () => {
           <>
             <button
               type="button"
+              disabled={isSavingReview}
               onClick={() => setIsReviewOpen(false)}
-              className="px-4 py-2 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700"
+              className="px-4 py-2 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700 disabled:opacity-50"
             >
               Batal
             </button>
             <button
               type="button"
+              disabled={isSavingReview}
               onClick={handleSaveReview}
-              className="px-5 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md"
+              className="px-5 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md flex items-center space-x-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              Simpan Keputusan Verifikasi
+              {isSavingReview ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Menyimpan...</span>
+                </>
+              ) : (
+                <span>Simpan Keputusan Verifikasi</span>
+              )}
             </button>
           </>
         }

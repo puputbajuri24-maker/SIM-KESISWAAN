@@ -53,6 +53,7 @@ import {
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { useCrudPermission, canResetUserPassword } from '../utils/rbacRules';
 import {
   OsimMember,
@@ -144,6 +145,8 @@ export const OsimPage: React.FC = () => {
   // Hak akses CRUD struktur kabinet & bidang dipegang oleh Pembina OSIM, Waka Kesiswaan, dan Admin.
   const isOsimMemberAccount = Boolean(isPengurusOsim || currentUser?.role === 'pengurus_osim' || currentUser?.role === 'anggota_osim');
   const canManageCabinetStructure = !isOsimMemberAccount && Boolean(isSupervisoryVetoAuthorized || isPembinaOsim || isWakaOrAdmin) && (canCrudMembers || isSupervisoryVetoAuthorized || isPembinaOsim);
+  const { toast } = useToast();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const {
     osimMembers,
@@ -672,7 +675,7 @@ export const OsimPage: React.FC = () => {
   const handleSaveProker = async (e: React.FormEvent, submitDirectly: boolean = false) => {
     e.preventDefault();
     if (!prokerForm.title || !prokerForm.sekbid) {
-      alert('Mohon lengkapi judul program kerja dan seksi bidang penanggung jawab.');
+      toast.warning('Mohon lengkapi judul program kerja dan seksi bidang penanggung jawab.');
       return;
     }
 
@@ -699,6 +702,9 @@ export const OsimPage: React.FC = () => {
             targetRole: 'pembina_osim',
             link: '#osim'
           });
+          toast.success(`Program kerja "${prokerForm.title}" berhasil diperbarui & diajukan!`);
+        } else {
+          toast.success(`Program kerja "${prokerForm.title}" berhasil diperbarui!`);
         }
       } else {
         await addOsimProgram({
@@ -729,10 +735,14 @@ export const OsimPage: React.FC = () => {
             targetRole: 'pembina_osim',
             link: '#osim'
           });
+          toast.success(`Program kerja "${prokerForm.title}" berhasil disimpan & diajukan ke Pembina!`);
+        } else {
+          toast.success(`Program kerja "${prokerForm.title}" berhasil disimpan sebagai draft!`);
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error saving proker:', err);
+      toast.error('Gagal menyimpan program kerja: ' + (err?.message || 'Terjadi kesalahan'));
     } finally {
       setIsProkerModalOpen(false);
       setSelectedProker(null);
@@ -756,9 +766,10 @@ export const OsimPage: React.FC = () => {
         targetRole: 'pembina_osim',
         link: '#osim'
       });
-      alert(`Program kerja "${p.title}" berhasil diajukan ke Pembina OSIM untuk proses verifikasi dan bimbingan!`);
-    } catch (err) {
+      toast.success(`Program kerja "${p.title}" berhasil diajukan ke Pembina OSIM untuk proses verifikasi dan bimbingan!`);
+    } catch (err: any) {
       console.error('Error submitting proker to pembina:', err);
+      toast.error('Gagal mengajukan proker: ' + (err?.message || 'Terjadi kesalahan'));
     }
   };
 

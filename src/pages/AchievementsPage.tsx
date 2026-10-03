@@ -10,10 +10,12 @@ import {
   Eye,
   Filter,
   CheckCircle2,
-  FileSpreadsheet
+  FileSpreadsheet,
+  RefreshCw
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { Achievement, AchievementLevel, AchievementCategory } from '../types';
 import { DataTable, Column } from '../components/common/DataTable';
 import { StatusBadge } from '../components/common/Badge';
@@ -25,6 +27,8 @@ import { calculateRecordCountsByClass, isStudentInClass } from '../utils/classRe
 
 export const AchievementsPage: React.FC = () => {
   const { isWakaOrAdmin, currentUser } = useAuth();
+  const { toast } = useToast();
+  const [isSavingAchievement, setIsSavingAchievement] = useState(false);
   const {
     achievements,
     students,
@@ -132,10 +136,11 @@ export const AchievementsPage: React.FC = () => {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title || !formData.studentId || !formData.organizer) {
-      alert('Mohon isi nama prestasi/lomba, nama siswa, dan pihak penyelenggara.');
+      toast.warning('Mohon isi nama prestasi/lomba, nama siswa, dan pihak penyelenggara.');
       return;
     }
 
+    setIsSavingAchievement(true);
     try {
       const student = students.find(s => s.id === formData.studentId);
       const ekskul = extracurriculars.find(e => e.id === formData.extracurricularId);
@@ -148,6 +153,7 @@ export const AchievementsPage: React.FC = () => {
           studentClass: student?.className || formData.studentClass,
           extracurricularName: ekskul?.name || formData.extracurricularName
         });
+        toast.success(`Data prestasi "${formData.title}" berhasil diperbarui!`);
       } else {
         await addAchievement({
           title: formData.title!,
@@ -167,12 +173,15 @@ export const AchievementsPage: React.FC = () => {
           pointsAwarded: Number(formData.pointsAwarded) || 20,
           academicYear: activeAcademicYear
         });
+        toast.success(`Prestasi baru "${formData.title}" untuk ${student?.fullName || 'siswa'} berhasil dicatat!`);
       }
-    } catch (err) {
-      console.error('Error saving achievement:', err);
-    } finally {
       setIsFormOpen(false);
       setSelectedAchievement(null);
+    } catch (err: any) {
+      console.error('Error saving achievement:', err);
+      toast.error('Gagal mencatat prestasi: ' + (err?.message || 'Terjadi kesalahan sistem'));
+    } finally {
+      setIsSavingAchievement(false);
     }
   };
 
@@ -399,10 +408,20 @@ export const AchievementsPage: React.FC = () => {
             </button>
             <button
               type="button"
+              disabled={isSavingAchievement}
               onClick={handleSave}
-              className="px-5 py-2 text-xs font-bold rounded-xl bg-amber-600 hover:bg-amber-700 text-white shadow-md"
+              className={`px-5 py-2 text-xs font-bold rounded-xl bg-amber-600 hover:bg-amber-700 text-white shadow-md flex items-center gap-2 transition-all ${
+                isSavingAchievement ? 'opacity-60 cursor-not-allowed' : ''
+              }`}
             >
-              Simpan Prestasi
+              {isSavingAchievement ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Menyimpan...</span>
+                </>
+              ) : (
+                <span>Simpan Prestasi</span>
+              )}
             </button>
           </>
         }

@@ -2,13 +2,13 @@
   "entities": {
     "users": {
       "title": "User Profiles & RBAC",
-      "description": "User profiles with canonical roles: super_admin, waka_kesiswaan, guru_bk, pembina_ekstrakurikuler, pembina_osim, anggota_osim",
+      "description": "User profiles with canonical roles: super_admin, waka_kesiswaan, guru_bk, coach_ekstrakurikuler, pembina_osim, anggota_osim, siswa",
       "type": "object",
       "properties": {
         "uid": { "type": "string", "maxLength": 128 },
         "email": { "type": "string", "maxLength": 256 },
         "displayName": { "type": "string", "maxLength": 128 },
-        "role": { "type": "string", "enum": ["super_admin", "waka_kesiswaan", "guru_bk", "pembina_ekstrakurikuler", "pembina_osim", "anggota_osim", "admin_kesiswaan", "pembina", "pembina_ekskul", "pengurus_osim"] },
+        "role": { "type": "string", "enum": ["super_admin", "waka_kesiswaan", "guru_bk", "coach_ekstrakurikuler", "pembina_osim", "anggota_osim", "siswa", "admin_kesiswaan", "pembina", "pembina_ekskul", "pengurus_osim"] },
         "status": { "type": "string", "enum": ["Aktif", "Nonaktif", "Pending"] },
         "photoURL": { "type": "string", "maxLength": 1024 },
         "osimPosition": { "type": "string", "maxLength": 64 },
@@ -113,6 +113,21 @@
       },
       "required": ["accountId", "type", "amount", "title", "date"]
     },
+    "cash_accounts": {
+      "title": "Cash Accounts & Pos Dana",
+      "description": "Financial ledger accounts and designated managers",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 128 },
+        "code": { "type": "string", "maxLength": 32 },
+        "category": { "type": "string", "maxLength": 64 },
+        "balance": { "type": "number" },
+        "initialBalance": { "type": "number" },
+        "assignedManagerUserIds": { "type": "array", "items": { "type": "string" } }
+      },
+      "required": ["name", "code"]
+    },
     "audit_logs": {
       "title": "System Audit Logs",
       "description": "Immutable security and activity audit trails",
@@ -150,6 +165,63 @@
         }
       },
       "required": ["id", "fullName", "role"]
+    },
+    "classes": {
+      "title": "School Classes",
+      "description": "Madrasah class roster (e.g. X-A, XI-IPA) and designated homeroom teachers",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "name": { "type": "string", "maxLength": 64 },
+        "grade": { "type": "string", "maxLength": 32 },
+        "major": { "type": "string", "maxLength": 64 },
+        "homeroomTeacherId": { "type": "string", "maxLength": 64 },
+        "homeroomTeacherName": { "type": "string", "maxLength": 128 },
+        "studentCount": { "type": "number" }
+      },
+      "required": ["id", "name"]
+    },
+    "extracurriculars": {
+      "title": "Extracurricular Clubs",
+      "description": "Extracurricular organizations, club profiles, and pembina assignments",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 64 },
+        "name": { "type": "string", "maxLength": 128 },
+        "category": { "type": "string", "maxLength": 64 },
+        "coachId": { "type": "string", "maxLength": 64 },
+        "coachName": { "type": "string", "maxLength": 128 },
+        "memberCount": { "type": "number" },
+        "scheduleDay": { "type": "string", "maxLength": 64 },
+        "status": { "type": "string", "maxLength": 32 }
+      },
+      "required": ["id", "name"]
+    },
+    "extracurricular_members": {
+      "title": "Club Memberships",
+      "description": "Student registrations in extracurricular activities",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "extracurricularId": { "type": "string", "maxLength": 64 },
+        "studentId": { "type": "string", "maxLength": 128 },
+        "studentName": { "type": "string", "maxLength": 128 },
+        "studentNis": { "type": "string", "maxLength": 64 },
+        "status": { "type": "string", "enum": ["Aktif", "Nonaktif", "Cuti", "Keluar"] }
+      },
+      "required": ["extracurricularId", "studentId"]
+    },
+    "system_snapshots": {
+      "title": "System Snapshots & Disaster Recovery",
+      "description": "Point-in-time state backups for instant rollback and disaster recovery",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "label": { "type": "string", "maxLength": 256 },
+        "timestamp": { "type": "string" },
+        "createdBy": { "type": "string", "maxLength": 128 }
+      },
+      "required": ["id", "label", "timestamp"]
     }
   },
   "firestore": {
@@ -185,9 +257,29 @@
       "schema": "cash_transactions",
       "description": "Ledger financial transactions"
     },
+    "/cash_accounts/{accountId}": {
+      "schema": "cash_accounts",
+      "description": "Cash account ledger and balances"
+    },
     "/audit_logs/{logId}": {
       "schema": "audit_logs",
       "description": "Immutable system audit trail"
+    },
+    "/classes/{classId}": {
+      "schema": "classes",
+      "description": "Academic classes catalog"
+    },
+    "/extracurriculars/{clubId}": {
+      "schema": "extracurriculars",
+      "description": "Extracurricular clubs catalog"
+    },
+    "/extracurricular_members/{memberId}": {
+      "schema": "extracurricular_members",
+      "description": "Extracurricular club membership registry"
+    },
+    "/system_snapshots/{snapshotId}": {
+      "schema": "system_snapshots",
+      "description": "System state point-in-time recovery snapshots"
     }
   }
 }

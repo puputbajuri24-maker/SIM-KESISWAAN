@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import { Violation, ViolationCategory, ViolationStatus } from '../types';
 import { OFFICIAL_DISCIPLINE_TIERS, getDisciplineTier } from '../services/officialRulesData';
 import { DataTable, Column } from '../components/common/DataTable';
@@ -33,6 +34,8 @@ interface ViolationsPageProps {
 
 export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounseling }) => {
   const { isWakaOrAdmin, isGuruBK, currentUser } = useAuth();
+  const { toast } = useToast();
+  const [isSavingViolation, setIsSavingViolation] = useState(false);
   const {
     violations,
     students,
@@ -198,10 +201,11 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.studentId || !formData.violationType) {
-      alert('Mohon pilih siswa dan jenis pelanggaran.');
+      toast.warning('Mohon pilih siswa dan jenis pelanggaran.');
       return;
     }
 
+    setIsSavingViolation(true);
     try {
       const student = students.find(s => s.id === formData.studentId);
       let violationForReferral: Violation | null = null;
@@ -213,6 +217,7 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
           studentNis: student?.nis || formData.studentNis,
           studentClass: student?.className || formData.studentClass
         });
+        toast.success(`Data pelanggaran untuk "${student?.fullName || 'siswa'}" berhasil diperbarui!`);
         violationForReferral = {
           ...selectedViolation,
           ...formData,
@@ -238,6 +243,7 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
           academicYear: activeAcademicYear
         };
         await addViolation(payload);
+        toast.success(`Pelanggaran "${formData.violationType}" untuk ${student?.fullName || 'siswa'} berhasil dicatat (+${payload.points} Poin)!`);
         violationForReferral = payload;
       }
 
@@ -248,9 +254,11 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
         onReferToCounseling(violationForReferral);
         return;
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error saving violation:', err);
+      toast.error('Gagal mencatat pelanggaran: ' + (err?.message || 'Terjadi kesalahan sistem'));
     } finally {
+      setIsSavingViolation(false);
       setIsFormOpen(false);
       setSelectedViolation(null);
       setAutoReferToCounseling(false);
@@ -606,10 +614,20 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
             </button>
             <button
               type="button"
+              disabled={isSavingViolation}
               onClick={handleSave}
-              className="px-5 py-2 text-xs font-bold rounded-xl bg-rose-600 hover:bg-rose-700 text-white shadow-md shadow-rose-600/20"
+              className={`px-5 py-2 text-xs font-bold rounded-xl bg-rose-600 hover:bg-rose-700 text-white shadow-md shadow-rose-600/20 flex items-center gap-2 transition-all ${
+                isSavingViolation ? 'opacity-60 cursor-not-allowed' : ''
+              }`}
             >
-              Simpan Pelanggaran
+              {isSavingViolation ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Menyimpan...</span>
+                </>
+              ) : (
+                <span>Simpan Pelanggaran</span>
+              )}
             </button>
           </>
         }

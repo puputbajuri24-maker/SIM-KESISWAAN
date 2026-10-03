@@ -1391,7 +1391,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
         {/* Workspace Content Body */}
         <main
           ref={mainScrollRef}
-          className="relative flex-1 overflow-y-auto bg-[#080c16] light:bg-[#f1f5f9] p-4 sm:p-6 custom-scrollbar transition-colors duration-200"
+          className="relative flex-1 overflow-y-auto bg-[#080c16] light:bg-[#f1f5f9] p-4 sm:p-6 pb-24 lg:pb-6 custom-scrollbar transition-colors duration-200"
         >
           {/* Subtle Top Loading / Transition Accent Glow Bar */}
           <div className="sticky -top-4 sm:-top-6 -mx-4 sm:-mx-6 -mt-4 sm:-mt-6 z-10 pointer-events-none h-0.5 overflow-hidden">
@@ -1445,6 +1445,73 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
             </motion.div>
           </AnimatePresence>
         </main>
+
+        {/* Mobile & Tablet Quick Bottom Navigation Bar */}
+        <nav
+          aria-label="Navigasi Bawah Seluler"
+          className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0a0f1d]/95 light:bg-white/95 backdrop-blur-md border-t border-[#1e293b] light:border-slate-200 px-2 py-1.5 flex items-center justify-around shadow-xl transition-colors duration-200"
+        >
+          <button
+            type="button"
+            onClick={() => handleNavClick('dashboard')}
+            className={`flex flex-col items-center justify-center flex-1 py-1 rounded-xl transition-colors ${
+              activeTab === 'dashboard'
+                ? 'text-blue-500 font-bold'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+            }`}
+          >
+            <LayoutDashboard className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px] tracking-tight">Beranda</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleNavClick('students')}
+            className={`flex flex-col items-center justify-center flex-1 py-1 rounded-xl transition-colors ${
+              activeTab === 'students'
+                ? 'text-blue-500 font-bold'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+            }`}
+          >
+            <Users className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px] tracking-tight">Siswa</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleNavClick('attendance')}
+            className={`flex flex-col items-center justify-center flex-1 py-1 rounded-xl transition-colors ${
+              activeTab === 'attendance'
+                ? 'text-blue-500 font-bold'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+            }`}
+          >
+            <ClipboardCheck className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px] tracking-tight">Presensi</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => handleNavClick('reports')}
+            className={`flex flex-col items-center justify-center flex-1 py-1 rounded-xl transition-colors ${
+              activeTab === 'reports'
+                ? 'text-blue-500 font-bold'
+                : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+            }`}
+          >
+            <FileText className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px] tracking-tight">Laporan</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsMobileMenuOpen(true)}
+            className="flex flex-col items-center justify-center flex-1 py-1 rounded-xl text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
+          >
+            <Menu className="w-5 h-5 mb-0.5" />
+            <span className="text-[10px] tracking-tight">Menu</span>
+          </button>
+        </nav>
       </div>
 
       {/* Mobile Drawer */}

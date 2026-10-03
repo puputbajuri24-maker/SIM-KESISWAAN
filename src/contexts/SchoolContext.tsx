@@ -83,12 +83,19 @@ import {
 import { db, auth } from '../services/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { handleFirestoreError, OperationType } from '../services/firestoreErrors';
-import { collection, getDocs, getDoc, doc, setDoc, updateDoc, deleteDoc, addDoc, writeBatch, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, getDocs, getDoc, doc, setDoc, updateDoc, deleteDoc, addDoc, writeBatch, onSnapshot, query, where, runTransaction } from 'firebase/firestore';
 import { useAuth } from './AuthContext';
 import { initGlobalRbacSync } from '../services/rbacService';
 import { findMatchingClass, resolveStudentClass, isStudentInClass } from '../utils/classResolver';
 import { normalizeTeacherCode, formatTeacherCode, formatStudentCode, formatTeacherDocId, getNextTeacherDocId } from '../utils/idGenerator';
-import { resolveStudent, resolveTeacher } from '../utils/relationResolvers';
+import { resolveStudent, resolveTeacher, auditRelationalIntegrity, RelationalHealthReport } from '../utils/relationResolvers';
+import {
+  validatePayload,
+  cashTransactionSchema,
+  studentViolationSchema,
+  counselingSessionSchema,
+  osimProgramSchema
+} from '../services/schemaValidation';
 
 import { extractSekbidNumber, isBphMember, normalizeSekbidName } from '../utils/osimAccountHelper';
 import {
@@ -339,6 +346,40 @@ interface SchoolContextType {
     users: { firestore: number; react: number };
   }>;
   syncLocalChangesToFirestore: () => Promise<void>;
+
+  // Fase 3: Cross-Collection Relational Audit & Auto-Harmonization
+  reconcileAllCashBalances: () => Promise<{ updatedCount: number }>;
+  checkDatabaseRelationalHealth: () => RelationalHealthReport;
+  runFullDatabaseHarmonization: () => Promise<{
+    success: boolean;
+    message: string;
+    details: { studentPointsFixed: number; cashBalancesFixed: number; teachersHarmonized: number };
+  }>;
+
+  // Fase 4: Disaster Recovery & Auto-Healing Resilience Engine
+  autoHealOrphanRecords: () => Promise<{
+    healedViolations: number;
+    healedCounselings: number;
+    healedMembers: number;
+    healedCoaches: number;
+    healedTransactions: number;
+    totalHealed: number;
+  }>;
+  createDisasterRecoverySnapshot: (customLabel?: string) => Promise<{
+    id: string;
+    label: string;
+    timestamp: string;
+    counts: Record<string, number>;
+  }>;
+  restoreFromDisasterSnapshot: (snapshotId: string) => Promise<{ success: boolean; message: string }>;
+  getDisasterRecoverySnapshots: () => Array<{
+    id: string;
+    label: string;
+    timestamp: string;
+    counts: Record<string, number>;
+    data?: any;
+  }>;
+  deleteDisasterRecoverySnapshot: (snapshotId: string) => void;
 }
 
 const SchoolContext = createContext<SchoolContextType | undefined>(undefined);
@@ -989,6 +1030,10 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Sync with Firestore if collections exist with timeout resilience
   const syncWithFirebase = async () => {
+    // If not authenticated, do not query protected operational collections
+    if (!currentUser && !auth.currentUser) {
+      return;
+    }
     setIsSyncing(true);
     try {
       // Execute sync with a graceful 3.5-second timeout so offline mode works instantly
@@ -1265,41 +1310,44 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             localStorage.setItem('sim_achievements', JSON.stringify(loadedAch));
           } catch (e) {}
 
-          // BK Collections Sync (Restricted to Guru BK and Waka/Admin)
-          try {
-            const csSnap = await getDocs(collection(db, 'counseling'));
-            const loadedCs: StudentCounseling[] = [];
-            csSnap.forEach(doc => loadedCs.push({ id: doc.id, ...doc.data() } as StudentCounseling));
-            setCounseling(loadedCs);
+          // BK Collections Sync (Strictly Restricted to Guru BK and Waka/Admin with active Firebase Auth session)
+          const isBkOrAdminUser = currentUser && ['super_admin', 'admin', 'waka_kesiswaan', 'waka', 'admin_kesiswaan', 'guru_bk', 'bk'].includes(currentUser.role);
+          if (auth.currentUser && isBkOrAdminUser) {
             try {
-              localStorage.setItem('sim_counseling', JSON.stringify(loadedCs));
-            } catch (e) {}
+              const csSnap = await getDocs(collection(db, 'counseling'));
+              const loadedCs: StudentCounseling[] = [];
+              csSnap.forEach(doc => loadedCs.push({ id: doc.id, ...doc.data() } as StudentCounseling));
+              setCounseling(loadedCs);
+              try {
+                localStorage.setItem('sim_counseling', JSON.stringify(loadedCs));
+              } catch (e) {}
 
-            const hvSnap = await getDocs(collection(db, 'home_visits'));
-            const loadedHv: HomeVisitRecord[] = [];
-            hvSnap.forEach(doc => loadedHv.push({ id: doc.id, ...doc.data() } as HomeVisitRecord));
-            setHomeVisits(loadedHv);
-            try {
-              localStorage.setItem('sim_home_visits', JSON.stringify(loadedHv));
-            } catch (e) {}
+              const hvSnap = await getDocs(collection(db, 'home_visits'));
+              const loadedHv: HomeVisitRecord[] = [];
+              hvSnap.forEach(doc => loadedHv.push({ id: doc.id, ...doc.data() } as HomeVisitRecord));
+              setHomeVisits(loadedHv);
+              try {
+                localStorage.setItem('sim_home_visits', JSON.stringify(loadedHv));
+              } catch (e) {}
 
-            const pclSnap = await getDocs(collection(db, 'parent_call_letters'));
-            const loadedPcl: ParentCallLetter[] = [];
-            pclSnap.forEach(doc => loadedPcl.push({ id: doc.id, ...doc.data() } as ParentCallLetter));
-            setParentCallLetters(loadedPcl);
-            try {
-              localStorage.setItem('sim_parent_call_letters', JSON.stringify(loadedPcl));
-            } catch (e) {}
+              const pclSnap = await getDocs(collection(db, 'parent_call_letters'));
+              const loadedPcl: ParentCallLetter[] = [];
+              pclSnap.forEach(doc => loadedPcl.push({ id: doc.id, ...doc.data() } as ParentCallLetter));
+              setParentCallLetters(loadedPcl);
+              try {
+                localStorage.setItem('sim_parent_call_letters', JSON.stringify(loadedPcl));
+              } catch (e) {}
 
-            const cgSnap = await getDocs(collection(db, 'career_guidances'));
-            const loadedCg: CareerGuidanceRecord[] = [];
-            cgSnap.forEach(doc => loadedCg.push({ id: doc.id, ...doc.data() } as CareerGuidanceRecord));
-            setCareerGuidances(loadedCg);
-            try {
-              localStorage.setItem('sim_career_guidances', JSON.stringify(loadedCg));
-            } catch (e) {}
-          } catch (bkErr) {
-            // Unprivileged roles do not have read permission for BK confidential collections
+              const cgSnap = await getDocs(collection(db, 'career_guidances'));
+              const loadedCg: CareerGuidanceRecord[] = [];
+              cgSnap.forEach(doc => loadedCg.push({ id: doc.id, ...doc.data() } as CareerGuidanceRecord));
+              setCareerGuidances(loadedCg);
+              try {
+                localStorage.setItem('sim_career_guidances', JSON.stringify(loadedCg));
+              } catch (e) {}
+            } catch (bkErr) {
+              // Unprivileged roles do not have read permission for BK confidential collections
+            }
           }
 
           // Permissions Sync
@@ -1392,27 +1440,37 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             } catch (e) {}
           }
 
-          // Cash Ledger Sync
-          const cashAccSnap = await getDocs(collection(db, 'cash_accounts'));
-          if (!cashAccSnap.empty) {
-            const loadedCashAcc: CashAccount[] = [];
-            cashAccSnap.forEach(doc => loadedCashAcc.push({ id: doc.id, ...doc.data() } as CashAccount));
-            setCashAccounts(loadedCashAcc);
+          // Cash Ledger Sync (Restricted to Cash Managers and Staff)
+          const isCashStaff = currentUser && (
+            currentUser.isCashManager ||
+            ['super_admin', 'admin', 'waka_kesiswaan', 'waka', 'pembina_osim', 'pembina_ekskul', 'pembina_ekstrakurikuler'].includes(currentUser.role) ||
+            currentUser.osimPosition === 'bendahara' ||
+            currentUser.osimPosition === 'bendahara_osim'
+          );
+          if (auth.currentUser && isCashStaff) {
             try {
-              localStorage.setItem('sim_cash_accounts', JSON.stringify(loadedCashAcc));
-            } catch (e) {}
-          }
+              const cashAccSnap = await getDocs(collection(db, 'cash_accounts'));
+              if (!cashAccSnap.empty) {
+                const loadedCashAcc: CashAccount[] = [];
+                cashAccSnap.forEach(doc => loadedCashAcc.push({ id: doc.id, ...doc.data() } as CashAccount));
+                setCashAccounts(loadedCashAcc);
+                try {
+                  localStorage.setItem('sim_cash_accounts', JSON.stringify(loadedCashAcc));
+                } catch (e) {}
+              }
 
-          const cashTrxSnap = await getDocs(collection(db, 'cash_transactions'));
-          if (!cashTrxSnap.empty) {
-            const loadedCashTrx: CashTransaction[] = [];
-            cashTrxSnap.forEach(doc => loadedCashTrx.push({ id: doc.id, ...doc.data() } as CashTransaction));
-            // Sort newest first
-            loadedCashTrx.sort((a, b) => (b.date > a.date ? 1 : b.date < a.date ? -1 : (b.id > a.id ? 1 : -1)));
-            setCashTransactions(loadedCashTrx);
-            try {
-              localStorage.setItem('sim_cash_transactions', JSON.stringify(loadedCashTrx));
-            } catch (e) {}
+              const cashTrxSnap = await getDocs(collection(db, 'cash_transactions'));
+              if (!cashTrxSnap.empty) {
+                const loadedCashTrx: CashTransaction[] = [];
+                cashTrxSnap.forEach(doc => loadedCashTrx.push({ id: doc.id, ...doc.data() } as CashTransaction));
+                // Sort newest first
+                loadedCashTrx.sort((a, b) => (b.date > a.date ? 1 : b.date < a.date ? -1 : (b.id > a.id ? 1 : -1)));
+                setCashTransactions(loadedCashTrx);
+                try {
+                  localStorage.setItem('sim_cash_transactions', JSON.stringify(loadedCashTrx));
+                } catch (e) {}
+              }
+            } catch (cashErr) {}
           }
 
           // School Rules Sync
@@ -1482,21 +1540,24 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             } catch (e) {}
           }
 
-          // Audit Logs Sync from Firestore (Restricted to Waka/Admin)
-          try {
-            const auditSnap = await getDocs(collection(db, 'audit_logs'));
-            if (!auditSnap.empty) {
-              const loadedLogs: AuditLogItem[] = [];
-              auditSnap.forEach(doc => loadedLogs.push({ id: doc.id, ...doc.data() } as AuditLogItem));
-              // Sort newest first
-              loadedLogs.sort((a, b) => (b.id > a.id ? 1 : -1));
-              setAuditLogs(loadedLogs);
-              try {
-                localStorage.setItem('sim_audit_logs', JSON.stringify(loadedLogs));
-              } catch (e) {}
+          // Audit Logs Sync from Firestore (Restricted to Waka/Admin with active auth session)
+          const isAuditStaff = currentUser && ['super_admin', 'admin', 'waka_kesiswaan', 'waka'].includes(currentUser.role);
+          if (auth.currentUser && isAuditStaff) {
+            try {
+              const auditSnap = await getDocs(collection(db, 'audit_logs'));
+              if (!auditSnap.empty) {
+                const loadedLogs: AuditLogItem[] = [];
+                auditSnap.forEach(doc => loadedLogs.push({ id: doc.id, ...doc.data() } as AuditLogItem));
+                // Sort newest first
+                loadedLogs.sort((a, b) => (b.id > a.id ? 1 : -1));
+                setAuditLogs(loadedLogs);
+                try {
+                  localStorage.setItem('sim_audit_logs', JSON.stringify(loadedLogs));
+                } catch (e) {}
+              }
+            } catch (auditErr) {
+              // Unprivileged roles do not have read permission for audit logs
             }
-          } catch (auditErr) {
-            // Unprivileged roles do not have read permission for audit logs
           }
         } else {
           // Cloud database is empty: auto initialize master data to Firestore
@@ -1518,6 +1579,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Bidirectionally synchronize any local device data up to Firestore so that neither HP nor tablet data is lost
   const syncLocalChangesToFirestore = async () => {
+    if (!currentUser && !auth.currentUser) {
+      return;
+    }
     try {
       // 0. Sync school settings from local cache to Firestore if present
       const savedSchool = localStorage.getItem('sim_school_setting');
@@ -1618,14 +1682,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
-  // Real-time synchronization across all devices via Firestore onSnapshot
-  // Ensures ALL devices (HP, Tablet, PC, Web App) receive identical settings and data from Firestore immediately
+  // 1. Real-time synchronization for public school data across all visitors & devices
   useEffect(() => {
     const unsubscribers: (() => void)[] = [];
-
-    // Trigger initial load and ensure local device changes are reconciled to Firestore
-    syncWithFirebase().catch(() => {});
-    syncLocalChangesToFirestore().catch(() => {});
 
     // 0. Real-time Global RBAC Matrix Listener (Firestore settings/rbac_matrix)
     try {
@@ -1637,66 +1696,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       console.warn('RBAC Global sync listener error:', e);
     }
 
-    // 1. Real-time Students Listener
-    try {
-      const unsub = onSnapshot(collection(db, 'students'), (snapshot) => {
-        if (!snapshot.empty) {
-          const raw: Student[] = [];
-          snapshot.forEach(docSnap => {
-            const data = docSnap.data() as Student;
-            const id = docSnap.id;
-            if (data.isDeleted) return;
-            removeDeletedUid(id);
-            if (data.nis) removeDeletedUid(cleanDigits(data.nis));
-            raw.push({ id, ...data });
-          });
-          const { deduplicated, duplicateIds } = deduplicateStudentsList(raw);
-          const sorted = sortStudentsAlphabetically(deduplicated);
-          setStudents(sorted);
-          try {
-            localStorage.setItem('sim_students', JSON.stringify(sorted));
-          } catch (e) {}
-
-          if (duplicateIds.length > 0) {
-            duplicateIds.forEach(dupId => {
-              deleteDoc(doc(db, 'students', dupId)).catch(() => {});
-            });
-          }
-        }
-      }, (err) => {
-        handleFirestoreError(err, OperationType.GET, 'students');
-      });
-      unsubscribers.push(unsub);
-    } catch (e) {}
-
-    // 2. Real-time Extracurricular Members Listener
-    try {
-      const unsub = onSnapshot(collection(db, 'extracurricular_members'), (snapshot) => {
-        const loaded: ExtracurricularMember[] = [];
-        snapshot.forEach(docSnap => {
-          const data = docSnap.data() as ExtracurricularMember;
-          const id = docSnap.id;
-          if (id === 'm1' || data.studentNis === '24251001') return;
-          if (isPurgedExtracurricular(data.extracurricularId) || isPurgedExtracurricular(data.extracurricularName || '')) return;
-          loaded.push({ id, ...data });
-        });
-        setMembers(loaded);
-        try {
-          localStorage.setItem('sim_members', JSON.stringify(loaded));
-        } catch (e) {}
-
-        // Keep extracurricular member counts synced
-        setExtracurriculars(prev => prev.map(ekskul => {
-          const count = loaded.filter(m => m.extracurricularId === ekskul.id && m.status !== 'Nonaktif' && m.status !== 'Keluar').length;
-          return { ...ekskul, memberCount: count };
-        }));
-      }, (err) => {
-        handleFirestoreError(err, OperationType.GET, 'extracurricular_members');
-      });
-      unsubscribers.push(unsub);
-    } catch (e) {}
-
-    // 3. Real-time Extracurriculars Listener
+    // 1. Real-time Extracurriculars Listener (Public Catalog)
     try {
       const unsub = onSnapshot(collection(db, 'extracurriculars'), (snapshot) => {
         if (!snapshot.empty) {
@@ -1718,7 +1718,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       unsubscribers.push(unsub);
     } catch (e) {}
 
-    // 4. Real-time Classes Listener
+    // 2. Real-time Classes Listener (Public Catalog)
     try {
       const unsub = onSnapshot(collection(db, 'classes'), (snapshot) => {
         if (!snapshot.empty) {
@@ -1744,61 +1744,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       unsubscribers.push(unsub);
     } catch (e) {}
 
-    // 5. Real-time Teachers Listener
-    try {
-      const unsub = onSnapshot(collection(db, 'teachers'), (snapshot) => {
-        if (!snapshot.empty) {
-          const raw: Teacher[] = [];
-          snapshot.forEach(docSnap => {
-            const data = docSnap.data() as Teacher;
-            const id = docSnap.id;
-            const cleanNip = cleanDigits(data.nip);
-            if (
-              id === 'user_super_admin' ||
-              id === 'teacher_pitria_lawenusa' ||
-              isBlacklistedDemoName(data.fullName || (data as any).name) ||
-              isDeletedUid(id) ||
-              (cleanNip.length >= 6 && isDeletedUid(cleanNip))
-            ) {
-              deleteDoc(docSnap.ref).catch(() => {});
-              return;
-            }
-            raw.push({ id, ...data });
-          });
-          const loaded = deduplicateTeachersList(raw, extracurriculars);
-          setTeachers(loaded);
-          try {
-            localStorage.setItem('sim_teachers', JSON.stringify(loaded));
-          } catch (e) {}
-
-          // Auto-heal dirty assignedExtracurriculars and missing readable names in Firestore
-          raw.forEach(t => {
-            if (Array.isArray(t.assignedExtracurriculars)) {
-              const cleaned = canonicalizeAssignedEkskulIds(t.assignedExtracurriculars, extracurriculars);
-              const cleanNames = cleaned.map(eid => {
-                const match = (extracurriculars || []).find(e => e.id === eid);
-                return match ? match.name : eid;
-              });
-              const isDirty = t.assignedExtracurriculars.some(item => !item.startsWith('ekskul_')) ||
-                t.assignedExtracurriculars.length !== cleaned.length ||
-                !t.extracurricularNames || t.extracurricularNames.length !== cleanNames.length;
-              if (isDirty) {
-                setDoc(doc(db, 'teachers', t.id), { 
-                  assignedExtracurriculars: cleaned,
-                  extracurricularNames: cleanNames,
-                  extracurricularName: cleanNames.join(', ') || undefined
-                }, { merge: true }).catch(() => {});
-              }
-            }
-          });
-        }
-      }, (err) => {
-        handleFirestoreError(err, OperationType.GET, 'teachers');
-      });
-      unsubscribers.push(unsub);
-    } catch (e) {}
-
-    // 6. Real-time Schools (Settings) Listener
+    // 3. Real-time Schools (Settings) Listener (Public Branding)
     try {
       const unsub = onSnapshot(collection(db, 'schools'), (snapshot) => {
         if (!snapshot.empty) {
@@ -1849,7 +1795,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       unsubscribers.push(unsub);
     } catch (e) {}
 
-    // 7. Real-time Academic Years Listener
+    // 4. Real-time Academic Years Listener (Public)
     try {
       const unsub = onSnapshot(collection(db, 'academic_years'), (snapshot) => {
         if (!snapshot.empty) {
@@ -1868,7 +1814,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       unsubscribers.push(unsub);
     } catch (e) {}
 
-    // 8. Real-time Attendance Listener
+    // 5. Real-time Attendance Listener (Public Overview)
     try {
       const unsub = onSnapshot(collection(db, 'attendance'), (snapshot) => {
         const loaded: AttendanceRecord[] = [];
@@ -1885,7 +1831,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       unsubscribers.push(unsub);
     } catch (e) {}
 
-    // 9. Real-time Activities Listener
+    // 6. Real-time Activities Listener (Public Events)
     try {
       const unsub = onSnapshot(collection(db, 'activities'), (snapshot) => {
         const loaded: Activity[] = [];
@@ -1902,7 +1848,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       unsubscribers.push(unsub);
     } catch (e) {}
 
-    // 10. Real-time Activity Reports Listener
+    // 7. Real-time Activity Reports Listener (Public)
     try {
       const unsub = onSnapshot(collection(db, 'activity_reports'), (snapshot) => {
         const loaded: ActivityReport[] = [];
@@ -1919,7 +1865,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       unsubscribers.push(unsub);
     } catch (e) {}
 
-    // 11. Real-time Schedules Listener
+    // 8. Real-time Schedules Listener (Public)
     try {
       const unsub = onSnapshot(collection(db, 'schedules'), (snapshot) => {
         const loaded: ScheduleEvent[] = [];
@@ -1939,41 +1885,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       unsubscribers.push(unsub);
     } catch (e) {}
 
-    // 12. Real-time Violations Listener
-    try {
-      const unsub = onSnapshot(collection(db, 'violations'), (snapshot) => {
-        const loaded: Violation[] = [];
-        snapshot.forEach(docSnap => {
-          loaded.push({ id: docSnap.id, ...docSnap.data() } as Violation);
-        });
-        setViolations(loaded);
-        try {
-          localStorage.setItem('sim_violations', JSON.stringify(loaded));
-        } catch (e) {}
-      }, (err) => {
-        handleFirestoreError(err, OperationType.GET, 'violations');
-      });
-      unsubscribers.push(unsub);
-    } catch (e) {}
-
-    // 13. Real-time Counseling Listener
-    try {
-      const unsub = onSnapshot(collection(db, 'counseling'), (snapshot) => {
-        const loaded: CounselingSession[] = [];
-        snapshot.forEach(docSnap => {
-          loaded.push({ id: docSnap.id, ...docSnap.data() } as CounselingSession);
-        });
-        setCounseling(loaded);
-        try {
-          localStorage.setItem('sim_counseling', JSON.stringify(loaded));
-        } catch (e) {}
-      }, (err) => {
-        handleFirestoreError(err, OperationType.GET, 'counseling');
-      });
-      unsubscribers.push(unsub);
-    } catch (e) {}
-
-    // 14. Real-time Achievements Listener
+    // 9. Real-time Achievements Listener (Public)
     try {
       const unsub = onSnapshot(collection(db, 'achievements'), (snapshot) => {
         const loaded: Achievement[] = [];
@@ -1990,7 +1902,197 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       unsubscribers.push(unsub);
     } catch (e) {}
 
-    // 15. Real-time Permissions Listener
+    // 10. Real-time Announcements Listener (Public)
+    try {
+      const unsub = onSnapshot(collection(db, 'announcements'), (snapshot) => {
+        const loaded: Announcement[] = [];
+        snapshot.forEach(docSnap => {
+          loaded.push({ id: docSnap.id, ...docSnap.data() } as Announcement);
+        });
+        setAnnouncements(loaded);
+        try {
+          localStorage.setItem('sim_announcements', JSON.stringify(loaded));
+        } catch (e) {}
+      }, (err) => {
+        handleFirestoreError(err, OperationType.GET, 'announcements');
+      });
+      unsubscribers.push(unsub);
+    } catch (e) {}
+
+    setIsRealTimeConnected(true);
+
+    return () => {
+      unsubscribers.forEach(unsub => unsub());
+    };
+  }, []);
+
+  // 2. Real-time synchronization for authenticated school operational records
+  useEffect(() => {
+    // Only subscribe to protected collections when user is actively authenticated
+    if (!currentUser && !auth.currentUser) {
+      return;
+    }
+
+    const unsubscribers: (() => void)[] = [];
+
+    // Trigger initial load and reconcile local device changes to Firestore for authenticated user
+    syncWithFirebase().catch(() => {});
+    syncLocalChangesToFirestore().catch(() => {});
+
+    // Students Listener (requires authenticated user)
+    try {
+      const unsub = onSnapshot(collection(db, 'students'), (snapshot) => {
+        if (!snapshot.empty) {
+          const raw: Student[] = [];
+          snapshot.forEach(docSnap => {
+            const data = docSnap.data() as Student;
+            const id = docSnap.id;
+            if (data.isDeleted) return;
+            removeDeletedUid(id);
+            if (data.nis) removeDeletedUid(cleanDigits(data.nis));
+            raw.push({ id, ...data });
+          });
+          const { deduplicated, duplicateIds } = deduplicateStudentsList(raw);
+          const sorted = sortStudentsAlphabetically(deduplicated);
+          setStudents(sorted);
+          try {
+            localStorage.setItem('sim_students', JSON.stringify(sorted));
+          } catch (e) {}
+
+          if (duplicateIds.length > 0) {
+            duplicateIds.forEach(dupId => {
+              deleteDoc(doc(db, 'students', dupId)).catch(() => {});
+            });
+          }
+        }
+      }, (err) => {
+        handleFirestoreError(err, OperationType.GET, 'students');
+      });
+      unsubscribers.push(unsub);
+    } catch (e) {}
+
+    // Extracurricular Members Listener
+    try {
+      const unsub = onSnapshot(collection(db, 'extracurricular_members'), (snapshot) => {
+        const loaded: ExtracurricularMember[] = [];
+        snapshot.forEach(docSnap => {
+          const data = docSnap.data() as ExtracurricularMember;
+          const id = docSnap.id;
+          if (id === 'm1' || data.studentNis === '24251001') return;
+          if (isPurgedExtracurricular(data.extracurricularId) || isPurgedExtracurricular(data.extracurricularName || '')) return;
+          loaded.push({ id, ...data });
+        });
+        setMembers(loaded);
+        try {
+          localStorage.setItem('sim_members', JSON.stringify(loaded));
+        } catch (e) {}
+
+        setExtracurriculars(prev => prev.map(ekskul => {
+          const count = loaded.filter(m => m.extracurricularId === ekskul.id && m.status !== 'Nonaktif' && m.status !== 'Keluar').length;
+          return { ...ekskul, memberCount: count };
+        }));
+      }, (err) => {
+        handleFirestoreError(err, OperationType.GET, 'extracurricular_members');
+      });
+      unsubscribers.push(unsub);
+    } catch (e) {}
+
+    // Teachers Listener
+    try {
+      const unsub = onSnapshot(collection(db, 'teachers'), (snapshot) => {
+        if (!snapshot.empty) {
+          const raw: Teacher[] = [];
+          snapshot.forEach(docSnap => {
+            const data = docSnap.data() as Teacher;
+            const id = docSnap.id;
+            const cleanNip = cleanDigits(data.nip);
+            if (
+              id === 'user_super_admin' ||
+              id === 'teacher_pitria_lawenusa' ||
+              isBlacklistedDemoName(data.fullName || (data as any).name) ||
+              isDeletedUid(id) ||
+              (cleanNip.length >= 6 && isDeletedUid(cleanNip))
+            ) {
+              deleteDoc(docSnap.ref).catch(() => {});
+              return;
+            }
+            raw.push({ id, ...data });
+          });
+          const loaded = deduplicateTeachersList(raw, extracurriculars);
+          setTeachers(loaded);
+          try {
+            localStorage.setItem('sim_teachers', JSON.stringify(loaded));
+          } catch (e) {}
+
+          raw.forEach(t => {
+            if (Array.isArray(t.assignedExtracurriculars)) {
+              const cleaned = canonicalizeAssignedEkskulIds(t.assignedExtracurriculars, extracurriculars);
+              const cleanNames = cleaned.map(eid => {
+                const match = (extracurriculars || []).find(e => e.id === eid);
+                return match ? match.name : eid;
+              });
+              const isDirty = t.assignedExtracurriculars.some(item => !item.startsWith('ekskul_')) ||
+                t.assignedExtracurriculars.length !== cleaned.length ||
+                !t.extracurricularNames || t.extracurricularNames.length !== cleanNames.length;
+              if (isDirty) {
+                setDoc(doc(db, 'teachers', t.id), { 
+                  assignedExtracurriculars: cleaned,
+                  extracurricularNames: cleanNames,
+                  extracurricularName: cleanNames.join(', ') || undefined
+                }, { merge: true }).catch(() => {});
+              }
+            }
+          });
+        }
+      }, (err) => {
+        handleFirestoreError(err, OperationType.GET, 'teachers');
+      });
+      unsubscribers.push(unsub);
+    } catch (e) {}
+
+    const userRole = currentUser?.role;
+    const isStaff = userRole && ['super_admin', 'admin', 'waka_kesiswaan', 'waka', 'admin_kesiswaan', 'guru_bk', 'bk', 'pembina_osim', 'pembina', 'pembina_ekstrakurikuler', 'pembina_ekskul', 'coach_ekstrakurikuler'].includes(userRole);
+    const isBkOrAdmin = userRole && ['super_admin', 'admin', 'waka_kesiswaan', 'waka', 'admin_kesiswaan', 'guru_bk', 'bk'].includes(userRole);
+
+    // Violations Listener (restricted to Staff & Admin)
+    if (isStaff) {
+      try {
+        const unsub = onSnapshot(collection(db, 'violations'), (snapshot) => {
+          const loaded: Violation[] = [];
+          snapshot.forEach(docSnap => {
+            loaded.push({ id: docSnap.id, ...docSnap.data() } as Violation);
+          });
+          setViolations(loaded);
+          try {
+            localStorage.setItem('sim_violations', JSON.stringify(loaded));
+          } catch (e) {}
+        }, (err) => {
+          handleFirestoreError(err, OperationType.GET, 'violations');
+        });
+        unsubscribers.push(unsub);
+      } catch (e) {}
+    }
+
+    // Counseling Listener (strictly restricted to Guru BK and Waka / Admin with active Firebase Auth session)
+    if (isBkOrAdmin && auth.currentUser) {
+      try {
+        const unsub = onSnapshot(collection(db, 'counseling'), (snapshot) => {
+          const loaded: CounselingSession[] = [];
+          snapshot.forEach(docSnap => {
+            loaded.push({ id: docSnap.id, ...docSnap.data() } as CounselingSession);
+          });
+          setCounseling(loaded);
+          try {
+            localStorage.setItem('sim_counseling', JSON.stringify(loaded));
+          } catch (e) {}
+        }, (err) => {
+          handleFirestoreError(err, OperationType.GET, 'counseling');
+        });
+        unsubscribers.push(unsub);
+      } catch (e) {}
+    }
+
+    // Permissions Listener
     try {
       const unsub = onSnapshot(collection(db, 'permissions'), (snapshot) => {
         const loaded: StudentPermission[] = [];
@@ -2007,7 +2109,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       unsubscribers.push(unsub);
     } catch (e) {}
 
-    // 16. Real-time OSIM Members Listener
+    // OSIM Members Listener
     try {
       const unsub = onSnapshot(collection(db, 'osim_members'), (snapshot) => {
         const raw: OsimMember[] = [];
@@ -2029,7 +2131,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       unsubscribers.push(unsub);
     } catch (e) {}
 
-    // 17. Real-time OSIM Programs Listener
+    // OSIM Programs Listener
     try {
       const unsub = onSnapshot(collection(db, 'osim_programs'), (snapshot) => {
         const loaded: OsimWorkProgram[] = [];
@@ -2046,29 +2148,10 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       unsubscribers.push(unsub);
     } catch (e) {}
 
-    // 18. Real-time Announcements Listener
-    try {
-      const unsub = onSnapshot(collection(db, 'announcements'), (snapshot) => {
-        const loaded: Announcement[] = [];
-        snapshot.forEach(docSnap => {
-          loaded.push({ id: docSnap.id, ...docSnap.data() } as Announcement);
-        });
-        setAnnouncements(loaded);
-        try {
-          localStorage.setItem('sim_announcements', JSON.stringify(loaded));
-        } catch (e) {}
-      }, (err) => {
-        handleFirestoreError(err, OperationType.GET, 'announcements');
-      });
-      unsubscribers.push(unsub);
-    } catch (e) {}
-
-      setIsRealTimeConnected(true);
-
     return () => {
       unsubscribers.forEach(unsub => unsub());
     };
-  }, []);
+  }, [currentUser?.uid, currentUser?.role]);
 
   const seedFirebaseDatabase = async () => {
     setIsSyncing(true);
@@ -4984,17 +5067,28 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const addViolation = async (data: Omit<StudentViolation, 'id' | 'createdAt'>) => {
+    // Validate payload against schema guard
+    const validation = validatePayload(studentViolationSchema, data);
+    if (!validation.success) {
+      console.warn('Invalid violation payload:', validation.errors);
+      return;
+    }
+
+    const validData = validation.data;
     // Relational Integrity: Safely link with master Student
-    const student = resolveStudent(students, { id: data.studentId, code: data.studentCode, nis: data.studentNis, name: data.studentName });
-    const targetStudentId = student?.id || data.studentId;
-    const finalStudentCode = student?.code || data.studentCode;
-    const finalStudentName = student?.fullName || data.studentName;
-    const finalStudentClass = student?.className || data.studentClass;
-    const finalStudentNis = student?.nis || data.studentNis;
+    const student = resolveStudent(students, { id: validData.studentId, code: validData.studentCode, nis: validData.studentNis, name: validData.studentName });
+    const targetStudentId = student?.id || validData.studentId;
+    const finalStudentCode = student?.code || validData.studentCode;
+    const finalStudentName = student?.fullName || validData.studentName;
+    const finalStudentClass = student?.className || validData.studentClass;
+    const finalStudentNis = student?.nis || validData.studentNis;
 
     const newViol: StudentViolation = {
       id: `v_${Date.now()}`,
+      officerName: currentUser?.displayName || 'Petugas Kesiswaan',
+      actionTaken: 'Dicatat dan dibina',
       ...data,
+      ...validData,
       studentId: targetStudentId,
       studentCode: finalStudentCode,
       studentName: finalStudentName,
@@ -5097,22 +5191,444 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     return { updatedCount };
   };
 
+  // Fase 3: Reconcile Cash Balances against all transactions
+  const reconcileAllCashBalances = async (): Promise<{ updatedCount: number }> => {
+    let updatedCount = 0;
+    const accountNetSum = new Map<string, number>();
+    cashTransactions.forEach(trx => {
+      const delta = trx.type === 'MASUK' ? Number(trx.amount) : -Number(trx.amount);
+      const curr = accountNetSum.get(trx.accountId) || 0;
+      accountNetSum.set(trx.accountId, curr + delta);
+    });
+
+    const updatedAccounts = cashAccounts.map(acc => {
+      const expectedBal = (Number(acc.initialBalance) || 0) + (accountNetSum.get(acc.id) || 0);
+      const currentBal = Number(acc.currentBalance ?? acc.balance) || 0;
+      if (currentBal !== expectedBal) {
+        updatedCount++;
+        if (auth.currentUser) {
+          updateDoc(doc(db, 'cash_accounts', acc.id), {
+            balance: expectedBal,
+            currentBalance: expectedBal,
+            updatedAt: new Date().toISOString()
+          }).catch(() => {});
+        }
+        return { ...acc, balance: expectedBal, currentBalance: expectedBal };
+      }
+      return acc;
+    });
+
+    if (updatedCount > 0) {
+      setCashAccounts(updatedAccounts);
+      try {
+        localStorage.setItem('sim_cash_accounts', JSON.stringify(updatedAccounts));
+      } catch (e) {}
+      logAction('RECONCILE_CASH', 'Neraca Kas', `Rekonsiliasi saldo kas selesai: ${updatedCount} akun kas disinkronkan`);
+    }
+
+    return { updatedCount };
+  };
+
+  // Fase 3: Check database relational health report
+  const checkDatabaseRelationalHealth = (): RelationalHealthReport => {
+    return auditRelationalIntegrity(
+      students,
+      teachers,
+      extracurriculars,
+      violations,
+      counseling,
+      members,
+      osimMembers,
+      cashAccounts,
+      cashTransactions
+    );
+  };
+
+  // Fase 3: Full automated cross-collection database harmonization
+  const runFullDatabaseHarmonization = async (): Promise<{
+    success: boolean;
+    message: string;
+    details: { studentPointsFixed: number; cashBalancesFixed: number; teachersHarmonized: number };
+  }> => {
+    try {
+      setIsSyncing(true);
+      // 1. Reconcile student violation points
+      const { updatedCount: studentPointsFixed } = await reconcileAllStudentPoints();
+
+      // 2. Reconcile cash ledger account balances
+      const { updatedCount: cashBalancesFixed } = await reconcileAllCashBalances();
+
+      // 3. Harmonize teachers document IDs and structure
+      const teachRes = await harmonizeTeachersFirestore();
+      const teachersHarmonized = teachRes.migratedCount || 0;
+
+      setIsSyncing(false);
+      const msg = `Harmonisasi Fase 3 Berhasil: ${studentPointsFixed} akumulasi poin siswa diperbaiki, ${cashBalancesFixed} saldo akun kas diselaraskan, dan ${teachersHarmonized} data dewan guru distandarisasi.`;
+      logAction('FULL_HARMONIZATION', 'Basis Data', msg);
+      return {
+        success: true,
+        message: msg,
+        details: { studentPointsFixed, cashBalancesFixed, teachersHarmonized }
+      };
+    } catch (err: any) {
+      setIsSyncing(false);
+      return {
+        success: false,
+        message: `Gagal menjalankan harmonisasi: ${err?.message || 'Terjadi kesalahan internal'}`,
+        details: { studentPointsFixed: 0, cashBalancesFixed: 0, teachersHarmonized: 0 }
+      };
+    }
+  };
+
+  // =========================================================================
+  // FASE 4: DISASTER RECOVERY, RESTORE POINTS & AUTO-HEALING ENGINE
+  // =========================================================================
+
+  const autoHealOrphanRecords = async (): Promise<{
+    healedViolations: number;
+    healedCounselings: number;
+    healedMembers: number;
+    healedCoaches: number;
+    healedTransactions: number;
+    totalHealed: number;
+  }> => {
+    let healedViolations = 0;
+    let healedCounselings = 0;
+    let healedMembers = 0;
+    let healedCoaches = 0;
+    let healedTransactions = 0;
+
+    // 1. Heal Violations with missing or broken student pointers
+    const updatedViolations = violations.map(v => {
+      const student = resolveStudent(students, { id: v.studentId, code: v.studentCode, nis: v.studentNis, name: v.studentName });
+      if (student && (v.studentId !== student.id || v.studentName !== student.fullName || v.studentClass !== student.className)) {
+        healedViolations++;
+        const healed = {
+          ...v,
+          studentId: student.id,
+          studentCode: student.code || v.studentCode,
+          studentName: student.fullName,
+          studentClass: student.className,
+          studentNis: student.nis || v.studentNis
+        };
+        try {
+          updateDoc(doc(db, 'violations', v.id), healed).catch(() => {});
+        } catch (e) {}
+        return healed;
+      }
+      return v;
+    });
+
+    if (healedViolations > 0) {
+      setViolations(updatedViolations);
+      try {
+        localStorage.setItem('sim_violations', JSON.stringify(updatedViolations));
+      } catch (e) {}
+    }
+
+    // 2. Heal Counselings with missing or broken student / counselor pointers
+    const updatedCounseling = counseling.map(c => {
+      const student = resolveStudent(students, { id: c.studentId, code: c.studentCode, nis: c.studentNis, name: c.studentName });
+      const counselor = c.counselorId ? resolveTeacher(teachers, { id: c.counselorId, name: c.counselorName }) : undefined;
+      let changed = false;
+      const healed = { ...c };
+
+      if (student && (c.studentId !== student.id || c.studentName !== student.fullName)) {
+        healed.studentId = student.id;
+        healed.studentCode = student.code || c.studentCode;
+        healed.studentName = student.fullName;
+        healed.studentClass = student.className;
+        changed = true;
+      }
+      if (counselor && (c.counselorId !== counselor.id || c.counselorName !== counselor.fullName)) {
+        healed.counselorId = counselor.id;
+        healed.counselorName = counselor.fullName;
+        healed.counselorCode = counselor.code || c.counselorCode;
+        changed = true;
+      }
+
+      if (changed) {
+        healedCounselings++;
+        try {
+          if (auth.currentUser) {
+            updateDoc(doc(db, 'counseling', c.id), healed).catch(() => {});
+          }
+        } catch (e) {}
+        return healed;
+      }
+      return c;
+    });
+
+    if (healedCounselings > 0) {
+      setCounseling(updatedCounseling);
+      try {
+        localStorage.setItem('sim_counseling', JSON.stringify(updatedCounseling));
+      } catch (e) {}
+    }
+
+    // 3. Heal Extracurricular Members
+    const updatedMembers = members.map(m => {
+      const student = resolveStudent(students, { id: m.studentId, code: m.studentCode, nis: m.studentNis, name: m.studentName });
+      if (student && (m.studentId !== student.id || m.studentName !== student.fullName || m.studentClass !== student.className)) {
+        healedMembers++;
+        const healed = {
+          ...m,
+          studentId: student.id,
+          studentCode: student.code || m.studentCode,
+          studentName: student.fullName,
+          studentClass: student.className
+        };
+        try {
+          updateDoc(doc(db, 'extracurricular_members', m.id), healed).catch(() => {});
+        } catch (e) {}
+        return healed;
+      }
+      return m;
+    });
+
+    if (healedMembers > 0) {
+      setMembers(updatedMembers);
+      try {
+        localStorage.setItem('sim_members', JSON.stringify(updatedMembers));
+      } catch (e) {}
+    }
+
+    // 4. Heal Extracurricular Coaches
+    const updatedEkskuls = extracurriculars.map(e => {
+      if (e.coachId) {
+        const teacher = resolveTeacher(teachers, { id: e.coachId, code: e.coachCode, name: e.coachName });
+        if (teacher && (e.coachName !== teacher.fullName || e.coachCode !== teacher.code)) {
+          healedCoaches++;
+          const healed = {
+            ...e,
+            coachName: teacher.fullName,
+            coachCode: teacher.code
+          };
+          try {
+            updateDoc(doc(db, 'extracurriculars', e.id), healed).catch(() => {});
+          } catch (e) {}
+          return healed;
+        }
+      }
+      return e;
+    });
+
+    if (healedCoaches > 0) {
+      setExtracurriculars(updatedEkskuls);
+      try {
+        localStorage.setItem('sim_extracurriculars', JSON.stringify(updatedEkskuls));
+      } catch (e) {}
+    }
+
+    // 5. Heal Cash Transactions (connect to valid account)
+    const validAccountIds = new Set(cashAccounts.map(a => a.id));
+    const fallbackAccountId = cashAccounts[0]?.id || 'acc_default';
+    const fallbackAccountName = cashAccounts[0]?.name || 'Kas Utama Sekolah';
+
+    const updatedTransactions = cashTransactions.map(t => {
+      if (!validAccountIds.has(t.accountId)) {
+        healedTransactions++;
+        const healed = {
+          ...t,
+          accountId: fallbackAccountId,
+          accountName: fallbackAccountName
+        };
+        try {
+          updateDoc(doc(db, 'cash_transactions', t.id), healed).catch(() => {});
+        } catch (e) {}
+        return healed;
+      }
+      return t;
+    });
+
+    if (healedTransactions > 0) {
+      setCashTransactions(updatedTransactions);
+      try {
+        localStorage.setItem('sim_cash_transactions', JSON.stringify(updatedTransactions));
+      } catch (e) {}
+    }
+
+    const totalHealed = healedViolations + healedCounselings + healedMembers + healedCoaches + healedTransactions;
+    if (totalHealed > 0) {
+      logAction('AUTO_HEAL', 'Ketahanan Data', `Auto-heal Fase 4 berhasil memulihkan ${totalHealed} anomali relasi.`);
+    }
+
+    return {
+      healedViolations,
+      healedCounselings,
+      healedMembers,
+      healedCoaches,
+      healedTransactions,
+      totalHealed
+    };
+  };
+
+  const getDisasterRecoverySnapshots = (): Array<{
+    id: string;
+    label: string;
+    timestamp: string;
+    counts: Record<string, number>;
+    data?: any;
+  }> => {
+    try {
+      const raw = localStorage.getItem('sim_dr_snapshots');
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return [];
+  };
+
+  const createDisasterRecoverySnapshot = async (customLabel?: string) => {
+    const snapshotId = `snap_${Date.now()}`;
+    const timestamp = new Date().toISOString();
+    const label = customLabel?.trim() || `Titik Pemulihan Cadangan (${new Date().toLocaleString('id-ID')})`;
+    
+    const counts = {
+      students: students.length,
+      teachers: teachers.length,
+      classes: classes.length,
+      violations: violations.length,
+      counseling: counseling.length,
+      cashAccounts: cashAccounts.length,
+      cashTransactions: cashTransactions.length,
+      extracurriculars: extracurriculars.length,
+      osimMembers: osimMembers.length,
+      osimPrograms: osimPrograms.length,
+      users: allUsers.length
+    };
+
+    const payload = {
+      id: snapshotId,
+      label,
+      timestamp,
+      counts,
+      data: {
+        students,
+        teachers,
+        classes,
+        violations,
+        counseling,
+        cashAccounts,
+        cashTransactions,
+        extracurriculars,
+        members,
+        osimMembers,
+        osimPrograms,
+        schedules,
+        attendance,
+        activities
+      }
+    };
+
+    const existing = getDisasterRecoverySnapshots();
+    const updated = [payload, ...existing].slice(0, 15);
+    try {
+      localStorage.setItem('sim_dr_snapshots', JSON.stringify(updated));
+    } catch (e) {}
+
+    try {
+      if (auth.currentUser) {
+        setDoc(doc(db, 'system_snapshots', snapshotId), {
+          id: snapshotId,
+          label,
+          timestamp,
+          counts,
+          createdBy: auth.currentUser.email || auth.currentUser.uid
+        }).catch(() => {});
+      }
+    } catch (e) {}
+
+    logAction('CREATE_SNAPSHOT', 'Disaster Recovery', `Membuat titik pemulihan baru: "${label}" (${Object.values(counts).reduce((a, b) => a + b, 0)} entitas tersimpan)`);
+    return { id: snapshotId, label, timestamp, counts };
+  };
+
+  const deleteDisasterRecoverySnapshot = (snapshotId: string) => {
+    const existing = getDisasterRecoverySnapshots();
+    const updated = existing.filter((s: any) => s.id !== snapshotId);
+    try {
+      localStorage.setItem('sim_dr_snapshots', JSON.stringify(updated));
+    } catch (e) {}
+    try {
+      if (auth.currentUser) {
+        deleteDoc(doc(db, 'system_snapshots', snapshotId)).catch(() => {});
+      }
+    } catch (e) {}
+    logAction('DELETE_SNAPSHOT', 'Disaster Recovery', `Menghapus snapshot ID ${snapshotId}`);
+  };
+
+  const restoreFromDisasterSnapshot = async (snapshotId: string): Promise<{ success: boolean; message: string }> => {
+    const existing = getDisasterRecoverySnapshots();
+    const target = existing.find((s: any) => s.id === snapshotId);
+    if (!target || !target.data) {
+      return { success: false, message: 'Snapshot tidak ditemukan atau data korup.' };
+    }
+
+    try {
+      setIsSyncing(true);
+      const d = target.data;
+      if (d.students) setStudents(d.students);
+      if (d.teachers) setTeachers(d.teachers);
+      if (d.classes) setClasses(d.classes);
+      if (d.violations) setViolations(d.violations);
+      if (d.counseling) setCounseling(d.counseling);
+      if (d.cashAccounts) setCashAccounts(d.cashAccounts);
+      if (d.cashTransactions) setCashTransactions(d.cashTransactions);
+      if (d.extracurriculars) setExtracurriculars(d.extracurriculars);
+      if (d.members) setMembers(d.members);
+      if (d.osimMembers) setOsimMembers(d.osimMembers);
+      if (d.osimPrograms) setOsimPrograms(d.osimPrograms);
+      if (d.schedules) setSchedules(d.schedules);
+      if (d.attendance) setAttendance(d.attendance);
+      if (d.activities) setActivities(d.activities);
+
+      // Save to localStorage
+      if (d.students) localStorage.setItem('sim_students', JSON.stringify(d.students));
+      if (d.teachers) localStorage.setItem('sim_teachers', JSON.stringify(d.teachers));
+      if (d.classes) localStorage.setItem('sim_classes', JSON.stringify(d.classes));
+      if (d.violations) localStorage.setItem('sim_violations', JSON.stringify(d.violations));
+      if (d.counseling) localStorage.setItem('sim_counseling', JSON.stringify(d.counseling));
+      if (d.cashAccounts) localStorage.setItem('sim_cash_accounts', JSON.stringify(d.cashAccounts));
+      if (d.cashTransactions) localStorage.setItem('sim_cash_transactions', JSON.stringify(d.cashTransactions));
+      if (d.extracurriculars) localStorage.setItem('sim_extracurriculars', JSON.stringify(d.extracurriculars));
+      if (d.members) localStorage.setItem('sim_members', JSON.stringify(d.members));
+      if (d.osimMembers) localStorage.setItem('sim_osim_members', JSON.stringify(d.osimMembers));
+      if (d.osimPrograms) localStorage.setItem('sim_osim_programs', JSON.stringify(d.osimPrograms));
+
+      setIsSyncing(false);
+      const msg = `Berhasil memulihkan database dari titik "${target.label}" (${target.timestamp}). Seluruh entitas telah dikembalikan ke kondisi stabil.`;
+      logAction('RESTORE_SNAPSHOT', 'Disaster Recovery', msg);
+      return { success: true, message: msg };
+    } catch (err: any) {
+      setIsSyncing(false);
+      return { success: false, message: `Gagal memulihkan dari snapshot: ${err?.message || 'Kesalahan internal'}` };
+    }
+  };
+
   // Counseling
   const addCounseling = async (data: Omit<StudentCounseling, 'id' | 'createdAt'>) => {
-    // Relational Integrity: Safely link with master Student & Counselor
-    const student = resolveStudent(students, { id: data.studentId, code: data.studentCode, nis: data.studentNis, name: data.studentName });
-    const counselor = data.counselorId ? resolveTeacher(teachers, { id: data.counselorId, name: data.counselorName }) : undefined;
+    // Validate payload against schema guard
+    const validation = validatePayload(counselingSessionSchema, data);
+    if (!validation.success) {
+      console.warn('Invalid counseling payload:', validation.errors);
+      return;
+    }
 
-    const targetStudentId = student?.id || data.studentId;
-    const finalStudentCode = student?.code || data.studentCode;
-    const finalStudentName = student?.fullName || data.studentName;
-    const finalStudentClass = student?.className || data.studentClass;
-    const finalCounselorCode = counselor?.code || data.counselorCode;
-    const finalCounselorName = counselor?.fullName || data.counselorName;
+    const validData = validation.data;
+    // Relational Integrity: Safely link with master Student & Counselor
+    const student = resolveStudent(students, { id: validData.studentId, code: (data as any).studentCode, nis: (data as any).studentNis, name: (data as any).studentName });
+    const counselor = validData.counselorId ? resolveTeacher(teachers, { id: validData.counselorId, name: (data as any).counselorName }) : undefined;
+
+    const targetStudentId = student?.id || validData.studentId;
+    const finalStudentCode = student?.code || (data as any).studentCode;
+    const finalStudentName = student?.fullName || (data as any).studentName;
+    const finalStudentClass = student?.className || (data as any).studentClass;
+    const finalCounselorCode = counselor?.code || (data as any).counselorCode;
+    const finalCounselorName = counselor?.fullName || (data as any).counselorName;
 
     const newCs: StudentCounseling = {
       id: `cs_${Date.now()}`,
+      followUpPlan: 'Pemantauan berkala',
       ...data,
+      ...validData,
       studentId: targetStudentId,
       studentCode: finalStudentCode,
       studentName: finalStudentName,
@@ -5647,9 +6163,18 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // OSIM Work Programs
   const addOsimProgram = async (data: Omit<OsimWorkProgram, 'id' | 'createdAt'>) => {
+    // Validate payload against schema guard
+    const validation = validatePayload(osimProgramSchema, data);
+    if (!validation.success) {
+      console.warn('Invalid osim program payload:', validation.errors);
+      return;
+    }
+
+    const validData = validation.data;
     const newProg: OsimWorkProgram = {
       id: `proker_${Date.now()}`,
       ...data,
+      ...validData,
       createdAt: new Date().toISOString().split('T')[0]
     };
     setOsimPrograms(prev => [newProg, ...prev]);
@@ -5930,53 +6455,176 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     logAction('ASSIGN_CASH_AMANAH', 'Neraca Kas', `Mengamanahkan pengelolaan kas ${targetAcc.name} kepada: ${(userNames || userIds).join(', ')}`);
   };
 
-  // Cash Transactions
+  // Cash Transactions (Atomic Multi-Document Transaction with Account Balance Reconciliation)
   const addCashTransaction = async (data: Omit<CashTransaction, 'id' | 'createdAt'>) => {
-    const autoRef = data.referenceNumber || (
-      data.type === 'MASUK'
+    // Validate payload against schema guard
+    const validation = validatePayload(cashTransactionSchema, data);
+    if (!validation.success) {
+      console.warn('Invalid cash transaction payload:', validation.errors);
+      return;
+    }
+
+    const validData = validation.data;
+    const autoRef = validData.referenceNumber || (
+      validData.type === 'MASUK'
         ? `BKM-${new Date().toISOString().slice(0, 7).replace('-', '')}-${String(Date.now()).slice(-4)}`
         : `BKK-${new Date().toISOString().slice(0, 7).replace('-', '')}-${String(Date.now()).slice(-4)}`
     );
 
+    const targetAccount = cashAccounts.find(a => a.id === validData.accountId);
+    const resolvedAccountName = validData.accountName || targetAccount?.name || (data as any).accountName || 'Kas';
+
     const newTrx: CashTransaction = {
       id: `trx_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       ...data,
+      ...validData,
+      accountName: resolvedAccountName,
       referenceNumber: autoRef,
       createdAt: new Date().toISOString().split('T')[0]
     };
 
+    // Update transactions state
     setCashTransactions(prev => [newTrx, ...prev]);
-    try {
-      if (auth.currentUser) {
-        setDoc(doc(db, 'cash_transactions', newTrx.id), newTrx).catch(() => {});
+
+    // Atomically recalculate and update account balance in state
+    setCashAccounts(prev => prev.map(acc => {
+      if (acc.id === validData.accountId) {
+        const delta = validData.type === 'MASUK' ? Number(validData.amount) : -Number(validData.amount);
+        const nextBal = (Number(acc.balance) || 0) + delta;
+        return { ...acc, balance: nextBal, updatedAt: new Date().toISOString() };
       }
-    } catch (e) {}
+      return acc;
+    }));
+
+    // Atomically commit to Cloud Firestore using runTransaction
+    if (auth.currentUser) {
+      try {
+        await runTransaction(db, async (t) => {
+          const accRef = doc(db, 'cash_accounts', validData.accountId);
+          const accSnap = await t.get(accRef);
+          const currentBal = accSnap.exists() ? (Number(accSnap.data().balance) || 0) : 0;
+          const delta = validData.type === 'MASUK' ? Number(validData.amount) : -Number(validData.amount);
+          const newBal = currentBal + delta;
+
+          const trxRef = doc(db, 'cash_transactions', newTrx.id);
+          t.set(trxRef, newTrx);
+          if (accSnap.exists()) {
+            t.update(accRef, { balance: newBal, updatedAt: new Date().toISOString() });
+          }
+        });
+      } catch (err) {
+        console.warn('Atomic cash transaction sync warning:', err);
+      }
+    }
+
     logAction(
-      data.type === 'MASUK' ? 'CASH_INFLOW' : 'CASH_OUTFLOW',
+      validData.type === 'MASUK' ? 'CASH_INFLOW' : 'CASH_OUTFLOW',
       'Neraca Kas',
-      `Mencatat uang ${data.type === 'MASUK' ? 'masuk' : 'keluar'}: Rp ${data.amount.toLocaleString('id-ID')} (${data.title}) pada ${data.accountName}`
+      `Mencatat uang ${validData.type === 'MASUK' ? 'masuk' : 'keluar'}: Rp ${validData.amount.toLocaleString('id-ID')} (${validData.title}) pada ${validData.accountName || validData.accountId}`
     );
   };
 
   const updateCashTransaction = async (id: string, data: Partial<CashTransaction>) => {
-    setCashTransactions(prev => prev.map(t => t.id === id ? { ...t, ...data, updatedAt: new Date().toISOString() } : t));
-    try {
-      if (auth.currentUser) {
-        updateDoc(doc(db, 'cash_transactions', id), { ...data, updatedAt: new Date().toISOString() }).catch(() => {});
+    const existing = cashTransactions.find(t => t.id === id);
+    if (!existing) return;
+
+    const merged = { ...existing, ...data, updatedAt: new Date().toISOString() };
+    setCashTransactions(prev => prev.map(t => t.id === id ? merged : t));
+
+    // If amount, type, or account changed, reconcile affected accounts
+    const oldDelta = existing.type === 'MASUK' ? Number(existing.amount) : -Number(existing.amount);
+    const newDelta = merged.type === 'MASUK' ? Number(merged.amount) : -Number(merged.amount);
+
+    if (existing.accountId === merged.accountId) {
+      const netChange = newDelta - oldDelta;
+      setCashAccounts(prev => prev.map(acc => {
+        if (acc.id === merged.accountId) {
+          return { ...acc, balance: (Number(acc.balance) || 0) + netChange, updatedAt: new Date().toISOString() };
+        }
+        return acc;
+      }));
+    } else {
+      // Revert old account and add to new account
+      setCashAccounts(prev => prev.map(acc => {
+        if (acc.id === existing.accountId) {
+          return { ...acc, balance: (Number(acc.balance) || 0) - oldDelta, updatedAt: new Date().toISOString() };
+        }
+        if (acc.id === merged.accountId) {
+          return { ...acc, balance: (Number(acc.balance) || 0) + newDelta, updatedAt: new Date().toISOString() };
+        }
+        return acc;
+      }));
+    }
+
+    if (auth.currentUser) {
+      try {
+        await runTransaction(db, async (t) => {
+          const trxRef = doc(db, 'cash_transactions', id);
+          t.update(trxRef, { ...data, updatedAt: new Date().toISOString() });
+
+          if (existing.accountId === merged.accountId) {
+            const accRef = doc(db, 'cash_accounts', merged.accountId);
+            const accSnap = await t.get(accRef);
+            if (accSnap.exists()) {
+              const curBal = Number(accSnap.data().balance) || 0;
+              const netChange = newDelta - oldDelta;
+              t.update(accRef, { balance: curBal + netChange, updatedAt: new Date().toISOString() });
+            }
+          } else {
+            const oldAccRef = doc(db, 'cash_accounts', existing.accountId);
+            const oldAccSnap = await t.get(oldAccRef);
+            if (oldAccSnap.exists()) {
+              const curBal = Number(oldAccSnap.data().balance) || 0;
+              t.update(oldAccRef, { balance: curBal - oldDelta, updatedAt: new Date().toISOString() });
+            }
+
+            const newAccRef = doc(db, 'cash_accounts', merged.accountId);
+            const newAccSnap = await t.get(newAccRef);
+            if (newAccSnap.exists()) {
+              const curBal = Number(newAccSnap.data().balance) || 0;
+              t.update(newAccRef, { balance: curBal + newDelta, updatedAt: new Date().toISOString() });
+            }
+          }
+        });
+      } catch (e) {
+        console.warn('Atomic update cash transaction warning:', e);
       }
-    } catch (e) {}
+    }
     logAction('UPDATE_CASH_TRANSACTION', 'Neraca Kas', `Memperbarui transaksi kas ID ${id}`);
   };
 
   const deleteCashTransaction = async (id: string) => {
     const target = cashTransactions.find(t => t.id === id);
+    if (!target) return;
+
     setCashTransactions(prev => prev.filter(t => t.id !== id));
-    try {
-      if (auth.currentUser) {
-        deleteDoc(doc(db, 'cash_transactions', id)).catch(() => {});
+
+    // Revert balance in local state
+    const deltaToRevert = target.type === 'MASUK' ? -Number(target.amount) : Number(target.amount);
+    setCashAccounts(prev => prev.map(acc => {
+      if (acc.id === target.accountId) {
+        return { ...acc, balance: (Number(acc.balance) || 0) + deltaToRevert, updatedAt: new Date().toISOString() };
       }
-    } catch (e) {}
-    logAction('DELETE_CASH_TRANSACTION', 'Neraca Kas', `Menghapus transaksi kas: ${target?.title || id} (Rp ${target?.amount.toLocaleString('id-ID') || 0})`);
+      return acc;
+    }));
+
+    if (auth.currentUser) {
+      try {
+        await runTransaction(db, async (t) => {
+          const accRef = doc(db, 'cash_accounts', target.accountId);
+          const accSnap = await t.get(accRef);
+          if (accSnap.exists()) {
+            const curBal = Number(accSnap.data().balance) || 0;
+            t.update(accRef, { balance: curBal + deltaToRevert, updatedAt: new Date().toISOString() });
+          }
+          const trxRef = doc(db, 'cash_transactions', id);
+          t.delete(trxRef);
+        });
+      } catch (e) {
+        console.warn('Atomic delete cash transaction warning:', e);
+      }
+    }
+    logAction('DELETE_CASH_TRANSACTION', 'Neraca Kas', `Menghapus transaksi kas: ${target.title || id} (Rp ${target.amount.toLocaleString('id-ID')})`);
   };
 
   // ==========================================
@@ -6226,7 +6874,15 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         isRealTimeConnected,
         cloudStatus,
         verifyCloudDataIntegrity,
-        syncLocalChangesToFirestore
+        syncLocalChangesToFirestore,
+        reconcileAllCashBalances,
+        checkDatabaseRelationalHealth,
+        runFullDatabaseHarmonization,
+        autoHealOrphanRecords,
+        createDisasterRecoverySnapshot,
+        restoreFromDisasterSnapshot,
+        getDisasterRecoverySnapshots,
+        deleteDisasterRecoverySnapshot
       }}
     >
       {children}

@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useToast } from '../contexts/ToastContext';
 import {
   SchoolRuleArticle,
   SchoolHandbookMeta,
@@ -63,6 +64,9 @@ const ALL_CHAPTERS: RuleCategoryChapter[] = [
 
 export const TataTertibPage: React.FC = () => {
   const { isWakaOrAdmin, isSuperAdmin, currentUser } = useAuth();
+  const { toast } = useToast();
+  const [isSavingRule, setIsSavingRule] = useState(false);
+  const [isSavingMeta, setIsSavingMeta] = useState(false);
   const {
     schoolRules,
     handbookMeta,
@@ -259,35 +263,64 @@ export const TataTertibPage: React.FC = () => {
   const handleSaveRule = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title || !formData.articleNumber || !formData.description) {
-      alert('Mohon lengkapi Nomor Pasal, Judul Aturan, dan Bunyi Ketentuan!');
+      toast.warning('Mohon lengkapi Nomor Pasal, Judul Aturan, dan Bunyi Ketentuan!');
       return;
     }
 
-    if (isEditMode && selectedRule) {
-      await updateSchoolRule(selectedRule.id, formData);
-    } else {
-      await addSchoolRule(formData as Omit<SchoolRuleArticle, 'id'>);
+    setIsSavingRule(true);
+    try {
+      if (isEditMode && selectedRule) {
+        await updateSchoolRule(selectedRule.id, formData);
+        toast.success(`Pasal ${formData.articleNumber} berhasil diperbarui!`);
+      } else {
+        await addSchoolRule(formData as Omit<SchoolRuleArticle, 'id'>);
+        toast.success(`Pasal ${formData.articleNumber} berhasil ditambahkan ke Buku Tata Tertib!`);
+      }
+      setIsFormModalOpen(false);
+    } catch (err: any) {
+      toast.error('Gagal menyimpan pasal tata tertib: ' + (err?.message || 'Terjadi kendala'));
+    } finally {
+      setIsSavingRule(false);
     }
-    setIsFormModalOpen(false);
   };
 
   const handleDeleteRule = async () => {
     if (selectedRule) {
-      await deleteSchoolRule(selectedRule.id);
-      setIsDeleteConfirmOpen(false);
-      setSelectedRule(null);
+      try {
+        await deleteSchoolRule(selectedRule.id);
+        toast.success(`Pasal ${selectedRule.articleNumber} berhasil dihapus.`);
+      } catch (err: any) {
+        toast.error('Gagal menghapus pasal: ' + (err?.message || 'Terjadi kesalahan'));
+      } finally {
+        setIsDeleteConfirmOpen(false);
+        setSelectedRule(null);
+      }
     }
   };
 
   const handleResetToDefault = async () => {
-    await resetSchoolRulesToDefault();
-    setIsResetConfirmOpen(false);
+    try {
+      await resetSchoolRulesToDefault();
+      toast.success('Buku Tata Tertib berhasil dikembalikan ke standar awal madrasah.');
+    } catch (err: any) {
+      toast.error('Gagal mereset tata tertib: ' + (err?.message || 'Terjadi kendala'));
+    } finally {
+      setIsResetConfirmOpen(false);
+    }
   };
 
   const handleSaveHandbookMeta = async (e: React.FormEvent) => {
     e.preventDefault();
-    await updateHandbookMeta(metaFormData);
-    setIsMetaModalOpen(false);
+    setIsSavingMeta(true);
+    try {
+      await updateHandbookMeta(metaFormData);
+      toast.success('Konfigurasi SK dan ambang poin sanksi berhasil disimpan!');
+      setIsMetaModalOpen(false);
+    } catch (err: any) {
+      toast.error('Gagal menyimpan konfigurasi SK: ' + (err?.message || 'Terjadi kendala'));
+    } finally {
+      setIsSavingMeta(false);
+    }
   };
 
   const handleCopyRuleText = (rule: SchoolRuleArticle) => {
@@ -1521,9 +1554,19 @@ export const TataTertibPage: React.FC = () => {
             </button>
             <button
               type="submit"
-              className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-xs"
+              disabled={isSavingRule}
+              className={`px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-xs flex items-center gap-2 transition-all ${
+                isSavingRule ? 'opacity-60 cursor-not-allowed' : ''
+              }`}
             >
-              {isEditMode ? 'Simpan Perubahan' : 'Tambahkan Pasal'}
+              {isSavingRule ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Menyimpan...</span>
+                </>
+              ) : (
+                <span>{isEditMode ? 'Simpan Perubahan' : 'Tambahkan Pasal'}</span>
+              )}
             </button>
           </div>
         </form>
@@ -1731,9 +1774,19 @@ export const TataTertibPage: React.FC = () => {
             </button>
             <button
               type="submit"
-              className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-lg shadow-xs"
+              disabled={isSavingMeta}
+              className={`px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-lg shadow-xs flex items-center gap-2 transition-all ${
+                isSavingMeta ? 'opacity-60 cursor-not-allowed' : ''
+              }`}
             >
-              Simpan Konfigurasi SK
+              {isSavingMeta ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Menyimpan...</span>
+                </>
+              ) : (
+                <span>Simpan Konfigurasi SK</span>
+              )}
             </button>
           </div>
         </form>
