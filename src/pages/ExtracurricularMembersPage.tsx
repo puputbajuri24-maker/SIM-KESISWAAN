@@ -44,7 +44,7 @@ import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { ExportActions } from '../components/common/ExportActions';
 import { ClassGridFilter } from '../components/common/ClassGridFilter';
-import { calculateRecordCountsByClass, isStudentInClass, resolveStudentClass } from '../utils/classResolver';
+import { calculateRecordCountsByClass, isStudentInClass, resolveStudentClass, deduplicateClassesList } from '../utils/classResolver';
 import { downloadStudentTemplateXLSX, downloadStudentTemplateCSV, parseStudentRows } from '../utils/studentTemplate';
 import { cleanDigits } from '../utils/syncUtils';
 
@@ -58,7 +58,7 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
   const { toast } = useToast();
   const canCrudMembers = useCrudPermission('members', currentUser?.role, currentUser);
   const {
-    classes,
+    classes: rawClasses,
     members,
     extracurriculars,
     teachers,
@@ -75,6 +75,10 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
     addStudent,
     importStudentsBulk
   } = useSchool();
+
+  const classes = useMemo(() => {
+    return deduplicateClassesList(rawClasses, students).deduplicated;
+  }, [rawClasses, students]);
 
   const isPembinaOnly = isPembina && !isWakaOrAdmin;
   const myAssignedIds = currentUser?.extracurricularIds || [];

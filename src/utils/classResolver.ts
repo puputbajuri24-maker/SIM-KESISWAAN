@@ -425,3 +425,86 @@ export const groupStudentsByClass = (
 
   return groups;
 };
+
+/**
+ * Deduplicates classes list to guarantee strictly ONE record per unique class name.
+ * Resolves conflicts by:
+ * 1. Matching normalized class name (e.g. "10-A" vs "10 A" vs "10_A").
+ * 2. If one has students assigned and the other is 0, prefer the populated one.
+ * 3. Discards phantom/auto-generated empty classes (e.g. c_auto_...).
+ * Returns { deduplicated: SchoolClass[], duplicateIds: string[] }
+ */
+export const deduplicateClassesList = (
+  classList: SchoolClass[],
+  studentsList?: Student[]
+): { deduplicated: SchoolClass[]; duplicateIds: string[] } => {
+  if (!Array.isArray(classList) || classList.length <= 1) {
+    return { deduplicated: classList || [], duplicateIds: [] };
+  }
+
+  const studentCountByClassId: Record<string, number> = {};
+  if (Array.isArray(studentsList)) {
+    for (const s of studentsList) {
+      if (s.classId) {
+        studentCountByClassId[s.classId] = (studentCountByClassId[s.classId] || 0) + 1;
+      }
+    }
+  }
+
+  const result: SchoolClass[] = [];
+  const seenNormNames = new Map<string, number>(); // normName -> index in result
+  const duplicateIds: string[] = [];
+
+  for (const c of classList) {
+    if (!c || !c.id || !c.name) continue;
+
+    const lowerId = c.id.toLowerCase();
+    if (lowerId === 'c_dummy' || lowerId === 'dummy_class' || lowerId === 'unassigned') {
+      duplicateIds.push(c.id);
+      continue;
+    }
+
+    const normName = normalizeClassString(c.name);
+    if (!normName) continue;
+
+    // If this is a c_auto_ class and a non-auto class already exists in the incoming list for this normName, discard it
+    if (lowerId.startsWith('c_auto_') && classList.some(other => other && other.id !== c.id && !other.id.toLowerCase().startsWith('c_auto_') && normalizeClassString(other.name) === normName)) {
+      duplicateIds.push(c.id);
+      continue;
+    }
+
+    if (seenNormNames.has(normName)) {
+      const existingIdx = seenNormNames.get(normName)!;
+      const existing = result[existingIdx];
+
+      const existingStudents = (studentCountByClassId[existing.id] || 0) + (existing.studentCount || 0);
+      const currentStudents = (studentCountByClassId[c.id] || 0) + (c.studentCount || 0);
+
+      if (c.id.startsWith('c_auto_') && !existing.id.startsWith('c_auto_')) {
+        duplicateIds.push(c.id);
+      } else if (existing.id.startsWith('c_auto_') && !c.id.startsWith('c_auto_')) {
+        duplicateIds.push(existing.id);
+        result[existingIdx] = {
+          ...c,
+          homeroomTeacher: c.homeroomTeacher && c.homeroomTeacher !== 'Belum Ditentukan' ? c.homeroomTeacher : existing.homeroomTeacher,
+          homeroomTeacherName: c.homeroomTeacherName || existing.homeroomTeacherName
+        };
+      } else if (currentStudents > existingStudents) {
+        duplicateIds.push(existing.id);
+        result[existingIdx] = {
+          ...c,
+          homeroomTeacher: c.homeroomTeacher && c.homeroomTeacher !== 'Belum Ditentukan' ? c.homeroomTeacher : existing.homeroomTeacher,
+          homeroomTeacherName: c.homeroomTeacherName || existing.homeroomTeacherName
+        };
+      } else {
+        duplicateIds.push(c.id);
+      }
+    } else {
+      seenNormNames.set(normName, result.length);
+      result.push(c);
+    }
+  }
+
+  return { deduplicated: result, duplicateIds };
+};
+

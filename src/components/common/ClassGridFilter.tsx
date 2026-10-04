@@ -12,7 +12,7 @@ import {
   X
 } from 'lucide-react';
 import { SchoolClass } from '../../types';
-import { sortClasses, ClassSortOrder } from '../../utils/classResolver';
+import { sortClasses, ClassSortOrder, deduplicateClassesList } from '../../utils/classResolver';
 
 export interface ClassGridFilterProps {
   classes: SchoolClass[];
@@ -50,18 +50,23 @@ export const ClassGridFilter: React.FC<ClassGridFilterProps> = ({
   const [classSortOrder, setClassSortOrder] = useState<ClassSortOrder>(defaultSortOrder);
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Deduplicate classes list to guarantee strictly 1 card per distinct class name
+  const cleanClasses = useMemo(() => {
+    return deduplicateClassesList(classes).deduplicated;
+  }, [classes]);
+
   // Calculate distinct grades present in the classes
   const availableGrades = useMemo(() => {
     const gradesSet = new Set<string>();
-    classes.forEach(c => {
+    cleanClasses.forEach(c => {
       if (c.grade) gradesSet.add(c.grade);
     });
     return Array.from(gradesSet).sort();
-  }, [classes]);
+  }, [cleanClasses]);
 
   // Filter classes based on grade and search query, then sort per chosen order
   const filteredClasses = useMemo(() => {
-    const filtered = classes.filter(c => {
+    const filtered = cleanClasses.filter(c => {
       const matchGrade = selectedGrade === 'all' || c.grade === selectedGrade;
       const matchSearch =
         !searchQuery.trim() ||
@@ -72,12 +77,12 @@ export const ClassGridFilter: React.FC<ClassGridFilterProps> = ({
     });
 
     return sortClasses(filtered, classSortOrder, countsByClassId);
-  }, [classes, selectedGrade, searchQuery, classSortOrder, countsByClassId]);
+  }, [cleanClasses, selectedGrade, searchQuery, classSortOrder, countsByClassId]);
 
   // Computed total count if not provided
   const computedTotal = useMemo(() => {
     if (typeof totalCount === 'number') return totalCount;
-    const validClassIds = new Set(classes.map(c => c.id));
+    const validClassIds = new Set(cleanClasses.map(c => c.id));
     if (validClassIds.size > 0) {
       return Object.entries(countsByClassId).reduce((acc: number, [key, val]) => {
         if (validClassIds.has(key)) {
@@ -87,7 +92,7 @@ export const ClassGridFilter: React.FC<ClassGridFilterProps> = ({
       }, 0);
     }
     return Object.values(countsByClassId).reduce((acc: number, curr) => acc + (Number(curr) || 0), 0);
-  }, [totalCount, countsByClassId, classes]);
+  }, [totalCount, countsByClassId, cleanClasses]);
 
   // Color scheme mappings
   const schemeStyles = {
@@ -144,7 +149,7 @@ export const ClassGridFilter: React.FC<ClassGridFilterProps> = ({
   const scheme = schemeStyles[colorScheme] || schemeStyles.indigo;
 
   // Selected class object
-  const activeClassObj = classes.find(c => c.id === selectedClassId || c.name === selectedClassId);
+  const activeClassObj = cleanClasses.find(c => c.id === selectedClassId || c.name === selectedClassId);
 
   return (
     <div
@@ -162,7 +167,7 @@ export const ClassGridFilter: React.FC<ClassGridFilterProps> = ({
                 {label}
               </span>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200/70 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
-                {classes.length} Rombel
+                {cleanClasses.length} Rombel
               </span>
             </div>
             <div className="text-[11px] text-slate-500 dark:text-slate-400">
@@ -220,10 +225,10 @@ export const ClassGridFilter: React.FC<ClassGridFilterProps> = ({
                       : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
                   }`}
                 >
-                  Semua ({classes.length})
+                  Semua ({cleanClasses.length})
                 </button>
                 {['X', 'XI', 'XII'].map(grade => {
-                  const countInGrade = classes.filter(c => c.grade === grade).length;
+                  const countInGrade = cleanClasses.filter(c => c.grade === grade).length;
                   if (countInGrade === 0 && !availableGrades.includes(grade)) return null;
                   return (
                     <button

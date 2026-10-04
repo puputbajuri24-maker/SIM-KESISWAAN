@@ -86,7 +86,7 @@ import { handleFirestoreError, OperationType, isPermissionError } from '../servi
 import { collection, getDocs, getDoc, doc, setDoc, updateDoc, deleteDoc, addDoc, writeBatch, onSnapshot, query, where, runTransaction } from 'firebase/firestore';
 import { useAuth } from './AuthContext';
 import { initGlobalRbacSync } from '../services/rbacService';
-import { findMatchingClass, resolveStudentClass, isStudentInClass } from '../utils/classResolver';
+import { findMatchingClass, resolveStudentClass, isStudentInClass, deduplicateClassesList, normalizeClassString } from '../utils/classResolver';
 import { normalizeTeacherCode, formatTeacherCode, formatStudentCode, formatTeacherDocId, getNextTeacherDocId } from '../utils/idGenerator';
 import { resolveStudent, resolveTeacher, auditRelationalIntegrity, RelationalHealthReport } from '../utils/relationResolvers';
 import {
@@ -604,24 +604,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               setActiveSemesterState(loadedSchool.currentSemester);
             }
           }
-          const classSnap = await getDocs(collection(db, 'classes'));
-          const loadedClasses: SchoolClass[] = [];
-          const deletedClassSet = getDeletedClassIds();
-          classSnap.forEach(docSnap => {
-            const id = docSnap.id;
-            const data = docSnap.data() as SchoolClass;
-            if (deletedClassSet.has(id) || isPurgedClassId(id) || isPurgedClassId(data?.name)) {
-              deleteDoc(docSnap.ref).catch(() => {});
-              return;
-            }
-            loadedClasses.push({ id, ...data });
-          });
-          setClasses(loadedClasses);
-          try {
-            localStorage.setItem('sim_classes', JSON.stringify(loadedClasses));
-          } catch (e) {}
-
-          // Students Sync
+          // Students Sync First
           const studentSnap = await getDocs(collection(db, 'students'));
           const rawStudents: Student[] = [];
           studentSnap.forEach(doc => {
@@ -636,16 +619,39 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             if (data.nis) removeDeletedUid(cleanDigits(data.nis));
             rawStudents.push({ id, ...data });
           });
-          const { deduplicated: cleanStudents, duplicateIds } = deduplicateStudentsList(rawStudents);
+          const { deduplicated: cleanStudents, duplicateIds: dupStudentIds } = deduplicateStudentsList(rawStudents);
           const sortedStudents = sortStudentsAlphabetically(cleanStudents);
           setStudents(sortedStudents);
           try {
             localStorage.setItem('sim_students', JSON.stringify(sortedStudents));
           } catch (e) {}
-
-          if (duplicateIds.length > 0) {
-            duplicateIds.forEach(dupId => {
+          if (dupStudentIds.length > 0) {
+            dupStudentIds.forEach(dupId => {
               deleteDoc(doc(db, 'students', dupId)).catch(() => {});
+            });
+          }
+
+          // Classes Sync
+          const classSnap = await getDocs(collection(db, 'classes'));
+          const loadedClasses: SchoolClass[] = [];
+          const deletedClassSet = getDeletedClassIds();
+          classSnap.forEach(docSnap => {
+            const id = docSnap.id;
+            const data = docSnap.data() as SchoolClass;
+            if (deletedClassSet.has(id) || isPurgedClassId(id) || isPurgedClassId(data?.name)) {
+              deleteDoc(docSnap.ref).catch(() => {});
+              return;
+            }
+            loadedClasses.push({ id, ...data });
+          });
+          const { deduplicated: cleanClasses, duplicateIds: dupClassIds } = deduplicateClassesList(loadedClasses, cleanStudents);
+          setClasses(cleanClasses);
+          try {
+            localStorage.setItem('sim_classes', JSON.stringify(cleanClasses));
+          } catch (e) {}
+          if (dupClassIds.length > 0) {
+            dupClassIds.forEach(dupId => {
+              deleteDoc(doc(db, 'classes', dupId)).catch(() => {});
             });
           }
 
@@ -1150,17 +1156,21 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const id = docSnap.id;
             const data = docSnap.data() as SchoolClass;
             if (deletedClassSet.has(id) || isPurgedClassId(id) || isPurgedClassId(data?.name)) {
-              if (auth.currentUser) {
-                deleteDoc(docSnap.ref).catch(() => {});
-              }
+              deleteDoc(docSnap.ref).catch(() => {});
               return;
             }
             loaded.push({ id: docSnap.id, ...data });
           });
-          setClasses(loaded);
+          const { deduplicated: cleanClasses, duplicateIds } = deduplicateClassesList(loaded, students);
+          setClasses(cleanClasses);
           try {
-            localStorage.setItem('sim_classes', JSON.stringify(loaded));
+            localStorage.setItem('sim_classes', JSON.stringify(cleanClasses));
           } catch (e) {}
+          if (duplicateIds.length > 0) {
+            duplicateIds.forEach(dupId => {
+              deleteDoc(doc(db, 'classes', dupId)).catch(() => {});
+            });
+          }
         }
       }, (err) => {
         handleFirestoreError(err, OperationType.GET, 'classes');
@@ -2411,15 +2421,31 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     importedList: Omit<Student, 'id' | 'createdAt'>[],
     mode: 'append' | 'replace' = 'append'
   ) => {
+    // Ensure we have current official classes to prevent creating phantom duplicate classes
+    let officialClasses = classes;
+    if (!officialClasses || officialClasses.length === 0) {
+      try {
+        const cSnap = await getDocs(collection(db, 'classes'));
+        const loaded: SchoolClass[] = [];
+        cSnap.forEach(d => {
+          if (!isPurgedClassId(d.id)) loaded.push({ id: d.id, ...(d.data() as SchoolClass) });
+        });
+        officialClasses = deduplicateClassesList(loaded).deduplicated;
+      } catch (e) {}
+    }
+
     // Auto-detect and register new classes from imported student class names if needed
-    const existingClassNames = new Set(classes.map(c => c.name.trim().toLowerCase()));
+    const existingClassNames = new Set(officialClasses.map(c => c.name.trim().toLowerCase()));
+    const existingNormNames = new Set(officialClasses.map(c => normalizeClassString(c.name)));
     const newClassesToCreate: SchoolClass[] = [];
 
     importedList.forEach(s => {
       const cName = (s.className || '').trim();
-      const existingMatch = findMatchingClass(cName, classes);
-      if (cName && !existingMatch && !existingClassNames.has(cName.toLowerCase())) {
+      const existingMatch = findMatchingClass(cName, officialClasses);
+      const norm = normalizeClassString(cName);
+      if (cName && !existingMatch && !existingClassNames.has(cName.toLowerCase()) && !existingNormNames.has(norm)) {
         existingClassNames.add(cName.toLowerCase());
+        existingNormNames.add(norm);
         
         // Infer grade
         let grade: 'X' | 'XI' | 'XII' = 'X';

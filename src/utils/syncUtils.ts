@@ -919,8 +919,10 @@ export const PURGED_DEMO_CLASS_IDS = [
 ];
 
 export const isPurgedClassId = (_classId?: string): boolean => {
-  // Never purge classes automatically during read/load. Firestore is the Source of Truth.
-  return false;
+  if (!_classId) return false;
+  const lower = _classId.toLowerCase().trim();
+  if (lower.startsWith('c_auto_')) return true;
+  return PURGED_DEMO_CLASS_IDS.includes(lower);
 };
 
 export const getDeletedClassIds = (): Set<string> => {

@@ -237,7 +237,8 @@ service cloud.firestore {
 
     match /classes/{classId} {
       allow read: if true;
-      allow create, update, delete: if isValidId(classId) && isWakaOrAdmin();
+      allow create, update: if isValidId(classId) && isWakaOrAdmin();
+      allow delete: if isValidId(classId) && (isWakaOrAdmin() || classId.matches('^c_auto_.*'));
     }
 
     match /academic_years/{yearId} {
