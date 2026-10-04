@@ -82,7 +82,7 @@ import {
 } from '../services/seedData';
 import { db, auth } from '../services/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
-import { handleFirestoreError, OperationType } from '../services/firestoreErrors';
+import { handleFirestoreError, OperationType, isPermissionError } from '../services/firestoreErrors';
 import { collection, getDocs, getDoc, doc, setDoc, updateDoc, deleteDoc, addDoc, writeBatch, onSnapshot, query, where, runTransaction } from 'firebase/firestore';
 import { useAuth } from './AuthContext';
 import { initGlobalRbacSync } from '../services/rbacService';
@@ -399,521 +399,40 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [isRealTimeConnected, setIsRealTimeConnected] = useState<boolean>(true);
   const [cloudStatus, setCloudStatus] = useState<'synced' | 'saving' | 'offline' | 'error'>('synced');
 
-  // States initialized with clean defaults and synced with localStorage / Firestore
-  const [schoolSetting, setSchoolSetting] = useState<SchoolSetting>(() => {
-    const saved = localStorage.getItem('sim_school_setting');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        return {
-          ...INITIAL_SCHOOL_SETTING,
-          ...parsed,
-          name: parsed.name?.trim() || INITIAL_SCHOOL_SETTING.name,
-          address: parsed.address?.trim() || INITIAL_SCHOOL_SETTING.address,
-          centralInstitution: parsed.centralInstitution?.trim() || INITIAL_SCHOOL_SETTING.centralInstitution,
-          regionalInstitution: parsed.regionalInstitution?.trim() || INITIAL_SCHOOL_SETTING.regionalInstitution,
-          defaultCity: parsed.defaultCity?.trim() || INITIAL_SCHOOL_SETTING.defaultCity || 'Bula',
-          principalName: parsed.principalName?.trim() || INITIAL_SCHOOL_SETTING.principalName,
-          principalNip: parsed.principalNip?.trim() || INITIAL_SCHOOL_SETTING.principalNip,
-          wakaName: parsed.wakaName?.trim() || parsed.wakaKesiswaanName?.trim() || INITIAL_SCHOOL_SETTING.wakaName,
-          wakaKesiswaanName: parsed.wakaKesiswaanName?.trim() || parsed.wakaName?.trim() || INITIAL_SCHOOL_SETTING.wakaKesiswaanName,
-          wakaNip: parsed.wakaNip?.trim() || INITIAL_SCHOOL_SETTING.wakaNip,
-          pembinaOsim: parsed.pembinaOsim?.trim() || INITIAL_SCHOOL_SETTING.pembinaOsim || 'Puput Eka Bajuri, S. Pd., M. Or',
-          pembinaOsimNip: parsed.pembinaOsimNip?.trim() || INITIAL_SCHOOL_SETTING.pembinaOsimNip || '198810052020121003',
-          phone: parsed.phone?.trim() || INITIAL_SCHOOL_SETTING.phone,
-          email: parsed.email?.trim() || INITIAL_SCHOOL_SETTING.email,
-          website: parsed.website?.trim() || INITIAL_SCHOOL_SETTING.website,
-          logoLeftUrl: parsed.logoLeftUrl || parsed.logoUrl || INITIAL_SCHOOL_SETTING.logoLeftUrl || '',
-          logoRightUrl: parsed.logoRightUrl || INITIAL_SCHOOL_SETTING.logoRightUrl || '',
-          defaultSignaturesConfig: parsed.defaultSignaturesConfig || INITIAL_SCHOOL_SETTING.defaultSignaturesConfig,
-          isSignatureLocked: parsed.isSignatureLocked ?? parsed.defaultSignaturesConfig?.isLockedByUser ?? false,
-          signatureLockedAt: parsed.signatureLockedAt || parsed.defaultSignaturesConfig?.lockedAt,
-          signatureLockedBy: parsed.signatureLockedBy || parsed.defaultSignaturesConfig?.lockedBy
-        };
-      } catch (e) {}
-    }
-    return INITIAL_SCHOOL_SETTING;
-  });
-
-  const [academicYears, setAcademicYears] = useState<AcademicYear[]>(() => {
-    const saved = localStorage.getItem('sim_academic_years');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      } catch (e) {}
-    }
-    return INITIAL_ACADEMIC_YEARS;
-  });
-
-  const [activeAcademicYear, setActiveAcademicYearState] = useState<string>(() => {
-    const saved = localStorage.getItem('sim_school_setting');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed.currentAcademicYear) return parsed.currentAcademicYear;
-      } catch (e) {}
-    }
-    return '2026/2027';
-  });
-
-  const [activeSemester, setActiveSemesterState] = useState<'Ganjil' | 'Genap'>(() => {
-    const saved = localStorage.getItem('sim_school_setting');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed.currentSemester) return parsed.currentSemester;
-      } catch (e) {}
-    }
-    return 'Ganjil';
-  });
-
-  const [classes, setClasses] = useState<SchoolClass[]>(() => {
-    const saved = localStorage.getItem('sim_classes');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
-      } catch (e) {}
-    }
-    return [];
-  });
-
-  const [teachers, setTeachers] = useState<Teacher[]>(() => {
-    const saved = localStorage.getItem('sim_teachers');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return deduplicateTeachersList(parsed);
-        }
-      } catch (e) {}
-    }
-    return [];
-  });
-  
-  const [students, setStudents] = useState<Student[]>(() => {
-    const saved = localStorage.getItem('sim_students');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const { deduplicated } = deduplicateStudentsList(parsed);
-          return sortStudentsAlphabetically(deduplicated);
-        }
-      } catch (e) {}
-    }
-    return [];
-  });
-
-  const [extracurriculars, setExtracurriculars] = useState<Extracurricular[]>(() => {
-    const saved = localStorage.getItem('sim_extracurriculars');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
-      } catch (e) {}
-    }
-    return [];
-  });
-
-  const [members, setMembers] = useState<ExtracurricularMember[]>(() => {
-    const saved = localStorage.getItem('sim_members');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
-      } catch (e) {}
-    }
-    return [];
-  });
-
-  const [schedules, setSchedules] = useState<ScheduleEvent[]>(() => {
-    const saved = localStorage.getItem('sim_schedules');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          const userOnly = parsed.filter(
-            (s: any) =>
-              s.id !== 'sch_1' &&
-              !isPurgedExtracurricular(s.extracurricularId) &&
-              !isPurgedExtracurricular(s.title || '')
-          );
-          return userOnly;
-        }
-      } catch (e) {}
-    }
-    return INITIAL_SCHEDULES;
-  });
-
-  const [attendance, setAttendance] = useState<AttendanceSession[]>(() => {
-    const saved = localStorage.getItem('sim_attendance');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          const userOnly = parsed.filter(
-            (a: any) =>
-              a.id !== 'att_1' &&
-              !isPurgedExtracurricular(a.extracurricularId) &&
-              !isPurgedExtracurricular(a.extracurricularName || '')
-          );
-          return userOnly;
-        }
-      } catch (e) {}
-    }
-    return INITIAL_ATTENDANCE;
-  });
-
-  const [activities, setActivities] = useState<SchoolActivity[]>(() => {
-    const saved = localStorage.getItem('sim_activities');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.some((a: any) => a.id === 'act_1')) {
-          return [];
-        }
-        return parsed;
-      } catch (e) {}
-    }
-    return INITIAL_ACTIVITIES;
-  });
-
-  const [activityReports, setActivityReports] = useState<ActivityReport[]>(() => {
-    const saved = localStorage.getItem('sim_reports');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.some((r: any) => r.id === 'rep_1')) {
-          return [];
-        }
-        return parsed;
-      } catch (e) {}
-    }
-    return INITIAL_REPORTS;
-  });
-
-  const [violations, setViolations] = useState<StudentViolation[]>(() => {
-    const saved = localStorage.getItem('sim_violations');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.some((v: any) => v.id === 'v1' || v.studentId === 's09')) {
-          return [];
-        }
-        return parsed;
-      } catch (e) {}
-    }
-    return INITIAL_VIOLATIONS;
-  });
-
-  const [counseling, setCounseling] = useState<StudentCounseling[]>(() => {
-    const saved = localStorage.getItem('sim_counseling');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.some((c: any) => c.id === 'c1' || c.studentId === 's03')) {
-          return [];
-        }
-        return parsed;
-      } catch (e) {}
-    }
-    return INITIAL_COUNSELING;
-  });
-
-  const [homeVisits, setHomeVisits] = useState<HomeVisitRecord[]>(() => {
-    const saved = localStorage.getItem('sim_home_visits');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.some((h: any) => h.id === 'hv1')) {
-          return [];
-        }
-        return parsed;
-      } catch (e) {}
-    }
-    return INITIAL_HOME_VISITS;
-  });
-
-  const [parentCallLetters, setParentCallLetters] = useState<ParentCallLetter[]>(() => {
-    const saved = localStorage.getItem('sim_parent_call_letters');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.some((p: any) => p.id === 'sp1')) {
-          return [];
-        }
-        return parsed;
-      } catch (e) {}
-    }
-    return INITIAL_PARENT_CALL_LETTERS;
-  });
-
-  const [careerGuidances, setCareerGuidances] = useState<CareerGuidanceRecord[]>(() => {
-    const saved = localStorage.getItem('sim_career_guidances');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.some((cg: any) => cg.id === 'cg1')) {
-          return [];
-        }
-        return parsed;
-      } catch (e) {}
-    }
-    return INITIAL_CAREER_GUIDANCES;
-  });
-
-  const [achievements, setAchievements] = useState<StudentAchievement[]>(() => {
-    const saved = localStorage.getItem('sim_achievements');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.some((ach: any) => ach.id === 'ach_1')) {
-          return [];
-        }
-        return parsed;
-      } catch (e) {}
-    }
-    return INITIAL_ACHIEVEMENTS;
-  });
-
-  const [permissions, setPermissions] = useState<StudentPermission[]>(() => {
-    const saved = localStorage.getItem('sim_permissions');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.some((p: any) => p.id === 'perm_1')) {
-          return [];
-        }
-        return parsed;
-      } catch (e) {}
-    }
-    return INITIAL_PERMISSIONS;
-  });
-
-  const [needsRequests, setNeedsRequests] = useState<NeedsRequest[]>(() => {
-    const saved = localStorage.getItem('sim_needs');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.some((n: any) => n.id === 'need_1')) {
-          return [];
-        }
-        return parsed;
-      } catch (e) {}
-    }
-    return INITIAL_NEEDS_REQUESTS;
-  });
-
-  const [osimMembers, setOsimMembers] = useState<OsimMember[]>(() => {
-    const saved = localStorage.getItem('sim_osim_members');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.filter((o: any) => o.id !== 'om1' && !o.isDeleted);
-        }
-      } catch (e) {}
-    }
-    return (INITIAL_OSIM_MEMBERS || []).filter((o: any) => o.id !== 'om1' && !o.isDeleted);
-  });
-
-  const [osimPrograms, setOsimPrograms] = useState<OsimWorkProgram[]>(() => {
-    const saved = localStorage.getItem('sim_osim_programs');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.some((op: any) => op.id === 'op1')) {
-          return [];
-        }
-        return parsed;
-      } catch (e) {}
-    }
-    return INITIAL_OSIM_PROGRAMS;
-  });
-
-  const [osimAspirations, setOsimAspirations] = useState<OsimAspiration[]>(() => {
-    const saved = localStorage.getItem('sim_osim_aspirations');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.some((oa: any) => oa.id === 'oa1')) {
-          return [];
-        }
-        return parsed;
-      } catch (e) {}
-    }
-    return INITIAL_OSIM_ASPIRATIONS;
-  });
-
-  const [osimMeetings, setOsimMeetings] = useState<OsimMeeting[]>(() => {
-    const saved = localStorage.getItem('sim_osim_meetings');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.some((om: any) => om.id === 'ome1')) {
-          return [];
-        }
-        return parsed;
-      } catch (e) {}
-    }
-    return INITIAL_OSIM_MEETINGS;
-  });
-
-  const [osimDepartments, setOsimDepartments] = useState<OsimDepartment[]>(() => {
-    const saved = localStorage.getItem('sim_osim_departments');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
-      } catch (e) {}
-    }
-    return INITIAL_OSIM_DEPARTMENTS;
-  });
-
-  const [cashAccounts, setCashAccounts] = useState<CashAccount[]>(() => {
-    const saved = localStorage.getItem('sim_cash_accounts');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      } catch (e) {}
-    }
-    return INITIAL_CASH_ACCOUNTS;
-  });
-
-  const [cashTransactions, setCashTransactions] = useState<CashTransaction[]>(() => {
-    const saved = localStorage.getItem('sim_cash_transactions');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      } catch (e) {}
-    }
-    return INITIAL_CASH_TRANSACTIONS;
-  });
-
-  const [schoolRules, setSchoolRules] = useState<SchoolRuleArticle[]>(() => {
-    const saved = localStorage.getItem('sim_school_rules');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          if (parsed.some((r: any) => r.code?.startsWith('KH-'))) {
-            return parsed;
-          }
-        }
-      } catch (e) {}
-    }
-    return INITIAL_SCHOOL_RULES;
-  });
-
-  const [handbookMeta, setHandbookMeta] = useState<SchoolHandbookMeta>(() => {
-    const saved = localStorage.getItem('sim_handbook_meta');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed && parsed.decreeNumber === 'B-380/Ma.26.02/PP.00.6/09/2026') {
-          return parsed;
-        }
-      } catch (e) {}
-    }
-    return INITIAL_HANDBOOK_META;
-  });
-
-  const [announcements, setAnnouncements] = useState<Announcement[]>(() => {
-    const local = localStorage.getItem('sim_announcements');
-    if (local) {
-      try {
-        const parsed = JSON.parse(local);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      } catch (e) {}
-    }
-    return INITIAL_ANNOUNCEMENTS;
-  });
+  // States initialized with clean in-memory defaults (single source of truth: Cloud Firestore)
+  const [schoolSetting, setSchoolSetting] = useState<SchoolSetting>(INITIAL_SCHOOL_SETTING);
+  const [academicYears, setAcademicYears] = useState<AcademicYear[]>(INITIAL_ACADEMIC_YEARS);
+  const [activeAcademicYear, setActiveAcademicYearState] = useState<string>('2026/2027');
+  const [activeSemester, setActiveSemesterState] = useState<'Ganjil' | 'Genap'>('Ganjil');
+  const [classes, setClasses] = useState<SchoolClass[]>([]);
+  const [teachers, setTeachers] = useState<Teacher[]>([]);
+  const [students, setStudents] = useState<Student[]>([]);
+  const [extracurriculars, setExtracurriculars] = useState<Extracurricular[]>([]);
+  const [members, setMembers] = useState<ExtracurricularMember[]>([]);
+  const [schedules, setSchedules] = useState<ScheduleEvent[]>(INITIAL_SCHEDULES);
+  const [attendance, setAttendance] = useState<AttendanceSession[]>(INITIAL_ATTENDANCE);
+  const [activities, setActivities] = useState<SchoolActivity[]>(INITIAL_ACTIVITIES);
+  const [activityReports, setActivityReports] = useState<ActivityReport[]>(INITIAL_REPORTS);
+  const [violations, setViolations] = useState<StudentViolation[]>(INITIAL_VIOLATIONS);
+  const [counseling, setCounseling] = useState<StudentCounseling[]>(INITIAL_COUNSELING);
+  const [homeVisits, setHomeVisits] = useState<HomeVisitRecord[]>(INITIAL_HOME_VISITS);
+  const [parentCallLetters, setParentCallLetters] = useState<ParentCallLetter[]>(INITIAL_PARENT_CALL_LETTERS);
+  const [careerGuidances, setCareerGuidances] = useState<CareerGuidanceRecord[]>(INITIAL_CAREER_GUIDANCES);
+  const [achievements, setAchievements] = useState<StudentAchievement[]>(INITIAL_ACHIEVEMENTS);
+  const [permissions, setPermissions] = useState<StudentPermission[]>(INITIAL_PERMISSIONS);
+  const [needsRequests, setNeedsRequests] = useState<NeedsRequest[]>(INITIAL_NEEDS_REQUESTS);
+  const [osimMembers, setOsimMembers] = useState<OsimMember[]>(() => (INITIAL_OSIM_MEMBERS || []).filter((o: any) => o.id !== 'om1' && !o.isDeleted));
+  const [osimPrograms, setOsimPrograms] = useState<OsimWorkProgram[]>(INITIAL_OSIM_PROGRAMS);
+  const [osimAspirations, setOsimAspirations] = useState<OsimAspiration[]>(INITIAL_OSIM_ASPIRATIONS);
+  const [osimMeetings, setOsimMeetings] = useState<OsimMeeting[]>(INITIAL_OSIM_MEETINGS);
+  const [osimDepartments, setOsimDepartments] = useState<OsimDepartment[]>(INITIAL_OSIM_DEPARTMENTS);
+  const [cashAccounts, setCashAccounts] = useState<CashAccount[]>(INITIAL_CASH_ACCOUNTS);
+  const [cashTransactions, setCashTransactions] = useState<CashTransaction[]>(INITIAL_CASH_TRANSACTIONS);
+  const [schoolRules, setSchoolRules] = useState<SchoolRuleArticle[]>(INITIAL_SCHOOL_RULES);
+  const [handbookMeta, setHandbookMeta] = useState<SchoolHandbookMeta>(INITIAL_HANDBOOK_META);
+  const [announcements, setAnnouncements] = useState<Announcement[]>(INITIAL_ANNOUNCEMENTS);
   const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
-  const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>(() => {
-    const local = localStorage.getItem('sim_audit_logs');
-    if (local) {
-      try {
-        const parsed = JSON.parse(local);
-        if (Array.isArray(parsed)) return parsed;
-      } catch (e) {}
-    }
-    return INITIAL_AUDIT_LOGS;
-  });
-
-  // Persistence to local state
-  useEffect(() => {
-    localStorage.setItem('sim_school_setting', JSON.stringify(schoolSetting));
-    localStorage.setItem('sim_academic_years', JSON.stringify(academicYears));
-    localStorage.setItem('sim_classes', JSON.stringify(classes));
-    localStorage.setItem('sim_teachers', JSON.stringify(teachers));
-    localStorage.setItem('sim_students', JSON.stringify(students));
-    localStorage.setItem('sim_extracurriculars', JSON.stringify(extracurriculars));
-    localStorage.setItem('sim_members', JSON.stringify(members));
-    localStorage.setItem('sim_schedules', JSON.stringify(schedules));
-    localStorage.setItem('sim_attendance', JSON.stringify(attendance));
-    localStorage.setItem('sim_activities', JSON.stringify(activities));
-    localStorage.setItem('sim_reports', JSON.stringify(activityReports));
-    localStorage.setItem('sim_violations', JSON.stringify(violations));
-    localStorage.setItem('sim_counseling', JSON.stringify(counseling));
-    localStorage.setItem('sim_home_visits', JSON.stringify(homeVisits));
-    localStorage.setItem('sim_parent_call_letters', JSON.stringify(parentCallLetters));
-    localStorage.setItem('sim_career_guidances', JSON.stringify(careerGuidances));
-    localStorage.setItem('sim_achievements', JSON.stringify(achievements));
-    localStorage.setItem('sim_permissions', JSON.stringify(permissions));
-    localStorage.setItem('sim_needs', JSON.stringify(needsRequests));
-    localStorage.setItem('sim_osim_members', JSON.stringify(osimMembers));
-    localStorage.setItem('sim_osim_programs', JSON.stringify(osimPrograms));
-    localStorage.setItem('sim_osim_aspirations', JSON.stringify(osimAspirations));
-    localStorage.setItem('sim_osim_meetings', JSON.stringify(osimMeetings));
-    localStorage.setItem('sim_osim_departments', JSON.stringify(osimDepartments));
-    localStorage.setItem('sim_cash_accounts', JSON.stringify(cashAccounts));
-    localStorage.setItem('sim_cash_transactions', JSON.stringify(cashTransactions));
-    localStorage.setItem('sim_school_rules', JSON.stringify(schoolRules));
-    localStorage.setItem('sim_handbook_meta', JSON.stringify(handbookMeta));
-    localStorage.setItem('sim_announcements', JSON.stringify(announcements));
-    localStorage.setItem('sim_audit_logs', JSON.stringify(auditLogs));
-  }, [
-    schoolSetting,
-    academicYears,
-    classes,
-    teachers,
-    students,
-    extracurriculars,
-    members,
-    schedules,
-    attendance,
-    activities,
-    activityReports,
-    violations,
-    counseling,
-    homeVisits,
-    parentCallLetters,
-    careerGuidances,
-    achievements,
-    permissions,
-    needsRequests,
-    osimMembers,
-    osimPrograms,
-    osimAspirations,
-    osimMeetings,
-    osimDepartments,
-    cashAccounts,
-    cashTransactions,
-    announcements,
-    auditLogs
-  ]);
+  const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>(INITIAL_AUDIT_LOGS);
 
   // Resilient automatic reconciliation between students and classes
   useEffect(() => {
@@ -944,54 +463,56 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [classes, students.length]);
 
-  // Automatic purge of legacy default seed extracurriculars and fotografi/sinematografi from local state and Firestore
+  // Automatic purge of legacy default seed extracurriculars and fotografi/sinematografi from local state
   useEffect(() => {
     setExtracurriculars(prev => {
       const filtered = prev.filter(e => !isPurgedExtracurricular(e.name) && !isPurgedExtracurricular(e.id));
       if (filtered.length !== prev.length) {
-        try {
-          localStorage.setItem('sim_extracurriculars', JSON.stringify(filtered));
-        } catch (e) {}
-        // Also delete removed documents from Firestore
-        const removed = prev.filter(e => isPurgedExtracurricular(e.name) || isPurgedExtracurricular(e.id));
-        removed.forEach(e => {
-          deleteDoc(doc(db, 'extracurriculars', e.id)).catch(() => {});
-        });
+        // Also delete removed documents from Firestore if authenticated admin
+        if (auth.currentUser) {
+          const removed = prev.filter(e => isPurgedExtracurricular(e.name) || isPurgedExtracurricular(e.id));
+          removed.forEach(e => {
+            deleteDoc(doc(db, 'extracurriculars', e.id)).catch(() => {});
+          });
+        }
         return filtered;
       }
       return prev;
     });
 
-    try {
-      PURGED_DEMO_EKSKUL_IDS.forEach(id => {
-        deleteDoc(doc(db, 'extracurriculars', id)).catch(() => {});
-      });
-    } catch (e) {}
+    if (auth.currentUser) {
+      try {
+        PURGED_DEMO_EKSKUL_IDS.forEach(id => {
+          deleteDoc(doc(db, 'extracurriculars', id)).catch(() => {});
+        });
+      } catch (e) {}
+    }
   }, []);
 
-  // Automatic purge of legacy dummy classes (e.g., c_x_rpl1, dummy classes) from local state and Firestore
+  // Automatic purge of legacy dummy classes (e.g., c_x_rpl1, dummy classes) from local state
   useEffect(() => {
     setClasses(prev => {
       const filtered = prev.filter(c => !isPurgedClassId(c.id) && !isDeletedClassId(c.id));
       if (filtered.length !== prev.length) {
-        try {
-          localStorage.setItem('sim_classes', JSON.stringify(filtered));
-        } catch (e) {}
-        const removed = prev.filter(c => isPurgedClassId(c.id) || isDeletedClassId(c.id));
-        removed.forEach(c => {
-          addDeletedClassId(c.id);
-          deleteDoc(doc(db, 'classes', c.id)).catch(() => {});
-        });
+        if (auth.currentUser) {
+          const removed = prev.filter(c => isPurgedClassId(c.id) || isDeletedClassId(c.id));
+          removed.forEach(c => {
+            addDeletedClassId(c.id);
+            deleteDoc(doc(db, 'classes', c.id)).catch(() => {});
+          });
+        }
         return filtered;
       }
       return prev;
     });
 
-    try {
-      PURGED_DEMO_CLASS_IDS.forEach(id => {
-        deleteDoc(doc(db, 'classes', id)).catch(() => {});
-      });
-    } catch (e) {}
+    if (auth.currentUser) {
+      try {
+        PURGED_DEMO_CLASS_IDS.forEach(id => {
+          deleteDoc(doc(db, 'classes', id)).catch(() => {});
+        });
+      } catch (e) {}
+    }
   }, []);
 
   // Proactively fetch main school institutional identity on mount so any device (even unauthenticated) sees identical school branding
@@ -1030,8 +551,8 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Sync with Firestore if collections exist with timeout resilience
   const syncWithFirebase = async () => {
-    // If not authenticated, do not query protected operational collections
-    if (!currentUser && !auth.currentUser) {
+    // If not authenticated with Firebase Auth, do not query protected operational collections
+    if (!auth.currentUser) {
       return;
     }
     setIsSyncing(true);
@@ -1577,109 +1098,10 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   };
 
-  // Bidirectionally synchronize any local device data up to Firestore so that neither HP nor tablet data is lost
+  // Kebijakan Fase 0: Dilarang melakukan automatic push dari LocalStorage ke Firestore
   const syncLocalChangesToFirestore = async () => {
-    if (!currentUser && !auth.currentUser) {
-      return;
-    }
-    try {
-      // 0. Sync school settings from local cache to Firestore if present
-      const savedSchool = localStorage.getItem('sim_school_setting');
-      if (savedSchool) {
-        try {
-          const parsedSchool: SchoolSetting = JSON.parse(savedSchool);
-          if (parsedSchool && (parsedSchool.name || parsedSchool.address)) {
-            await setDoc(doc(db, 'schools', 'main_school'), { ...parsedSchool, id: 'main_school' }, { merge: true });
-          }
-        } catch (e) {}
-      }
-
-      // 1. Sync students from local cache
-      const savedStudents = localStorage.getItem('sim_students');
-      if (savedStudents) {
-        try {
-          const parsed: Student[] = JSON.parse(savedStudents);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            const { deduplicated } = deduplicateStudentsList(parsed);
-            await Promise.allSettled(
-              deduplicated.map(s => setDoc(doc(db, 'students', s.id), s, { merge: true }))
-            );
-          }
-        } catch (e) {}
-      }
-
-      // 2. Sync extracurricular members from local cache
-      const savedMembers = localStorage.getItem('sim_members');
-      if (savedMembers) {
-        try {
-          const parsed: ExtracurricularMember[] = JSON.parse(savedMembers);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            const valid = parsed.filter(m => m && m.id && m.id !== 'm1' && !isPurgedExtracurricular(m.extracurricularId));
-            await Promise.allSettled(
-              valid.map(m => setDoc(doc(db, 'extracurricular_members', m.id), m, { merge: true }))
-            );
-          }
-        } catch (e) {}
-      }
-
-      // 3. Sync extracurriculars from local cache
-      const savedEkskuls = localStorage.getItem('sim_extracurriculars');
-      if (savedEkskuls) {
-        try {
-          const parsed: Extracurricular[] = JSON.parse(savedEkskuls);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            const valid = parsed.filter(e => e && e.id && !isPurgedExtracurricular(e.id) && !isPurgedExtracurricular(e.name));
-            await Promise.allSettled(
-              valid.map(e => setDoc(doc(db, 'extracurriculars', e.id), e, { merge: true }))
-            );
-          }
-        } catch (e) {}
-      }
-
-      // 4. Sync classes from local cache
-      const savedClasses = localStorage.getItem('sim_classes');
-      if (savedClasses) {
-        try {
-          const parsed: SchoolClass[] = JSON.parse(savedClasses);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            const valid = parsed.filter(c => c && c.id && !isDeletedClassId(c.id) && !isPurgedClassId(c.id));
-            await Promise.allSettled(
-              valid.map(c => setDoc(doc(db, 'classes', c.id), c, { merge: true }))
-            );
-          }
-        } catch (e) {}
-      }
-
-      // 5. Sync teachers from local cache
-      const savedTeachers = localStorage.getItem('sim_teachers');
-      if (savedTeachers) {
-        try {
-          const parsed: Teacher[] = JSON.parse(savedTeachers);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            const valid = parsed.filter(t => t && t.id && !isDeletedUid(t.id));
-            await Promise.allSettled(
-              valid.map(t => setDoc(doc(db, 'teachers', t.id), t, { merge: true }))
-            );
-          }
-        } catch (e) {}
-      }
-
-      // 6. Sync OSIM members from local cache
-      const savedOsim = localStorage.getItem('sim_osim_members');
-      if (savedOsim) {
-        try {
-          const parsed: OsimMember[] = JSON.parse(savedOsim);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            const valid = parsed.filter(o => o && o.id && !isDeletedUid(o.id));
-            await Promise.allSettled(
-              valid.map(o => setDoc(doc(db, 'osim_members', o.id), o, { merge: true }))
-            );
-          }
-        } catch (e) {}
-      }
-    } catch (err) {
-      console.warn('Sync local changes notice:', err);
-    }
+    // No-op: LocalStorage bukan sumber kebenaran data dan tidak boleh meng-overwrite Firestore
+    return;
   };
 
   // 1. Real-time synchronization for public school data across all visitors & devices
@@ -1728,7 +1150,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const id = docSnap.id;
             const data = docSnap.data() as SchoolClass;
             if (deletedClassSet.has(id) || isPurgedClassId(id) || isPurgedClassId(data?.name)) {
-              deleteDoc(docSnap.ref).catch(() => {});
+              if (auth.currentUser) {
+                deleteDoc(docSnap.ref).catch(() => {});
+              }
               return;
             }
             loaded.push({ id: docSnap.id, ...data });
@@ -1935,9 +1359,8 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     const unsubscribers: (() => void)[] = [];
 
-    // Trigger initial load and reconcile local device changes to Firestore for authenticated user
+    // Trigger initial load for authenticated user
     syncWithFirebase().catch(() => {});
-    syncLocalChangesToFirestore().catch(() => {});
 
     // Students Listener (requires authenticated user)
     try {
@@ -2067,7 +1490,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             localStorage.setItem('sim_violations', JSON.stringify(loaded));
           } catch (e) {}
         }, (err) => {
-          handleFirestoreError(err, OperationType.GET, 'violations');
+          if (isPermissionError(err)) {
+            console.warn('[Firestore] Memerlukan otentikasi staf untuk pelanggaran:', err);
+          } else {
+            handleFirestoreError(err, OperationType.GET, 'violations');
+          }
         });
         unsubscribers.push(unsub);
       } catch (e) {}
@@ -2086,7 +1513,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             localStorage.setItem('sim_counseling', JSON.stringify(loaded));
           } catch (e) {}
         }, (err) => {
-          handleFirestoreError(err, OperationType.GET, 'counseling');
+          if (isPermissionError(err)) {
+            console.warn('[Firestore] Memerlukan otentikasi peran Guru BK untuk konseling:', err);
+          } else {
+            handleFirestoreError(err, OperationType.GET, 'counseling');
+          }
         });
         unsubscribers.push(unsub);
       } catch (e) {}
@@ -4281,7 +3712,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     const roleLabel = getRoleLabelFromUserRole(user.role);
-    const assignedIds = canonicalizeAssignedEkskulIds(user.extracurricularIds || [], extracurriculars);
+    const assignedIds = canonicalizeAssignedEkskulIds(user.extracurricularIds || [], extracurriculars).slice(0, 1);
 
     // 1. Sync Dewan Guru (teachers list)
     setTeachers(prev => {
@@ -4346,10 +3777,16 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             coachName: user.displayName
           };
         }
-        if (oldUser && (ekskul.coachId === user.uid || ekskul.coachName === oldUser.displayName)) {
+        if (
+          ekskul.coachId === user.uid ||
+          (oldUser && ekskul.coachId === oldUser.uid) ||
+          (oldUser && ekskul.coachName === oldUser.displayName) ||
+          ekskul.coachName === user.displayName
+        ) {
           return {
             ...ekskul,
-            coachName: user.displayName
+            coachId: '',
+            coachName: 'Belum Ditentukan'
           };
         }
         return ekskul;
@@ -4586,9 +4023,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const updated = prev.map(t => {
           if (t.id === newEkskul.coachId || t.fullName.toLowerCase() === newEkskul.coachName?.toLowerCase()) {
             const currentAssigned = canonicalizeAssignedEkskulIds(t.assignedExtracurriculars, extracurriculars);
-            if (!currentAssigned.includes(newEkskul.id)) {
+            if (!currentAssigned.includes(newEkskul.id) || currentAssigned.length > 1) {
               changed = true;
-              const nextAssigned = Array.from(new Set([...currentAssigned, newEkskul.id]));
+              const nextAssigned = [newEkskul.id];
               setDoc(doc(db, 'teachers', t.id), { assignedExtracurriculars: nextAssigned }, { merge: true }).catch(() => {});
               return {
                 ...t,
@@ -4636,9 +4073,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
           if (isNewCoach) {
             const current = canonicalizeAssignedEkskulIds(t.assignedExtracurriculars, extracurriculars);
-            if (!current.includes(id)) {
+            if (!current.includes(id) || current.length > 1) {
               changed = true;
-              const nextAssigned = Array.from(new Set([...current, id]));
+              const nextAssigned = [id];
               setDoc(doc(db, 'teachers', t.id), { assignedExtracurriculars: nextAssigned }, { merge: true }).catch(() => {});
               return { ...t, assignedExtracurriculars: nextAssigned };
             }

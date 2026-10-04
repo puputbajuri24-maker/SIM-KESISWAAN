@@ -62,3 +62,138 @@
 
 ### 3. Test Runner Design (`firestore.rules.test.ts`)
 The rules are structured to guarantee zero tolerance for unauthorized writes, strictly enforcing role verification, data schemas, and preventing update gaps.
+
+---
+
+## Phase 0: KEBIJAKAN WAJIB: LOCALSTORAGE vs FIRESTORE
+
+Ini adalah aturan arsitektur paling penting dalam pembangunan ulang aplikasi SIM Kesiswaan.
+Mulai dari **Fase 0** sampai aplikasi selesai, seluruh arsitektur wajib membedakan dengan tegas tiga ranah data:
+1. **DATA BISNIS**
+2. **DATA AUTENTIKASI**
+3. **DATA UI/PREFERENSI**
+
+### A. FIRESTORE = SUMBER KEBENARAN DATA BISNIS
+Semua data yang berkaitan dengan operasional sekolah **WAJIB** berasal dari Firestore.
+Termasuk namun tidak terbatas pada:
+- data sekolah & pengaturan sekolah (`schoolSettings`, identitas, kop madrasah)
+- tahun ajaran (`academicYears`)
+- guru (`teachers`)
+- siswa (`students`)
+- kelas (`classes`)
+- akun pengguna (`users`)
+- role pengguna & permission matrix (`roles`, `permissions`, `customMatrix`)
+- ekstrakurikuler & Coach / Pembina Ekstrakurikuler (`extracurriculars`)
+- anggota ekstrakurikuler (`extracurricularMembers`)
+- jadwal (`schedules`)
+- absensi (`attendance`)
+- kegiatan & laporan kegiatan (`activities`, `activityReports`)
+- prestasi (`achievements`)
+- pelanggaran (`violations`)
+- konseling, kunjungan rumah, panggilan ortu (`counseling`, `home_visits`, `parent_call_letters`, `career_guidances`)
+- OSIM, pengurus, struktur, proker, sidang/rapat, aspirasi, supervisi (`osim_departments`, `osim_members`, `osim_programs`, `osim_meetings`, `osim_aspirations`)
+- kas & keuangan (`cash_accounts`, `cash_transactions`)
+- laporan & audit logs (`reports`, `audit_logs`)
+- seluruh data operasional lainnya.
+
+**Arsitektur Aliran Data Wajib:**
+```
+Firestore ↓ Service / Repository ↓ React State ↓ UI
+```
+**Bukan:**
+`LocalStorage ↓ React ↓ Firestore` *(DILARANG)*
+**Dan bukan:**
+`Firestore ↓ LocalStorage ↓ React` *(DILARANG sebagai sumber data utama)*
+
+### B. LOCALSTORAGE BUKAN DATABASE
+LocalStorage **TIDAK BOLEH** digunakan sebagai database aplikasi.
+Pola-pola berikut dikategorikan sebagai **LEGACY BUSINESS DATA STORAGE** dan dijadwalkan untuk dihapus:
+```typescript
+// DILARANG:
+localStorage.setItem("sim_teachers", ...);
+localStorage.setItem("sim_students", ...);
+localStorage.setItem("sim_classes", ...);
+localStorage.setItem("sim_extracurriculars", ...);
+
+// DILARANG:
+localStorage.getItem("sim_teachers");
+localStorage.getItem("sim_students");
+localStorage.getItem("sim_classes");
+```
+
+### C. LOCALSTORAGE HANYA UNTUK UI PREFERENCE
+LocalStorage hanya boleh digunakan untuk data yang:
+- tidak termasuk data bisnis;
+- tidak memengaruhi kebenaran database;
+- tidak menjadi sumber keputusan authorization / RBAC;
+- aman jika hilang atau dihapus user;
+- aman jika berbeda antara browser/perangkat;
+- tidak perlu disinkronkan antarperangkat.
+
+**Contoh yang DIPERBOLEHKAN (Kategori A):**
+- Tema visual: `simkesiswaan_theme_mode`, `simkesiswaan_theme_palette`, `simkesiswaan_font_size`, `simkesiswaan_font_contrast`, `simkesiswaan_font_family`
+- Preferensi UI lokal: `sim_app_timezone_preference`, `sim_app_timezone_mode`
+- Navigasi tab lokal: `simkesiswaan_active_tab`
+- Transient UI inter-page selection (sessionStorage): `pending_search_select`
+
+### D. DATA YANG DILARANG DI LOCALSTORAGE
+**DILARANG** menyimpan:
+`teachers`, `students`, `classes`, `users`, `roles`, `permissions`, `academicYears`, `schoolSettings`, `extracurriculars`, `extracurricularMembers`, `attendance`, `violations`, `counseling`, `OSIM`, `financialData`, `reports`, `auditLogs`.
+
+Juga **DILARANG KERAS** menyimpan:
+- Password / hash password
+- Credential autentikasi mentah
+- Authorization state lokal
+- Firebase user dummy sebagai database lokal
+
+*Firebase Authentication* tetap menjadi sumber kebenaran sesi autentikasi. Role dan permission harus berasal dari sumber authoritative di Firestore dan Security Rules.
+
+### E. TIDAK BOLEH ADA LOCALSTORAGE → FIRESTORE SYNC
+DILARANG membuat mekanisme:
+`LocalStorage ↓ compare ↓ Firestore` secara otomatis.
+- **DILARANG:** startup → baca LocalStorage → anggap data valid → upload ke Firestore
+- **DILARANG:** login → restore data lokal → sync ke cloud
+- **DILARANG:** offline cache lama → otomatis overwrite Firestore
+- **DILARANG:** menggunakan data LocalStorage lama untuk "memulihkan" Firestore yang kosong atau berbeda.
+
+### F. FIRESTORE → REACT, BUKAN FIRESTORE → LOCAL DATABASE
+Data bisnis mengalir langsung:
+```typescript
+onSnapshot(query, (snapshot) => {
+  const data = snapshot.docs.map(...);
+  setData(data);
+});
+```
+Jika snapshot Firestore kosong (`[]`), maka React State = `[]`. Tidak boleh mengambil data lama dari LocalStorage atau mempertahankan data dummy hanya karena Firestore kosong.
+
+### G. REFRESH BROWSER & MULTI-BROWSER/DEVICE
+- Setelah browser di-refresh, data bisnis wajib diambil langsung dari Firestore.
+- Browser A dan Browser B, serta Device A dan Device B, harus selalu melihat data Firestore yang sama secara realtime. Perbedaan LocalStorage tidak boleh menyebabkan inkonsistensi data antar-perangkat.
+
+### H. SINGLE SOURCE OF TRUTH (TIDAK ADA DUAL SOURCE)
+Satu jenis data hanya boleh memiliki satu sumber kebenaran:
+- **GURU:** Firestore = TRUE, LocalStorage = FALSE
+- **SISWA:** Firestore = TRUE, LocalStorage = FALSE
+- **KELAS:** Firestore = TRUE, LocalStorage = FALSE
+- **EKSTRAKURIKULER:** Firestore = TRUE, LocalStorage = FALSE
+- **AKUN & ROLE:** Firebase Auth + Firestore = TRUE, LocalStorage = FALSE
+
+### I. ACCEPTANCE CRITERIA LOCALSTORAGE
+- [ ] Data guru berasal dari Firestore
+- [ ] Data siswa berasal dari Firestore
+- [ ] Data kelas berasal dari Firestore
+- [ ] Data akun berasal dari Firebase Auth + Firestore
+- [ ] Data role berasal dari sumber authoritative Firestore & Security Rules
+- [ ] Data ekstrakurikuler & anggota berasal dari Firestore
+- [ ] Data absensi & pelanggaran berasal dari Firestore
+- [ ] Data sekolah berasal dari Firestore
+- [ ] Tidak ada password / kredensial di LocalStorage
+- [ ] Tidak ada local login fallback ke storage
+- [ ] Tidak ada LocalStorage → Firestore automatic sync
+- [ ] Tidak ada business data sebagai source dari LocalStorage
+- [ ] Refresh tidak menghidupkan kembali data lama
+- [ ] Delete di Firestore tidak dibatalkan oleh LocalStorage
+- [ ] Browser berbeda tetap menggunakan database Firestore yang sama
+- [ ] Device berbeda tetap menggunakan database Firestore yang sama
+- [ ] LocalStorage hanya menyimpan UI preference yang aman
+- [ ] Tidak ada dual source of truth

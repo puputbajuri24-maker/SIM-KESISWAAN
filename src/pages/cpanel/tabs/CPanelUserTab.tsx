@@ -130,17 +130,27 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
   extracurriculars,
   getEkskulTheme,
 }) => {
-  // Helper: Dapatkan daftar tugas binaan ekstrakurikuler yang valid, unik (tanpa duplikasi nama), dan terbaca manusia
+  // Helper: Dapatkan tugas binaan ekstrakurikuler yang valid, bersih dari angka serial, dan dikunci 1 pembina = 1 unit binaan utama
   const getUserEkskuls = (u: UserProfile) => {
     const list: { id: string; name: string; category?: string }[] = [];
     const seenNames = new Set<string>();
 
     const addEkskul = (id: string, rawName?: string, category?: string) => {
-      if (!rawName) return;
-      const cleanName = rawName.trim();
-      if (!cleanName) return;
-      const norm = cleanName.toLowerCase();
-      // Abaikan pseudo roles atau ID yang bukan ekstrakurikuler sebenarnya
+      // 1 Pembina hanya boleh memiliki maksimal 1 unit ekstrakurikuler binaan utama
+      if (list.length >= 1) return;
+      if (!rawName && !id) return;
+
+      const candidateName = (rawName || '').trim();
+      const candidateId = (id || '').trim();
+
+      // Tolak semua string yang berupa angka murni (/^\d+$/) atau ID timestamp/serial
+      if (/^\d+$/.test(candidateName) || /^\d+$/.test(candidateId)) return;
+      if (/^ekskul_\d+$/.test(candidateName.toLowerCase()) || /^ekskul_\d+$/.test(candidateId.toLowerCase())) return;
+
+      const norm = candidateName.toLowerCase();
+      const normId = candidateId.toLowerCase();
+
+      // Abaikan pseudo roles atau slug yang bukan ekstrakurikuler
       if (
         norm === 'ekskul' || 
         norm.includes('admin') || 
@@ -152,40 +162,65 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
       ) {
         return;
       }
-      if (seenNames.has(norm)) return;
-      seenNames.add(norm);
+
+      // Validasi ketat: Wajib memiliki padanan nama resmi di master data ekstrakurikuler
+      const ekMatch = extracurriculars.find(e => 
+        (candidateId && e.id.toLowerCase() === normId) ||
+        (candidateName && e.name.toLowerCase() === norm) ||
+        (candidateId && e.name.toLowerCase() === normId) ||
+        (candidateName && e.id.toLowerCase() === norm) ||
+        (candidateId.startsWith('ekskul_') && e.id.toLowerCase() === candidateId.toLowerCase()) ||
+        (e.id.replace(/^ekskul_/, '').toLowerCase() === norm.replace(/^ekskul_/, ''))
+      );
+
+      // Tolak jika tidak ditemukan padanan nama resmi di master data
+      if (!ekMatch || !ekMatch.name) return;
+
+      // Tolak jika nama padanan masih berupa angka murni
+      if (/^\d+$/.test(ekMatch.name.trim())) return;
+
+      const finalName = ekMatch.name.trim();
+      const finalNorm = finalName.toLowerCase();
+
+      if (seenNames.has(finalNorm)) return;
+      seenNames.add(finalNorm);
+
       list.push({
-        id,
-        name: cleanName,
-        category
+        id: ekMatch.id,
+        name: finalName,
+        category: ekMatch.category || category
       });
     };
 
+    // Prioritas 1: extracurricularIds terdaftar
     if (u.extracurricularIds && u.extracurricularIds.length > 0) {
-      u.extracurricularIds.forEach((eid, idx) => {
-        if (!eid) return;
-        const ek = extracurriculars.find(e => e.id === eid || e.name.toLowerCase() === eid.toLowerCase());
-        const ekName = ek?.name || 
-          u.extracurricularNames?.[idx] || 
-          (u.extracurricularName && !u.extracurricularName.startsWith('ekskul_') ? u.extracurricularName : null) ||
-          (eid.startsWith('ekskul_') ? eid.replace(/^ekskul_/, '').replace(/[_-]/g, ' ') : eid);
-        addEkskul(ek?.id || eid, ekName, ek?.category);
-      });
-    } else if (u.extracurricularNames && u.extracurricularNames.length > 0) {
-      u.extracurricularNames.forEach((name, idx) => {
-        if (!name) return;
-        const ek = extracurriculars.find(e => e.name.toLowerCase() === name.toLowerCase());
-        addEkskul(ek?.id || `ek-${idx}`, name, ek?.category);
-      });
-    } else if (u.extracurricularName && !u.extracurricularName.startsWith('ekskul_')) {
-      const parts = u.extracurricularName.split(',');
-      parts.forEach((p, idx) => {
-        const trimmed = p.trim();
-        if (!trimmed) return;
-        const ek = extracurriculars.find(e => e.name.toLowerCase() === trimmed.toLowerCase());
-        addEkskul(ek?.id || `ek-${idx}`, trimmed, ek?.category);
-      });
+      for (const eid of u.extracurricularIds) {
+        if (!eid || /^\d+$/.test(eid.trim())) continue;
+        addEkskul(eid);
+        if (list.length >= 1) break;
+      }
     }
+
+    // Prioritas 2: extracurricularNames
+    if (list.length === 0 && u.extracurricularNames && u.extracurricularNames.length > 0) {
+      for (const name of u.extracurricularNames) {
+        if (!name || /^\d+$/.test(name.trim())) continue;
+        addEkskul('', name);
+        if (list.length >= 1) break;
+      }
+    }
+
+    // Prioritas 3: extracurricularName string tunggal
+    if (list.length === 0 && u.extracurricularName && !u.extracurricularName.startsWith('ekskul_') && !/^\d+$/.test(u.extracurricularName.trim())) {
+      const parts = u.extracurricularName.split(',');
+      for (const p of parts) {
+        const trimmed = p.trim();
+        if (!trimmed || /^\d+$/.test(trimmed)) continue;
+        addEkskul('', trimmed);
+        if (list.length >= 1) break;
+      }
+    }
+
     return list;
   };
 

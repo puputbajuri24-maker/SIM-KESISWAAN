@@ -364,10 +364,14 @@ export const canonicalizeAssignedEkskulIds = (
     const cleanItem = item.trim();
     if (!cleanItem) continue;
 
+    // Tolak semua string yang berupa angka murni (/^\d+$/) atau ID timestamp/serial
+    if (/^\d+$/.test(cleanItem)) continue;
+    if (/^ekskul_\d+$/.test(cleanItem.toLowerCase())) continue;
+
     // 1. If an extracurricular list is provided, match against it
     if (allEkskuls && allEkskuls.length > 0) {
       const matchedById = allEkskuls.find(e => e.id.toLowerCase() === cleanItem.toLowerCase());
-      if (matchedById) {
+      if (matchedById && !/^\d+$/.test(matchedById.name)) {
         canonicalIds.push(matchedById.id);
         continue;
       }
@@ -389,14 +393,14 @@ export const canonicalizeAssignedEkskulIds = (
           ((cleanStripped.includes('talim') || cleanStripped.includes("ta'lim")) && (eLower.includes('talim') || eLower.includes("ta'lim")))
         );
       });
-      if (matchedByName) {
+      if (matchedByName && !/^\d+$/.test(matchedByName.name)) {
         canonicalIds.push(matchedByName.id);
         continue;
       }
     }
 
-    // 2. Direct ID check
-    if (cleanItem.startsWith('ekskul_')) {
+    // 2. Direct ID check (hanya jika valid dan bukan angka serial)
+    if (cleanItem.startsWith('ekskul_') && !/^ekskul_\d+$/.test(cleanItem.toLowerCase())) {
       canonicalIds.push(cleanItem);
       continue;
     }
@@ -433,7 +437,10 @@ export const canonicalizeAssignedEkskulIds = (
       canonicalIds.push('ekskul_bulutangkis');
     } else {
       const slug = cleanItem.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
-      canonicalIds.push(`ekskul_${slug}`);
+      // Tolak slug yang murni angka
+      if (slug && !/^\d+$/.test(slug) && /[a-z]/i.test(slug)) {
+        canonicalIds.push(`ekskul_${slug}`);
+      }
     }
   }
 
@@ -444,13 +451,23 @@ export const canonicalizeAssignedEkskulIds = (
 /**
  * Deduplicate Teachers array to guarantee strictly ONE record per teacher.
  * Merges entries where IDs are 't_...' vs 'user_t_...' or where NIP/name matches.
+ * Aturan bisnis: pembaruan tugas binaan bersifat me-replace (mengganti), bukan menggabungkan riwayat lama,
+ * dan mengunci 1 guru pembina maksimal 1 unit ekstrakurikuler binaan utama.
  */
 export const deduplicateTeachersList = (teachers: Teacher[], allEkskuls?: Array<{ id: string; name: string }>): Teacher[] => {
   if (!Array.isArray(teachers) || teachers.length <= 1) {
     if (Array.isArray(teachers) && teachers.length === 1) {
+      const singleAssigned = canonicalizeAssignedEkskulIds(teachers[0].assignedExtracurriculars, allEkskuls).slice(0, 1);
+      const cleanNames = singleAssigned.map(id => {
+        const match = (allEkskuls || []).find(e => e.id === id);
+        return match ? match.name : id;
+      }).filter(n => !/^\d+$/.test(n) && !/^ekskul_\d+$/.test(n));
+
       return [{
         ...teachers[0],
-        assignedExtracurriculars: canonicalizeAssignedEkskulIds(teachers[0].assignedExtracurriculars, allEkskuls)
+        assignedExtracurriculars: singleAssigned,
+        extracurricularNames: cleanNames,
+        extracurricularName: cleanNames[0] || undefined
       }];
     }
     return teachers || [];
@@ -484,14 +501,19 @@ export const deduplicateTeachersList = (teachers: Teacher[], allEkskuls?: Array<
 
     if (duplicateIdx >= 0) {
       const existing = result[duplicateIdx];
-      const cleanAssigned = canonicalizeAssignedEkskulIds([
-        ...(existing.assignedExtracurriculars || []),
-        ...(t.assignedExtracurriculars || [])
-      ], allEkskuls);
-      const cleanNames = cleanAssigned.map(id => {
+      // POLA ME-REPLACE: Jika t menyediakan assignedExtracurriculars, gunakan t untuk menggantikan riwayat lama!
+      const targetAssigned = (t.assignedExtracurriculars !== undefined && t.assignedExtracurriculars !== null)
+        ? t.assignedExtracurriculars
+        : (existing.assignedExtracurriculars || []);
+
+      const cleanAssigned = canonicalizeAssignedEkskulIds(targetAssigned, allEkskuls);
+      // Kunci aturan bisnis: maksimal 1 unit ekstrakurikuler binaan utama!
+      const singleAssigned = cleanAssigned.slice(0, 1);
+      const cleanNames = singleAssigned.map(id => {
         const match = (allEkskuls || []).find(e => e.id === id);
         return match ? match.name : id;
-      });
+      }).filter(name => !/^\d+$/.test(name) && !/^ekskul_\d+$/.test(name));
+
       const merged: Teacher = {
         ...existing,
         ...t,
@@ -499,9 +521,9 @@ export const deduplicateTeachersList = (teachers: Teacher[], allEkskuls?: Array<
         phone: existing.phone || t.phone,
         email: existing.email || t.email,
         nip: existing.nip && existing.nip !== '-' ? existing.nip : t.nip,
-        assignedExtracurriculars: cleanAssigned,
+        assignedExtracurriculars: singleAssigned,
         extracurricularNames: cleanNames,
-        extracurricularName: cleanNames.join(', ') || undefined
+        extracurricularName: cleanNames[0] || undefined
       };
       result[duplicateIdx] = merged;
     } else {
@@ -509,16 +531,20 @@ export const deduplicateTeachersList = (teachers: Teacher[], allEkskuls?: Array<
       if (cleanNip && cleanNip.length >= 6) seenNips.add(cleanNip);
       if (email) seenEmails.add(email);
       if (normName && normName.length >= 6) seenNormNames.add(normName);
+
       const cleanAssigned = canonicalizeAssignedEkskulIds(t.assignedExtracurriculars, allEkskuls);
-      const cleanNames = cleanAssigned.map(id => {
+      // Kunci aturan bisnis: maksimal 1 unit ekstrakurikuler binaan utama!
+      const singleAssigned = cleanAssigned.slice(0, 1);
+      const cleanNames = singleAssigned.map(id => {
         const match = (allEkskuls || []).find(e => e.id === id);
         return match ? match.name : id;
-      });
+      }).filter(name => !/^\d+$/.test(name) && !/^ekskul_\d+$/.test(name));
+
       result.push({
         ...t,
-        assignedExtracurriculars: cleanAssigned,
+        assignedExtracurriculars: singleAssigned,
         extracurricularNames: cleanNames,
-        extracurricularName: cleanNames.join(', ') || undefined
+        extracurricularName: cleanNames[0] || undefined
       });
     }
   }

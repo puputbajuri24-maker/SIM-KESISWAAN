@@ -1088,12 +1088,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           : email.split('@')[0];
 
         // 3. Resolve extracurricular IDs and human-readable names (for Firestore readability)
-        const assignedEkskulIds = canonicalizeAssignedEkskulIds(t.assignedExtracurriculars, extracurricularsList);
+        const assignedEkskulIds = canonicalizeAssignedEkskulIds(t.assignedExtracurriculars, extracurricularsList).slice(0, 1);
         const assignedEkskulNames = assignedEkskulIds.map(id => {
           const match = (extracurricularsList || []).find(e => e.id === id);
-          return match ? match.name : id;
-        });
-        const assignedEkskulNameStr = assignedEkskulNames.join(', ');
+          return match ? match.name : '';
+        }).filter(name => Boolean(name && !/^\d+$/.test(name.trim()) && !/^ekskul_\d+$/.test(name.trim())));
+        const assignedEkskulNameStr = assignedEkskulNames[0] || undefined;
 
         // 4. Find existing user with comprehensive matching
         const existingIdx = updatedUsers.findIndex(u => isTeacherUserMatch(u, t));
@@ -1116,9 +1116,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             status: t.isActive !== false ? 'Aktif' : 'Nonaktif',
             isCashManager: t.isCashManager !== undefined ? t.isCashManager : existing.isCashManager,
             cashManagerTitle: t.cashManagerTitle || existing.cashManagerTitle,
-            extracurricularIds: assignedEkskulIds.length > 0 ? assignedEkskulIds : existing.extracurricularIds,
-            extracurricularNames: assignedEkskulNames.length > 0 ? assignedEkskulNames : existing.extracurricularNames,
-            extracurricularName: assignedEkskulNameStr || existing.extracurricularName,
+            extracurricularIds: assignedEkskulIds, // Me-replace, bukan merge
+            extracurricularNames: assignedEkskulNames,
+            extracurricularName: assignedEkskulNameStr,
             counselorSpecialization: role === 'guru_bk' ? (t.subject || existing.counselorSpecialization || 'Bimbingan Konseling Siswa & Karir') : existing.counselorSpecialization,
             photoURL: t.photoUrl || (t as any).photoURL || existing.photoURL,
             updatedAt: new Date().toISOString()

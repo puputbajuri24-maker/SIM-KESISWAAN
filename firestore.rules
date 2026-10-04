@@ -36,90 +36,85 @@ service cloud.firestore {
       return exists(/databases/$(database)/documents/users/$(uid));
     }
 
+    function getUserRole() {
+      return hasUserDoc(request.auth.uid) && ('role' in userDoc(request.auth.uid)) ? userDoc(request.auth.uid).role : '';
+    }
+
     function isSuperAdmin() {
       return isSignedIn() && (
         request.auth.uid == 'user_super_admin' ||
-        ('email' in request.auth.token && (
-          request.auth.token.email.matches('(?i)^puputbajuri24@gmail\\.com$') ||
-          request.auth.token.email == 'admin@sekolah.sch.id'
-        )) ||
-        (hasUserDoc(request.auth.uid) && (
-          userDoc(request.auth.uid).role == 'super_admin' ||
-          userDoc(request.auth.uid).role == 'admin'
-        ))
+        (
+          'email' in request.auth.token &&
+          request.auth.token.email != null &&
+          (
+            request.auth.token.email.matches('(?i)^puputbajuri24@gmail\\.com$') ||
+            request.auth.token.email.matches('(?i)^admin@sekolah\\.sch\\.id$')
+          )
+        ) ||
+        getUserRole() in ['super_admin', 'admin']
       );
     }
 
     function isWakaKesiswaan() {
-      return isSignedIn() && (
-        isSuperAdmin() ||
-        ('email' in request.auth.token && request.auth.token.email.matches('(?i)^puputbajuri24@gmail\\.com$')) ||
-        (hasUserDoc(request.auth.uid) && (
-          userDoc(request.auth.uid).role == 'waka_kesiswaan' ||
-          userDoc(request.auth.uid).role == 'waka' ||
-          userDoc(request.auth.uid).role == 'admin_kesiswaan'
-        ))
+      return isSuperAdmin() || (
+        isSignedIn() && (
+          ('email' in request.auth.token && request.auth.token.email != null && request.auth.token.email.matches('(?i)^puputbajuri24@gmail\\.com$')) ||
+          getUserRole() in ['waka_kesiswaan', 'waka', 'admin_kesiswaan']
+        )
       );
     }
 
     function isWakaOrAdmin() {
-      return isSuperAdmin() || isWakaKesiswaan();
+      return isWakaKesiswaan();
     }
 
     function isGuruBk() {
-      return isSignedIn() && (
-        isWakaOrAdmin() ||
-        (hasUserDoc(request.auth.uid) && (
-          userDoc(request.auth.uid).role == 'guru_bk' ||
-          userDoc(request.auth.uid).role == 'bk'
-        ))
+      return isWakaOrAdmin() || (
+        isSignedIn() && getUserRole() in ['guru_bk', 'bk']
       );
     }
 
     function isPembinaOsim() {
-      return isSignedIn() && (
-        isWakaOrAdmin() ||
-        (hasUserDoc(request.auth.uid) && (
-          userDoc(request.auth.uid).role == 'pembina_osim' ||
-          userDoc(request.auth.uid).role == 'pembina'
-        ))
+      return isWakaOrAdmin() || (
+        isSignedIn() && getUserRole() in ['pembina_osim', 'pembina']
       );
     }
 
     function isPembinaEkskul() {
-      return isSignedIn() && (
-        isWakaOrAdmin() ||
-        (hasUserDoc(request.auth.uid) && (
-          userDoc(request.auth.uid).role == 'pembina_ekstrakurikuler' ||
-          userDoc(request.auth.uid).role == 'pembina_ekskul' ||
-          userDoc(request.auth.uid).role == 'coach_ekstrakurikuler' ||
-          userDoc(request.auth.uid).role == 'pembina'
-        ))
+      return isWakaOrAdmin() || (
+        isSignedIn() && getUserRole() in [
+          'pembina_ekstrakurikuler', 'pembina_ekskul', 'coach_ekstrakurikuler', 'pembina'
+        ]
       );
     }
 
     function isStaff() {
-      return isWakaOrAdmin() || isGuruBk() || isPembinaOsim() || isPembinaEkskul();
+      return isWakaOrAdmin() || (
+        isSignedIn() && getUserRole() in [
+          'super_admin', 'admin', 'waka_kesiswaan', 'waka', 'admin_kesiswaan',
+          'guru_bk', 'bk', 'pembina_osim', 'pembina',
+          'pembina_ekstrakurikuler', 'pembina_ekskul', 'coach_ekstrakurikuler',
+          'guru', 'teacher', 'wali_kelas', 'homeroom_teacher'
+        ]
+      );
     }
 
     function isCashManager() {
       return isSignedIn() && (
         isWakaOrAdmin() ||
         (hasUserDoc(request.auth.uid) && (
-          userDoc(request.auth.uid).isCashManager == true ||
-          userDoc(request.auth.uid).osimPosition == 'bendahara' ||
-          userDoc(request.auth.uid).osimPosition == 'bendahara_osim'
+          ('isCashManager' in userDoc(request.auth.uid) && userDoc(request.auth.uid).isCashManager == true) ||
+          ('osimPosition' in userDoc(request.auth.uid) && userDoc(request.auth.uid).osimPosition in ['bendahara', 'bendahara_osim'])
         ))
       );
     }
 
     function isPengurusOsim() {
-      return isSignedIn() && (
-        isPembinaOsim() ||
-        (hasUserDoc(request.auth.uid) && (
-          userDoc(request.auth.uid).role == 'anggota_osim' ||
-          userDoc(request.auth.uid).role == 'pengurus_osim'
-        ))
+      return isPembinaOsim() || (
+        isSignedIn() && getUserRole() in [
+          'anggota_osim', 'pengurus_osim', 'bph_osim', 'ketua_osim', 'wakil_osim',
+          'sekretaris_osim', 'bendahara_osim'
+        ]
       );
     }
 

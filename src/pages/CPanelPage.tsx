@@ -183,47 +183,49 @@ export const CPanelPage: React.FC = () => {
   const [isSyncingOsim, setIsSyncingOsim] = useState(false);
 
   const getPembinaEkskulName = (u: UserProfile) => {
-    const list: string[] = [];
-    const seen = new Set<string>();
-
-    const addName = (rawName?: string) => {
-      if (!rawName) return;
-      const clean = rawName.trim();
-      if (!clean) return;
-      const lower = clean.toLowerCase();
-      if (
-        lower === 'ekskul' || 
-        lower.includes('admin') || 
-        lower === 'ekskul_admin_super' || 
-        lower === 'ekskul_osim_mpk' ||
-        lower === 'pembina osim' ||
-        lower === 'pembina_osim'
-      ) return;
-      if (seen.has(lower)) return;
-      seen.add(lower);
-      list.push(clean);
-    };
-
-    if (u.extracurricularNames && u.extracurricularNames.length > 0) {
-      u.extracurricularNames.forEach(n => addName(n));
-    }
-    if (u.extracurricularName && !u.extracurricularName.startsWith('ekskul_')) {
-      u.extracurricularName.split(',').forEach(n => addName(n));
-    }
+    // 1. Ekstrakurikuler ID match
     if (u.extracurricularIds && u.extracurricularIds.length > 0) {
-      u.extracurricularIds.forEach((id, idx) => {
-        const found = extracurriculars.find(e => e.id === id || e.name.toLowerCase() === id.toLowerCase());
-        if (found) addName(found.name);
-        else if (u.extracurricularNames && u.extracurricularNames[idx]) addName(u.extracurricularNames[idx]);
-        else if (id.startsWith('ekskul_')) {
-          addName(id.replace(/^ekskul_/, '').replace(/[_-]/g, ' ').toUpperCase());
-        } else {
-          addName(id);
+      for (const eid of u.extracurricularIds) {
+        if (!eid || /^\d+$/.test(eid.trim())) continue;
+        const normEid = eid.trim().toLowerCase();
+        const found = extracurriculars.find(e => 
+          e.id.toLowerCase() === normEid || 
+          e.name.toLowerCase() === normEid ||
+          (normEid.startsWith('ekskul_') && e.id.toLowerCase() === normEid)
+        );
+        if (found && found.name && !/^\d+$/.test(found.name)) {
+          return found.name;
         }
-      });
+      }
     }
 
-    return list.length > 0 ? list.join(', ') : 'Ekstrakurikuler';
+    // 2. Ekstrakurikuler Names match
+    if (u.extracurricularNames && u.extracurricularNames.length > 0) {
+      for (const n of u.extracurricularNames) {
+        if (!n || /^\d+$/.test(n.trim())) continue;
+        const normName = n.trim().toLowerCase();
+        const found = extracurriculars.find(e => e.name.toLowerCase() === normName || e.id.toLowerCase() === normName);
+        if (found && found.name && !/^\d+$/.test(found.name)) {
+          return found.name;
+        }
+      }
+    }
+
+    // 3. String name fallback
+    if (u.extracurricularName && !u.extracurricularName.startsWith('ekskul_') && !/^\d+$/.test(u.extracurricularName.trim())) {
+      const parts = u.extracurricularName.split(',');
+      for (const p of parts) {
+        const clean = p.trim();
+        if (!clean || /^\d+$/.test(clean)) continue;
+        const norm = clean.toLowerCase();
+        const found = extracurriculars.find(e => e.name.toLowerCase() === norm || e.id.toLowerCase() === norm);
+        if (found && found.name && !/^\d+$/.test(found.name)) {
+          return found.name;
+        }
+      }
+    }
+
+    return 'Ekstrakurikuler';
   };
 
   const getOsimPositionName = (u: UserProfile) => {
@@ -695,12 +697,20 @@ export const CPanelPage: React.FC = () => {
       role: formData.role,
       phone: formData.phone.trim() || undefined,
       counselorSpecialization: formData.role === 'guru_bk' ? formData.counselorSpecialization : undefined,
-      extracurricularIds: (formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul') ? formData.extracurricularIds : undefined,
+      extracurricularIds: (formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul')
+        ? (formData.extracurricularIds || []).filter(id => id && !/^\d+$/.test(id.trim())).slice(0, 1)
+        : undefined,
       extracurricularNames: (formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul')
-        ? (formData.extracurricularIds || []).map(id => extracurriculars.find(e => e.id === id || e.name.toLowerCase() === id.toLowerCase())?.name || id).filter(Boolean)
+        ? (formData.extracurricularIds || [])
+            .map(id => extracurriculars.find(e => e.id === id || e.name.toLowerCase() === id.toLowerCase())?.name)
+            .filter((name): name is string => Boolean(name && !/^\d+$/.test(name.trim()) && !/^ekskul_\d+$/.test(name.trim())))
+            .slice(0, 1)
         : undefined,
       extracurricularName: (formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul')
-        ? (formData.extracurricularIds || []).map(id => extracurriculars.find(e => e.id === id || e.name.toLowerCase() === id.toLowerCase())?.name || id).filter(Boolean).join(', ')
+        ? ((formData.extracurricularIds || [])
+            .map(id => extracurriculars.find(e => e.id === id || e.name.toLowerCase() === id.toLowerCase())?.name)
+            .filter((name): name is string => Boolean(name && !/^\d+$/.test(name.trim()) && !/^ekskul_\d+$/.test(name.trim())))
+            .slice(0, 1)[0] || undefined)
         : undefined,
       status: formData.status,
       isCashManager: formData.isCashManager,
@@ -731,12 +741,20 @@ export const CPanelPage: React.FC = () => {
       role: formData.role,
       phone: formData.phone.trim() || undefined,
       counselorSpecialization: formData.role === 'guru_bk' ? formData.counselorSpecialization : undefined,
-      extracurricularIds: (formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul') ? formData.extracurricularIds : undefined,
+      extracurricularIds: (formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul')
+        ? (formData.extracurricularIds || []).filter(id => id && !/^\d+$/.test(id.trim())).slice(0, 1)
+        : undefined,
       extracurricularNames: (formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul')
-        ? (formData.extracurricularIds || []).map(id => extracurriculars.find(e => e.id === id || e.name.toLowerCase() === id.toLowerCase())?.name || id).filter(Boolean)
+        ? (formData.extracurricularIds || [])
+            .map(id => extracurriculars.find(e => e.id === id || e.name.toLowerCase() === id.toLowerCase())?.name)
+            .filter((name): name is string => Boolean(name && !/^\d+$/.test(name.trim()) && !/^ekskul_\d+$/.test(name.trim())))
+            .slice(0, 1)
         : undefined,
       extracurricularName: (formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul')
-        ? (formData.extracurricularIds || []).map(id => extracurriculars.find(e => e.id === id || e.name.toLowerCase() === id.toLowerCase())?.name || id).filter(Boolean).join(', ')
+        ? ((formData.extracurricularIds || [])
+            .map(id => extracurriculars.find(e => e.id === id || e.name.toLowerCase() === id.toLowerCase())?.name)
+            .filter((name): name is string => Boolean(name && !/^\d+$/.test(name.trim()) && !/^ekskul_\d+$/.test(name.trim())))
+            .slice(0, 1)[0] || undefined)
         : undefined,
       status: formData.status,
       isCashManager: formData.isCashManager,
@@ -2249,7 +2267,11 @@ export const CPanelPage: React.FC = () => {
 
           {(formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul') && (
             <div className="bg-[#18181d] border border-emerald-500/30 rounded-xl p-3 space-y-2">
-              <label className="block text-emerald-300 font-bold">Ekstrakurikuler yang Diampu (Pilih dari Daftar)</label>
+              <div className="flex items-center justify-between">
+                <label className="block text-emerald-300 font-bold">Ekstrakurikuler Binaan Utama *</label>
+                <span className="text-[10px] text-zinc-400">Maks. 1 Unit Binaan</span>
+              </div>
+              <p className="text-[10px] text-zinc-400 italic">Pilih 1 unit ekstrakurikuler binaan utama untuk guru pembina ini.</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-36 overflow-y-auto p-1 bg-[#121215] rounded-lg border border-[#27272a]">
                 {extracurriculars.map((e, idx) => {
                   const isChecked = formData.extracurricularIds.includes(e.id);
@@ -2267,9 +2289,7 @@ export const CPanelPage: React.FC = () => {
                         type="checkbox"
                         checked={isChecked}
                         onChange={ev => {
-                          const next = ev.target.checked
-                            ? [...formData.extracurricularIds, e.id]
-                            : formData.extracurricularIds.filter(id => id !== e.id);
+                          const next = ev.target.checked ? [e.id] : [];
                           setFormData({ ...formData, extracurricularIds: next });
                         }}
                         className="rounded bg-zinc-800 border-zinc-700 text-emerald-500 w-3.5 h-3.5"
@@ -2499,7 +2519,11 @@ export const CPanelPage: React.FC = () => {
 
           {(formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul') && (
             <div className="bg-[#18181d] border border-emerald-500/30 rounded-xl p-3 space-y-2">
-              <label className="block text-emerald-300 font-bold">Ekstrakurikuler yang Diampu</label>
+              <div className="flex items-center justify-between">
+                <label className="block text-emerald-300 font-bold">Ekstrakurikuler Binaan Utama *</label>
+                <span className="text-[10px] text-zinc-400">Maks. 1 Unit Binaan</span>
+              </div>
+              <p className="text-[10px] text-zinc-400 italic">Pilih 1 unit ekstrakurikuler binaan utama untuk guru pembina ini.</p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-36 overflow-y-auto p-1 bg-[#121215] rounded-lg border border-[#27272a]">
                 {extracurriculars.map((e, idx) => {
                   const isChecked = formData.extracurricularIds.includes(e.id);
@@ -2517,9 +2541,7 @@ export const CPanelPage: React.FC = () => {
                         type="checkbox"
                         checked={isChecked}
                         onChange={ev => {
-                          const next = ev.target.checked
-                            ? [...formData.extracurricularIds, e.id]
-                            : formData.extracurricularIds.filter(id => id !== e.id);
+                          const next = ev.target.checked ? [e.id] : [];
                           setFormData({ ...formData, extracurricularIds: next });
                         }}
                         className="rounded bg-zinc-800 border-zinc-700 text-emerald-500 w-3.5 h-3.5"

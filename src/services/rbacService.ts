@@ -1,7 +1,7 @@
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { db, auth } from './firebase';
-import { handleFirestoreError, OperationType } from './firestoreErrors';
+import { handleFirestoreError, OperationType, isPermissionError } from './firestoreErrors';
 import { UserRole, UserProfile } from '../types';
 import { normalizeUserRole, normalizeOsimPosition } from '../permissions';
 
@@ -552,22 +552,28 @@ export const initGlobalRbacSync = (): () => void => {
               window.dispatchEvent(new CustomEvent('rbac-matrix-updated', { detail: normalized }));
             }
           } else {
-            // Document does not exist in Firestore yet: seed it with DEFAULT_RBAC_MATRIX
-            setDoc(
-              docRef,
-              {
-                matrix: DEFAULT_RBAC_MATRIX,
-                updatedAt: new Date().toISOString(),
-                updatedBy: 'System Seed'
-              },
-              { merge: true }
-            ).catch((e) => {
-              console.warn('RBAC Matrix initial Firestore seed note:', e);
-            });
+            // Document does not exist in Firestore yet: seed it with DEFAULT_RBAC_MATRIX only if authenticated
+            if (auth.currentUser) {
+              setDoc(
+                docRef,
+                {
+                  matrix: DEFAULT_RBAC_MATRIX,
+                  updatedAt: new Date().toISOString(),
+                  updatedBy: 'System Seed'
+                },
+                { merge: true }
+              ).catch((e) => {
+                console.warn('RBAC Matrix initial Firestore seed note:', e);
+              });
+            }
           }
         },
         (err) => {
-          handleFirestoreError(err, OperationType.GET, 'settings/rbac_matrix');
+          if (isPermissionError(err)) {
+            console.warn('RBAC Matrix permission notice (using defaults):', err);
+          } else {
+            handleFirestoreError(err, OperationType.GET, 'settings/rbac_matrix');
+          }
         }
       );
 

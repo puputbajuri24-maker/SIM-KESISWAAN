@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '../services/firebase';
-import { handleFirestoreError, OperationType } from '../services/firestoreErrors';
+import { handleFirestoreError, OperationType, isPermissionError } from '../services/firestoreErrors';
 import { doc, setDoc, onSnapshot } from 'firebase/firestore';
 
 export type ThemeMode = 'dark' | 'light' | 'system';
@@ -210,7 +210,11 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           setFontFamilyState(prev => (prev !== data.fontFamily ? data.fontFamily : prev));
         }
       }, (err) => {
-        handleFirestoreError(err, OperationType.GET, 'settings/theme_config');
+        if (isPermissionError(err)) {
+          console.warn('Theme config read notice (using local preferences):', err);
+        } else {
+          handleFirestoreError(err, OperationType.GET, 'settings/theme_config');
+        }
       });
     } catch (e) {
       console.warn('Theme listener attach warning:', e);
@@ -239,10 +243,14 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         updatedAt: new Date().toISOString()
       };
 
-      // 1. Save to global theme config in Firestore so all devices match immediately
-      setDoc(doc(db, 'settings', 'theme_config'), updatedPref, { merge: true }).catch((err) => {
-        handleFirestoreError(err, OperationType.WRITE, 'settings/theme_config');
-      });
+      // 1. Save to global theme config in Firestore if authenticated admin
+      if (auth.currentUser) {
+        setDoc(doc(db, 'settings', 'theme_config'), updatedPref, { merge: true }).catch((err) => {
+          if (!isPermissionError(err)) {
+            handleFirestoreError(err, OperationType.WRITE, 'settings/theme_config');
+          }
+        });
+      }
 
       // 2. Also save to user doc if logged in
       let uid: string | null = null;
@@ -256,11 +264,13 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (!uid && auth.currentUser) {
         uid = auth.currentUser.uid;
       }
-      if (uid) {
+      if (uid && auth.currentUser) {
         setDoc(doc(db, 'users', uid), {
           themePreference: updatedPref
         }, { merge: true }).catch((err) => {
-          handleFirestoreError(err, OperationType.WRITE, `users/${uid}`);
+          if (!isPermissionError(err)) {
+            handleFirestoreError(err, OperationType.WRITE, `users/${uid}`);
+          }
         });
       }
     } catch (err) {

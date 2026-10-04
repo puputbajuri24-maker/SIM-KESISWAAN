@@ -120,23 +120,25 @@ export const TeachersPage: React.FC = () => {
     teacherContext?: { extracurricularNames?: string[]; extracurricularName?: string } | null,
     idx?: number
   ) => {
-    if (!item) return '';
+    if (!item || /^\d+$/.test(item.trim())) return '';
     const found = extracurriculars.find(e => e.id === item || e.name.toLowerCase() === item.toLowerCase());
-    if (found) return found.name;
+    if (found && !/^\d+$/.test(found.name)) return found.name;
     if (teacherContext?.extracurricularNames && idx !== undefined && teacherContext.extracurricularNames[idx]) {
-      return teacherContext.extracurricularNames[idx];
+      const name = teacherContext.extracurricularNames[idx];
+      if (!/^\d+$/.test(name.trim())) return name;
     }
     if (teacherContext?.extracurricularName && !teacherContext.extracurricularName.startsWith('ekskul_')) {
-      return teacherContext.extracurricularName;
+      const name = teacherContext.extracurricularName.trim();
+      if (!/^\d+$/.test(name)) return name;
     }
     if (item.startsWith('ekskul_')) {
-      const clean = item.replace(/^ekskul_/, '').replace(/[_-]/g, ' ');
+      const clean = item.replace(/^ekskul_/, '').replace(/[_-]/g, ' ').trim();
       if (/^\d+$/.test(clean.replace(/\s+/g, ''))) {
-        return clean;
+        return '';
       }
       return clean.charAt(0).toUpperCase() + clean.slice(1);
     }
-    return item;
+    return '';
   };
 
   // Automatically open teacher detail if selected from Global Search or pending selection
