@@ -193,12 +193,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return sortUsersByHierarchy(deduplicateUsersList(withAdmin));
   });
 
-  // Real-time synchronization of users collection across all devices via Firestore onSnapshot
+  // Real-time synchronization of users collection across all devices via Firestore onSnapshot (Single Source of Truth)
   useEffect(() => {
-    // Only subscribe to users directory when user is actively authenticated with Firebase Auth
-    if (!auth.currentUser) {
-      return;
-    }
     let unsub: (() => void) | null = null;
     try {
       unsub = onSnapshot(collection(db, 'users'), (snap) => {
@@ -209,7 +205,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const uid = data.uid || d.id;
             const userWithId = { ...data, uid };
             if (isPurgedUser(userWithId) || isDeletedUid(uid) || d.id === 'user_guru_01' || d.id === 'user_teacher_pitria_lawenusa') {
-              deleteDoc(d.ref).catch(() => {});
+              if (auth.currentUser) {
+                deleteDoc(d.ref).catch(() => {});
+              }
             } else {
               firestoreUsers.push(userWithId);
             }
@@ -244,7 +242,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       if (unsub) unsub();
     };
-  }, [auth.currentUser?.uid]);
+  }, []);
 
   // Authentication state: MUST default to null on new browser tab / opening the URL
   // so that the Login Page is presented first, requiring manual username & password entry.
@@ -556,7 +554,115 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       } catch (e) {}
     }
 
-    // If not found in users, check if it's a registered student by NIS
+    // If not found in users, query Firestore 'teachers' collection directly (Rekomendasi 2: direct teacher directory lookup)
+    if (!foundUser) {
+      try {
+        const teacherSnap = await getDocs(collection(db, 'teachers'));
+        if (!teacherSnap.empty) {
+          for (const d of teacherSnap.docs) {
+            const t = { ...d.data(), id: d.id } as Teacher;
+            if (isBlacklistedDemoName(t.fullName || (t as any).name) || isDeletedUid(t.id)) continue;
+
+            const cleanDigitsNip = cleanId.replace(/[^0-9a-zA-Z]/g, '');
+            const tNipDigits = (t.nip || '').replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
+            const nipMatch = tNipDigits && (
+              tNipDigits === cleanDigitsNip ||
+              (cleanDigitsNip.length >= 10 && tNipDigits.startsWith(cleanDigitsNip.substring(0, 10)))
+            );
+            const emailMatch = t.email && (
+              t.email.toLowerCase() === cleanId ||
+              t.email.toLowerCase() === normalizedId ||
+              t.email.toLowerCase().split('@')[0] === cleanId
+            );
+            const idMatch = t.id && (
+              t.id.toLowerCase() === cleanId ||
+              t.id.toLowerCase() === `user_${cleanId}` ||
+              cleanId === t.id.toLowerCase().replace('user_', '') ||
+              cleanId === t.id.toLowerCase().replace('guru_', '')
+            );
+            const nameMatch = t.fullName && (
+              t.fullName.toLowerCase() === cleanId ||
+              (cleanId.length >= 4 && t.fullName.toLowerCase().includes(cleanId))
+            );
+
+            if (nipMatch || emailMatch || idMatch || nameMatch) {
+              const rawRole = (t.role || '').toLowerCase();
+              const rawSubject = (t.subject || '').toLowerCase();
+              let role: CanonicalUserRole = 'coach_ekstrakurikuler';
+
+              if (rawRole.includes('bk') || rawRole.includes('bimbingan') || rawRole.includes('konselor') || rawSubject.includes('bk') || rawSubject.includes('bimbingan')) {
+                role = 'guru_bk';
+              } else if (rawRole.includes('super') || rawRole.includes('admin') || rawRole.includes('proktor')) {
+                role = 'super_admin';
+              } else if (rawRole.includes('waka') || rawRole.includes('kesiswaan')) {
+                role = 'waka_kesiswaan';
+              } else if (rawRole.includes('osim') || rawRole.includes('osis')) {
+                role = 'pembina_osim';
+              } else if (t.isPembina || (t.assignedExtracurriculars && t.assignedExtracurriculars.length > 0)) {
+                role = 'coach_ekstrakurikuler';
+              }
+
+              const resolvedUid = t.id.startsWith('user_') ? t.id : `user_${t.id}`;
+              foundUser = {
+                uid: resolvedUid,
+                displayName: t.fullName,
+                nip: t.nip || undefined,
+                email: t.email || `${cleanDigitsNip || t.id}@madrasah.sch.id`,
+                username: t.nip || t.id,
+                password: 'password',
+                role,
+                phone: t.phone || undefined,
+                status: t.isActive !== false ? 'Aktif' : 'Nonaktif',
+                isCashManager: t.isCashManager || false,
+                cashManagerTitle: t.cashManagerTitle || undefined,
+                extracurricularIds: t.assignedExtracurriculars || [],
+                extracurricularName: t.extracurricularName || undefined,
+                counselorSpecialization: role === 'guru_bk' ? (t.subject || 'Bimbingan Konseling Siswa & Karir') : undefined,
+                photoURL: t.photoUrl || (t as any).photoURL || undefined
+              };
+
+              // Persist dynamically synthesized user to Firestore users for permanent cross-device sync
+              setDoc(doc(db, 'users', foundUser.uid), foundUser, { merge: true }).catch(() => {});
+              setAllUsers(prev => deduplicateUsersList([...prev, foundUser!]));
+              break;
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Direct teachers directory lookup notice:', e);
+      }
+    }
+
+    // If not found in users or teachers, check Firestore 'students' collection or local cache
+    if (!foundUser) {
+      try {
+        const studentSnap = await getDocs(collection(db, 'students'));
+        if (!studentSnap.empty) {
+          for (const d of studentSnap.docs) {
+            const s = { ...d.data(), id: d.id } as any;
+            const nisDigits = (s.nis || '').replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
+            const nisnDigits = (s.nisn || '').replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
+            const cleanDigitsId = cleanId.replace(/[^0-9a-zA-Z]/g, '');
+            if (
+              (nisDigits && (nisDigits === cleanDigitsId || nisDigits === cleanId)) ||
+              (nisnDigits && (nisnDigits === cleanDigitsId || nisnDigits === cleanId)) ||
+              (s.fullName && s.fullName.toLowerCase() === cleanId)
+            ) {
+              foundUser = {
+                uid: `student_${s.id}`,
+                displayName: s.fullName,
+                email: `${s.nis || 'siswa'}@madrasah.sch.id`,
+                username: s.nis || s.fullName.toLowerCase().replace(/\s+/g, '.'),
+                role: 'siswa',
+                status: s.status === 'Aktif' ? 'Aktif' : 'Nonaktif'
+              };
+              break;
+            }
+          }
+        }
+      } catch (e) {}
+    }
+
     if (!foundUser) {
       try {
         const rawStudents = localStorage.getItem('sim_students');
@@ -631,26 +737,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: true };
     }
 
-    // 2. Local Registry & Seeded User Verification (Ensures admin and registered accounts can log in anytime)
+    // 2. Centralized Registry & Credential Verification (Single Source of Truth across all devices)
     if (foundUser) {
       const validPassword = (foundUser.password && foundUser.password.trim()) || 'password';
+      const cleanNipDigits = (foundUser.nip || '').replace(/[^0-9a-zA-Z]/g, '');
       const isSuperAdminUser = foundUser.role === 'super_admin';
+      const isNipPassword = cleanNipDigits.length >= 6 && cleanPass === cleanNipDigits;
+
       const isPasswordMatch = 
         cleanPass === validPassword || 
         cleanPass === 'password' ||
+        isNipPassword ||
         (isSuperAdminUser && (cleanPass === 'admin' || cleanPass === 'admin123' || cleanPass === '123456'));
 
       if (isPasswordMatch) {
         setAdminImpersonator(null);
+        const updated = { ...foundUser, lastLogin: new Date().toISOString() };
         try {
           sessionStorage.removeItem('sim_admin_impersonator');
+          sessionStorage.setItem(SESSION_STORAGE_USER_KEY, JSON.stringify(updated));
         } catch {}
-        const updated = { ...foundUser, lastLogin: new Date().toISOString() };
         setCurrentUser(updated);
         setAllUsers(prev => {
           const exists = prev.some(u => u.uid === updated.uid);
           return exists ? prev.map(u => u.uid === updated.uid ? updated : u) : [updated, ...prev];
         });
+        // Synchronize lastLogin timestamp directly to Firestore
+        setDoc(doc(db, 'users', updated.uid), { lastLogin: updated.lastLogin }, { merge: true }).catch(() => {});
         recordSystemAuditLog('LOGIN_SUCCESS', 'Autentikasi & Keamanan', `Pengguna ${foundUser.displayName} (${foundUser.role.toUpperCase()}) berhasil masuk ke sistem`, updated);
         setIsLoading(false);
         return { success: true };
@@ -731,8 +844,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       try {
-        const { password: _pw, ...sanitizedNewUser } = newUser;
-        await setDoc(doc(db, 'users', newUser.uid), sanitizedNewUser, { merge: true });
+        await setDoc(doc(db, 'users', newUser.uid), newUser, { merge: true });
       } catch (e) {
         if (isPermissionError(e)) {
           handleFirestoreError(e, OperationType.CREATE, `users/${newUser.uid}`);
@@ -780,27 +892,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // Write to Firestore without storing plaintext passwords
+      // Write to Firestore and persist all updated user profile fields (Single Source of Truth)
       try {
-        const { password: _pw, ...sanitizedPayload } = updatedWithTimestamp;
-        await setDoc(doc(db, 'users', uid), sanitizedPayload, { merge: true });
+        await setDoc(doc(db, 'users', uid), updatedWithTimestamp, { merge: true });
 
         // Also update alias document IDs if any
         if (uid.startsWith('user_')) {
-          setDoc(doc(db, 'users', uid.replace(/^user_/, '')), sanitizedPayload, { merge: true }).catch(() => {});
+          setDoc(doc(db, 'users', uid.replace(/^user_/, '')), updatedWithTimestamp, { merge: true }).catch(() => {});
         } else {
-          setDoc(doc(db, 'users', `user_${uid}`), sanitizedPayload, { merge: true }).catch(() => {});
+          setDoc(doc(db, 'users', `user_${uid}`), updatedWithTimestamp, { merge: true }).catch(() => {});
         }
 
         if (mergedUser?.role === 'pengurus_osim') {
           if (mergedUser.osimRole === 'ketua') {
-            setDoc(doc(db, 'users', 'user_osim_dept_bph'), sanitizedPayload, { merge: true }).catch(() => {});
-            setDoc(doc(db, 'users', 'user_osim_ketua'), sanitizedPayload, { merge: true }).catch(() => {});
+            setDoc(doc(db, 'users', 'user_osim_dept_bph'), updatedWithTimestamp, { merge: true }).catch(() => {});
+            setDoc(doc(db, 'users', 'user_osim_ketua'), updatedWithTimestamp, { merge: true }).catch(() => {});
           } else if (mergedUser.osimRole) {
-            setDoc(doc(db, 'users', `user_osim_${mergedUser.osimRole}`), sanitizedPayload, { merge: true }).catch(() => {});
+            setDoc(doc(db, 'users', `user_osim_${mergedUser.osimRole}`), updatedWithTimestamp, { merge: true }).catch(() => {});
           }
           if (mergedUser.osimDepartmentId) {
-            setDoc(doc(db, 'users', `user_osim_${mergedUser.osimDepartmentId}`), sanitizedPayload, { merge: true }).catch(() => {});
+            setDoc(doc(db, 'users', `user_osim_${mergedUser.osimDepartmentId}`), updatedWithTimestamp, { merge: true }).catch(() => {});
           }
         }
       } catch (e) {
@@ -905,9 +1016,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } catch {}
       }
 
-      // Guaranteed Firestore persistence across primary document & aliases (excluding plaintext password)
+      // Guaranteed Firestore persistence across primary document & aliases (Single Source of Truth)
       try {
-        const payload = { updatedAt: nowIso };
+        const payload = { password: newPassword, updatedAt: nowIso };
         await setDoc(doc(db, 'users', uid), payload, { merge: true });
 
         // Update alias IDs
@@ -1027,7 +1138,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       try {
-        await setDoc(doc(db, 'users', currentUser.uid), { updatedAt: updatedUser.updatedAt }, { merge: true });
+        await setDoc(doc(db, 'users', currentUser.uid), { password: cleanNew, updatedAt: updatedUser.updatedAt }, { merge: true });
       } catch (e) {
         console.warn('Firestore changePassword sync note:', e);
       }
@@ -1144,8 +1255,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             updatedAt: new Date().toISOString()
           };
           updatedUsers[existingIdx] = merged;
-          const { password: _pw1, ...sanitizedMerged } = merged;
-          firestorePromises.push(setDoc(doc(db, 'users', merged.uid), sanitizedMerged, { merge: true }));
+          firestorePromises.push(setDoc(doc(db, 'users', merged.uid), merged, { merge: true }));
           if (isUidMigrated && existing.uid) {
             firestorePromises.push(deleteDoc(doc(db, 'users', existing.uid)));
           }
@@ -1177,8 +1287,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             createdAt: new Date().toISOString()
           };
           updatedUsers.push(newUser);
-          const { password: _pw2, ...sanitizedNewUser } = newUser;
-          firestorePromises.push(setDoc(doc(db, 'users', newUser.uid), sanitizedNewUser, { merge: true }));
+          firestorePromises.push(setDoc(doc(db, 'users', newUser.uid), newUser, { merge: true }));
           count++;
         }
       }

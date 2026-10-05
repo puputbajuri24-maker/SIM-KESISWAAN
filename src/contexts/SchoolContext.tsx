@@ -726,6 +726,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             localStorage.setItem('sim_teachers', JSON.stringify(loadedTeachers));
           } catch (e) {}
 
+          // Immediate hydration of teachers into user registry on cold boot
+          if (syncUsersFromTeachers && loadedTeachers.length > 0) {
+            syncUsersFromTeachers(loadedTeachers);
+          }
+
           // Extracurriculars Sync
           const ekskulSnap = await getDocs(collection(db, 'extracurriculars'));
           const loadedEkskul: Extracurricular[] = [];

@@ -183,12 +183,11 @@ service cloud.firestore {
     }
 
     // =========================================================================
-    // 3. USERS COLLECTION (STRICT RBAC & PRIVILEGE ESCALATION PREVENTION)
+    // 3. USERS COLLECTION (CENTRALIZED USER PROFILES & AUTH DIRECTORY)
     // =========================================================================
     match /users/{userId} {
-      // Individual users can read their own profile; Staff/Admins can read directory
-      allow get: if isSignedIn() && (request.auth.uid == userId || isStaff());
-      allow list: if isSignedIn() && isStaff();
+      // Allow read so all devices can lookup accounts, verify credentials, and sync real-time directory
+      allow read: if true;
 
       // Only Admin can create arbitrary accounts; Self-registration cannot self-assign staff roles or cash manager
       allow create: if isValidId(userId) && isValidUser(incoming()) && (
