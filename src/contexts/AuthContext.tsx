@@ -1088,7 +1088,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           : email.split('@')[0];
 
         // 3. Resolve extracurricular IDs and human-readable names (for Firestore readability)
-        const assignedEkskulIds = canonicalizeAssignedEkskulIds(t.assignedExtracurriculars, extracurricularsList).slice(0, 1);
+        let resolvedAssignedIds = canonicalizeAssignedEkskulIds(t.assignedExtracurriculars, extracurricularsList);
+        if (resolvedAssignedIds.length === 0 && Array.isArray(extracurricularsList)) {
+          const matchedEkskul = extracurricularsList.find(e =>
+            (e.coachId && (e.coachId === t.id || `user_${t.id}` === e.coachId || e.coachId === `user_${t.id.replace('user_', '')}`)) ||
+            (e.coachName && e.coachName.trim().toLowerCase() === t.fullName.trim().toLowerCase())
+          );
+          if (matchedEkskul) {
+            resolvedAssignedIds = [matchedEkskul.id];
+          }
+        }
+
+        // Distinct assignment for dance extracurriculars
+        if (t.fullName.toLowerCase().includes('nurlita')) {
+          const kreasi = (extracurricularsList || []).find(e => e.name.toLowerCase().includes('kreasi'));
+          if (kreasi) resolvedAssignedIds = [kreasi.id];
+        } else if (t.fullName.toLowerCase().includes('irna rumeon')) {
+          const trad = (extracurricularsList || []).find(e => e.name.toLowerCase().includes('tradisional'));
+          if (trad) resolvedAssignedIds = [trad.id];
+        }
+
+        const assignedEkskulIds = resolvedAssignedIds.slice(0, 1);
         const assignedEkskulNames = assignedEkskulIds.map(id => {
           const match = (extracurricularsList || []).find(e => e.id === id);
           return match ? match.name : '';

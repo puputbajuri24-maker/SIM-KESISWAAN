@@ -114,7 +114,7 @@ export const CPanelPage: React.FC = () => {
     verifyCloudDataIntegrity
   } = useSchool();
 
-  const [activeSubTab, setActiveSubTab] = useState<'users' | 'crud_center' | 'announcements' | 'school' | 'matrix' | 'sync' | 'logs'>('users');
+  const [activeSubTab, setActiveSubTab] = useState<'users' | 'crud_center' | 'announcements' | 'school' | 'matrix' | 'sync' | 'logs' | 'tahap5'>('users');
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [showPasswordMap, setShowPasswordMap] = useState<Record<string, boolean>>({});
@@ -1438,6 +1438,20 @@ export const CPanelPage: React.FC = () => {
             </span>
           )}
         </button>
+        <button
+          onClick={() => setActiveSubTab('tahap5')}
+          className={`pb-3 px-3 text-xs font-bold border-b-2 transition-all flex items-center space-x-2 whitespace-nowrap ${
+            activeSubTab === 'tahap5'
+              ? 'border-amber-500 text-amber-400'
+              : 'border-transparent text-zinc-300 hover:text-white'
+          }`}
+        >
+          <Activity className="w-4 h-4 text-amber-400" />
+          <span>Tahap 5: 4 Skenario Uji</span>
+          <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-amber-500/20 text-amber-300 font-mono font-bold border border-amber-500/30">
+            TAHAP 5
+          </span>
+        </button>
       </div>
 
       {/* TAB 1: USERS MANAGEMENT */}
@@ -1731,9 +1745,10 @@ export const CPanelPage: React.FC = () => {
         />
       )}
 
-      {/* TAB 3: SYNC & SERVER */}
-      {activeSubTab === 'sync' && (
+      {/* TAB 3: SYNC & SERVER / TAHAP 5 */}
+      {(activeSubTab === 'sync' || activeSubTab === 'tahap5') && (
         <CPanelBackupRestoreTab
+          initialSection={activeSubTab === 'tahap5' ? 'tahap5' : 'all'}
           teachers={teachers}
           allUsers={allUsers}
           unregisteredTeachers={unregisteredTeachers}

@@ -344,6 +344,9 @@ interface SchoolContextType {
     classes: { firestore: number; react: number };
     extracurriculars: { firestore: number; react: number };
     users: { firestore: number; react: number };
+    violations?: { firestore: number; react: number };
+    counseling?: { firestore: number; react: number };
+    cash_transactions?: { firestore: number; react: number };
   }>;
   syncLocalChangesToFirestore: () => Promise<void>;
 
@@ -363,6 +366,8 @@ interface SchoolContextType {
     healedMembers: number;
     healedCoaches: number;
     healedTransactions: number;
+    healedStudents?: number;
+    healedOsimMembers?: number;
     totalHealed: number;
   }>;
   createDisasterRecoverySnapshot: (customLabel?: string) => Promise<{
@@ -1657,19 +1662,25 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const verifyCloudDataIntegrity = async () => {
     try {
-      const [tSnap, sSnap, cSnap, eSnap, uSnap] = await Promise.all([
-        getDocs(collection(db, 'teachers')),
-        getDocs(collection(db, 'students')),
-        getDocs(collection(db, 'classes')),
-        getDocs(collection(db, 'extracurriculars')),
-        getDocs(collection(db, 'users'))
+      const [tSnap, sSnap, cSnap, eSnap, uSnap, vSnap, csSnap, ctSnap] = await Promise.all([
+        getDocs(collection(db, 'teachers')).catch(() => null),
+        getDocs(collection(db, 'students')).catch(() => null),
+        getDocs(collection(db, 'classes')).catch(() => null),
+        getDocs(collection(db, 'extracurriculars')).catch(() => null),
+        getDocs(collection(db, 'users')).catch(() => null),
+        getDocs(collection(db, 'violations')).catch(() => null),
+        getDocs(collection(db, 'counseling')).catch(() => null),
+        getDocs(collection(db, 'cash_transactions')).catch(() => null)
       ]);
       return {
-        teachers: { firestore: tSnap.size, react: teachers.length },
-        students: { firestore: sSnap.size, react: students.length },
-        classes: { firestore: cSnap.size, react: classes.length },
-        extracurriculars: { firestore: eSnap.size, react: extracurriculars.length },
-        users: { firestore: uSnap.size, react: allUsers.length }
+        teachers: { firestore: tSnap ? tSnap.size : 0, react: teachers.length },
+        students: { firestore: sSnap ? sSnap.size : 0, react: students.length },
+        classes: { firestore: cSnap ? cSnap.size : 0, react: classes.length },
+        extracurriculars: { firestore: eSnap ? eSnap.size : 0, react: extracurriculars.length },
+        users: { firestore: uSnap ? uSnap.size : 0, react: allUsers.length },
+        violations: { firestore: vSnap ? vSnap.size : 0, react: violations.length },
+        counseling: { firestore: csSnap ? csSnap.size : 0, react: counseling.length },
+        cash_transactions: { firestore: ctSnap ? ctSnap.size : 0, react: cashTransactions.length }
       };
     } catch (e) {
       return {
@@ -1677,7 +1688,10 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         students: { firestore: 0, react: students.length },
         classes: { firestore: 0, react: classes.length },
         extracurriculars: { firestore: 0, react: extracurriculars.length },
-        users: { firestore: 0, react: allUsers.length }
+        users: { firestore: 0, react: allUsers.length },
+        violations: { firestore: 0, react: violations.length },
+        counseling: { firestore: 0, react: counseling.length },
+        cash_transactions: { firestore: 0, react: cashTransactions.length }
       };
     }
   };
@@ -1767,7 +1781,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       osimMembers,
       osimPrograms,
       osimAspirations,
-      osimMeetings
+      osimMeetings,
+      cashAccounts,
+      cashTransactions
     };
 
     const blob = new Blob([JSON.stringify(exportBundle, null, 2)], { type: 'application/json' });
@@ -1810,6 +1826,14 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (Array.isArray(bundle.osimPrograms)) setOsimPrograms(bundle.osimPrograms);
       if (Array.isArray(bundle.osimAspirations)) setOsimAspirations(bundle.osimAspirations);
       if (Array.isArray(bundle.osimMeetings)) setOsimMeetings(bundle.osimMeetings);
+      if (Array.isArray(bundle.cashAccounts)) {
+        setCashAccounts(bundle.cashAccounts);
+        try { localStorage.setItem('sim_cash_accounts', JSON.stringify(bundle.cashAccounts)); } catch (e) {}
+      }
+      if (Array.isArray(bundle.cashTransactions)) {
+        setCashTransactions(bundle.cashTransactions);
+        try { localStorage.setItem('sim_cash_transactions', JSON.stringify(bundle.cashTransactions)); } catch (e) {}
+      }
 
       await logAction('IMPORT_FULL_DATABASE', 'Manajemen Database', 'Memulihkan database lengkap dari berkas JSON');
       return { success: true, message: 'Database lengkap berhasil diimpor dan dipulihkan!' };
@@ -3322,7 +3346,33 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const item = sorted[i];
         const targetSeqId = formatTeacherDocId(i + 1); // guru_01, guru_02, ...
         const targetCode = formatTeacherCode(i + 1, item.fullName);
-        const cleanAssigned = canonicalizeAssignedEkskulIds(item.assignedExtracurriculars, extracurriculars);
+
+        // Resolve assigned extracurriculars bidirectionally from teacher data OR from matching extracurriculars
+        let sourceAssigned = Array.isArray(item.assignedExtracurriculars) && item.assignedExtracurriculars.length > 0
+          ? item.assignedExtracurriculars
+          : [];
+
+        // If empty in teacher record, look up matching extracurricular where this teacher is assigned as coach
+        if (sourceAssigned.length === 0) {
+          const matchedEkskul = (extracurriculars || []).find(e => 
+            (e.coachId && (e.coachId === item.id || e.coachId === targetSeqId)) ||
+            (e.coachName && e.coachName.trim().toLowerCase() === item.fullName.trim().toLowerCase())
+          );
+          if (matchedEkskul) {
+            sourceAssigned = [matchedEkskul.id];
+          }
+        }
+
+        // Distinct assignment for dance extracurriculars
+        if (item.fullName.toLowerCase().includes('nurlita')) {
+          const kreasi = (extracurriculars || []).find(e => e.name.toLowerCase().includes('kreasi'));
+          if (kreasi) sourceAssigned = [kreasi.id];
+        } else if (item.fullName.toLowerCase().includes('irna rumeon')) {
+          const trad = (extracurriculars || []).find(e => e.name.toLowerCase().includes('tradisional'));
+          if (trad) sourceAssigned = [trad.id];
+        }
+
+        const cleanAssigned = canonicalizeAssignedEkskulIds(sourceAssigned, extracurriculars).slice(0, 1);
         const cleanAssignedNames = cleanAssigned.map(id => {
           const match = (extracurriculars || []).find(e => e.id === id);
           return match ? match.name : id;
@@ -3334,6 +3384,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           migratedCount++;
         }
 
+        const isPembinaRole = cleanAssigned.length > 0;
         const standardizedTeacher: Teacher = {
           ...item,
           id: targetSeqId,
@@ -3341,7 +3392,8 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           fullName: (item.fullName || (item as any).name || '').trim(),
           nip: item.nip && item.nip.trim() ? item.nip.trim() : '-',
           gender: item.gender || 'L',
-          role: item.role || 'Guru Mapel',
+          role: isPembinaRole && (!item.role || item.role === 'Guru Mapel') ? 'Pembina Ekskul' : (item.role || 'Guru Mapel'),
+          isPembina: isPembinaRole || !!item.isPembina,
           subject: item.subject && item.subject.trim() ? item.subject.trim() : '-',
           phone: item.phone && item.phone.trim() ? item.phone.trim() : '-',
           email: item.email ? item.email.trim() : '',
@@ -3361,6 +3413,17 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         // Clear tombstones for this new standard ID
         removeDeletedUid(targetSeqId);
         removeDeletedUid(`user_${targetSeqId}`);
+
+        // Sync corresponding extracurricular document coach
+        if (cleanAssigned.length > 0) {
+          const targetEkskulId = cleanAssigned[0];
+          try {
+            await updateDoc(doc(db, 'extracurriculars', targetEkskulId), {
+              coachId: targetSeqId,
+              coachName: standardizedTeacher.fullName
+            });
+          } catch (e) {}
+        }
       }
 
       // Safely delete obsolete documents with non-standard IDs from Firestore
@@ -4753,6 +4816,8 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     healedMembers: number;
     healedCoaches: number;
     healedTransactions: number;
+    healedStudents?: number;
+    healedOsimMembers?: number;
     totalHealed: number;
   }> => {
     let healedViolations = 0;
@@ -4911,7 +4976,70 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       } catch (e) {}
     }
 
-    const totalHealed = healedViolations + healedCounselings + healedMembers + healedCoaches + healedTransactions;
+    // 6. Heal Students with missing or outdated class references
+    let healedStudents = 0;
+    const updatedStudents = students.map(s => {
+      const cls = resolveStudentClass({ classId: s.classId, className: s.className }, classes);
+      if (cls && (s.classId !== cls.id || s.className !== cls.name)) {
+        healedStudents++;
+        const healed = {
+          ...s,
+          classId: cls.id,
+          className: cls.name
+        };
+        try {
+          if (auth.currentUser) {
+            updateDoc(doc(db, 'students', s.id), { classId: cls.id, className: cls.name }).catch(() => {});
+          }
+        } catch (e) {}
+        return healed;
+      }
+      return s;
+    });
+
+    if (healedStudents > 0) {
+      setStudents(updatedStudents);
+      try {
+        localStorage.setItem('sim_students', JSON.stringify(updatedStudents));
+      } catch (e) {}
+    }
+
+    // 7. Heal OSIM Members with missing or broken student pointers
+    let healedOsimMembers = 0;
+    const updatedOsimMembers = osimMembers.map(m => {
+      const student = resolveStudent(students, { id: m.studentId, code: m.studentCode, nis: m.studentNis, name: m.fullName });
+      if (student && (m.studentId !== student.id || m.fullName !== student.fullName || m.className !== student.className)) {
+        healedOsimMembers++;
+        const healed: OsimMember = {
+          ...m,
+          studentId: student.id,
+          studentCode: student.code || m.studentCode,
+          fullName: student.fullName,
+          className: student.className
+        };
+        try {
+          if (auth.currentUser) {
+            updateDoc(doc(db, 'osim_members', m.id), {
+              studentId: student.id,
+              studentCode: student.code || m.studentCode,
+              fullName: student.fullName,
+              className: student.className
+            }).catch(() => {});
+          }
+        } catch (e) {}
+        return healed;
+      }
+      return m;
+    });
+
+    if (healedOsimMembers > 0) {
+      setOsimMembers(updatedOsimMembers);
+      try {
+        localStorage.setItem('sim_osim_members', JSON.stringify(updatedOsimMembers));
+      } catch (e) {}
+    }
+
+    const totalHealed = healedViolations + healedCounselings + healedMembers + healedCoaches + healedTransactions + healedStudents + healedOsimMembers;
     if (totalHealed > 0) {
       logAction('AUTO_HEAL', 'Ketahanan Data', `Auto-heal Fase 4 berhasil memulihkan ${totalHealed} anomali relasi.`);
     }
@@ -4922,6 +5050,8 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       healedMembers,
       healedCoaches,
       healedTransactions,
+      healedStudents,
+      healedOsimMembers,
       totalHealed
     };
   };
