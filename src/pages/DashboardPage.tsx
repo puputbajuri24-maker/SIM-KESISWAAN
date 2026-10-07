@@ -282,24 +282,24 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
         <AnnouncementDashboardWidget onNavigate={onNavigate} />
 
         {/* Top Header Learning Portal Banner */}
-        <div className="p-4 bg-gradient-to-r from-[#0c121e] via-[#10192e] to-[#0a1628] border border-cyan-500/30 rounded-xl shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="p-4 bg-white dark:bg-gradient-to-r dark:from-[#0c121e] dark:via-[#10192e] dark:to-[#0a1628] border border-slate-200 dark:border-cyan-500/30 rounded-2xl shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-start space-x-3.5">
-            <div className="w-10 h-10 bg-cyan-500/10 border border-cyan-500/40 rounded-xl flex items-center justify-center text-cyan-400 font-mono font-bold text-sm shrink-0 shadow-inner">
-              <Crown className="w-5 h-5 text-cyan-400" />
+            <div className="w-10 h-10 bg-cyan-50 dark:bg-cyan-500/10 border border-cyan-200 dark:border-cyan-500/40 rounded-xl flex items-center justify-center text-cyan-700 dark:text-cyan-400 font-mono font-bold text-sm shrink-0 shadow-inner">
+              <Crown className="w-5 h-5 text-cyan-700 dark:text-cyan-400" />
             </div>
             <div>
               <div className="flex items-center space-x-2">
-                <span className="font-mono text-[10px] font-bold text-cyan-400 uppercase tracking-widest bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-500/20">
+                <span className="font-mono text-[10px] font-bold text-cyan-800 dark:text-cyan-400 uppercase tracking-widest bg-cyan-50 dark:bg-cyan-500/10 px-2 py-0.5 rounded border border-cyan-200 dark:border-cyan-500/20">
                   PORTAL SISWA OSIM • {deptCode}
                 </span>
-                <span className="bg-emerald-500/10 text-emerald-400 text-[10px] px-2 py-0.5 rounded border border-emerald-500/20 font-medium">
+                <span className="bg-emerald-50 dark:bg-emerald-500/10 text-emerald-800 dark:text-emerald-400 text-[10px] px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-500/20 font-bold">
                   {activeAcademicYear} ({activeSemester})
                 </span>
               </div>
-              <h2 className="text-base sm:text-lg font-bold text-white mt-1">
+              <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white mt-1">
                 {currentUser?.displayName || 'Pengurus Bidang'}
               </h2>
-              <p className="text-zinc-400 text-xs mt-0.5 max-w-2xl">
+              <p className="text-slate-600 dark:text-zinc-400 text-xs mt-0.5 max-w-2xl font-medium">
                 {isBph 
                   ? 'Portal koordinasi Badan Pengurus Harian untuk memantau sinergi 8 Sekbid dan tata kelola program intrakurikuler madrasah.'
                   : 'Ruang belajar mandiri bagi siswa pengurus untuk merencanakan program kerja, mengelola anggaran, serta menyusun LPJ kegiatan.'}
@@ -501,21 +501,21 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
         <AnnouncementDashboardWidget onNavigate={onNavigate} />
 
         {/* Top Header Banner */}
-        <div className="p-3 bg-[#0d0d0f] border border-[#27272a] rounded flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="p-3 bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-amber-600/20 border border-amber-500/40 rounded flex items-center justify-center text-amber-400 font-mono font-bold text-sm shrink-0">
+            <div className="w-8 h-8 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-center justify-center text-amber-600 dark:text-amber-400 font-mono font-bold text-sm shrink-0">
               OS
             </div>
             <div>
               <div className="flex items-center space-x-2">
-                <span className="font-mono text-[10px] font-bold text-amber-500 uppercase tracking-widest">
+                <span className="font-mono text-[10px] font-bold text-amber-600 dark:text-amber-500 uppercase tracking-widest">
                   OPS_TERMINAL / PEMBINA_OSIM_HQ
                 </span>
-                <span className="bg-amber-500/10 text-amber-400 text-[9px] px-1.5 py-0.2 rounded border border-amber-500/20 font-mono">
+                <span className="bg-amber-500/10 text-amber-700 dark:text-amber-400 text-[9px] px-1.5 py-0.2 rounded border border-amber-500/20 font-mono font-bold">
                   {activeAcademicYear} ({activeSemester})
                 </span>
               </div>
-              <h2 className="text-sm sm:text-base font-bold text-zinc-100 mt-0.5">
+              <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-zinc-100 mt-0.5">
                 {currentUser?.displayName} — Intrakurikuler & OSIM
               </h2>
             </div>
@@ -589,14 +589,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
         {/* OSIM Telemetry Grid */}
         <div className="grid grid-cols-12 gap-2">
           {/* Left 8 Cols: Program Kerja Progress Monitor */}
-          <div className="col-span-12 lg:col-span-8 p-3 bg-[#0d0d0f] border border-[#27272a] rounded flex flex-col">
+          <div className="col-span-12 lg:col-span-8 p-3 bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] rounded-xl flex flex-col shadow-xs">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-[10px] font-mono font-bold text-zinc-500 uppercase tracking-widest">
+              <h3 className="text-[10px] font-mono font-bold text-slate-600 dark:text-zinc-400 uppercase tracking-widest">
                 ROADMAP_PROGRAM_KERJA / OSIM_{activeAcademicYear.replace('/', '_')}
               </h3>
               <button
                 onClick={() => onNavigate('osim')}
-                className="text-[10px] font-mono text-amber-400 hover:underline"
+                className="text-[10px] font-mono font-bold text-amber-600 dark:text-amber-400 hover:underline"
               >
                 KELOLA_SEMUA →
               </button>
@@ -607,24 +607,24 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
                 <div
                   key={prog.id}
                   onClick={() => onNavigate('osim')}
-                  className="p-2 bg-[#161618] border border-[#27272a] rounded hover:border-amber-500/40 cursor-pointer transition-all"
+                  className="p-2 bg-slate-50 dark:bg-[#161618] border border-slate-200 dark:border-[#27272a] rounded-lg hover:border-amber-500/40 cursor-pointer transition-all"
                 >
                   <div className="flex items-center justify-between mb-1">
                     <div className="flex items-center space-x-2 truncate">
-                      <span className="font-bold text-zinc-200 truncate">{prog.title}</span>
-                      <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-zinc-800 text-amber-400 truncate max-w-[150px]">
+                      <span className="font-bold text-slate-900 dark:text-zinc-200 truncate">{prog.title}</span>
+                      <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-slate-200 dark:bg-zinc-800 text-amber-700 dark:text-amber-400 truncate max-w-[150px] font-bold">
                         {prog.sekbid}
                       </span>
                     </div>
                     <span className={`text-[9px] font-mono font-bold px-1.5 py-0.2 rounded ${
-                      prog.status === 'Selesai' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
-                      prog.status === 'Berlangsung' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' :
-                      'bg-zinc-800 text-zinc-400'
+                      prog.status === 'Selesai' ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20' :
+                      prog.status === 'Berlangsung' ? 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20' :
+                      'bg-slate-200 dark:bg-zinc-800 text-slate-700 dark:text-zinc-400'
                     }`}>
                       {prog.status.toUpperCase()} ({prog.progressPercentage}%)
                     </span>
                   </div>
-                  <div className="h-1 w-full bg-zinc-800 rounded-full overflow-hidden">
+                  <div className="h-1 w-full bg-slate-200 dark:bg-zinc-800 rounded-full overflow-hidden">
                     <div
                       className={`h-full ${
                         prog.progressPercentage >= 100 ? 'bg-emerald-500' :
@@ -639,12 +639,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
           </div>
 
           {/* Right 4 Cols: Kotak Aspirasi Masuk */}
-          <div className="col-span-12 lg:col-span-4 p-3 bg-[#0d0d0f] border border-[#27272a] rounded flex flex-col">
+          <div className="col-span-12 lg:col-span-4 p-3 bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] rounded-xl flex flex-col shadow-xs">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-[10px] font-mono font-bold text-zinc-500 uppercase tracking-widest">
+              <h3 className="text-[10px] font-mono font-bold text-slate-600 dark:text-zinc-400 uppercase tracking-widest">
                 ASPIRASI_SISWA / FEED
               </h3>
-              <span className="text-[9px] font-mono text-sky-400 bg-sky-500/10 px-1 py-0.2 rounded border border-sky-500/20">
+              <span className="text-[9px] font-mono text-sky-700 dark:text-sky-400 bg-sky-50 dark:bg-sky-500/10 px-1 py-0.2 rounded border border-sky-300 dark:border-sky-500/20 font-bold">
                 {osimAspirations.length} TERKIRIM
               </span>
             </div>
@@ -654,13 +654,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
                 <div
                   key={asp.id}
                   onClick={() => onNavigate('osim')}
-                  className="p-1.5 bg-[#161618] border border-[#27272a] rounded cursor-pointer hover:border-zinc-700"
+                  className="p-1.5 bg-slate-50 dark:bg-[#161618] border border-slate-200 dark:border-[#27272a] rounded-lg cursor-pointer hover:border-slate-300 dark:hover:border-zinc-700"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-zinc-200 truncate">{asp.category}</span>
-                    <span className="text-[8px] text-zinc-500">{asp.date}</span>
+                    <span className="font-bold text-slate-900 dark:text-zinc-200 truncate">{asp.category}</span>
+                    <span className="text-[8px] text-slate-500 dark:text-zinc-500">{asp.date}</span>
                   </div>
-                  <p className="text-zinc-400 text-[9px] font-sans line-clamp-2 mt-0.5">{asp.content}</p>
+                  <p className="text-slate-600 dark:text-zinc-400 text-[9px] font-sans line-clamp-2 mt-0.5">{asp.content}</p>
                 </div>
               ))}
             </div>
@@ -669,53 +669,53 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
 
         {/* Bottom OSIM Row: Sidang Schedule & Scope Info */}
         <div className="grid grid-cols-12 gap-2 font-mono text-[10px]">
-          <div className="col-span-12 lg:col-span-6 p-3 bg-[#0d0d0f] border border-[#27272a] rounded">
-            <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#27272a]">
-              <h3 className="font-bold text-zinc-500 uppercase tracking-widest text-[10px]">
+          <div className="col-span-12 lg:col-span-6 p-3 bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] rounded-xl shadow-xs">
+            <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-200 dark:border-[#27272a]">
+              <h3 className="font-bold text-slate-600 dark:text-zinc-400 uppercase tracking-widest text-[10px]">
                 AGENDA_SIDANG_&_RAPAT_PLENO
               </h3>
-              <button onClick={() => onNavigate('osim')} className="text-amber-400 text-[10px] hover:underline">
+              <button onClick={() => onNavigate('osim')} className="text-amber-600 dark:text-amber-400 text-[10px] font-bold hover:underline">
                 NOTULENSI →
               </button>
             </div>
             <div className="space-y-1.5">
               {osimMeetings.slice(0, 3).map(m => (
-                <div key={m.id} className="p-1.5 rounded bg-[#161618] border border-[#27272a] flex items-center justify-between">
+                <div key={m.id} className="p-1.5 rounded-lg bg-slate-50 dark:bg-[#161618] border border-slate-200 dark:border-[#27272a] flex items-center justify-between">
                   <div>
-                    <div className="font-bold text-zinc-200">{m.title}</div>
-                    <div className="text-zinc-500 text-[9px]">{m.location} • {m.leader}</div>
+                    <div className="font-bold text-slate-900 dark:text-zinc-200">{m.title}</div>
+                    <div className="text-slate-500 dark:text-zinc-500 text-[9px]">{m.location} • {m.leader}</div>
                   </div>
                   <div className="text-right text-[9px]">
-                    <span className="text-amber-400 font-bold block">{m.date}</span>
-                    <span className="text-zinc-500">{m.attendeesCount} Hadir</span>
+                    <span className="text-amber-600 dark:text-amber-400 font-bold block">{m.date}</span>
+                    <span className="text-slate-500 dark:text-zinc-500">{m.attendeesCount} Hadir</span>
                   </div>
                 </div>
               ))}
             </div>
           </div>
 
-          <div className="col-span-12 lg:col-span-6 p-3 bg-[#0d0d0f] border border-[#27272a] rounded flex flex-col justify-between">
+          <div className="col-span-12 lg:col-span-6 p-3 bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] rounded-xl flex flex-col justify-between shadow-xs">
             <div>
-              <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#27272a]">
-                <h3 className="font-bold text-zinc-500 uppercase tracking-widest text-[10px]">
+              <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-200 dark:border-[#27272a]">
+                <h3 className="font-bold text-slate-600 dark:text-zinc-400 uppercase tracking-widest text-[10px]">
                   OTORISASI_RUANG_LINGKUP / PEMBINA_OSIM
                 </h3>
-                <span className="text-emerald-400 font-bold">TERBATAS / SECURE</span>
+                <span className="text-emerald-600 dark:text-emerald-400 font-bold">TERBATAS / SECURE</span>
               </div>
-              <p className="text-zinc-400 font-sans text-xs">
+              <p className="text-slate-600 dark:text-zinc-400 font-sans text-xs">
                 Akun Pembina OSIM memiliki hak akses khusus untuk membimbing pengurus OSIM, memverifikasi program kerja intrakurikuler, menanggapi kotak aspirasi siswa, dan menyusun LPJ kegiatan OSIM.
               </p>
             </div>
             <div className="mt-3 flex items-center space-x-2">
               <button
                 onClick={() => onNavigate('osim')}
-                className="px-3 py-1 bg-amber-600/20 border border-amber-500/40 text-amber-400 rounded hover:bg-amber-600/30 transition-colors"
+                className="px-3 py-1 bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400 rounded-lg hover:bg-amber-500/20 font-bold transition-colors"
               >
                 Buka Menu OSIM Utama
               </button>
               <button
                 onClick={() => onNavigate('reports')}
-                className="px-3 py-1 bg-[#161618] border border-[#27272a] text-zinc-300 rounded hover:border-zinc-700 transition-colors"
+                className="px-3 py-1 bg-slate-100 dark:bg-[#161618] border border-slate-200 dark:border-[#27272a] text-slate-700 dark:text-zinc-300 rounded-lg hover:border-slate-300 dark:hover:border-zinc-700 transition-colors"
               >
                 Laporan LPJ
               </button>
@@ -734,13 +734,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
       return (
         <div className="space-y-4 font-sans text-xs select-none">
           <AnnouncementDashboardWidget onNavigate={onNavigate} />
-          <div className="p-8 bg-[#0d0d0f] border border-[#27272a] rounded-2xl text-center max-w-xl mx-auto my-6 space-y-4">
-            <div className="w-14 h-14 mx-auto rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+          <div className="p-8 bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] rounded-2xl text-center max-w-xl mx-auto my-6 space-y-4 shadow-xs">
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
               <Compass className="w-7 h-7" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white">Unit Ekstrakurikuler Belum Ditetapkan</h3>
-              <p className="text-xs text-zinc-400 mt-1 max-w-md mx-auto">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white">Unit Ekstrakurikuler Belum Ditetapkan</h3>
+              <p className="text-xs text-slate-600 dark:text-zinc-400 mt-1 max-w-md mx-auto">
                 Akun Pembina Anda (<strong>{currentUser?.displayName || 'Guru Pembina'}</strong>) belum dihubungkan ke unit ekstrakurikuler binaan atau data unit sedang disinkronisasi.
               </p>
             </div>
@@ -767,29 +767,29 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
         <AnnouncementDashboardWidget onNavigate={onNavigate} />
 
         {/* Top Header Banner */}
-        <div className="p-3.5 bg-[#0d0d0f] border border-[#27272a] rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-sm">
+        <div className="p-3.5 bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs">
           <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 bg-emerald-600/20 border border-emerald-500/40 rounded-lg flex items-center justify-center text-emerald-400 font-mono font-bold text-sm shrink-0 shadow-[0_0_12px_rgba(16,185,129,0.2)]">
+            <div className="w-10 h-10 bg-emerald-50 dark:bg-emerald-600/20 border border-emerald-200 dark:border-emerald-500/40 rounded-xl flex items-center justify-center text-emerald-700 dark:text-emerald-400 font-mono font-bold text-sm shrink-0 shadow-inner">
               PB
             </div>
             <div>
               <div className="flex items-center space-x-2">
-                <span className="font-mono text-[10px] font-bold text-emerald-500 uppercase tracking-widest">
+                <span className="font-mono text-[10px] font-bold text-emerald-800 dark:text-emerald-500 uppercase tracking-widest bg-emerald-50 dark:bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-500/20">
                   OPS_TERMINAL / PEMBINA_EKSKUL
                 </span>
-                <span className="bg-emerald-500/10 text-emerald-400 text-[9px] px-1.5 py-0.5 rounded border border-emerald-500/20 font-mono">
+                <span className="bg-slate-100 dark:bg-emerald-500/10 text-slate-700 dark:text-emerald-400 text-[10px] px-2 py-0.5 rounded border border-slate-200 dark:border-emerald-500/20 font-bold">
                   {activeAcademicYear} ({activeSemester})
                 </span>
                 {activeEkskul?.category && (
-                  <span className="bg-blue-500/10 text-blue-400 text-[9px] px-1.5 py-0.5 rounded border border-blue-500/20 font-mono">
+                  <span className="bg-blue-50 dark:bg-blue-500/10 text-blue-800 dark:text-blue-400 text-[10px] px-2 py-0.5 rounded border border-blue-200 dark:border-blue-500/20 font-bold">
                     KATEGORI: {activeEkskul.category.toUpperCase()}
                   </span>
                 )}
               </div>
-              <h2 className="text-base sm:text-lg font-bold text-white mt-0.5 flex items-center gap-2">
+              <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white mt-1 flex items-center gap-2">
                 <span>{currentUser?.displayName}</span>
-                <span className="text-zinc-500 font-normal">|</span>
-                <span className="text-emerald-400 font-semibold">{activeEkskul?.name || 'Ekstrakurikuler'}</span>
+                <span className="text-slate-400 dark:text-zinc-500 font-normal">|</span>
+                <span className="text-emerald-700 dark:text-emerald-400 font-extrabold">{activeEkskul?.name || 'Ekstrakurikuler'}</span>
               </h2>
             </div>
           </div>
@@ -797,28 +797,28 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
           <div className="flex flex-wrap items-center gap-2 font-mono">
             <button
               onClick={() => onNavigate('attendance')}
-              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs flex items-center space-x-1.5 shadow-[0_0_12px_rgba(16,185,129,0.35)] transition-all hover:scale-105"
+              className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center space-x-1.5 shadow-xs transition-all hover:scale-102"
             >
               <ClipboardCheck className="w-3.5 h-3.5" />
               <span>+ INPUT_PRESENSI</span>
             </button>
             <button
               onClick={() => onNavigate('schedules')}
-              className="px-2.5 py-1.5 rounded-lg bg-[#161618] border border-[#27272a] hover:border-emerald-500/40 text-zinc-200 font-medium text-xs flex items-center space-x-1.5 transition-colors"
+              className="px-2.5 py-1.5 rounded-xl bg-slate-50 dark:bg-[#161618] border border-slate-200 dark:border-[#27272a] hover:border-emerald-500/40 text-slate-800 dark:text-zinc-200 font-semibold text-xs flex items-center space-x-1.5 transition-colors"
             >
-              <Calendar className="w-3.5 h-3.5 text-indigo-400" />
+              <Calendar className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
               <span>+ JADWAL_SESI</span>
             </button>
             <button
               onClick={() => onNavigate('reports')}
-              className="px-2.5 py-1.5 rounded-lg bg-[#161618] border border-[#27272a] hover:border-blue-500/40 text-zinc-200 font-medium text-xs flex items-center space-x-1.5 transition-colors"
+              className="px-2.5 py-1.5 rounded-xl bg-slate-50 dark:bg-[#161618] border border-slate-200 dark:border-[#27272a] hover:border-blue-500/40 text-slate-800 dark:text-zinc-200 font-semibold text-xs flex items-center space-x-1.5 transition-colors"
             >
-              <FileText className="w-3.5 h-3.5 text-blue-400" />
+              <FileText className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
               <span>+ LPJ_KEGIATAN</span>
             </button>
             <button
               onClick={() => onNavigate('achievements')}
-              className="px-2.5 py-1.5 rounded-lg bg-[#161618] border border-[#27272a] hover:border-amber-500/40 text-amber-400 font-medium text-xs flex items-center space-x-1.5 transition-colors"
+              className="px-2.5 py-1.5 rounded-xl bg-slate-50 dark:bg-[#161618] border border-slate-200 dark:border-[#27272a] hover:border-amber-500/40 text-amber-700 dark:text-amber-400 font-semibold text-xs flex items-center space-x-1.5 transition-colors"
             >
               <Award className="w-3.5 h-3.5" />
               <span>+ PRESTASI</span>
@@ -828,18 +828,18 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
 
         {/* Multi-Ekskul Switcher (if coach teaches more than 1 extracurricular) */}
         {myAssignedEkskuls.length > 1 && (
-          <div className="p-2.5 bg-[#0d0d0f] border border-[#27272a] rounded-xl flex items-center gap-2 overflow-x-auto">
-            <span className="text-[10px] font-mono text-zinc-500 uppercase px-2 shrink-0">
+          <div className="p-2.5 bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] rounded-2xl flex items-center gap-2 overflow-x-auto shadow-xs">
+            <span className="text-[10px] font-mono text-slate-600 dark:text-zinc-500 uppercase px-2 shrink-0 font-bold">
               PILIH_UNIT_BINAAN:
             </span>
             {myAssignedEkskuls.map(ek => (
               <button
                 key={ek.id}
                 onClick={() => setSelectedPembinaEkskulId(ek.id)}
-                className={`px-3 py-1 rounded-lg text-xs font-mono font-medium transition-all shrink-0 ${
+                className={`px-3 py-1 rounded-xl text-xs font-mono font-bold transition-all shrink-0 ${
                   (activeEkskul?.id === ek.id)
-                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shadow-sm'
-                    : 'bg-[#161618] text-zinc-400 border border-[#27272a] hover:text-zinc-200 hover:border-zinc-700'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-slate-100 dark:bg-[#161618] text-slate-700 dark:text-zinc-400 border border-slate-200 dark:border-[#27272a] hover:text-slate-950 dark:hover:text-zinc-200'
                 }`}
               >
                 {ek.name} ({safeMembers.filter(m => m && m.extracurricularId === ek.id && m.status === 'Aktif').length} Siswa)
@@ -891,17 +891,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
         {/* Ekskul Schedule & Roster Grid */}
         <div className="grid grid-cols-12 gap-2">
           {/* Left 7 Cols: Sesi Latihan & Presensi Mendatang */}
-          <div className="col-span-12 lg:col-span-7 p-3.5 bg-[#0d0d0f] border border-[#27272a] rounded-xl flex flex-col">
-            <div className="flex items-center justify-between mb-3 pb-2 border-b border-[#27272a]">
+          <div className="col-span-12 lg:col-span-7 p-3.5 bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] rounded-xl flex flex-col shadow-xs">
+            <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-200 dark:border-[#27272a]">
               <div className="flex items-center space-x-2">
-                <Calendar className="w-4 h-4 text-emerald-400" />
-                <h3 className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-widest">
+                <Calendar className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <h3 className="text-[10px] font-mono font-bold text-slate-600 dark:text-zinc-400 uppercase tracking-widest">
                   SESI_LATIHAN & AGENDA / {activeEkskul?.name?.toUpperCase() || 'EKSKUL'}
                 </h3>
               </div>
               <button
                 onClick={() => onNavigate('schedules')}
-                className="text-[10px] font-mono text-emerald-400 hover:underline"
+                className="text-[10px] font-mono font-bold text-emerald-600 dark:text-emerald-400 hover:underline"
               >
                 KELOLA_JADWAL →
               </button>
@@ -911,30 +911,30 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
               {mySchedules.slice(0, 4).map(sch => (
                 <div
                   key={sch.id}
-                  className="p-2.5 bg-[#161618] border border-[#27272a] rounded-lg hover:border-emerald-500/40 flex items-center justify-between transition-all"
+                  className="p-2.5 bg-slate-50 dark:bg-[#161618] border border-slate-200 dark:border-[#27272a] rounded-lg hover:border-emerald-500/40 flex items-center justify-between transition-all"
                 >
                   <div className="space-y-0.5">
-                    <div className="font-bold text-zinc-100 flex items-center gap-2">
+                    <div className="font-bold text-slate-900 dark:text-zinc-100 flex items-center gap-2">
                       <span>{sch.title}</span>
-                      <span className={`text-[9px] font-mono px-1.5 py-0.2 rounded ${
-                        sch.status === 'Selesai' ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' :
-                        sch.status === 'Dijadwalkan' ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' :
-                        'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                      <span className={`text-[9px] font-mono px-1.5 py-0.2 rounded font-bold ${
+                        sch.status === 'Selesai' ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30' :
+                        sch.status === 'Dijadwalkan' ? 'bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/30' :
+                        'bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30'
                       }`}>
                         {sch.status}
                       </span>
                     </div>
-                    <div className="text-[11px] font-mono text-zinc-500">
+                    <div className="text-[11px] font-mono text-slate-600 dark:text-zinc-500">
                       📍 {sch.location} • ⏰ {sch.startTime} - {sch.endTime}
                     </div>
                   </div>
                   <div className="text-right font-mono flex items-center gap-2">
                     <div>
-                      <span className="text-emerald-400 font-bold text-xs block">{sch.date}</span>
+                      <span className="text-emerald-600 dark:text-emerald-400 font-bold text-xs block">{sch.date}</span>
                     </div>
                     <button
                       onClick={() => onNavigate('attendance')}
-                      className="px-2 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded text-[10px] font-mono border border-emerald-500/30 transition-colors"
+                      className="px-2 py-1 bg-emerald-50 dark:bg-emerald-500/10 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 rounded text-[10px] font-mono border border-emerald-200 dark:border-emerald-500/30 font-bold transition-colors"
                     >
                       Presensi
                     </button>
@@ -942,7 +942,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
                 </div>
               ))}
               {mySchedules.length === 0 && (
-                <div className="py-8 text-center text-zinc-500 font-mono bg-[#161618] rounded-lg border border-[#27272a]/60">
+                <div className="py-8 text-center text-slate-500 dark:text-zinc-500 font-mono bg-slate-50 dark:bg-[#161618] rounded-lg border border-slate-200 dark:border-[#27272a]/60">
                   Belum ada sesi latihan terdaftar. Klik "+ JADWAL_SESI" untuk membuat jadwal latihan baru.
                 </div>
               )}
@@ -950,11 +950,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
           </div>
 
           {/* Right 5 Cols: Anggota Binaan Terdaftar */}
-          <div className="col-span-12 lg:col-span-5 p-3.5 bg-[#0d0d0f] border border-[#27272a] rounded-xl flex flex-col">
-            <div className="flex items-center justify-between mb-3 pb-2 border-b border-[#27272a]">
+          <div className="col-span-12 lg:col-span-5 p-3.5 bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] rounded-xl flex flex-col shadow-xs">
+            <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-200 dark:border-[#27272a]">
               <div className="flex items-center space-x-2">
-                <Users className="w-4 h-4 text-indigo-400" />
-                <h3 className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-widest">
+                <Users className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                <h3 className="text-[10px] font-mono font-bold text-slate-600 dark:text-zinc-400 uppercase tracking-widest">
                   ROSTER_ANGGOTA_BINAAN ({myMembers.length})
                 </h3>
               </div>
@@ -1002,17 +1002,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
         {/* Prestasi & LPJ Activities Row */}
         <div className="grid grid-cols-12 gap-2">
           {/* Left 6 Cols: Prestasi Unit Binaan */}
-          <div className="col-span-12 lg:col-span-6 p-3.5 bg-[#0d0d0f] border border-[#27272a] rounded-xl flex flex-col">
-            <div className="flex items-center justify-between mb-3 pb-2 border-b border-[#27272a]">
+          <div className="col-span-12 lg:col-span-6 p-3.5 bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] rounded-xl flex flex-col shadow-xs">
+            <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-200 dark:border-[#27272a]">
               <div className="flex items-center space-x-2">
-                <Award className="w-4 h-4 text-amber-400" />
-                <h3 className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-widest">
+                <Award className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                <h3 className="text-[10px] font-mono font-bold text-slate-600 dark:text-zinc-400 uppercase tracking-widest">
                   PRESTASI & PENGHARGAAN ({myAchievements.length})
                 </h3>
               </div>
               <button
                 onClick={() => onNavigate('achievements')}
-                className="text-[10px] font-mono text-amber-400 hover:underline"
+                className="text-[10px] font-mono font-bold text-amber-600 dark:text-amber-400 hover:underline"
               >
                 + INPUT_PRESTASI →
               </button>
@@ -1020,23 +1020,23 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
 
             <div className="space-y-2 flex-1">
               {myAchievements.slice(0, 3).map(ach => (
-                <div key={ach.id} className="p-2.5 bg-[#161618] border border-[#27272a] rounded-lg flex items-center justify-between">
+                <div key={ach.id} className="p-2.5 bg-slate-50 dark:bg-[#161618] border border-slate-200 dark:border-[#27272a] rounded-lg flex items-center justify-between">
                   <div className="space-y-0.5">
-                    <div className="font-bold text-zinc-100 flex items-center gap-1.5">
-                      <span className="text-amber-400">🏆</span>
+                    <div className="font-bold text-slate-900 dark:text-zinc-100 flex items-center gap-1.5">
+                      <span className="text-amber-500">🏆</span>
                       <span>{ach.title}</span>
                     </div>
-                    <div className="text-[10px] font-mono text-zinc-500">
+                    <div className="text-[10px] font-mono text-slate-600 dark:text-zinc-500">
                       Oleh: {ach.studentName} ({ach.studentClass}) • Tingkat {ach.level}
                     </div>
                   </div>
-                  <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20 font-bold shrink-0">
+                  <span className="text-[10px] font-mono text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-500/10 px-2 py-0.5 rounded border border-amber-200 dark:border-amber-500/20 font-bold shrink-0">
                     {ach.date}
                   </span>
                 </div>
               ))}
               {myAchievements.length === 0 && (
-                <div className="py-6 text-center text-zinc-500 font-mono bg-[#161618] rounded-lg border border-[#27272a]/60">
+                <div className="py-6 text-center text-slate-500 dark:text-zinc-500 font-mono bg-slate-50 dark:bg-[#161618] rounded-lg border border-slate-200 dark:border-[#27272a]/60">
                   Belum ada catatan medali/piala. Catat raihan kejuaraan ekskul ini!
                 </div>
               )}
@@ -1044,17 +1044,17 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
           </div>
 
           {/* Right 6 Cols: LPJ & Proposal Anggaran */}
-          <div className="col-span-12 lg:col-span-6 p-3.5 bg-[#0d0d0f] border border-[#27272a] rounded-xl flex flex-col">
-            <div className="flex items-center justify-between mb-3 pb-2 border-b border-[#27272a]">
+          <div className="col-span-12 lg:col-span-6 p-3.5 bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] rounded-xl flex flex-col shadow-xs">
+            <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-200 dark:border-[#27272a]">
               <div className="flex items-center space-x-2">
-                <FileText className="w-4 h-4 text-blue-400" />
-                <h3 className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-widest">
+                <FileText className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <h3 className="text-[10px] font-mono font-bold text-slate-600 dark:text-zinc-400 uppercase tracking-widest">
                   PROPOSAL & LPJ KESISWAAN ({myReports.length})
                 </h3>
               </div>
               <button
                 onClick={() => onNavigate('reports')}
-                className="text-[10px] font-mono text-blue-400 hover:underline"
+                className="text-[10px] font-mono font-bold text-blue-600 dark:text-blue-400 hover:underline"
               >
                 + BUAT_LPJ →
               </button>
@@ -1062,24 +1062,24 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
 
             <div className="space-y-2 flex-1 font-mono text-[11px]">
               {myReports.slice(0, 3).map(rep => (
-                <div key={rep.id} className="p-2.5 bg-[#161618] border border-[#27272a] rounded-lg flex items-center justify-between">
+                <div key={rep.id} className="p-2.5 bg-slate-50 dark:bg-[#161618] border border-slate-200 dark:border-[#27272a] rounded-lg flex items-center justify-between">
                   <div>
-                    <div className="font-bold text-zinc-200">{rep.activityTitle}</div>
-                    <div className="text-[10px] text-zinc-500 mt-0.5">
+                    <div className="font-bold text-slate-900 dark:text-zinc-200">{rep.activityTitle}</div>
+                    <div className="text-[10px] text-slate-600 dark:text-zinc-500 mt-0.5">
                       Pengeluaran: Rp {(rep.totalBudgetSpent || 0).toLocaleString('id-ID')} • {rep.date}
                     </div>
                   </div>
                   <span className={`text-[9px] font-bold px-2 py-0.5 rounded ${
-                    rep.status === 'Disetujui' ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' :
-                    rep.status === 'Diajukan' ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' :
-                    'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+                    rep.status === 'Disetujui' ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30' :
+                    rep.status === 'Diajukan' ? 'bg-blue-500/15 text-blue-700 dark:text-blue-400 border border-blue-500/30' :
+                    'bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/30'
                   }`}>
                     {rep.status}
                   </span>
                 </div>
               ))}
               {myReports.length === 0 && (
-                <div className="py-6 text-center text-zinc-500 font-mono bg-[#161618] rounded-lg border border-[#27272a]/60">
+                <div className="py-6 text-center text-slate-500 dark:text-zinc-500 font-mono bg-slate-50 dark:bg-[#161618] rounded-lg border border-slate-200 dark:border-[#27272a]/60">
                   Belum ada proposal / LPJ yang diajukan untuk unit ekskul ini.
                 </div>
               )}
@@ -1089,22 +1089,22 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
 
         {/* Info Unit Ekskul Banner */}
         {activeEkskul && (
-          <div className="p-3.5 bg-[#0d0d0f] border border-[#27272a] rounded-xl grid grid-cols-1 md:grid-cols-3 gap-4 font-mono text-xs">
+          <div className="p-3.5 bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] rounded-xl grid grid-cols-1 md:grid-cols-3 gap-4 font-mono text-xs shadow-xs">
             <div className="space-y-1">
-              <span className="text-[10px] text-zinc-500 uppercase block font-bold">INFO_PEMBINA & LOKASI</span>
-              <div className="text-zinc-200 font-semibold">{activeEkskul.coachName}</div>
-              <div className="text-[11px] text-zinc-400">
+              <span className="text-[10px] text-slate-500 dark:text-zinc-500 uppercase block font-bold">INFO_PEMBINA & LOKASI</span>
+              <div className="text-slate-900 dark:text-zinc-200 font-semibold">{activeEkskul.coachName}</div>
+              <div className="text-[11px] text-slate-600 dark:text-zinc-400">
                 {activeEkskul.assistantCoachName ? `Asisten: ${activeEkskul.assistantCoachName}` : 'Pembina Tunggal'}
               </div>
-              <div className="text-[11px] text-emerald-400">📍 Lokasi: {activeEkskul.location}</div>
+              <div className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold">📍 Lokasi: {activeEkskul.location}</div>
             </div>
             <div className="space-y-1 md:col-span-2">
-              <span className="text-[10px] text-zinc-500 uppercase block font-bold">TARGET & VISI CAPAIAN</span>
-              <div className="text-zinc-300 text-[11px] italic">
+              <span className="text-[10px] text-slate-500 dark:text-zinc-500 uppercase block font-bold">TARGET & VISI CAPAIAN</span>
+              <div className="text-slate-700 dark:text-zinc-300 text-[11px] italic">
                 "{activeEkskul.target || activeEkskul.vision || 'Membina bakat minat dan mengukir prestasi siswa madrasah.'}"
               </div>
-              <div className="text-[10px] text-zinc-500">
-                Jadwal Rutin: Setiap hari <span className="text-zinc-300 font-bold">{activeEkskul.day}</span> pukul <span className="text-zinc-300 font-bold">{activeEkskul.startTime} - {activeEkskul.endTime} WIB</span>
+              <div className="text-[10px] text-slate-500 dark:text-zinc-500">
+                Jadwal Rutin: Setiap hari <span className="text-slate-800 dark:text-zinc-300 font-bold">{activeEkskul.day}</span> pukul <span className="text-slate-800 dark:text-zinc-300 font-bold">{activeEkskul.startTime} - {activeEkskul.endTime} WIB</span>
               </div>
             </div>
           </div>
@@ -1128,21 +1128,21 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
         <AnnouncementDashboardWidget onNavigate={onNavigate} />
 
         {/* 1. Header Banner */}
-        <div className="p-3 bg-[#0d0d0f] border border-[#27272a] rounded flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="p-3 bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs">
           <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-pink-600/20 border border-pink-500/40 rounded flex items-center justify-center text-pink-400 font-mono font-bold text-sm shrink-0">
+            <div className="w-8 h-8 bg-pink-500/10 border border-pink-500/30 rounded-lg flex items-center justify-center text-pink-600 dark:text-pink-400 font-mono font-bold text-sm shrink-0">
               BK
             </div>
             <div>
               <div className="flex items-center space-x-2">
-                <span className="font-mono text-[10px] font-bold text-pink-500 uppercase tracking-widest">
+                <span className="font-mono text-[10px] font-bold text-pink-600 dark:text-pink-500 uppercase tracking-widest">
                   OPS_TERMINAL / GURU_BK_HQ
                 </span>
-                <span className="bg-pink-500/10 text-pink-400 text-[9px] px-1.5 py-0.2 rounded border border-pink-500/20 font-mono">
+                <span className="bg-pink-500/10 text-pink-700 dark:text-pink-400 text-[9px] px-1.5 py-0.2 rounded border border-pink-500/20 font-mono font-bold">
                   {activeAcademicYear} ({activeSemester})
                 </span>
               </div>
-              <h2 className="text-sm sm:text-base font-bold text-zinc-100 mt-0.5">
+              <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-zinc-100 mt-0.5">
                 {currentUser?.displayName} — Pusat Bimbingan, Konseling & Advokasi Siswa
               </h2>
             </div>
@@ -1225,14 +1225,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
           {/* Left Column (8 cols): Sesi Konseling & Kunjungan Rumah Terkini */}
           <div className="col-span-12 lg:col-span-8 space-y-2">
             {/* Sesi Konseling Terkini */}
-            <div className="p-3 bg-[#0d0d0f] border border-[#27272a] rounded">
+            <div className="p-3 bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] rounded-xl shadow-xs">
               <div className="flex items-center justify-between mb-2">
-                <h3 className="text-[10px] font-mono font-bold text-zinc-500 uppercase tracking-widest">
+                <h3 className="text-[10px] font-mono font-bold text-slate-600 dark:text-zinc-400 uppercase tracking-widest">
                   SESI_KONSELING_TERKINI & ATENSI KHUSUS
                 </h3>
                 <button
                   onClick={() => onNavigate('counseling')}
-                  className="text-[10px] font-mono text-pink-400 hover:underline"
+                  className="text-[10px] font-mono font-bold text-pink-600 dark:text-pink-400 hover:underline"
                 >
                   SEMUA_KONSELING →
                 </button>
@@ -1243,23 +1243,23 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
                   <div
                     key={c.id}
                     onClick={() => onNavigate('counseling')}
-                    className="p-2 bg-[#161618] border border-[#27272a] rounded hover:border-pink-500/40 flex items-center justify-between cursor-pointer transition-all"
+                    className="p-2 bg-slate-50 dark:bg-[#161618] border border-slate-200 dark:border-[#27272a] rounded-lg hover:border-pink-500/40 flex items-center justify-between cursor-pointer transition-all"
                   >
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-zinc-200">{c.studentName}</span>
-                        <span className="text-[10px] text-zinc-500">({c.studentClass})</span>
-                        <span className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-pink-500/20 text-pink-300 border border-pink-500/30">
+                        <span className="font-bold text-slate-900 dark:text-zinc-200">{c.studentName}</span>
+                        <span className="text-[10px] text-slate-600 dark:text-zinc-400">({c.studentClass})</span>
+                        <span className="px-1.5 py-0.2 rounded text-[9px] font-mono bg-pink-50 dark:bg-pink-500/20 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-500/30 font-bold">
                           {c.serviceField || 'Belajar'}
                         </span>
                       </div>
-                      <p className="text-[11px] text-zinc-400 line-clamp-1 mt-0.5">{c.topic}</p>
+                      <p className="text-[11px] text-slate-600 dark:text-zinc-400 line-clamp-1 mt-0.5">{c.topic}</p>
                     </div>
 
                     <div className="text-right font-mono text-[9px] shrink-0">
-                      <span className="text-zinc-400 block">{c.date}</span>
+                      <span className="text-slate-600 dark:text-zinc-400 block">{c.date}</span>
                       <span className={`font-bold ${
-                        c.status === 'Selesai' ? 'text-emerald-400' : 'text-amber-400'
+                        c.status === 'Selesai' ? 'text-emerald-700 dark:text-emerald-400' : 'text-amber-700 dark:text-amber-400'
                       }`}>
                         {c.status}
                       </span>
@@ -1267,7 +1267,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
                   </div>
                 ))}
                 {safeCounseling.length === 0 && (
-                  <div className="py-6 text-center text-zinc-600 font-mono text-xs">
+                  <div className="py-6 text-center text-slate-500 dark:text-zinc-500 font-mono text-xs">
                     Belum ada data sesi konseling terdata
                   </div>
                 )}
@@ -1275,14 +1275,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
             </div>
 
             {/* Agenda Kunjungan Rumah */}
-            <div className="p-3 bg-[#0d0d0f] border border-[#27272a] rounded">
+            <div className="p-3 bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] rounded-xl shadow-xs">
               <div className="flex items-center justify-between mb-2">
-                <h3 className="text-[10px] font-mono font-bold text-zinc-500 uppercase tracking-widest">
+                <h3 className="text-[10px] font-mono font-bold text-slate-600 dark:text-zinc-400 uppercase tracking-widest">
                   AGENDA_KUNJUNGAN_RUMAH (HOME VISIT)
                 </h3>
                 <button
                   onClick={() => onNavigate('counseling')}
-                  className="text-[10px] font-mono text-purple-400 hover:underline"
+                  className="text-[10px] font-mono font-bold text-purple-600 dark:text-purple-400 hover:underline"
                 >
                   LIHAT_BERITA_ACARA →
                 </button>
@@ -1293,24 +1293,24 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
                   <div
                     key={h.id}
                     onClick={() => onNavigate('counseling')}
-                    className="p-2 bg-[#161618] border border-[#27272a] rounded hover:border-purple-500/40 flex items-center justify-between cursor-pointer transition-all"
+                    className="p-2 bg-slate-50 dark:bg-[#161618] border border-slate-200 dark:border-[#27272a] rounded-lg hover:border-purple-500/40 flex items-center justify-between cursor-pointer transition-all"
                   >
                     <div>
                       <div className="flex items-center gap-2">
-                        <span className="font-bold text-zinc-200">{h.studentName}</span>
-                        <span className="text-[10px] text-zinc-500">Kelas: {h.studentClass}</span>
+                        <span className="font-bold text-slate-900 dark:text-zinc-200">{h.studentName}</span>
+                        <span className="text-[10px] text-slate-600 dark:text-zinc-400">Kelas: {h.studentClass}</span>
                       </div>
-                      <p className="text-[11px] text-amber-400/90 line-clamp-1 mt-0.5">{h.purpose}</p>
+                      <p className="text-[11px] text-amber-700 dark:text-amber-400/90 line-clamp-1 mt-0.5">{h.purpose}</p>
                     </div>
 
                     <div className="text-right font-mono text-[9px] shrink-0">
-                      <span className="text-purple-400 font-bold block">{h.date}</span>
-                      <span className="text-zinc-500">{h.status}</span>
+                      <span className="text-purple-700 dark:text-purple-400 font-bold block">{h.date}</span>
+                      <span className="text-slate-600 dark:text-zinc-400">{h.status}</span>
                     </div>
                   </div>
                 ))}
                 {safeHomeVisits.length === 0 && (
-                  <div className="py-4 text-center text-zinc-600 font-mono text-xs">
+                  <div className="py-4 text-center text-slate-500 dark:text-zinc-500 font-mono text-xs">
                     Belum ada agenda home visit
                   </div>
                 )}
@@ -1321,14 +1321,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
           {/* Right Column (4 cols): Siswa Pelanggaran & Panggilan Ortu */}
           <div className="col-span-12 lg:col-span-4 space-y-2">
             {/* Siswa Prioritas Atensi BK */}
-            <div className="p-3 bg-[#0d0d0f] border border-[#27272a] rounded">
+            <div className="p-3 bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] rounded-xl shadow-xs">
               <div className="flex items-center justify-between mb-2">
-                <h3 className="text-[10px] font-mono font-bold text-zinc-500 uppercase tracking-widest">
+                <h3 className="text-[10px] font-mono font-bold text-slate-600 dark:text-zinc-400 uppercase tracking-widest">
                   SISWA_PERLU_ATENSI_BK
                 </h3>
                 <button
                   onClick={() => onNavigate('violations')}
-                  className="text-[10px] font-mono text-red-400 hover:underline"
+                  className="text-[10px] font-mono font-bold text-red-600 dark:text-red-400 hover:underline"
                 >
                   PELANGGARAN →
                 </button>
@@ -1343,14 +1343,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
                     <div
                       key={st.id}
                       onClick={() => onNavigate('students')}
-                      className="p-1.5 bg-[#161618] border border-[#27272a] rounded hover:border-red-500/40 flex items-center justify-between cursor-pointer"
+                      className="p-1.5 bg-slate-50 dark:bg-[#161618] border border-slate-200 dark:border-[#27272a] rounded-lg hover:border-red-500/40 flex items-center justify-between cursor-pointer"
                     >
                       <div>
-                        <div className="font-bold text-zinc-200">{st.fullName}</div>
-                        <div className="text-[9px] text-zinc-500">Kelas: {st.className}</div>
+                        <div className="font-bold text-slate-900 dark:text-zinc-200">{st.fullName}</div>
+                        <div className="text-[9px] text-slate-600 dark:text-zinc-400">Kelas: {st.className}</div>
                       </div>
                       <div className="text-right">
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-50 dark:bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-500/30">
                           {st.violationPoints} P
                         </span>
                       </div>
@@ -1360,14 +1360,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
             </div>
 
             {/* Status Surat Panggilan Ortu Terkini */}
-            <div className="p-3 bg-[#0d0d0f] border border-[#27272a] rounded">
+            <div className="p-3 bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] rounded-xl shadow-xs">
               <div className="flex items-center justify-between mb-2">
-                <h3 className="text-[10px] font-mono font-bold text-zinc-500 uppercase tracking-widest">
+                <h3 className="text-[10px] font-mono font-bold text-slate-600 dark:text-zinc-400 uppercase tracking-widest">
                   STATUS_SURAT_PANGGILAN_ORTU
                 </h3>
                 <button
                   onClick={() => onNavigate('counseling')}
-                  className="text-[10px] font-mono text-blue-400 hover:underline"
+                  className="text-[10px] font-mono font-bold text-blue-600 dark:text-blue-400 hover:underline"
                 >
                   KELOLA_SP →
                 </button>

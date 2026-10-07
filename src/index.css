@@ -6,9 +6,13 @@
 
 @layer base {
   :root {
-    color-scheme: dark;
+    color-scheme: light;
     --font-app: "Plus Jakarta Sans", "Inter", "Roboto", -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
     --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  }
+
+  :root.dark, [data-mode="dark"], html.dark {
+    color-scheme: dark;
   }
 
   :root.light, [data-mode="light"], html.light {
@@ -169,7 +173,7 @@
   /* ------------------------------------------------------------- */
   /* THEME PALETTES - LIGHT MODE CSS VARIABLES (MAXIMUM CONTRAST)  */
   /* ------------------------------------------------------------- */
-  :root.light, :root.light[data-theme="navy"], [data-mode="light"][data-theme="navy"] {
+  :root, :root.light, :root.light[data-theme="navy"], [data-mode="light"][data-theme="navy"] {
     --bg-page: #f4f6fb;
     --bg-header: #ffffff;
     --bg-sidebar: #ffffff;
@@ -669,7 +673,7 @@ html.light,
   }
 
   /* High contrast primary text & headings in Light Mode */
-  .text-white:not(button):not([class*="bg-blue-"]):not([class*="bg-indigo-"]):not([class*="bg-emerald-"]):not([class*="bg-amber-"]):not([class*="bg-red-"]):not([class*="bg-purple-"]):not([class*="bg-rose-"]):not([class*="bg-cyan-"]):not([class*="from-"]):not([class*="from-"] *):not([class*="bg-gradient-"]):not([class*="bg-gradient-"] *):not(.auth-hero-panel *):not(.preserve-dark *):not(.preserve-dark),
+  .text-white:not(button):not([class*="bg-blue-"]):not([class*="bg-indigo-"]):not([class*="bg-emerald-"]):not([class*="bg-amber-"]):not([class*="bg-red-"]):not([class*="bg-purple-"]):not([class*="bg-rose-"]):not([class*="bg-cyan-"]):not(.auth-hero-panel *),
   .text-slate-50,
   .text-slate-100,
   .text-slate-200,
@@ -722,14 +726,14 @@ html.light,
   }
 
   /* Hover text contrast safeguards in Light Mode */
-  .hover\:text-white:hover:not(button.bg-blue-600):not(button.bg-indigo-600):not(button.bg-emerald-600):not(button.bg-red-600):not(button.bg-purple-600):not(button.bg-amber-600):not(button.bg-cyan-600):not([class*="bg-blue-"]):not([class*="bg-emerald-"]):not([class*="bg-indigo-"]):not([class*="bg-red-"]):not([class*="bg-purple-"]):not([class*="bg-cyan-"]):not([class*="from-"]):not([class*="from-"] *):not([class*="bg-gradient-"]):not([class*="bg-gradient-"] *):not(.auth-hero-panel *):not(.preserve-dark *),
+  .hover\:text-white:hover:not(button.bg-blue-600):not(button.bg-indigo-600):not(button.bg-emerald-600):not(button.bg-red-600):not(button.bg-purple-600):not(button.bg-amber-600):not(button.bg-cyan-600):not([class*="bg-blue-"]):not([class*="bg-emerald-"]):not([class*="bg-indigo-"]):not([class*="bg-red-"]):not([class*="bg-purple-"]):not([class*="bg-cyan-"]):not(.auth-hero-panel *),
   .hover\:text-zinc-100:hover,
   .hover\:text-zinc-200:hover,
   .hover\:text-slate-200:hover {
     color: var(--text-primary) !important;
   }
 
-  /* SOLID BUTTONS, GRADIENT CARDS & AVATARS ALWAYS RETAIN PURE WHITE TEXT */
+  /* SOLID BUTTONS & DEDICATED DARK PANELS RETAIN PURE WHITE TEXT */
   button.bg-blue-600,
   button.bg-indigo-600,
   button.bg-emerald-600,
@@ -773,11 +777,8 @@ html.light,
   button.bg-amber-600 *,
   button.bg-rose-600 *,
   button.bg-cyan-600 *,
-  [class*="bg-gradient-"] *,
-  [class*="from-"] *,
-  [class*="from-blue-600"] *,
-  [class*="from-indigo-600"] *,
-  [class*="from-emerald-600"] * {
+  .auth-hero-panel,
+  .auth-hero-panel * {
     color: #ffffff !important;
     fill: currentColor;
   }
@@ -831,12 +832,36 @@ html.light,
   .text-purple-200,
   .text-purple-300,
   .text-purple-400,
+  .text-violet-50,
+  .text-violet-100,
+  .text-violet-200,
+  .text-violet-300,
+  .text-violet-400,
   .text-indigo-50,
   .text-indigo-100,
   .text-indigo-200,
   .text-indigo-300,
   .text-indigo-400 {
     color: #6d28d9 !important;
+  }
+  .text-pink-50,
+  .text-pink-100,
+  .text-pink-200,
+  .text-pink-300,
+  .text-pink-400,
+  .text-fuchsia-50,
+  .text-fuchsia-100,
+  .text-fuchsia-200,
+  .text-fuchsia-300,
+  .text-fuchsia-400 {
+    color: #be185d !important;
+  }
+  .text-lime-50,
+  .text-lime-100,
+  .text-lime-200,
+  .text-lime-300,
+  .text-lime-400 {
+    color: #3f6212 !important;
   }
   .text-cyan-50,
   .text-cyan-100,
@@ -1087,7 +1112,7 @@ html.light,
   }
 
   /* Form Controls: Inputs, Textarea, Selects */
-  label:not(.auth-hero-panel *):not(.preserve-dark *),
+  label:not(.auth-hero-panel *),
   .form-label {
     color: #0f172a !important;
     font-weight: 600 !important;
@@ -1191,63 +1216,53 @@ html.light,
 }
 
 /* ------------------------------------------------------------- */
-/* 2.1 AUTH HERO & PRESERVED DARK PANELS (GUARANTEED CONTRAST)   */
+/* 2.1 AUTH HERO PANEL (LOGIN HERO SECTION ONLY)                 */
 /* ------------------------------------------------------------- */
-.auth-hero-panel,
-.preserve-dark {
+.auth-hero-panel {
   background: linear-gradient(135deg, #052015 0%, #082d1e 50%, #0c3e29 100%) !important;
   color: #ffffff !important;
 }
 
-.auth-hero-panel *,
-.preserve-dark * {
+.auth-hero-panel * {
   -webkit-font-smoothing: antialiased;
 }
 
-.auth-hero-panel .hero-title,
-.preserve-dark .hero-title {
+.auth-hero-panel .hero-title {
   color: #ffffff !important;
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
 }
 
-.auth-hero-panel .hero-subtitle,
-.preserve-dark .hero-subtitle {
+.auth-hero-panel .hero-subtitle {
   color: #fde047 !important; /* High contrast vibrant gold */
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 }
 
-.auth-hero-panel .hero-description,
-.preserve-dark .hero-description {
+.auth-hero-panel .hero-description {
   color: #ecfdf5 !important; /* Mint white with 14:1 contrast */
 }
 
-.auth-hero-panel .hero-feature-card,
-.preserve-dark .hero-feature-card {
+.auth-hero-panel .hero-feature-card {
   background-color: rgba(4, 28, 18, 0.88) !important;
   border: 1px solid rgba(16, 185, 129, 0.4) !important;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25) !important;
 }
 
-.auth-hero-panel .hero-feature-card span,
-.preserve-dark .hero-feature-card span {
+.auth-hero-panel .hero-feature-card span {
   color: #ffffff !important;
   font-weight: 700 !important;
 }
 
-.auth-hero-panel .hero-badge,
-.preserve-dark .hero-badge {
+.auth-hero-panel .hero-badge {
   background-color: rgba(3, 22, 14, 0.85) !important;
   border: 1px solid rgba(16, 185, 129, 0.4) !important;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2) !important;
 }
 
-.auth-hero-panel .hero-badge h3,
-.preserve-dark .hero-badge h3 {
+.auth-hero-panel .hero-badge h3 {
   color: #ffffff !important;
 }
 
-.auth-hero-panel .hero-badge p,
-.preserve-dark .hero-badge p {
+.auth-hero-panel .hero-badge p {
   color: #6ee7b7 !important;
 }
 
@@ -1271,14 +1286,27 @@ html.dark,
       color: #e2e8f0 !important;
     }
 
+    .text-slate-600:not(.bg-white *):not(.bg-slate-50 *):not(button.bg-white *),
+    .text-zinc-600:not(.bg-white *):not(.bg-zinc-50 *):not(button.bg-white *),
+    .text-gray-600:not(.bg-white *):not(.bg-gray-50 *):not(button.bg-white *) {
+      color: #cbd5e1 !important;
+    }
+
+    .text-zinc-500:not(.bg-white *):not(.bg-slate-50 *),
+    .text-slate-500:not(.bg-white *):not(.bg-slate-50 *),
+    .text-gray-500:not(.bg-white *):not(.bg-gray-50 *) {
+      color: #94a3b8 !important;
+    }
+
     /* Boost readable contrast of labels and muted text in dark mode */
     label:not(.text-white):not([class*="text-emerald-"]):not([class*="text-indigo-"]):not([class*="text-amber-"]):not([class*="text-red-"]) {
       color: #f1f5f9;
     }
 
     .text-zinc-400,
-    .text-slate-400 {
-      color: #94a3b8;
+    .text-slate-400,
+    .text-gray-400 {
+      color: #94a3b8 !important;
     }
   }
 }

@@ -1153,21 +1153,21 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
   return (
     <div className="space-y-3 font-sans text-xs select-none">
       {/* 1. Header Banner */}
-      <div className="p-3 bg-[#0d0d0f] border border-[#27272a] rounded flex flex-col md:flex-row md:items-center justify-between gap-3">
+      <div className="p-3 bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs">
         <div className="flex items-center space-x-3">
-          <div className="w-8 h-8 bg-pink-600/20 border border-pink-500/40 rounded flex items-center justify-center text-pink-400 font-mono font-bold text-sm shrink-0">
+          <div className="w-8 h-8 bg-pink-500/10 border border-pink-500/30 rounded-lg flex items-center justify-center text-pink-600 dark:text-pink-400 font-mono font-bold text-sm shrink-0">
             BK
           </div>
           <div>
             <div className="flex items-center space-x-2">
-              <span className="font-mono text-[10px] font-bold text-pink-500 uppercase tracking-widest">
+              <span className="font-mono text-[10px] font-bold text-pink-600 dark:text-pink-500 uppercase tracking-widest">
                 PUSAT_LAYANAN_BK / BIMBINGAN_KONSELING
               </span>
-              <span className="bg-pink-500/10 text-pink-400 text-[9px] px-1.5 py-0.2 rounded border border-pink-500/20 font-mono">
+              <span className="bg-pink-500/10 text-pink-700 dark:text-pink-400 text-[9px] px-1.5 py-0.2 rounded border border-pink-500/20 font-mono font-bold">
                 TA {activeAcademicYear}
               </span>
             </div>
-            <h2 className="text-sm sm:text-base font-bold text-zinc-100 mt-0.5">
+            <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-zinc-100 mt-0.5">
               Layanan Bimbingan Konseling, Kunjungan Rumah & Advokasi Siswa
             </h2>
           </div>
@@ -1341,17 +1341,17 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
           className="space-y-3"
         >
           {/* Quick Filter Bar */}
-          <div className="p-2.5 bg-[#0d0d0f] border border-[#27272a] rounded flex flex-wrap items-center justify-between gap-2">
+          <div className="p-2.5 bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] rounded-xl flex flex-wrap items-center justify-between gap-2 shadow-xs">
             <div className="flex flex-wrap items-center gap-2 font-mono text-[10px]">
-              <span className="text-zinc-500">FILTER_BIDANG:</span>
+              <span className="text-slate-600 dark:text-zinc-400 font-bold">FILTER_BIDANG:</span>
               {['all', 'Belajar', 'Pribadi', 'Sosial', 'Karir'].map(field => (
                 <button
                   key={field}
                   onClick={() => setCounselingFieldFilter(field)}
                   className={`px-2 py-0.5 rounded border transition-colors ${
                     counselingFieldFilter === field
-                      ? 'bg-pink-600/20 border-pink-500/40 text-pink-400 font-bold'
-                      : 'bg-[#161618] border-[#27272a] text-zinc-400 hover:text-zinc-200'
+                      ? 'bg-pink-50 dark:bg-pink-600/20 border-pink-300 dark:border-pink-500/40 text-pink-700 dark:text-pink-400 font-bold'
+                      : 'bg-slate-50 dark:bg-[#161618] border-slate-200 dark:border-[#27272a] text-slate-700 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200'
                   }`}
                 >
                   {field.toUpperCase()}
@@ -1415,17 +1415,17 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
           transition={{ duration: 0.18, ease: 'easeOut' }}
           className="space-y-3"
         >
-          <div className="p-2.5 bg-[#0d0d0f] border border-[#27272a] rounded flex flex-wrap items-center justify-between gap-2">
+          <div className="p-2.5 bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] rounded-xl flex flex-wrap items-center justify-between gap-2 shadow-xs">
             <div className="flex items-center gap-2 font-mono text-[10px]">
-              <span className="text-zinc-500">STATUS_KUNJUNGAN:</span>
+              <span className="text-slate-600 dark:text-zinc-400 font-bold">STATUS_KUNJUNGAN:</span>
               {['all', 'Terlaksana', 'Terjadwal', 'Perlu Kunjungan Lanjut', 'Dibatalkan'].map(st => (
                 <button
                   key={st}
                   onClick={() => setHomeVisitStatusFilter(st)}
                   className={`px-2 py-0.5 rounded border transition-colors ${
                     homeVisitStatusFilter === st
-                      ? 'bg-purple-600/20 border-purple-500/40 text-purple-400 font-bold'
-                      : 'bg-[#161618] border-[#27272a] text-zinc-400 hover:text-zinc-200'
+                      ? 'bg-purple-50 dark:bg-purple-600/20 border-purple-300 dark:border-purple-500/40 text-purple-700 dark:text-purple-400 font-bold'
+                      : 'bg-slate-50 dark:bg-[#161618] border-slate-200 dark:border-[#27272a] text-slate-700 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200'
                   }`}
                 >
                   {st.toUpperCase()}
@@ -1475,52 +1475,52 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
           className="space-y-3"
         >
           {/* Disciplinary Summary Banner SK B-380 */}
-          <div className="p-3 bg-[#0d0d0f] border border-[#27272a] rounded space-y-2">
+          <div className="p-3 bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] rounded-xl space-y-2 shadow-xs">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <Scale className="w-4 h-4 text-amber-400" />
-                <span className="font-mono text-xs font-bold text-zinc-200">
+                <Scale className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                <span className="font-mono text-xs font-bold text-slate-900 dark:text-zinc-200">
                   5 TAHAPAN SANKSI & PEMANGGILAN RESMI (SK KEPALA MADRASAH B-380)
                 </span>
               </div>
               <button
                 onClick={() => handleOpenAddParentCall()}
-                className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-white font-mono text-xs font-bold flex items-center gap-1.5 shadow-[0_0_10px_rgba(59,130,246,0.3)] transition-all"
+                className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-mono text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>TERBITKAN_SURAT_SP_BARU</span>
               </button>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-5 gap-2 text-[11px] font-mono">
-              <div className="p-2 rounded bg-amber-950/20 border border-amber-800/40 text-amber-300">
-                <div className="font-bold text-amber-200">Tahap 1 (10-20 Poin)</div>
-                <div className="text-[10px] text-amber-400/80">Peringatan Lisan 1 & 2</div>
-                <div className="text-[9px] text-zinc-400 mt-1">Penandatangan: Wali Kelas</div>
+              <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/40 text-amber-800 dark:text-amber-300">
+                <div className="font-bold text-amber-900 dark:text-amber-200">Tahap 1 (10-20 Poin)</div>
+                <div className="text-[10px] text-amber-700 dark:text-amber-400/80">Peringatan Lisan 1 & 2</div>
+                <div className="text-[9px] text-slate-600 dark:text-zinc-400 mt-1">Penandatangan: Wali Kelas</div>
               </div>
-              <div className="p-2 rounded bg-blue-950/20 border border-blue-800/40 text-blue-300">
-                <div className="font-bold text-blue-200">Tahap 2 (21-40 Poin)</div>
-                <div className="text-[10px] text-blue-400/80">SP 1 & Panggilan I</div>
-                <div className="text-[9px] text-zinc-400 mt-1">Penandatangan: Wali Kelas & BK</div>
+              <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/40 text-blue-800 dark:text-blue-300">
+                <div className="font-bold text-blue-900 dark:text-blue-200">Tahap 2 (21-40 Poin)</div>
+                <div className="text-[10px] text-blue-700 dark:text-blue-400/80">SP 1 & Panggilan I</div>
+                <div className="text-[9px] text-slate-600 dark:text-zinc-400 mt-1">Penandatangan: Wali Kelas & BK</div>
               </div>
-              <div className="p-2 rounded bg-rose-950/20 border border-rose-800/40 text-rose-300">
-                <div className="font-bold text-rose-200">Tahap 3 (41-75 Poin)</div>
-                <div className="text-[10px] text-rose-400/80">SP 2 & Skorsing 3 Hari</div>
-                <div className="text-[9px] text-zinc-400 mt-1">Penandatangan: Waka Kesiswaan & BK</div>
+              <div className="p-2 rounded-lg bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-800/40 text-rose-800 dark:text-rose-300">
+                <div className="font-bold text-rose-900 dark:text-rose-200">Tahap 3 (41-75 Poin)</div>
+                <div className="text-[10px] text-rose-700 dark:text-rose-400/80">SP 2 & Skorsing 3 Hari</div>
+                <div className="text-[9px] text-slate-600 dark:text-zinc-400 mt-1">Penandatangan: Waka Kesiswaan & BK</div>
               </div>
-              <div className="p-2 rounded bg-red-950/20 border border-red-800/40 text-red-300">
-                <div className="font-bold text-red-200">Tahap 4 (76-99 Poin)</div>
-                <div className="text-[10px] text-red-400/80">SP 3 (Peringatan Terakhir)</div>
-                <div className="text-[9px] text-zinc-400 mt-1">Penandatangan: Kepala Madrasah & Waka</div>
+              <div className="p-2 rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800/40 text-red-800 dark:text-red-300">
+                <div className="font-bold text-red-900 dark:text-red-200">Tahap 4 (76-99 Poin)</div>
+                <div className="text-[10px] text-red-700 dark:text-red-400/80">SP 3 (Peringatan Terakhir)</div>
+                <div className="text-[9px] text-slate-600 dark:text-zinc-400 mt-1">Penandatangan: Kepala Madrasah & Waka</div>
               </div>
-              <div className="p-2 rounded bg-purple-950/20 border border-purple-800/40 text-purple-300">
-                <div className="font-bold text-purple-200">Tahap 5 (≥100 Poin)</div>
-                <div className="text-[10px] text-purple-400/80">Pengembalian ke Ortu</div>
-                <div className="text-[9px] text-zinc-400 mt-1">SK Kepala MAN 2 SBT</div>
+              <div className="p-2 rounded-lg bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-800/40 text-purple-800 dark:text-purple-300">
+                <div className="font-bold text-purple-900 dark:text-purple-200">Tahap 5 (≥100 Poin)</div>
+                <div className="text-[10px] text-purple-700 dark:text-purple-400/80">Pengembalian ke Ortu</div>
+                <div className="text-[9px] text-slate-600 dark:text-zinc-400 mt-1">SK Kepala MAN 2 SBT</div>
               </div>
             </div>
           </div>
 
-          <div className="p-2.5 bg-[#0d0d0f] border border-[#27272a] rounded flex flex-wrap items-center justify-between gap-2">
+          <div className="p-2.5 bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] rounded-xl flex flex-wrap items-center justify-between gap-2 shadow-xs">
             <div className="flex flex-wrap items-center gap-2 font-mono text-[10px]">
               <span className="text-zinc-500">FILTER_TAHAP:</span>
               {[
@@ -1603,9 +1603,9 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
           transition={{ duration: 0.18, ease: 'easeOut' }}
           className="space-y-3"
         >
-          <div className="p-2.5 bg-[#0d0d0f] border border-[#27272a] rounded flex flex-wrap items-center justify-between gap-2">
-            <div className="text-zinc-400 text-xs flex items-center gap-2">
-              <GraduationCap className="w-4 h-4 text-emerald-400" />
+          <div className="p-2.5 bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] rounded-xl flex flex-wrap items-center justify-between gap-2 shadow-xs">
+            <div className="text-slate-700 dark:text-zinc-300 text-xs flex items-center gap-2 font-medium">
+              <GraduationCap className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
               <span>Database Peminatan Jurusan, Minat Karir, dan Rekomendasi Seleksi PTN/Kedinasan/Dunia Kerja</span>
             </div>
 
@@ -1650,34 +1650,34 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
         >
           {/* Summary Matrix Cards */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-            <div className="p-3 rounded bg-[#0d0d0f] border border-[#27272a]">
-              <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">TOTAL_SESI_KONSELING</div>
-              <div className="text-2xl font-bold font-mono text-pink-400 mt-1">{counseling.length}</div>
-              <div className="text-[10px] text-zinc-400 mt-0.5">
+            <div className="p-3 rounded-xl bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] shadow-xs">
+              <div className="text-[10px] font-mono text-slate-600 dark:text-zinc-400 uppercase tracking-widest font-bold">TOTAL_SESI_KONSELING</div>
+              <div className="text-2xl font-bold font-mono text-pink-600 dark:text-pink-400 mt-1">{counseling.length}</div>
+              <div className="text-[10px] text-slate-600 dark:text-zinc-400 mt-0.5">
                 {counseling.filter(c => c.status === 'Selesai').length} Selesai • {counseling.filter(c => c.status === 'Perlu Tindak Lanjut').length} Pantauan
               </div>
             </div>
 
-            <div className="p-3 rounded bg-[#0d0d0f] border border-[#27272a]">
-              <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">KUNJUNGAN_RUMAH</div>
-              <div className="text-2xl font-bold font-mono text-purple-400 mt-1">{homeVisits.length}</div>
-              <div className="text-[10px] text-zinc-400 mt-0.5">
+            <div className="p-3 rounded-xl bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] shadow-xs">
+              <div className="text-[10px] font-mono text-slate-600 dark:text-zinc-400 uppercase tracking-widest font-bold">KUNJUNGAN_RUMAH</div>
+              <div className="text-2xl font-bold font-mono text-purple-600 dark:text-purple-400 mt-1">{homeVisits.length}</div>
+              <div className="text-[10px] text-slate-600 dark:text-zinc-400 mt-0.5">
                 {homeVisits.filter(h => h.status === 'Terlaksana').length} Berita Acara Ditandatangani
               </div>
             </div>
 
-            <div className="p-3 rounded bg-[#0d0d0f] border border-[#27272a]">
-              <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">SURAT_PANGGILAN_ORTU</div>
-              <div className="text-2xl font-bold font-mono text-blue-400 mt-1">{parentCallLetters.length}</div>
-              <div className="text-[10px] text-zinc-400 mt-0.5">
+            <div className="p-3 rounded-xl bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] shadow-xs">
+              <div className="text-[10px] font-mono text-slate-600 dark:text-zinc-400 uppercase tracking-widest font-bold">SURAT_PANGGILAN_ORTU</div>
+              <div className="text-2xl font-bold font-mono text-blue-600 dark:text-blue-400 mt-1">{parentCallLetters.length}</div>
+              <div className="text-[10px] text-slate-600 dark:text-zinc-400 mt-0.5">
                 {parentCallLetters.filter(p => p.status === 'Hadir').length} Orang Tua Hadir Sesuai Jadwal
               </div>
             </div>
 
-            <div className="p-3 rounded bg-[#0d0d0f] border border-[#27272a]">
-              <div className="text-[10px] font-mono text-zinc-500 uppercase tracking-widest">ASESMEN_KARIR</div>
-              <div className="text-2xl font-bold font-mono text-emerald-400 mt-1">{careerGuidances.length}</div>
-              <div className="text-[10px] text-zinc-400 mt-0.5">
+            <div className="p-3 rounded-xl bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] shadow-xs">
+              <div className="text-[10px] font-mono text-slate-600 dark:text-zinc-400 uppercase tracking-widest font-bold">ASESMEN_KARIR</div>
+              <div className="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-1">{careerGuidances.length}</div>
+              <div className="text-[10px] text-slate-600 dark:text-zinc-400 mt-0.5">
                 Target Studi Lanjut & Peminatan Kerja
               </div>
             </div>
@@ -1686,8 +1686,8 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
           {/* Breakdown Reports */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {/* Bidang Layanan Breakdown */}
-            <div className="p-3 rounded bg-[#0d0d0f] border border-[#27272a]">
-              <h4 className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-wider mb-2">
+            <div className="p-3 rounded-xl bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] shadow-xs">
+              <h4 className="text-[10px] font-mono font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-wider mb-2">
                 DISTRIBUSI_BIDANG_LAYANAN_BK
               </h4>
               <div className="space-y-2 text-xs">
@@ -1697,10 +1697,10 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
                   return (
                     <div key={field} className="space-y-1">
                       <div className="flex justify-between font-mono text-[11px]">
-                        <span className="text-zinc-300">Bidang {field}</span>
-                        <span className="text-pink-400 font-bold">{count} kasus ({pct}%)</span>
+                        <span className="text-slate-800 dark:text-zinc-300 font-semibold">Bidang {field}</span>
+                        <span className="text-pink-600 dark:text-pink-400 font-bold">{count} kasus ({pct}%)</span>
                       </div>
-                      <div className="w-full bg-[#161618] h-1.5 rounded-full overflow-hidden">
+                      <div className="w-full bg-slate-200 dark:bg-[#161618] h-1.5 rounded-full overflow-hidden">
                         <div className="bg-pink-500 h-full rounded-full" style={{ width: `${pct}%` }} />
                       </div>
                     </div>
@@ -1710,8 +1710,8 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
             </div>
 
             {/* Siswa Prioritas BK */}
-            <div className="p-3 rounded bg-[#0d0d0f] border border-[#27272a]">
-              <h4 className="text-[10px] font-mono font-bold text-zinc-400 uppercase tracking-wider mb-2">
+            <div className="p-3 rounded-xl bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] shadow-xs">
+              <h4 className="text-[10px] font-mono font-bold text-slate-700 dark:text-zinc-300 uppercase tracking-wider mb-2">
                 SISWA_DENGAN_ATENSI_BK_TERTINGGI
               </h4>
               <div className="space-y-1.5">
@@ -1722,11 +1722,11 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
                   .map(st => (
                     <div
                       key={st.id}
-                      className="p-2 bg-[#161618] border border-[#27272a] rounded flex items-center justify-between"
+                      className="p-2 bg-slate-50 dark:bg-[#161618] border border-slate-200 dark:border-[#27272a] rounded-lg flex items-center justify-between"
                     >
                       <div>
-                        <div className="font-semibold text-zinc-200">{st.fullName}</div>
-                        <div className="text-[10px] text-zinc-500">Kelas: {st.className} • NISN: {st.nisn}</div>
+                        <div className="font-semibold text-slate-900 dark:text-zinc-200">{st.fullName}</div>
+                        <div className="text-[10px] text-slate-600 dark:text-zinc-400">Kelas: {st.className} • NISN: {st.nisn}</div>
                       </div>
                       <div className="text-right">
                         <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-rose-500/20 text-rose-300 border border-rose-500/30 font-bold">

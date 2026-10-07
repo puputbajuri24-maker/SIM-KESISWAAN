@@ -67,19 +67,19 @@ export const Modal: React.FC<ModalProps> = ({
       {/* Modal Alignment Container */}
       <div className="min-h-full flex items-center justify-center p-3 sm:p-4 text-center pointer-events-none">
         <div
-          className={`relative z-10 w-full ${maxWidthClass} bg-[#111318] light:bg-white text-slate-100 light:text-slate-900 rounded-2xl border border-slate-700/70 light:border-slate-300 shadow-2xl text-left transform transition-all flex flex-col max-h-[90vh] pointer-events-auto my-6`}
+          className={`relative z-10 w-full ${maxWidthClass} bg-white dark:bg-[#111318] text-slate-900 dark:text-slate-100 rounded-2xl border border-slate-200 dark:border-slate-700/70 shadow-2xl text-left transform transition-all flex flex-col max-h-[90vh] pointer-events-auto my-6`}
           onClick={e => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 light:border-slate-200 bg-[#161922] light:bg-slate-50 rounded-t-2xl shrink-0">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#161922] rounded-t-2xl shrink-0">
             <div className="min-w-0 pr-2">
-              <h3 className="text-xs sm:text-sm font-bold text-slate-100 light:text-slate-900 uppercase tracking-wide truncate">{title}</h3>
-              {subtitle && <p className="text-[11px] text-slate-400 light:text-slate-600 font-sans mt-0.5 line-clamp-1">{subtitle}</p>}
+              <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-slate-100 uppercase tracking-wide truncate">{title}</h3>
+              {subtitle && <p className="text-[11px] text-slate-600 dark:text-slate-400 font-sans mt-0.5 line-clamp-1 font-medium">{subtitle}</p>}
             </div>
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 rounded-lg bg-slate-800/80 light:bg-slate-200 hover:bg-slate-700 light:hover:bg-slate-300 border border-slate-700/60 light:border-slate-300 text-slate-400 light:text-slate-700 hover:text-white light:hover:text-black transition-colors shrink-0"
+              className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/80 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700/60 text-slate-600 dark:text-slate-400 hover:text-slate-950 dark:hover:text-white transition-colors shrink-0"
               title="Tutup (Esc)"
             >
               <X className="w-4 h-4" />
@@ -87,13 +87,13 @@ export const Modal: React.FC<ModalProps> = ({
           </div>
 
           {/* Body */}
-          <div className="p-4 sm:p-5 overflow-y-auto space-y-3.5 text-slate-200 light:text-slate-800 text-xs flex-1">
+          <div className="p-4 sm:p-5 overflow-y-auto space-y-3.5 text-slate-800 dark:text-slate-200 text-xs flex-1">
             {children}
           </div>
 
           {/* Footer */}
           {footer && (
-            <div className="px-4 py-3 border-t border-slate-800 light:border-slate-200 bg-[#161922] light:bg-slate-50 rounded-b-2xl flex items-center justify-end gap-2 shrink-0">
+            <div className="px-4 py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#161922] rounded-b-2xl flex items-center justify-end gap-2 shrink-0">
               {footer}
             </div>
           )}

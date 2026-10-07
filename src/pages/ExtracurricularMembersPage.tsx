@@ -30,7 +30,8 @@ import {
   AlertCircle,
   ArrowRight,
   Info,
-  BookOpen
+  BookOpen,
+  RefreshCw
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { useSchool } from '../contexts/SchoolContext';
@@ -73,8 +74,20 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
     activeAcademicYear,
     schoolSetting,
     addStudent,
-    importStudentsBulk
+    importStudentsBulk,
+    cloudStatus,
+    isSyncing,
+    syncWithFirebase
   } = useSchool();
+
+  const handleManualSync = async () => {
+    try {
+      await syncWithFirebase();
+      toast.success('Sinkronisasi data ekstrakurikuler & anggota dengan Cloud Firestore berhasil!');
+    } catch (err: any) {
+      toast.error('Gagal memperbarui data dari Cloud: ' + (err?.message || 'Koneksi terputus'));
+    }
+  };
 
   const classes = useMemo(() => {
     return deduplicateClassesList(rawClasses, students).deduplicated;
@@ -88,15 +101,21 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
       const teacherObj = teachers.find(t => 
         (currentUser?.nip && t.nip && cleanDigits(t.nip) === cleanDigits(currentUser.nip)) ||
         (currentUser?.uid && (t.id === currentUser.uid || `user_${t.id}` === currentUser.uid || t.id === currentUser.uid.replace('user_', ''))) ||
-        (currentUser?.displayName && t.fullName.toLowerCase() === currentUser.displayName.toLowerCase())
+        (currentUser?.displayName && t.fullName.toLowerCase() === currentUser.displayName.toLowerCase()) ||
+        (currentUser?.email && t.email && currentUser.email.toLowerCase() === t.email.toLowerCase())
       );
 
       return extracurriculars.filter(e => 
         myAssignedIds.includes(e.id) || 
         e.coachId === currentUser?.uid || 
         (currentUser?.uid && (e.coachId === currentUser.uid.replace('user_', '') || e.coachId === `user_${currentUser.uid}`)) ||
-        (teacherObj && (e.coachId === teacherObj.id || teacherObj.assignedExtracurriculars?.includes(e.id))) ||
+        (teacherObj && (
+          e.coachId === teacherObj.id || 
+          teacherObj.assignedExtracurriculars?.includes(e.id) ||
+          teacherObj.assignedExtracurriculars?.some(a => a.toLowerCase() === e.name.toLowerCase() || (e.name && a.toLowerCase().includes(e.name.toLowerCase())))
+        )) ||
         (currentUser?.displayName && e.coachName && (
+          e.coachName.toLowerCase().trim() === currentUser.displayName.toLowerCase().trim() ||
           e.coachName.toLowerCase().includes(currentUser.displayName.toLowerCase().split(' ')[0]) ||
           currentUser.displayName.toLowerCase().includes(e.coachName.toLowerCase().split(' ')[0])
         ))
@@ -145,6 +164,16 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
   const [targetEkskulId, setTargetEkskulId] = useState<string>(
     initialEkskulId && initialEkskulId !== 'all' ? initialEkskulId : availableEkskuls[0]?.id || extracurriculars[0]?.id || ''
   );
+
+  // Reactive synchronization for target and selected ekskul
+  React.useEffect(() => {
+    if ((!targetEkskulId || targetEkskulId === '') && availableEkskuls.length > 0) {
+      setTargetEkskulId(availableEkskuls[0].id);
+    }
+    if (isPembinaOnly && selectedEkskul === 'all' && availableEkskuls.length > 0) {
+      setSelectedEkskul(availableEkskuls[0].id);
+    }
+  }, [availableEkskuls, isPembinaOnly, targetEkskulId, selectedEkskul]);
   const [selectedEnrollClass, setSelectedEnrollClass] = useState<string>('all');
   const [selectedEnrollGrade, setSelectedEnrollGrade] = useState<'all' | 'X' | 'XI' | 'XII'>('all');
   const [studentSearchQuery, setStudentSearchQuery] = useState('');
@@ -540,20 +569,29 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
       );
       const newStudentsToEnroll = targetStudents.filter(s => !existingInTarget.has(s.id));
 
-      for (const student of newStudentsToEnroll) {
-        await addMember({
-          extracurricularId: targetEkskulId,
-          extracurricularName: ekskul.name,
-          studentId: student.id,
-          studentName: student.fullName,
-          studentNis: student.nis,
-          studentClass: student.className,
-          gender: student.gender,
-          joinDate: new Date().toISOString().split('T')[0],
-          status: 'Aktif',
-          academicYear: activeAcademicYear
-        });
+      if (newStudentsToEnroll.length === 0) {
+        toast.info('Siswa yang dipilih sudah terdaftar aktif di ekstrakurikuler ini.');
+        setIsSavingEnroll(false);
+        setIsAddOpen(false);
+        return;
       }
+
+      await Promise.all(
+        newStudentsToEnroll.map(student =>
+          addMember({
+            extracurricularId: targetEkskulId,
+            extracurricularName: ekskul.name,
+            studentId: student.id,
+            studentName: student.fullName,
+            studentNis: student.nis,
+            studentClass: student.className,
+            gender: student.gender,
+            joinDate: new Date().toISOString().split('T')[0],
+            status: 'Aktif',
+            academicYear: activeAcademicYear
+          })
+        )
+      );
 
       toast.success(`Berhasil menambahkan ${newStudentsToEnroll.length} siswa ke ${ekskul.name}!`);
     } catch (err: any) {
@@ -681,10 +719,10 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
       accessorKey: 'status',
       sortable: true,
       cell: m => (
-        <span className={`px-2.5 py-1 rounded-lg text-xs font-bold ${
+        <span className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${
           m.status === 'Aktif'
-            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
-            : 'bg-rose-500/10 text-rose-400 border border-rose-500/30'
+            ? 'bg-emerald-100/90 dark:bg-emerald-500/15 text-emerald-950 dark:text-emerald-300 border-emerald-300 dark:border-emerald-500/30'
+            : 'bg-rose-100/90 dark:bg-rose-500/15 text-rose-950 dark:text-rose-300 border-rose-300 dark:border-rose-500/30'
         }`}>
           {m.status}
         </span>
@@ -738,7 +776,25 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Cloud Firestore Sync Status Indicator */}
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[11px] font-semibold bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-2xs">
+            <span className={`w-2 h-2 rounded-full shrink-0 ${isSyncing ? 'bg-amber-400 animate-ping' : cloudStatus === 'synced' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+            <span className="text-slate-600 dark:text-slate-300">
+              {isSyncing ? 'Menyinkronkan...' : cloudStatus === 'synced' ? 'Tersimpan di Cloud' : 'Offline / Tertunda'}
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleManualSync}
+            disabled={isSyncing}
+            className="p-2 rounded-xl bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 transition-colors disabled:opacity-50 shadow-2xs"
+            title="Segarkan data terbaru dari Cloud Firestore"
+          >
+            <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin text-indigo-600' : ''}`} />
+          </button>
+
           <ExportActions
             filename="daftar_anggota_ekskul"
             title={selectedMemberIds.size > 0 ? `Daftar ${selectedMemberIds.size} Anggota Ekstrakurikuler Terpilih` : 'Daftar Anggota Ekstrakurikuler'}
@@ -1139,27 +1195,27 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
         {selectedMember && (
           <div className="space-y-4">
             {/* Header info */}
-            <div className="flex items-center gap-4 p-4 rounded-xl bg-zinc-900/90 border border-zinc-800">
-              <div className="w-14 h-14 rounded-2xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-extrabold text-xl flex items-center justify-center shrink-0">
+            <div className="flex items-center gap-4 p-4 rounded-xl bg-slate-50 dark:bg-zinc-900/90 border border-slate-200 dark:border-zinc-800">
+              <div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-extrabold text-xl flex items-center justify-center shrink-0">
                 {selectedMember.studentName.charAt(0)}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-sm font-bold text-zinc-100">{selectedMember.studentName}</h3>
-                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold ${
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-zinc-100">{selectedMember.studentName}</h3>
+                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded font-bold border ${
                     selectedMember.status === 'Aktif'
-                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                      ? 'bg-emerald-100/90 dark:bg-emerald-500/15 text-emerald-950 dark:text-emerald-300 border-emerald-300 dark:border-emerald-500/30'
                       : (selectedMember.status as string) === 'Cuti'
-                      ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                      : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                      ? 'bg-amber-100/90 dark:bg-amber-500/15 text-amber-950 dark:text-amber-300 border-amber-300 dark:border-amber-500/30'
+                      : 'bg-rose-100/90 dark:bg-rose-500/15 text-rose-950 dark:text-rose-300 border-rose-300 dark:border-rose-500/30'
                   }`}>
                     {selectedMember.status}
                   </span>
                 </div>
-                <p className="text-xs text-zinc-400 mt-0.5 font-mono">
+                <p className="text-xs text-slate-600 dark:text-zinc-400 mt-0.5 font-mono font-medium">
                   NIS: {selectedMember.studentNis} • Kelas: {selectedMember.studentClass}
                 </p>
-                <div className="flex items-center gap-2 mt-1 text-xs text-indigo-400">
+                <div className="flex items-center gap-2 mt-1 text-xs text-indigo-600 dark:text-indigo-400">
                   <Compass className="w-3.5 h-3.5" />
                   <span className="font-semibold">{selectedMember.extracurricularName}</span>
                 </div>
@@ -1845,7 +1901,7 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
                                 ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs shadow-indigo-600/30 ring-2 ring-indigo-500/30'
                                 : count > 0
                                 ? 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 hover:border-indigo-400 dark:hover:border-indigo-600 hover:bg-indigo-50/40 dark:hover:bg-indigo-950/30'
-                                : 'bg-slate-100/70 dark:bg-slate-800/40 border-slate-200/50 dark:border-slate-800 text-slate-400 opacity-60'
+                                : 'bg-slate-100 dark:bg-slate-800/40 border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400'
                             }`}
                           >
                             <div className="flex items-center justify-between w-full">
@@ -1859,7 +1915,7 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
                                     ? 'text-indigo-100'
                                     : count > 0
                                     ? 'text-indigo-600 dark:text-indigo-400'
-                                    : 'text-slate-400'
+                                    : 'text-slate-500 dark:text-slate-400'
                                 }`}
                               >
                                 {count} Siswa
@@ -1877,7 +1933,7 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
                   {/* Student Search & Multi-Select List */}
                   <div className="space-y-2 pt-1">
                     <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                      <label className="text-xs font-bold text-slate-800 dark:text-slate-200">
                         Pilih Siswa ({filteredStudentsForEnrollment.length} Tersedia
                         {selectedEnrollClass !== 'all' ? ` di ${selectedEnrollClass}` : ''})
                       </label>
@@ -1903,13 +1959,13 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
                     </div>
 
                     <div className="relative">
-                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                      <Search className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 absolute left-3 top-2.5" />
                       <input
                         type="text"
                         value={studentSearchQuery}
                         onChange={e => setStudentSearchQuery(e.target.value)}
                         placeholder="Cari nama atau NIS siswa..."
-                        className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
+                        className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 placeholder:text-slate-500 dark:placeholder:text-slate-400"
                       />
                     </div>
 
@@ -1917,7 +1973,7 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
                     <div className="max-h-56 overflow-y-auto border border-slate-200 dark:border-slate-700 rounded-xl divide-y divide-slate-100 dark:divide-slate-800 bg-white dark:bg-slate-900 custom-scrollbar">
                       {filteredStudentsForEnrollment.length === 0 ? (
                         <div className="p-6 text-center">
-                          <p className="text-xs font-medium text-slate-400">
+                          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
                             Tidak ada siswa yang belum bergabung
                             {selectedEnrollClass !== 'all' ? ` untuk kelas ${selectedEnrollClass}` : ''}.
                           </p>
@@ -1940,7 +1996,7 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
                                   {isChecked ? (
                                     <CheckSquare className="w-4 h-4" />
                                   ) : (
-                                    <Square className="w-4 h-4 text-slate-300 dark:text-slate-600" />
+                                    <Square className="w-4 h-4 text-slate-400 dark:text-slate-500" />
                                   )}
                                 </div>
                                 <div className="min-w-0">
@@ -1953,8 +2009,8 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
                                   >
                                     {s.fullName}
                                   </p>
-                                  <p className="text-[10px] text-slate-400">
-                                    NIS: {s.nis} • Kelas: <span className="font-bold text-slate-600 dark:text-slate-300">{s.className}</span> • {s.gender === 'L' ? 'Laki-laki' : 'Perempuan'}
+                                  <p className="text-[10px] text-slate-600 dark:text-slate-400 font-medium">
+                                    NIS: {s.nis} • Kelas: <span className="font-bold text-slate-700 dark:text-slate-300">{s.className}</span> • {s.gender === 'L' ? 'Laki-laki' : 'Perempuan'}
                                   </p>
                                 </div>
                               </div>

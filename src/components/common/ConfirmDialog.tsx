@@ -75,7 +75,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
             type="button"
             onClick={onClose}
             disabled={isLoading}
-            className="px-3.5 py-1.5 text-xs font-semibold text-slate-300 bg-slate-800 border border-slate-700 rounded-xl hover:bg-slate-700 hover:text-white transition-colors"
+            className="px-3.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-950 dark:hover:text-white transition-colors"
           >
             {finalCancelText}
           </button>
@@ -103,7 +103,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         <div className={`p-2.5 rounded-xl border ${iconConfig.color} shrink-0`}>
           <IconComponent className="w-5 h-5" />
         </div>
-        <p className="text-xs text-slate-200 leading-relaxed pt-0.5">
+        <p className="text-xs text-slate-800 dark:text-slate-200 leading-relaxed pt-0.5">
           {message}
         </p>
       </div>

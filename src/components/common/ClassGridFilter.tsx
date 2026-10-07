@@ -342,21 +342,21 @@ export const ClassGridFilter: React.FC<ClassGridFilterProps> = ({
                     {isSelected ? (
                       <CheckCircle2 className={`w-3.5 h-3.5 shrink-0 ${scheme.accentText}`} />
                     ) : (
-                      <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-md bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 shrink-0">
+                      <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-md bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 shrink-0">
                         {cls.grade}
                       </span>
                     )}
                   </div>
 
-                  <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 mt-1">
-                    <span className="truncate text-[10px] text-slate-600 dark:text-slate-400 font-medium max-w-[65px]" title={cls.homeroomTeacherName || cls.major || ''}>
+                  <div className="flex items-center justify-between text-[10px] text-slate-600 dark:text-slate-400 mt-1">
+                    <span className="truncate text-[10px] text-slate-700 dark:text-slate-300 font-semibold max-w-[65px]" title={cls.homeroomTeacherName || cls.major || ''}>
                       {cls.homeroomTeacherName ? cls.homeroomTeacherName.split(' ')[0] : (cls.major || cls.grade)}
                     </span>
                     <span
-                      className={`font-semibold px-1.5 py-0.2 rounded-md text-[10px] shrink-0 ${
+                      className={`font-bold px-1.5 py-0.2 rounded-md text-[10px] shrink-0 ${
                         count > 0
-                          ? 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
-                          : 'bg-slate-100/60 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400'
+                          ? 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400'
                       }`}
                     >
                       {count}

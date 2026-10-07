@@ -259,35 +259,12 @@ export const INITIAL_TEACHERS: Teacher[] = [];
 
 export const INITIAL_EXTRACURRICULARS: Extracurricular[] = [];
 
-export const PURGED_DEMO_EKSKUL_IDS = [
-  'ekskul_pramuka',
-  'ekskul_paskibra',
-  'ekskul_pmr',
-  'ekskul_pks',
-  'ekskul_futsal',
-  'ekskul_basket',
-  'ekskul_bulutangkis',
-  'ekskul_silat',
-  'ekskul_tahfidz',
-  'ekskul_kir',
-  'ekskul_robotik',
-  'ekskul_1788508166467',
-  'ekskul_1788508812838',
-  'ekskul_1788508829222',
-  'ekskul_1788508979493',
-  'ekskul_1788509775561',
-  'ekskul_1788509843457',
-  'ekskul_1788509860882',
-  'ekskul_1788509907393',
-  'ekskul_1789976787553',
-  'ekskul_1790685273909',
-  'ekskul_1790810445554'
-];
+export const PURGED_DEMO_EKSKUL_IDS: string[] = [];
 
 export const isPurgedExtracurricular = (nameOrId: string = ''): boolean => {
   if (!nameOrId) return false;
   const lower = nameOrId.toLowerCase();
-  return lower.includes('(demo)') || lower.includes('(dummy)') || lower.includes('sample');
+  return lower.includes('(demo)') || lower.includes('(dummy)') || lower.includes('contoh demo') || lower.includes('sample ekskul');
 };
 
 // Operational Collections initialized as CLEAN EMPTY ARRAYS ready for user upload

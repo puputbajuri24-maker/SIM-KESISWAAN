@@ -301,11 +301,11 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
               <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">NIS: {v.studentNis} • Kelas: {v.studentClass}</p>
               {studentPts >= 10 && tier && (
                 <span className={`text-[9px] font-extrabold px-1.5 py-0.2 rounded border ${
-                  tier.tier === 1 ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20' :
-                  tier.tier === 2 ? 'bg-orange-500/10 text-orange-700 dark:text-orange-400 border-orange-500/20' :
-                  tier.tier === 3 ? 'bg-rose-500/15 text-rose-700 dark:text-rose-400 border-rose-500/30' :
-                  tier.tier === 4 ? 'bg-purple-500/15 text-purple-700 dark:text-purple-400 border-purple-500/30' :
-                  'bg-red-950 text-red-300 border-red-800 animate-pulse'
+                  tier.tier === 1 ? 'bg-amber-100/90 text-amber-900 border-amber-300 dark:bg-amber-950/60 dark:text-amber-300 dark:border-amber-800' :
+                  tier.tier === 2 ? 'bg-orange-100/90 text-orange-900 border-orange-300 dark:bg-orange-950/60 dark:text-orange-300 dark:border-orange-800' :
+                  tier.tier === 3 ? 'bg-rose-100/90 text-rose-900 border-rose-300 dark:bg-rose-950/60 dark:text-rose-300 dark:border-rose-800' :
+                  tier.tier === 4 ? 'bg-purple-100/90 text-purple-900 border-purple-300 dark:bg-purple-950/60 dark:text-purple-300 dark:border-purple-800' :
+                  'bg-red-100 text-red-950 border-red-400 dark:bg-red-950/90 dark:text-red-200 dark:border-red-700 animate-pulse font-black'
                 }`}>
                   {tier.name.split(':')[0]} ({studentPts}p)
                 </span>
@@ -507,10 +507,10 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
           <p className="text-lg font-black text-rose-700 dark:text-rose-400 mt-0.5">{disciplineStats.stage3Count}</p>
           <span className="text-[10px] text-rose-700/80 dark:text-rose-400/80 font-semibold">41 - 75 Poin</span>
         </div>
-        <div className="p-3 rounded-2xl bg-red-950/20 border border-red-500/30 shadow-sm">
-          <span className="text-[10px] font-mono text-red-600 dark:text-red-400 block uppercase font-bold">TAHAP 4 & 5 (KRITIS)</span>
-          <p className="text-lg font-black text-red-700 dark:text-red-400 mt-0.5">{disciplineStats.stage4Count + disciplineStats.stage5Count}</p>
-          <span className="text-[10px] text-red-600 dark:text-red-400 font-semibold">≥76 Poin (Sidang/DO)</span>
+        <div className="p-3 rounded-2xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-500/30 shadow-sm">
+          <span className="text-[10px] font-mono text-red-700 dark:text-red-300 block uppercase font-bold">TAHAP 4 & 5 (KRITIS)</span>
+          <p className="text-lg font-black text-red-700 dark:text-red-300 mt-0.5">{disciplineStats.stage4Count + disciplineStats.stage5Count}</p>
+          <span className="text-[10px] text-red-700/90 dark:text-red-300/90 font-bold">≥76 Poin (Sidang/DO)</span>
         </div>
       </div>
 

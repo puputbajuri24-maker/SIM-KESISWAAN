@@ -817,34 +817,34 @@ export const TataTertibPage: React.FC = () => {
       {/* Overview Statistics Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         <div className="bg-white dark:bg-[#0c111c] border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-xs">
-          <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total Pasal</div>
+          <div className="text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Total Pasal</div>
           <div className="text-2xl font-black text-slate-900 dark:text-white mt-1">{stats.total}</div>
-          <div className="text-[10px] text-slate-500 mt-0.5">Semua klausul aturan</div>
+          <div className="text-[10px] text-slate-600 dark:text-slate-400 font-medium mt-0.5">Semua klausul aturan</div>
         </div>
         <div className="bg-white dark:bg-[#0c111c] border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-xs">
-          <div className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Ringan</div>
-          <div className="text-2xl font-black text-emerald-600 dark:text-emerald-400 mt-1">{stats.ringan}</div>
-          <div className="text-[10px] text-slate-500 mt-0.5">1 s.d 10 Poin</div>
+          <div className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">Ringan</div>
+          <div className="text-2xl font-black text-emerald-700 dark:text-emerald-400 mt-1">{stats.ringan}</div>
+          <div className="text-[10px] text-slate-600 dark:text-slate-400 font-medium mt-0.5">1 s.d 10 Poin</div>
         </div>
         <div className="bg-white dark:bg-[#0c111c] border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-xs">
-          <div className="text-[11px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">Sedang</div>
-          <div className="text-2xl font-black text-amber-600 dark:text-amber-400 mt-1">{stats.sedang}</div>
-          <div className="text-[10px] text-slate-500 mt-0.5">11 s.d 30 Poin</div>
+          <div className="text-[11px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider">Sedang</div>
+          <div className="text-2xl font-black text-amber-700 dark:text-amber-400 mt-1">{stats.sedang}</div>
+          <div className="text-[10px] text-slate-600 dark:text-slate-400 font-medium mt-0.5">11 s.d 30 Poin</div>
         </div>
         <div className="bg-white dark:bg-[#0c111c] border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-xs">
-          <div className="text-[11px] font-bold text-orange-600 dark:text-orange-400 uppercase tracking-wider">Berat</div>
-          <div className="text-2xl font-black text-orange-600 dark:text-orange-400 mt-1">{stats.berat}</div>
-          <div className="text-[10px] text-slate-500 mt-0.5">31 s.d 75 Poin</div>
+          <div className="text-[11px] font-bold text-orange-700 dark:text-orange-400 uppercase tracking-wider">Berat</div>
+          <div className="text-2xl font-black text-orange-700 dark:text-orange-400 mt-1">{stats.berat}</div>
+          <div className="text-[10px] text-slate-600 dark:text-slate-400 font-medium mt-0.5">31 s.d 75 Poin</div>
         </div>
         <div className="bg-white dark:bg-[#0c111c] border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-xs">
-          <div className="text-[11px] font-bold text-rose-600 dark:text-rose-400 uppercase tracking-wider">Sangat Berat</div>
-          <div className="text-2xl font-black text-rose-600 dark:text-rose-400 mt-1">{stats.sangatBerat}</div>
-          <div className="text-[10px] text-slate-500 mt-0.5">76 s.d 100 Poin</div>
+          <div className="text-[11px] font-bold text-rose-700 dark:text-rose-400 uppercase tracking-wider">Sangat Berat</div>
+          <div className="text-2xl font-black text-rose-700 dark:text-rose-400 mt-1">{stats.sangatBerat}</div>
+          <div className="text-[10px] text-slate-600 dark:text-slate-400 font-medium mt-0.5">76 s.d 100 Poin</div>
         </div>
         <div className="bg-white dark:bg-[#0c111c] border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 shadow-xs">
-          <div className="text-[11px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">Apresiasi</div>
-          <div className="text-2xl font-black text-blue-600 dark:text-blue-400 mt-1">{stats.apresiasi}</div>
-          <div className="text-[10px] text-slate-500 mt-0.5">Pemulihan / Prestasi</div>
+          <div className="text-[11px] font-bold text-blue-700 dark:text-blue-400 uppercase tracking-wider">Apresiasi</div>
+          <div className="text-2xl font-black text-blue-700 dark:text-blue-400 mt-1">{stats.apresiasi}</div>
+          <div className="text-[10px] text-slate-600 dark:text-slate-400 font-medium mt-0.5">Pemulihan / Prestasi</div>
         </div>
       </div>
 

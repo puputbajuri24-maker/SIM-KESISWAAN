@@ -25,7 +25,7 @@ service cloud.firestore {
     }
 
     function isValidId(id) {
-      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-\\.\\@\\+]+$');
     }
 
     function userDoc(uid) {
@@ -83,7 +83,8 @@ service cloud.firestore {
     function isPembinaEkskul() {
       return isWakaOrAdmin() || (
         isSignedIn() && getUserRole() in [
-          'pembina_ekstrakurikuler', 'pembina_ekskul', 'coach_ekstrakurikuler', 'pembina'
+          'pembina_ekstrakurikuler', 'pembina_ekskul', 'coach_ekstrakurikuler', 'pembina',
+          'guru', 'teacher', 'wali_kelas'
         ]
       );
     }
@@ -182,6 +183,12 @@ service cloud.firestore {
         data.timestamp is string && data.timestamp.size() > 0 && data.timestamp.size() <= 64;
     }
 
+    function isValidMember(data) {
+      return data.keys().hasAll(['extracurricularId', 'studentId']) &&
+        data.extracurricularId is string && data.extracurricularId.size() > 0 && data.extracurricularId.size() <= 128 &&
+        data.studentId is string && data.studentId.size() > 0 && data.studentId.size() <= 128;
+    }
+
     // =========================================================================
     // 3. USERS COLLECTION (CENTRALIZED USER PROFILES & AUTH DIRECTORY)
     // =========================================================================
@@ -256,7 +263,7 @@ service cloud.firestore {
 
     match /school_rules/{ruleId} {
       allow read: if true;
-      allow write: if isValidId(ruleId) && isWakaOrAdmin();
+      allow write: if isValidId(ruleId) && (isWakaOrAdmin() || isSignedIn());
     }
 
     // =========================================================================
@@ -330,14 +337,14 @@ service cloud.firestore {
     // =========================================================================
     match /extracurriculars/{clubId} {
       allow read: if true;
-      allow create, update: if isValidId(clubId) && isPembinaEkskul();
+      allow create, update: if isValidId(clubId);
       // Only Waka or Admin can delete clubs (prevents rogue coach/non-pembina from deleting clubs)
       allow delete: if isValidId(clubId) && isWakaOrAdmin();
     }
 
     match /extracurricular_members/{memberId} {
       allow read: if true;
-      allow create, update, delete: if isValidId(memberId) && isPembinaEkskul();
+      allow create, update, delete: if isValidId(memberId);
     }
 
     // =========================================================================
@@ -376,7 +383,7 @@ service cloud.firestore {
 
     match /settings/{settingId} {
       allow read: if true;
-      allow write: if isValidId(settingId) && isWakaOrAdmin();
+      allow write: if isValidId(settingId) && (isWakaOrAdmin() || settingId in ['theme_config', 'handbook_meta', 'rbac_matrix']);
     }
 
     // =========================================================================
@@ -384,32 +391,36 @@ service cloud.firestore {
     // =========================================================================
     match /schedules/{scheduleId} {
       allow read: if true;
-      allow create, update, delete: if isValidId(scheduleId) && isStaff();
+      allow create, update, delete: if isValidId(scheduleId);
     }
 
     match /attendance/{attendanceId} {
       allow read: if true;
-      allow create, update, delete: if isValidId(attendanceId) && isStaff();
+      allow create, update, delete: if isValidId(attendanceId);
     }
 
     match /activities/{activityId} {
       allow read: if true;
-      allow create, update, delete: if isValidId(activityId) && isStaff();
+      allow create, update, delete: if isValidId(activityId);
     }
 
     match /activity_reports/{reportId} {
       allow read: if true;
-      allow create, update, delete: if isValidId(reportId) && isStaff();
+      allow create, update, delete: if isValidId(reportId);
     }
 
     match /needs_requests/{requestId} {
       allow read: if true;
-      allow create, update, delete: if isValidId(requestId) && isStaff();
+      allow create, update, delete: if isValidId(requestId);
     }
 
     match /announcements/{announcementId} {
       allow read: if true;
-      allow create, update, delete: if isValidId(announcementId) && isStaff();
+      allow create, delete: if isValidId(announcementId) && isStaff();
+      allow update: if isValidId(announcementId) && (
+        isStaff() ||
+        incoming().diff(existing()).affectedKeys().hasOnly(['readByUsers'])
+      );
     }
 
     match /permissions/{permissionId} {
@@ -424,7 +435,11 @@ service cloud.firestore {
 
     match /notifications/{notificationId} {
       allow read: if true;
-      allow create, update, delete: if isValidId(notificationId) && isStaff();
+      allow create, delete: if isValidId(notificationId) && isStaff();
+      allow update: if isValidId(notificationId) && (
+        isStaff() ||
+        incoming().diff(existing()).affectedKeys().hasOnly(['isRead'])
+      );
     }
 
     // =========================================================================

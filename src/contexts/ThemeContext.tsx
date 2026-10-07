@@ -95,13 +95,13 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // 1. Initial State from localStorage (strictly dark mode across all devices by default)
+  // 1. Initial State from localStorage (light mode across all devices by default)
   const [mode, setModeState] = useState<ThemeMode>(() => {
     try {
       const saved = localStorage.getItem('simkesiswaan_theme_mode') as ThemeMode;
       if (saved === 'dark' || saved === 'light') return saved;
     } catch (e) {}
-    return 'dark'; // Strictly dark mode by default
+    return 'light'; // Light mode by default as requested
   });
 
   const [palette, setPaletteState] = useState<ThemePalette>(() => {
@@ -137,7 +137,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   });
 
   // 2. Track System Color Scheme (only used if user explicitly selects 'system')
-  const [systemIsDark, setSystemIsDark] = useState<boolean>(true);
+  const [systemIsDark, setSystemIsDark] = useState<boolean>(false);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !window.matchMedia) return;
@@ -312,13 +312,13 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const resetTheme = () => {
-    setModeState('dark');
+    setModeState('light');
     setPaletteState('navy');
     setFontSizeState('normal');
     setFontContrastState('high');
     setFontFamilyState('jakarta');
     saveCloudPreference({
-      mode: 'dark',
+      mode: 'light',
       palette: 'navy',
       fontSize: 'normal',
       fontContrast: 'high',

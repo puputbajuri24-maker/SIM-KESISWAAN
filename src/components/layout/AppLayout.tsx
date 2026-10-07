@@ -642,7 +642,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex flex-col w-64 bg-[var(--bg-sidebar)] border-r border-[var(--border-color)] shrink-0 select-none justify-between h-full transition-colors duration-200">
         {/* Brand Header */}
-        <div className="p-4 pb-3 border-b border-[#1e293b]">
+        <div className="p-4 pb-3 border-b border-slate-200 dark:border-[#1e293b]">
           <div
             className="flex items-center space-x-3 cursor-pointer"
             onClick={() => setActiveTab('dashboard')}
@@ -737,25 +737,25 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
         </div>
 
         {/* Bottom Sidebar Card: Sistem Terhubung */}
-        <div className="p-3 border-t border-[#1e293b] bg-[#0a0f1d]">
-          <div className="p-3 rounded-2xl bg-[#131b2e] border border-[#1e293b] space-y-2 shadow-xs">
+        <div className="p-3 border-t border-slate-200 dark:border-[#1e293b] bg-[var(--bg-sidebar)]">
+          <div className="p-3 rounded-2xl bg-slate-50 dark:bg-[#131b2e] border border-slate-200 dark:border-[#1e293b] space-y-2 shadow-xs">
             <div className="flex items-start space-x-2.5">
-              <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 text-sm shrink-0">
+              <div className="w-7 h-7 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600 dark:text-amber-400 text-sm shrink-0">
                 🏆
               </div>
               <div className="min-w-0">
-                <div className="text-xs font-bold text-white leading-tight">Sistem Terhubung</div>
-                <div className="text-[10px] text-slate-400 leading-tight mt-0.5 truncate">
+                <div className="text-xs font-bold text-slate-900 dark:text-white leading-tight">Sistem Terhubung</div>
+                <div className="text-[10px] text-slate-600 dark:text-slate-400 leading-tight mt-0.5 truncate">
                   Semua sistem berjalan normal
                 </div>
               </div>
             </div>
             <div className="space-y-1 pt-1">
-              <div className="h-1.5 w-full bg-[#080c16] rounded-full overflow-hidden">
+              <div className="h-1.5 w-full bg-slate-200 dark:bg-[#080c16] rounded-full overflow-hidden">
                 <div className="h-full bg-blue-500 rounded-full w-full shadow-[0_0_8px_rgba(59,130,246,0.8)]" />
               </div>
               <div className="flex justify-end">
-                <span className="text-[10px] font-mono font-bold text-blue-400">100%</span>
+                <span className="text-[10px] font-mono font-bold text-blue-600 dark:text-blue-400">100%</span>
               </div>
             </div>
           </div>
@@ -1391,7 +1391,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
         {/* Workspace Content Body */}
         <main
           ref={mainScrollRef}
-          className="relative flex-1 overflow-y-auto bg-[#080c16] light:bg-[#f1f5f9] p-4 sm:p-6 pb-24 lg:pb-6 custom-scrollbar transition-colors duration-200"
+          className="relative flex-1 overflow-y-auto bg-slate-50 dark:bg-[#080c16] p-4 sm:p-6 pb-24 lg:pb-6 custom-scrollbar transition-colors duration-200"
         >
           {/* Subtle Top Loading / Transition Accent Glow Bar */}
           <div className="sticky -top-4 sm:-top-6 -mx-4 sm:-mx-6 -mt-4 sm:-mt-6 z-10 pointer-events-none h-0.5 overflow-hidden">
@@ -1449,7 +1449,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
         {/* Mobile & Tablet Quick Bottom Navigation Bar */}
         <nav
           aria-label="Navigasi Bawah Seluler"
-          className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#0a0f1d]/95 light:bg-white/95 backdrop-blur-md border-t border-[#1e293b] light:border-slate-200 px-2 py-1.5 flex items-center justify-around shadow-xl transition-colors duration-200"
+          className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-[#0a0f1d]/95 backdrop-blur-md border-t border-slate-200 dark:border-[#1e293b] px-2 py-1.5 flex items-center justify-around shadow-xl transition-colors duration-200"
         >
           <button
             type="button"
@@ -1531,16 +1531,16 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
               transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-              className="relative w-4/5 max-w-xs bg-[#0a0f1d] light:bg-white border-r border-[#1e293b] light:border-slate-200 h-full p-4 overflow-y-auto flex flex-col shadow-2xl z-10 justify-between"
+              className="relative w-4/5 max-w-xs bg-white dark:bg-[#0a0f1d] border-r border-slate-200 dark:border-[#1e293b] h-full p-4 overflow-y-auto flex flex-col shadow-2xl z-10 justify-between"
             >
               <div>
-                <div className="flex items-center justify-between pb-3 border-b border-[#1e293b] light:border-slate-200">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-[#1e293b]">
                   <div className="flex items-center space-x-2.5">
                     {schoolSetting?.logoRightUrl || schoolSetting?.logoUrl ? (
                       <img
                         src={schoolSetting.logoRightUrl || schoolSetting.logoUrl}
                         alt="Logo Sekolah"
-                        className="w-8 h-8 object-contain rounded-lg p-0.5 bg-white/10 light:bg-slate-100 shrink-0 border border-slate-200 dark:border-transparent"
+                        className="w-8 h-8 object-contain rounded-lg p-0.5 bg-slate-100 dark:bg-white/10 shrink-0 border border-slate-200 dark:border-transparent"
                         referrerPolicy="no-referrer"
                       />
                     ) : (
@@ -1555,14 +1555,14 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                   </div>
                   <button
                     onClick={() => setIsMobileMenuOpen(false)}
-                    className="p-1.5 rounded-lg bg-[#131b2e] light:bg-slate-100 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
+                    className="p-1.5 rounded-lg bg-slate-100 dark:bg-[#131b2e] text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors"
                   >
                     <X className="w-4 h-4" />
                   </button>
                 </div>
 
                 {/* Mobile Quick Theme Switcher */}
-                <div className="py-3 px-1 flex items-center justify-between border-b border-[#1e293b] light:border-slate-200">
+                <div className="py-3 px-1 flex items-center justify-between border-b border-slate-200 dark:border-[#1e293b]">
                   <span className="text-xs font-extrabold text-slate-800 dark:text-slate-300 tracking-wide">TEMA & MODE</span>
                   <div className="flex items-center space-x-2">
                     <button
@@ -1637,13 +1637,13 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
               </div>
 
               {/* Logout Mobile */}
-              <div className="pt-3 border-t border-[#1e293b] light:border-slate-200">
+              <div className="pt-3 border-t border-slate-200 dark:border-[#1e293b]">
                 <button
                   onClick={() => {
                     logout();
                     setIsMobileMenuOpen(false);
                   }}
-                  className="w-full py-2 px-3 rounded-xl bg-red-950/40 light:bg-red-50 border border-red-500/30 light:border-red-200 text-red-300 light:text-red-700 text-xs font-bold flex items-center justify-center space-x-2"
+                  className="w-full py-2 px-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-500/30 text-red-700 dark:text-red-300 text-xs font-bold flex items-center justify-center space-x-2"
                 >
                   <LogOut className="w-4 h-4" />
                   <span>KELUAR</span>

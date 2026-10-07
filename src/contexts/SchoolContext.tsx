@@ -114,6 +114,9 @@ import {
   removeDeletedClassId,
   isDeletedClassId,
   isPurgedClassId,
+  getDeletedMemberIds,
+  addDeletedMemberId,
+  removeDeletedMemberId,
   PURGED_DEMO_CLASS_IDS,
   getCanonicalBphPositionKey,
   cleanDigits,
@@ -412,8 +415,26 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [classes, setClasses] = useState<SchoolClass[]>([]);
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
-  const [extracurriculars, setExtracurriculars] = useState<Extracurricular[]>([]);
-  const [members, setMembers] = useState<ExtracurricularMember[]>([]);
+  const [extracurriculars, setExtracurriculars] = useState<Extracurricular[]>(() => {
+    try {
+      const raw = localStorage.getItem('sim_extracurriculars');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [];
+  });
+  const [members, setMembers] = useState<ExtracurricularMember[]>(() => {
+    try {
+      const raw = localStorage.getItem('sim_members');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return [];
+  });
   const [schedules, setSchedules] = useState<ScheduleEvent[]>(INITIAL_SCHEDULES);
   const [attendance, setAttendance] = useState<AttendanceSession[]>(INITIAL_ATTENDANCE);
   const [activities, setActivities] = useState<SchoolActivity[]>(INITIAL_ACTIVITIES);
@@ -751,7 +772,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             localStorage.setItem('sim_extracurriculars', JSON.stringify(loadedEkskul));
           } catch (e) {}
 
-          // Members Sync
+          // Members Sync (Resilient Two-Way Merge & Anti-Wipe)
           const memberSnap = await getDocs(collection(db, 'extracurricular_members'));
           const loadedMembers: ExtracurricularMember[] = [];
           memberSnap.forEach(docSnap => {
@@ -766,10 +787,42 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               loadedMembers.push({ id: docSnap.id, ...data });
             }
           });
-          setMembers(loadedMembers);
-          try {
-            localStorage.setItem('sim_members', JSON.stringify(loadedMembers));
-          } catch (e) {}
+
+          setMembers(prevMembers => {
+            const deletedSet = getDeletedMemberIds();
+            const memberMap = new Map<string, ExtracurricularMember>();
+            loadedMembers.forEach(m => {
+              if (!deletedSet.has(m.id)) {
+                memberMap.set(m.id, m);
+              }
+            });
+
+            // Preserve local additions that haven't synced to Firestore yet
+            let localCache: ExtracurricularMember[] = [];
+            try {
+              const rawCached = localStorage.getItem('sim_members');
+              if (rawCached) localCache = JSON.parse(rawCached);
+            } catch {}
+
+            const candidates = [...prevMembers, ...localCache];
+            candidates.forEach(localM => {
+              if (localM && localM.id && !deletedSet.has(localM.id) && !memberMap.has(localM.id)) {
+                const isDuplicate = Array.from(memberMap.values()).some(
+                  m => m.extracurricularId === localM.extracurricularId && (m.studentId === localM.studentId || (m.studentNis && m.studentNis === localM.studentNis))
+                );
+                if (!isDuplicate) {
+                  memberMap.set(localM.id, localM);
+                  setDoc(doc(db, 'extracurricular_members', localM.id), localM).catch(() => {});
+                }
+              }
+            });
+
+            const mergedMembers = Array.from(memberMap.values());
+            try {
+              localStorage.setItem('sim_members', JSON.stringify(mergedMembers));
+            } catch (e) {}
+            return mergedMembers;
+          });
 
           // Schedules Sync
           const schedSnap = await getDocs(collection(db, 'schedules'));
@@ -1023,7 +1076,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             } else {
               // Non-destructive update: seed official Decree B-380 rules
               for (const r of INITIAL_SCHOOL_RULES) {
-                setDoc(doc(db, 'school_rules', r.id), r);
+                setDoc(doc(db, 'school_rules', r.id), r).catch(() => {});
               }
               setSchoolRules(INITIAL_SCHOOL_RULES);
               try {
@@ -1033,7 +1086,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           } else {
             // Seed official Decree B-380 rules
             for (const r of INITIAL_SCHOOL_RULES) {
-              setDoc(doc(db, 'school_rules', r.id), r);
+              setDoc(doc(db, 'school_rules', r.id), r).catch(() => {});
             }
             setSchoolRules(INITIAL_SCHOOL_RULES);
             try {
@@ -1052,14 +1105,14 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 localStorage.setItem('sim_handbook_meta', JSON.stringify(loadedMeta));
               } catch (e) {}
             } else {
-              setDoc(doc(db, 'settings', 'handbook_meta'), INITIAL_HANDBOOK_META);
+              setDoc(doc(db, 'settings', 'handbook_meta'), INITIAL_HANDBOOK_META).catch(() => {});
               setHandbookMeta(INITIAL_HANDBOOK_META);
               try {
                 localStorage.setItem('sim_handbook_meta', JSON.stringify(INITIAL_HANDBOOK_META));
               } catch (e) {}
             }
           } else {
-            setDoc(doc(db, 'settings', 'handbook_meta'), INITIAL_HANDBOOK_META);
+            setDoc(doc(db, 'settings', 'handbook_meta'), INITIAL_HANDBOOK_META).catch(() => {});
             setHandbookMeta(INITIAL_HANDBOOK_META);
             try {
               localStorage.setItem('sim_handbook_meta', JSON.stringify(INITIAL_HANDBOOK_META));
@@ -1414,26 +1467,59 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       unsubscribers.push(unsub);
     } catch (e) {}
 
-    // Extracurricular Members Listener
+    // Extracurricular Members Listener (Resilient Two-Way Merge & Anti-Wipe)
     try {
       const unsub = onSnapshot(collection(db, 'extracurricular_members'), (snapshot) => {
         const loaded: ExtracurricularMember[] = [];
         snapshot.forEach(docSnap => {
           const data = docSnap.data() as ExtracurricularMember;
           const id = docSnap.id;
-          if (id === 'm1' || data.studentNis === '24251001') return;
+          if (id === 'm1') return;
           if (isPurgedExtracurricular(data.extracurricularId) || isPurgedExtracurricular(data.extracurricularName || '')) return;
           loaded.push({ id, ...data });
         });
-        setMembers(loaded);
-        try {
-          localStorage.setItem('sim_members', JSON.stringify(loaded));
-        } catch (e) {}
 
-        setExtracurriculars(prev => prev.map(ekskul => {
-          const count = loaded.filter(m => m.extracurricularId === ekskul.id && m.status !== 'Nonaktif' && m.status !== 'Keluar').length;
-          return { ...ekskul, memberCount: count };
-        }));
+        setMembers(prevMembers => {
+          const deletedSet = getDeletedMemberIds();
+          const memberMap = new Map<string, ExtracurricularMember>();
+          loaded.forEach(m => {
+            if (!deletedSet.has(m.id)) {
+              memberMap.set(m.id, m);
+            }
+          });
+
+          // Preserve any local members that were newly added or not yet in snapshot
+          prevMembers.forEach(localM => {
+            if (localM && localM.id && !deletedSet.has(localM.id) && !memberMap.has(localM.id)) {
+              const isDuplicate = Array.from(memberMap.values()).some(
+                m => m.extracurricularId === localM.extracurricularId && (m.studentId === localM.studentId || (m.studentNis && m.studentNis === localM.studentNis))
+              );
+              if (!isDuplicate) {
+                memberMap.set(localM.id, localM);
+                // Background sync to ensure Firestore receives this local member
+                setDoc(doc(db, 'extracurricular_members', localM.id), localM).catch(() => {});
+              }
+            }
+          });
+
+          const finalMembers = Array.from(memberMap.values());
+          try {
+            localStorage.setItem('sim_members', JSON.stringify(finalMembers));
+          } catch (e) {}
+
+          setExtracurriculars(prevEks => {
+            const nextEks = prevEks.map(ekskul => {
+              const count = finalMembers.filter(m => m.extracurricularId === ekskul.id && m.status !== 'Nonaktif' && m.status !== 'Keluar').length;
+              return { ...ekskul, memberCount: count };
+            });
+            try {
+              localStorage.setItem('sim_extracurriculars', JSON.stringify(nextEks));
+            } catch (e) {}
+            return nextEks;
+          });
+
+          return finalMembers;
+        });
       }, (err) => {
         handleFirestoreError(err, OperationType.GET, 'extracurricular_members');
       });
@@ -1467,25 +1553,27 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             localStorage.setItem('sim_teachers', JSON.stringify(loaded));
           } catch (e) {}
 
-          raw.forEach(t => {
-            if (Array.isArray(t.assignedExtracurriculars)) {
-              const cleaned = canonicalizeAssignedEkskulIds(t.assignedExtracurriculars, extracurriculars);
-              const cleanNames = cleaned.map(eid => {
-                const match = (extracurriculars || []).find(e => e.id === eid);
-                return match ? match.name : eid;
-              });
-              const isDirty = t.assignedExtracurriculars.some(item => !item.startsWith('ekskul_')) ||
-                t.assignedExtracurriculars.length !== cleaned.length ||
-                !t.extracurricularNames || t.extracurricularNames.length !== cleanNames.length;
-              if (isDirty) {
-                setDoc(doc(db, 'teachers', t.id), { 
-                  assignedExtracurriculars: cleaned,
-                  extracurricularNames: cleanNames,
-                  extracurricularName: cleanNames.join(', ') || undefined
-                }, { merge: true }).catch(() => {});
+          if (extracurriculars && extracurriculars.length > 0) {
+            raw.forEach(t => {
+              if (Array.isArray(t.assignedExtracurriculars)) {
+                const cleaned = canonicalizeAssignedEkskulIds(t.assignedExtracurriculars, extracurriculars);
+                const cleanNames = cleaned.map(eid => {
+                  const match = (extracurriculars || []).find(e => e.id === eid);
+                  return match ? match.name : eid;
+                });
+                const isDirty = t.assignedExtracurriculars.some(item => !item.startsWith('ekskul_')) ||
+                  t.assignedExtracurriculars.length !== cleaned.length ||
+                  !t.extracurricularNames || t.extracurricularNames.length !== cleanNames.length;
+                if (isDirty) {
+                  setDoc(doc(db, 'teachers', t.id), { 
+                    assignedExtracurriculars: cleaned,
+                    extracurricularNames: cleanNames,
+                    extracurricularName: cleanNames.join(', ') || undefined
+                  }, { merge: true }).catch(() => {});
+                }
               }
-            }
-          });
+            });
+          }
         }
       }, (err) => {
         handleFirestoreError(err, OperationType.GET, 'teachers');
@@ -2060,7 +2148,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
 
     try {
-      deleteDoc(doc(db, 'academic_years', id));
+      deleteDoc(doc(db, 'academic_years', id)).catch(() => {});
     } catch (e) {
       console.warn('Firestore deleteAcademicYear notice:', e);
     }
@@ -2290,7 +2378,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setStudents(prev => sortStudentsAlphabetically([newStudent, ...prev]));
     try {
-      setDoc(doc(db, 'students', newStudent.id), newStudent);
+      await setDoc(doc(db, 'students', newStudent.id), newStudent);
     } catch (e) {}
     logAction('CREATE_STUDENT', 'Data Siswa', `Menambahkan data siswa baru: ${newStudent.fullName} (${newStudent.nis})`);
     return newStudent;
@@ -2308,7 +2396,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setStudents(prev => sortStudentsAlphabetically(prev.map(s => s.id === id ? { ...s, ...finalData, updatedAt: new Date().toISOString() } : s)));
     try {
-      updateDoc(doc(db, 'students', id), finalData);
+      await updateDoc(doc(db, 'students', id), finalData);
     } catch (e) {}
     logAction('UPDATE_STUDENT', 'Data Siswa', `Memperbarui data siswa ID: ${id}`);
   };
@@ -2741,7 +2829,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return merged;
     });
     try {
-      deleteDoc(doc(db, 'classes', id));
+      deleteDoc(doc(db, 'classes', id)).catch(() => {});
     } catch (e) {}
     logAction('DELETE_CLASS', 'Data Rombel', `Menghapus rombel kelas: ${target?.name || id}`);
   };
@@ -4107,7 +4195,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return merged;
     });
     try {
-      setDoc(doc(db, 'extracurriculars', newEkskul.id), newEkskul);
+      setDoc(doc(db, 'extracurriculars', newEkskul.id), newEkskul).catch(() => {});
     } catch (e) {}
 
     // Reverse sync: assign this ekskul to the matching teacher in teachers state
@@ -4206,7 +4294,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return filtered;
     });
     try {
-      deleteDoc(doc(db, 'extracurriculars', id));
+      deleteDoc(doc(db, 'extracurriculars', id)).catch(() => {});
     } catch (e) {}
 
     // Clean up member registrations for this deleted extracurricular, but NEVER touch master students or classes!
@@ -4263,7 +4351,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const finalStudentNis = student?.nis || data.studentNis;
 
     const newMember: ExtracurricularMember = {
-      id: `m_${Date.now()}`,
+      id: `m_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       ...data,
       studentId: targetStudentId,
       studentCode: finalStudentCode,
@@ -4271,21 +4359,53 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       studentClass: finalStudentClass,
       studentNis: finalStudentNis
     };
-    setMembers(prev => [newMember, ...prev]);
-    // update count in ekskul
-    setExtracurriculars(prev => prev.map(e => {
-      if (e.id === data.extracurricularId) {
-        return { ...e, memberCount: (e.memberCount || 0) + 1 };
+
+    removeDeletedMemberId(newMember.id);
+
+    setMembers(prev => {
+      const existsIndex = prev.findIndex(
+        m => m.id === newMember.id || (m.extracurricularId === newMember.extracurricularId && m.studentId === newMember.studentId)
+      );
+      let next: ExtracurricularMember[];
+      if (existsIndex >= 0) {
+        next = [...prev];
+        next[existsIndex] = newMember;
+      } else {
+        next = [newMember, ...prev];
       }
-      return e;
-    }));
+      try {
+        localStorage.setItem('sim_members', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+
+    // Update count in ekskul and persist immediately to localStorage
+    setExtracurriculars(prev => {
+      const updated = prev.map(e => {
+        if (e.id === data.extracurricularId) {
+          return { ...e, memberCount: (e.memberCount || 0) + 1 };
+        }
+        return e;
+      });
+      try {
+        localStorage.setItem('sim_extracurriculars', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+
     try {
-      setDoc(doc(db, 'extracurricular_members', newMember.id), newMember);
-    } catch (e) {}
+      await setDoc(doc(db, 'extracurricular_members', newMember.id), newMember);
+      const ekskulRef = doc(db, 'extracurriculars', data.extracurricularId);
+      const curCount = (extracurriculars.find(e => e.id === data.extracurricularId)?.memberCount || 0) + 1;
+      updateDoc(ekskulRef, { memberCount: curCount }).catch(() => {});
+    } catch (e) {
+      console.warn('[Firestore] Anggota disimpan secara lokal, penulisan cloud tertunda:', e);
+    }
     logAction('ADD_MEMBER', 'Anggota Ekstrakurikuler', `Menambahkan anggota: ${finalStudentName} ke ${data.extracurricularName || data.extracurricularId}`);
   };
 
   const removeMember = async (id: string) => {
+    addDeletedMemberId(id);
     const target = members.find(m => m.id === id);
     setMembers(prev => {
       const remaining = prev.filter(m => m.id !== id);
@@ -4307,30 +4427,47 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         } catch (e) {}
         return updated;
       });
+      try {
+        const eksRef = doc(db, 'extracurriculars', target.extracurricularId);
+        const curCount = Math.max(0, (extracurriculars.find(e => e.id === target.extracurricularId)?.memberCount || 1) - 1);
+        updateDoc(eksRef, { memberCount: curCount }).catch(() => {});
+      } catch (e) {}
     }
     try {
-      deleteDoc(doc(db, 'extracurricular_members', id));
+      await deleteDoc(doc(db, 'extracurricular_members', id));
     } catch (e) {}
     logAction('REMOVE_MEMBER', 'Anggota Ekstrakurikuler', `Menghapus keanggotaan ekstrakurikuler: ${target?.studentName || id} (Data siswa tetap aman di kelas)`);
   };
 
   const updateMember = async (id: string, data: Partial<ExtracurricularMember>) => {
-    setMembers(prev => prev.map(m => m.id === id ? { ...m, ...data } : m));
+    setMembers(prev => {
+      const next = prev.map(m => m.id === id ? { ...m, ...data } : m);
+      try {
+        localStorage.setItem('sim_members', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
     try {
-      updateDoc(doc(db, 'extracurricular_members', id), data);
+      await updateDoc(doc(db, 'extracurricular_members', id), data);
     } catch (e) {}
   };
 
   const updateMemberStatus = async (id: string, status: 'Aktif' | 'Nonaktif' | 'Cuti' | 'Keluar') => {
-    setMembers(prev => prev.map(m => m.id === id ? { ...m, status } : m));
+    setMembers(prev => {
+      const next = prev.map(m => m.id === id ? { ...m, status } : m);
+      try {
+        localStorage.setItem('sim_members', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
     try {
-      localStorage.setItem('sim_members', JSON.stringify(members.map(m => m.id === id ? { ...m, status } : m)));
-      updateDoc(doc(db, 'extracurricular_members', id), { status });
+      await updateDoc(doc(db, 'extracurricular_members', id), { status });
     } catch (e) {}
   };
 
   const deleteMembersBulk = async (ids: string[]) => {
     if (!ids || ids.length === 0) return 0;
+    ids.forEach(id => addDeletedMemberId(id));
     const idSet = new Set(ids);
     const targetMembers = members.filter(m => idSet.has(m.id));
 
@@ -5555,7 +5692,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const targetDoc = doc(db, 'announcements', id);
       setDoc(targetDoc, {
         readByUsers: { [userKey]: nowIso }
-      }, { merge: true });
+      }, { merge: true }).catch(() => {});
     } catch (e) {}
   };
 
@@ -5576,7 +5713,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       try {
         setDoc(doc(db, 'announcements', annId), {
           readByUsers: { [userKey]: nowIso }
-        }, { merge: true });
+        }, { merge: true }).catch(() => {});
       } catch (e) {}
     }
   };
@@ -5599,7 +5736,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     setNotifications(prev => [newNotif, ...prev]);
     try {
-      setDoc(doc(db, 'notifications', newNotif.id), newNotif);
+      setDoc(doc(db, 'notifications', newNotif.id), newNotif).catch(() => {});
     } catch (e) {}
   };
 
@@ -5643,7 +5780,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     setOsimMembers(prev => [newMember, ...prev]);
     try {
-      setDoc(doc(db, 'osim_members', newMember.id), newMember);
+      setDoc(doc(db, 'osim_members', newMember.id), newMember).catch(() => {});
     } catch (e) {}
     logAction('ADD_OSIM_MEMBER', 'Intrakurikuler & OSIM', `Menambahkan pengurus OSIM: ${finalFullName} (${newMember.position})`);
   };
@@ -6024,7 +6161,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     setCashAccounts(prev => prev.map(a => a.id === accountId ? updatedAcc : a));
     try {
-      setDoc(doc(db, 'cash_accounts', accountId), updatedAcc, { merge: true });
+      setDoc(doc(db, 'cash_accounts', accountId), updatedAcc, { merge: true }).catch(() => {});
     } catch (e) {}
 
     // Update users' cash manager flags in users collection / localStorage

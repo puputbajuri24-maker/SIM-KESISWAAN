@@ -381,7 +381,7 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ initialSchedule 
             <button
               onClick={() => setActiveTab('input')}
               className={`relative px-3.5 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
-                activeTab === 'input' ? 'text-white font-semibold' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                activeTab === 'input' ? 'text-white font-semibold' : 'text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white font-bold'
               }`}
             >
               {activeTab === 'input' && (
@@ -399,7 +399,7 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ initialSchedule 
             <button
               onClick={() => setActiveTab('history')}
               className={`relative px-3.5 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
-                activeTab === 'history' ? 'text-white font-semibold' : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                activeTab === 'history' ? 'text-white font-semibold' : 'text-slate-700 dark:text-slate-300 hover:text-slate-950 dark:hover:text-white font-bold'
               }`}
             >
               {activeTab === 'history' && (
@@ -620,10 +620,10 @@ export const AttendancePage: React.FC<AttendancePageProps> = ({ initialSchedule 
                               {(['Hadir', 'Izin', 'Sakit', 'Alpa'] as AttendanceStatus[]).map(st => {
                                 const isSelected = currentStatus === st;
                                 const colors = {
-                                  Hadir: isSelected ? 'bg-emerald-600 text-white font-bold shadow-xs' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 hover:bg-emerald-50 hover:text-emerald-700',
-                                  Izin: isSelected ? 'bg-sky-600 text-white font-bold shadow-xs' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 hover:bg-sky-50 hover:text-sky-700',
-                                  Sakit: isSelected ? 'bg-amber-600 text-white font-bold shadow-xs' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 hover:bg-amber-50 hover:text-amber-700',
-                                  Alpa: isSelected ? 'bg-rose-600 text-white font-bold shadow-xs' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 hover:bg-rose-50 hover:text-rose-700'
+                                  Hadir: isSelected ? 'bg-emerald-600 text-white font-bold shadow-xs' : 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 hover:text-emerald-700 dark:hover:text-emerald-300 font-bold',
+                                  Izin: isSelected ? 'bg-sky-600 text-white font-bold shadow-xs' : 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 hover:bg-sky-50 dark:hover:bg-sky-950/40 hover:text-sky-700 dark:hover:text-sky-300 font-bold',
+                                  Sakit: isSelected ? 'bg-amber-600 text-white font-bold shadow-xs' : 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 hover:bg-amber-50 dark:hover:bg-amber-950/40 hover:text-amber-700 dark:hover:text-amber-300 font-bold',
+                                  Alpa: isSelected ? 'bg-rose-600 text-white font-bold shadow-xs' : 'bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 hover:bg-rose-50 dark:hover:bg-rose-950/40 hover:text-rose-700 dark:hover:text-rose-300 font-bold'
                                 }[st];
 
                                 return (

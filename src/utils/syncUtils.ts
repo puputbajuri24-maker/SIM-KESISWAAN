@@ -364,9 +364,8 @@ export const canonicalizeAssignedEkskulIds = (
     const cleanItem = item.trim();
     if (!cleanItem) continue;
 
-    // Tolak semua string yang berupa angka murni (/^\d+$/) atau ID timestamp/serial
+    // Tolak string yang berupa angka murni (/^\d+$/)
     if (/^\d+$/.test(cleanItem)) continue;
-    if (/^ekskul_\d+$/.test(cleanItem.toLowerCase())) continue;
 
     // 1. If an extracurricular list is provided, match against it
     if (allEkskuls && allEkskuls.length > 0) {
@@ -399,8 +398,8 @@ export const canonicalizeAssignedEkskulIds = (
       }
     }
 
-    // 2. Direct ID check (hanya jika valid dan bukan angka serial)
-    if (cleanItem.startsWith('ekskul_') && !/^ekskul_\d+$/.test(cleanItem.toLowerCase())) {
+    // 2. Direct ID check (valid ekskul document ID)
+    if (cleanItem.startsWith('ekskul_')) {
       canonicalIds.push(cleanItem);
       continue;
     }
@@ -935,6 +934,49 @@ export const removeDeletedClassId = (_classId: string) => {};
 
 export const isDeletedClassId = (_classId?: string): boolean => {
   return false;
+};
+
+// ==========================================
+// EXTRACURRICULAR MEMBERS DELETED TRACKING
+// ==========================================
+const DELETED_MEMBERS_STORAGE_KEY = 'simkesiswaan_deleted_member_ids';
+
+export const getDeletedMemberIds = (): Set<string> => {
+  try {
+    const raw = sessionStorage.getItem(DELETED_MEMBERS_STORAGE_KEY);
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) return new Set(arr);
+    }
+  } catch {}
+  return new Set();
+};
+
+export const addDeletedMemberId = (memberId: string) => {
+  if (!memberId) return;
+  try {
+    const set = getDeletedMemberIds();
+    set.add(memberId);
+    const serialized = JSON.stringify(Array.from(set));
+    sessionStorage.setItem(DELETED_MEMBERS_STORAGE_KEY, serialized);
+  } catch {}
+};
+
+export const removeDeletedMemberId = (memberId: string) => {
+  if (!memberId) return;
+  try {
+    const set = getDeletedMemberIds();
+    set.delete(memberId);
+    const serialized = JSON.stringify(Array.from(set));
+    sessionStorage.setItem(DELETED_MEMBERS_STORAGE_KEY, serialized);
+  } catch {}
+};
+
+export const clearDeletedMemberIds = () => {
+  try {
+    sessionStorage.removeItem(DELETED_MEMBERS_STORAGE_KEY);
+    localStorage.removeItem(DELETED_MEMBERS_STORAGE_KEY);
+  } catch {}
 };
 
 // ==========================================

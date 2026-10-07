@@ -500,7 +500,7 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
                           )
                         )}
                       </div>
-                      <h3 className="text-base font-bold text-slate-900 dark:text-slate-100 group-hover:opacity-85 transition-opacity mt-1">
+                      <h3 className="text-base font-black text-slate-950 dark:text-white tracking-tight group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors mt-1">
                         {ekskul.name}
                       </h3>
                     </div>
