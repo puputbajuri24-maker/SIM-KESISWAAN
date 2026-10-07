@@ -107,10 +107,12 @@ export interface RelationalHealthReport {
   orphanViolations: number;
   orphanCounselings: number;
   orphanEkskulMembers: number;
+  orphanClubMembers?: number;
   orphanCoaches: number;
   orphanCashTransactions: number;
   studentPointDiscrepancies: number;
   cashBalanceDiscrepancies: number;
+  ekskulCountDiscrepancies?: number;
   isHealthy: boolean;
 }
 
@@ -128,10 +130,12 @@ export const auditRelationalIntegrity = (
   let orphanViolations = 0;
   let orphanCounselings = 0;
   let orphanEkskulMembers = 0;
+  let orphanClubMembers = 0;
   let orphanCoaches = 0;
   let orphanCashTransactions = 0;
   let studentPointDiscrepancies = 0;
   let cashBalanceDiscrepancies = 0;
+  let ekskulCountDiscrepancies = 0;
 
   // 1. Audit Student links on Violations
   const activeViolations = violations.filter(v => !v.isDeleted && v.status !== 'Dibatalkan');
@@ -161,10 +165,29 @@ export const auditRelationalIntegrity = (
     if (!student) orphanCounselings++;
   });
 
-  // 4. Audit Extracurricular Member links
+  // 4. Audit Extracurricular Member links (Student & Club existence)
+  const ekskulIdMap = new Set(extracurriculars.map(e => e.id));
+  const memberCountPerEkskul: Record<string, number> = {};
+
   members.forEach(m => {
     const student = resolveStudent(students, { id: m.studentId, code: m.studentCode, nis: m.studentNis, name: m.studentName });
     if (!student) orphanEkskulMembers++;
+
+    if (m.extracurricularId && !ekskulIdMap.has(m.extracurricularId)) {
+      orphanClubMembers++;
+    }
+
+    if (m.status === 'Aktif' && m.extracurricularId) {
+      memberCountPerEkskul[m.extracurricularId] = (memberCountPerEkskul[m.extracurricularId] || 0) + 1;
+    }
+  });
+
+  // Check ekskul member count discrepancies
+  extracurriculars.forEach(e => {
+    const realCount = memberCountPerEkskul[e.id] || 0;
+    if ((e.memberCount || 0) !== realCount) {
+      ekskulCountDiscrepancies++;
+    }
   });
 
   // 5. Audit Extracurricular Coaches
@@ -200,10 +223,12 @@ export const auditRelationalIntegrity = (
   const isHealthy = orphanViolations === 0 && 
     orphanCounselings === 0 && 
     orphanEkskulMembers === 0 && 
+    orphanClubMembers === 0 &&
     orphanCoaches === 0 &&
     orphanCashTransactions === 0 &&
     studentPointDiscrepancies === 0 &&
-    cashBalanceDiscrepancies === 0;
+    cashBalanceDiscrepancies === 0 &&
+    ekskulCountDiscrepancies === 0;
 
   return {
     totalStudents: students.length,
@@ -218,10 +243,12 @@ export const auditRelationalIntegrity = (
     orphanViolations,
     orphanCounselings,
     orphanEkskulMembers,
+    orphanClubMembers,
     orphanCoaches,
     orphanCashTransactions,
     studentPointDiscrepancies,
     cashBalanceDiscrepancies,
+    ekskulCountDiscrepancies,
     isHealthy
   };
 };

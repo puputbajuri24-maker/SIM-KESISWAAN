@@ -4930,8 +4930,12 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const teachRes = await harmonizeTeachersFirestore();
       const teachersHarmonized = teachRes.migratedCount || 0;
 
+      // 4. Auto-heal orphan extracurricular members, coaches, and cross-collection references
+      const healRes = await autoHealOrphanRecords();
+      const ekskulHealed = healRes.healedMembers + healRes.healedCoaches;
+
       setIsSyncing(false);
-      const msg = `Harmonisasi Fase 3 Berhasil: ${studentPointsFixed} akumulasi poin siswa diperbaiki, ${cashBalancesFixed} saldo akun kas diselaraskan, dan ${teachersHarmonized} data dewan guru distandarisasi.`;
+      const msg = `Harmonisasi Basis Data Berhasil: ${studentPointsFixed} akumulasi poin siswa diperbaiki, ${cashBalancesFixed} saldo akun kas diselaraskan, ${teachersHarmonized} data guru distandarisasi, dan ${ekskulHealed} relasi keanggotaan ekstrakurikuler dipulihkan.`;
       logAction('FULL_HARMONIZATION', 'Basis Data', msg);
       return {
         success: true,
@@ -5036,18 +5040,30 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       } catch (e) {}
     }
 
-    // 3. Heal Extracurricular Members
+    // 3. Heal Extracurricular Members (Student & Club Relational Links)
     const updatedMembers = members.map(m => {
       const student = resolveStudent(students, { id: m.studentId, code: m.studentCode, nis: m.studentNis, name: m.studentName });
-      if (student && (m.studentId !== student.id || m.studentName !== student.fullName || m.studentClass !== student.className)) {
+      const ekskul = extracurriculars.find(e => e.id === m.extracurricularId || (m.extracurricularName && e.name.toLowerCase() === m.extracurricularName.toLowerCase()));
+      let changed = false;
+      const healed = { ...m };
+
+      if (student && (m.studentId !== student.id || m.studentName !== student.fullName || m.studentClass !== student.className || (student.nis && m.studentNis !== student.nis))) {
+        healed.studentId = student.id;
+        healed.studentCode = student.code || m.studentCode;
+        healed.studentName = student.fullName;
+        healed.studentClass = student.className;
+        healed.studentNis = student.nis || m.studentNis;
+        changed = true;
+      }
+
+      if (ekskul && (m.extracurricularId !== ekskul.id || m.extracurricularName !== ekskul.name)) {
+        healed.extracurricularId = ekskul.id;
+        healed.extracurricularName = ekskul.name;
+        changed = true;
+      }
+
+      if (changed) {
         healedMembers++;
-        const healed = {
-          ...m,
-          studentId: student.id,
-          studentCode: student.code || m.studentCode,
-          studentName: student.fullName,
-          studentClass: student.className
-        };
         try {
           updateDoc(doc(db, 'extracurricular_members', m.id), healed).catch(() => {});
         } catch (e) {}
@@ -5063,27 +5079,46 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       } catch (e) {}
     }
 
-    // 4. Heal Extracurricular Coaches
+    // 4. Heal Extracurricular Coaches & Reconcile Member Counts
+    const activeMemberCounts: Record<string, number> = {};
+    updatedMembers.forEach(m => {
+      if (m.status === 'Aktif' && m.extracurricularId) {
+        activeMemberCounts[m.extracurricularId] = (activeMemberCounts[m.extracurricularId] || 0) + 1;
+      }
+    });
+
+    let countsReconciled = false;
     const updatedEkskuls = extracurriculars.map(e => {
+      let changed = false;
+      let healed = { ...e };
+
       if (e.coachId) {
         const teacher = resolveTeacher(teachers, { id: e.coachId, code: e.coachCode, name: e.coachName });
         if (teacher && (e.coachName !== teacher.fullName || e.coachCode !== teacher.code)) {
           healedCoaches++;
-          const healed = {
-            ...e,
-            coachName: teacher.fullName,
-            coachCode: teacher.code
-          };
-          try {
-            updateDoc(doc(db, 'extracurriculars', e.id), healed).catch(() => {});
-          } catch (e) {}
-          return healed;
+          healed.coachName = teacher.fullName;
+          healed.coachCode = teacher.code;
+          changed = true;
         }
+      }
+
+      const realActiveCount = activeMemberCounts[e.id] || 0;
+      if (e.memberCount !== realActiveCount) {
+        healed.memberCount = realActiveCount;
+        changed = true;
+        countsReconciled = true;
+      }
+
+      if (changed) {
+        try {
+          updateDoc(doc(db, 'extracurriculars', e.id), healed).catch(() => {});
+        } catch (e) {}
+        return healed;
       }
       return e;
     });
 
-    if (healedCoaches > 0) {
+    if (healedCoaches > 0 || countsReconciled) {
       setExtracurriculars(updatedEkskuls);
       try {
         localStorage.setItem('sim_extracurriculars', JSON.stringify(updatedEkskuls));
@@ -5226,6 +5261,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       cashAccounts: cashAccounts.length,
       cashTransactions: cashTransactions.length,
       extracurriculars: extracurriculars.length,
+      members: members.length,
       osimMembers: osimMembers.length,
       osimPrograms: osimPrograms.length,
       users: allUsers.length
@@ -5327,6 +5363,20 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (d.members) localStorage.setItem('sim_members', JSON.stringify(d.members));
       if (d.osimMembers) localStorage.setItem('sim_osim_members', JSON.stringify(d.osimMembers));
       if (d.osimPrograms) localStorage.setItem('sim_osim_programs', JSON.stringify(d.osimPrograms));
+
+      // Push restored extracurriculars & members to Firestore to guarantee persistence
+      if (auth.currentUser) {
+        if (Array.isArray(d.extracurriculars)) {
+          d.extracurriculars.forEach((e: any) => {
+            if (e && e.id) setDoc(doc(db, 'extracurriculars', e.id), e).catch(() => {});
+          });
+        }
+        if (Array.isArray(d.members)) {
+          d.members.forEach((m: any) => {
+            if (m && m.id) setDoc(doc(db, 'extracurricular_members', m.id), m).catch(() => {});
+          });
+        }
+      }
 
       setIsSyncing(false);
       const msg = `Berhasil memulihkan database dari titik "${target.label}" (${target.timestamp}). Seluruh entitas telah dikembalikan ke kondisi stabil.`;

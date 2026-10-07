@@ -31,7 +31,8 @@ import {
 import { Teacher, UserProfile, SchoolClass } from '../../../types';
 import { RelationalHealthReport } from '../../../utils/relationResolvers';
 import { deduplicateClassesList } from '../../../utils/classResolver';
-import { isPurgedClassId, getDeletedClassIds, getDeletedUids } from '../../../utils/syncUtils';
+import { isPurgedClassId, getDeletedClassIds, getDeletedUids, getDeletedMemberIds } from '../../../utils/syncUtils';
+import { isPurgedExtracurricular } from '../../../services/seedData';
 import { useSchool } from '../../../contexts/SchoolContext';
 
 export interface Tahap5ScenarioResult {
@@ -168,7 +169,7 @@ export const CPanelBackupRestoreTab: React.FC<CPanelBackupRestoreTabProps> = ({
   const [showCloudVerifyModal, setShowCloudVerifyModal] = useState(false);
 
   // Tahap 5: 4 Skenario Uji Ketahanan & Integritas Sistem State
-  const { classes: schoolClasses, students: schoolStudents, extracurriculars: schoolEkskuls, isRealTimeConnected } = useSchool();
+  const { classes: schoolClasses, students: schoolStudents, extracurriculars: schoolEkskuls, members: schoolMembers, isRealTimeConnected } = useSchool();
   const [tahap5Results, setTahap5Results] = useState<Record<number, Tahap5ScenarioResult>>({
     1: {
       id: 1,
@@ -432,12 +433,13 @@ export const CPanelBackupRestoreTab: React.FC<CPanelBackupRestoreTabProps> = ({
     const studentCount = schoolStudents?.length || studentsCount || 212;
     const teacherCount = teachers?.length || 20;
     const ekskulCount = schoolEkskuls?.length || 8;
+    const membersCount = schoolMembers?.length || 0;
 
     details.push(`1. Inisialisasi cold-start: memeriksa integritas memori tanpa mengandalkan cache lokal usang.`);
     details.push(`2. Rombel Kelas: ${classCount} rombel aktif (Target: 10 rombel resmi: 10-A, 10-B, 10-C, 11-A s/d 11-D, 12-A s/d 12-C).`);
     details.push(`3. Data Siswa: ${studentCount} siswa aktif (Target: 212 siswa pokok terdaftar).`);
     details.push(`4. Dewan Guru & Pembina: ${teacherCount} dewan guru aktif (Target: 20 dewan guru terverifikasi).`);
-    details.push(`5. Ekstrakurikuler: ${ekskulCount} cabang kegiatan resmi.`);
+    details.push(`5. Ekstrakurikuler: ${ekskulCount} cabang kegiatan resmi, ${membersCount} anggota terdata aktif.`);
 
     // Audit kebersihan kelas ghost
     const ghostClasses = (schoolClasses || []).filter(c => c.id.startsWith('c_auto_') || c.id === 'c_dummy');
@@ -456,7 +458,7 @@ export const CPanelBackupRestoreTab: React.FC<CPanelBackupRestoreTabProps> = ({
 
     const passed = isClassOk && isStudentOk && isTeacherOk;
     if (passed) {
-      details.push(`✓ SUKSES: Cold-start booting sistem bersih dari storage berhasil. Seluruh 10 rombel resmi, 212 siswa, dan master data terhidrasi sempurna.`);
+      details.push(`✓ SUKSES: Cold-start booting sistem bersih dari storage berhasil. Seluruh 10 rombel resmi, 212 siswa, 20 dewan guru, dan master data terhidrasi sempurna.`);
     } else {
       details.push(`⚠ PERINGATAN: Ditemukan inkonsistensi saat inisialisasi cold-start.`);
     }
@@ -495,15 +497,20 @@ export const CPanelBackupRestoreTab: React.FC<CPanelBackupRestoreTabProps> = ({
     const isDummyPurged = isPurgedClassId('c_dummy');
     details.push(`3. Uji fungsi isPurgedClassId(): c_auto_* = ${isAutoPurged}, c_dummy = ${isDummyPurged}.`);
 
-    // Uji Tombstones UIDs & Classes
+    // Uji fungsi isPurgedExtracurricular
+    const isEkskulDemoPurged = isPurgedExtracurricular('Pramuka (Demo)');
+    details.push(`4. Uji Isolasi Ekskul Zombie: isPurgedExtracurricular('Pramuka (Demo)') = ${isEkskulDemoPurged}.`);
+
+    // Uji Tombstones UIDs, Classes, and Members
     const deletedClassSet = getDeletedClassIds();
     const deletedUidSet = getDeletedUids();
-    details.push(`4. Registry Tombstones aktif: ${deletedClassSet.size} kelas terpurge, ${deletedUidSet.size} akun/guru terpurge.`);
+    const deletedMemberSet = getDeletedMemberIds();
+    details.push(`5. Registry Tombstones aktif: ${deletedClassSet.size} kelas terpurge, ${deletedUidSet.size} akun terpurge, ${deletedMemberSet.size} anggota transien terisolasi.`);
 
     // Uji Anti-Restore dari payload JSON usang
-    details.push(`5. Uji Anti-Restore: Parser cadangan secara preventif membuang kunci duplikat dan menolak membangkitkan UID tombstone.`);
+    details.push(`6. Uji Anti-Restore: Parser cadangan secara preventif membuang kunci duplikat dan menolak membangkitkan UID tombstone.`);
 
-    const passed = zombieCaught.length >= 2 && isAutoPurged && isDummyPurged;
+    const passed = zombieCaught.length >= 2 && isAutoPurged && isDummyPurged && isEkskulDemoPurged;
     if (passed) {
       details.push(`✓ SUKSES: Sistem memiliki kekebalan mutlak (Anti-Resurrection). Data lama/zombie ditolak permanen.`);
     } else {
@@ -516,7 +523,7 @@ export const CPanelBackupRestoreTab: React.FC<CPanelBackupRestoreTabProps> = ({
       badge: 'ZOMBIE IMMUNITY',
       desc: 'Pengujian kekebalan sistem terhadap kebangkitan data usang (c_auto_*, akun lama, atau kelas ghost).',
       status: passed ? 'passed' : 'failed',
-      message: passed ? 'Lolos: Seluruh data zombie (c_auto_* & tombstone) ditolak mutlak dan dibersihkan dari database.' : 'Gagal: Data zombie terdeteksi lolos filter.',
+      message: passed ? 'Lolos: Seluruh data zombie (c_auto_*, ekskul demo, & tombstone) ditolak mutlak dan dibersihkan dari database.' : 'Gagal: Data zombie terdeteksi lolos filter.',
       details,
       executedAt: new Date().toLocaleTimeString('id-ID')
     };
