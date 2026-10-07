@@ -1148,19 +1148,19 @@ export const ReportsPage: React.FC = () => {
       {activeTab === 'discipline_sk380' && (
         <div className="space-y-4">
           {/* Header Banner & Legal Rujukan */}
-          <div className="p-5 bg-gradient-to-r from-amber-950/40 via-[#131b2e] to-slate-900 border border-amber-500/30 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+          <div className="p-5 bg-gradient-to-r from-amber-50/90 via-white to-slate-50 border border-amber-200/90 dark:from-amber-950/40 dark:via-[#131b2e] dark:to-slate-900 dark:border-amber-500/30 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
             <div className="space-y-1">
-              <div className="flex items-center gap-2">
-                <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-amber-500/20 text-amber-300 border border-amber-500/40">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold font-mono bg-amber-100 text-amber-800 border border-amber-200 dark:bg-amber-500/20 dark:text-amber-300 dark:border-amber-500/40">
                   SK NO. B-380/Ma.25.06/PP.00.6/07/2024
                 </span>
-                <span className="text-[11px] text-slate-400">T.P. {activeAcademicYear}</span>
+                <span className="text-[11px] text-slate-600 dark:text-slate-400">T.P. {activeAcademicYear}</span>
               </div>
-              <h3 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-                <Scale className="w-5 h-5 text-amber-400" />
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Scale className="w-5 h-5 text-amber-600 dark:text-amber-400" />
                 <span>Rekapitulasi Evaluasi Kedisiplinan & 5 Jenjang Sanksi</span>
               </h3>
-              <p className="text-xs text-slate-300 max-w-2xl leading-relaxed">
+              <p className="text-xs text-slate-600 dark:text-slate-300 max-w-2xl leading-relaxed">
                 Pemantauan komprehensif kepatuhan tata tertib madrasah, akumulasi poin individual siswa, dan status penerbitan sanksi bertingkat (Peringatan Lisan, SP 1, SP 2 Skorsing, SP 3 Sidang Pleno, hingga Pengembalian ke Orang Tua).
               </p>
             </div>

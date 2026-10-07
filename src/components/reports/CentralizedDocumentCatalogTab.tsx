@@ -779,31 +779,31 @@ export const CentralizedDocumentCatalogTab: React.FC<CentralizedDocumentCatalogT
       {/* ============================================================== */}
       {/* HERO BANNER: PUSAT DOKUMEN CETAK TERPADU */}
       {/* ============================================================== */}
-      <div className="p-5 sm:p-6 bg-gradient-to-r from-indigo-950 via-[#111827] to-slate-900 border border-indigo-500/30 rounded-2xl shadow-sm text-white flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="p-5 sm:p-6 bg-gradient-to-r from-indigo-50/90 via-white to-slate-50 border border-indigo-200/90 dark:from-indigo-950 dark:via-[#111827] dark:to-slate-900 dark:border-indigo-500/30 rounded-2xl shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="space-y-1.5">
-          <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded text-[10px] font-bold font-mono bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="px-2.5 py-0.5 rounded text-[10px] font-bold font-mono bg-indigo-100 text-indigo-700 border border-indigo-200 dark:bg-indigo-500/20 dark:text-indigo-300 dark:border-indigo-500/40">
               UNIFIED PRINT CENTER • T.P. {activeAcademicYear}
             </span>
-            <span className="text-[11px] text-slate-400">
-              Acuan Kop: <strong>{schoolSetting?.name || 'MAN 2 SERAM BAGIAN TIMUR'}</strong>
+            <span className="text-[11px] text-slate-600 dark:text-slate-400">
+              Acuan Kop: <strong className="text-slate-800 dark:text-slate-200">{schoolSetting?.name || 'MAN 2 SERAM BAGIAN TIMUR'}</strong>
             </span>
           </div>
 
-          <h3 className="text-base sm:text-xl font-black text-white flex items-center gap-2 tracking-tight">
-            <Printer className="w-5 h-5 text-indigo-400 shrink-0" />
+          <h3 className="text-base sm:text-xl font-black text-slate-900 dark:text-white flex items-center gap-2 tracking-tight">
+            <Printer className="w-5 h-5 text-indigo-600 dark:text-indigo-400 shrink-0" />
             <span>Katalog Dokumen Cetak Kedinasan Kesiswaan</span>
           </h3>
 
-          <p className="text-xs text-slate-300 max-w-3xl leading-relaxed">
+          <p className="text-xs text-slate-600 dark:text-slate-300 max-w-3xl leading-relaxed">
             Semua pencetakan berkas dari seluruh modul kesiswaan dipusatkan di sini. Lengkap dengan Kop Surat Resmi dari pengaturan madrasah, pilihan kertas A4 / F4 (Folio), serta blok tanda tangan dinamis yang posisinya dapat digeser dengan anak panah ⬅ ➡ dan dapat diedit langsung pada layar pratinjau.
           </p>
         </div>
 
         <div className="flex items-center gap-3 shrink-0">
           <div className="text-right hidden sm:block">
-            <span className="text-[10px] text-slate-400 block font-medium">Total Template</span>
-            <span className="text-lg font-black text-indigo-300">{documentCatalog.length} Berkas Resmi</span>
+            <span className="text-[10px] text-slate-500 dark:text-slate-400 block font-medium">Total Template</span>
+            <span className="text-lg font-black text-indigo-600 dark:text-indigo-300">{documentCatalog.length} Berkas Resmi</span>
           </div>
         </div>
       </div>
