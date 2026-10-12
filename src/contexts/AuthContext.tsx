@@ -1427,31 +1427,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // 3. Resolve extracurricular IDs and human-readable names (for Firestore readability)
         let resolvedAssignedIds = canonicalizeAssignedEkskulIds(t.assignedExtracurriculars, extracurricularsList);
-        if (resolvedAssignedIds.length === 0 && Array.isArray(extracurricularsList)) {
-          const matchedEkskul = extracurricularsList.find(e =>
+        if (Array.isArray(extracurricularsList) && extracurricularsList.length > 0) {
+          const matchedEkskuls = extracurricularsList.filter(e =>
             (e.coachId && (e.coachId === t.id || `user_${t.id}` === e.coachId || e.coachId === `user_${t.id.replace('user_', '')}`)) ||
-            (e.coachName && e.coachName.trim().toLowerCase() === t.fullName.trim().toLowerCase())
+            (e.coachName && normalizeName(e.coachName) === normalizeName(t.fullName))
           );
-          if (matchedEkskul) {
-            resolvedAssignedIds = [matchedEkskul.id];
+          if (matchedEkskuls.length > 0) {
+            resolvedAssignedIds = Array.from(new Set([...resolvedAssignedIds, ...matchedEkskuls.map(e => e.id)]));
           }
         }
 
-        // Distinct assignment for dance extracurriculars
-        if (t.fullName.toLowerCase().includes('nurlita')) {
-          const kreasi = (extracurricularsList || []).find(e => e.name.toLowerCase().includes('kreasi'));
-          if (kreasi) resolvedAssignedIds = [kreasi.id];
-        } else if (t.fullName.toLowerCase().includes('irna rumeon')) {
-          const trad = (extracurricularsList || []).find(e => e.name.toLowerCase().includes('tradisional'));
-          if (trad) resolvedAssignedIds = [trad.id];
-        }
-
-        const assignedEkskulIds = resolvedAssignedIds.slice(0, 1);
+        const assignedEkskulIds = canonicalizeAssignedEkskulIds(resolvedAssignedIds, extracurricularsList);
         const assignedEkskulNames = assignedEkskulIds.map(id => {
           const match = (extracurricularsList || []).find(e => e.id === id);
           return match ? match.name : '';
         }).filter(name => Boolean(name && !/^\d+$/.test(name.trim()) && !/^ekskul_\d+$/.test(name.trim())));
-        const assignedEkskulNameStr = assignedEkskulNames[0] || undefined;
+        const assignedEkskulNameStr = assignedEkskulNames.join(', ') || undefined;
 
         // 4. Find existing user with comprehensive matching
         const existingIdx = updatedUsers.findIndex(u => isTeacherUserMatch(u, t));
@@ -1459,9 +1450,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (existingIdx >= 0) {
           const existing = updatedUsers[existingIdx];
           const isSuperAdminUser = t.role?.toLowerCase().includes('super') || t.fullName?.toLowerCase().includes('puput') || existing.role === 'super_admin' || existing.uid === 'user_super_admin';
-          const standardUid = isSuperAdminUser ? 'user_super_admin' : (t.id.startsWith('user_') ? t.id : `user_${t.id}`);
-          const isUidMigrated = !isSuperAdminUser && standardUid.startsWith('user_guru_') && existing.uid !== standardUid && !existing.uid.startsWith('user_guru_') && existing.uid !== 'user_super_admin';
-          const targetUid = isUidMigrated ? standardUid : existing.uid;
+          // PERTAHANKAN UID ASLI USER PROFILE! UID asli Firebase Auth/Firestore tidak boleh dimutasi atau dihapus
+          const targetUid = existing.uid;
 
           const userPassword = existing.password || 'password';
           const merged: UserProfile = {
@@ -1477,10 +1467,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             status: t.isActive !== false ? 'Aktif' : 'Nonaktif',
             isCashManager: t.isCashManager !== undefined ? t.isCashManager : existing.isCashManager,
             cashManagerTitle: t.cashManagerTitle || existing.cashManagerTitle,
-            extracurricularIds: assignedEkskulIds, // Me-replace, bukan merge
-            assignedExtracurricularIds: assignedEkskulIds,
-            extracurricularNames: assignedEkskulNames,
-            extracurricularName: assignedEkskulNameStr,
+            extracurricularIds: assignedEkskulIds.length > 0 ? assignedEkskulIds : existing.extracurricularIds,
+            assignedExtracurricularIds: assignedEkskulIds.length > 0 ? assignedEkskulIds : existing.assignedExtracurricularIds,
+            extracurricularNames: assignedEkskulNames.length > 0 ? assignedEkskulNames : existing.extracurricularNames,
+            extracurricularName: assignedEkskulNameStr || existing.extracurricularName,
             counselorSpecialization: role === 'guru_bk' ? (t.subject || existing.counselorSpecialization || 'Bimbingan Konseling Siswa & Karir') : existing.counselorSpecialization,
             photoURL: t.photoUrl || (t as any).photoURL || existing.photoURL,
             updatedAt: new Date().toISOString()
@@ -1489,10 +1479,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const isPrivilegedAdmin = currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role);
           if (auth.currentUser && isPrivilegedAdmin) {
             firestorePromises.push(setDoc(doc(db, 'users', merged.uid), merged, { merge: true }));
-            if (isUidMigrated && existing.uid) {
-              firestorePromises.push(deleteDoc(doc(db, 'users', existing.uid)));
-            }
-            if (isSuperAdminUser) {
+            if (isSuperAdminUser && existing.uid !== 'user_guru_01') {
               // Guarantee removal of any legacy user_guru_01 duplicate in users
               firestorePromises.push(deleteDoc(doc(db, 'users', 'user_guru_01')));
             }

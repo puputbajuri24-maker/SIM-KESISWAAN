@@ -88,7 +88,7 @@ import { useAuth } from './AuthContext';
 import { initGlobalRbacSync } from '../services/rbacService';
 import { canManageViolations } from '../permissions';
 import { findMatchingClass, resolveStudentClass, isStudentInClass, deduplicateClassesList, normalizeClassString } from '../utils/classResolver';
-import { normalizeTeacherCode, formatTeacherCode, formatStudentCode, formatTeacherDocId, getNextTeacherDocId } from '../utils/idGenerator';
+import { normalizeTeacherCode, formatTeacherCode, formatStudentCode, formatTeacherDocId, getNextTeacherDocId, isValidTeacherCode } from '../utils/idGenerator';
 import { resolveStudent, resolveTeacher, auditRelationalIntegrity, RelationalHealthReport } from '../utils/relationResolvers';
 import {
   validatePayload,
@@ -3505,17 +3505,18 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   // Tahap 3: Database Auto-Harmonization & Cross-Collection Synchronization Engine
-  const harmonizeTeachersFirestore = async (): Promise<{ success: boolean; migratedCount: number; message: string }> => {
+  const harmonizeTeachersFirestore = async (): Promise<{ success: boolean; migratedCount: number; message: string; teachers?: Teacher[] }> => {
     try {
       setIsSyncing(true);
       const teacherSnap = await getDocs(collection(db, 'teachers'));
-      const oldDocIdsToDelete: string[] = ['user_super_admin', 'teacher_pitria_lawenusa'];
+      const oldDocIdsToDelete: string[] = [];
       const rawList: Teacher[] = [];
+      
       teacherSnap.forEach(d => {
-        if (d.id === 'user_super_admin' || d.id === 'teacher_pitria_lawenusa' || !/^guru_\d{2,}$/.test(d.id)) {
+        // user_super_admin is an invalid teacher record; mark for cleanup if present in teachers collection
+        if (d.id === 'user_super_admin') {
           oldDocIdsToDelete.push(d.id);
-        }
-        if (d.id !== 'user_super_admin') {
+        } else {
           rawList.push({ id: d.id, ...(d.data() as Teacher) });
         }
       });
@@ -3529,13 +3530,13 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       if (rawList.length === 0) {
         setIsSyncing(false);
-        return { success: true, migratedCount: 0, message: 'Tidak ada data guru yang perlu diharmonisasi.' };
+        return { success: true, migratedCount: 0, message: 'Tidak ada data guru yang perlu diharmonisasi.', teachers: [] };
       }
 
-      // Deduplicate first
+      // Deduplicate with strict identity rules (no false deletions)
       const deduplicated = deduplicateTeachersList(rawList, extracurriculars);
 
-      // Sort neatly by hierarchy (Waka -> BK -> OSIM -> Ekskul -> Wali Kelas -> Guru Mapel)
+      // Sort neatly by hierarchy for structured display
       const sorted = sortTeachersByHierarchy(deduplicated);
 
       let migratedCount = 0;
@@ -3543,51 +3544,45 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       for (let i = 0; i < sorted.length; i++) {
         const item = sorted[i];
-        const targetSeqId = formatTeacherDocId(i + 1); // guru_01, guru_02, ...
-        const targetCode = formatTeacherCode(i + 1, item.fullName);
+        
+        // REKOMENDASI 1: KEY IMMOBILITY (Pertahankan Primary Key / Doc ID Asli Guru!)
+        // Dokumen yang sudah ada di Firestore TIDAK BOLEH diubah ID-nya ke guru_01... berurutan.
+        // Ini menjaga integritas seluruh Foreign Key (coachId ekskul, homeroomTeacherId kelas, counselorId BK).
+        const teacherDocId = item.id && item.id.trim() ? item.id : formatTeacherDocId(i + 1);
+        
+        // Pertahankan kode guru yang sudah valid, atau formatkan kode seragam
+        const teacherCode = item.code && isValidTeacherCode(item.code)
+          ? item.code.trim().toUpperCase()
+          : formatTeacherCode(i + 1, item.fullName);
 
-        // Resolve assigned extracurriculars bidirectionally from teacher data OR from matching extracurriculars
-        let sourceAssigned = Array.isArray(item.assignedExtracurriculars) && item.assignedExtracurriculars.length > 0
+        // Pertahankan seluruh tugas binaan ekstrakurikuler asli milik guru ini (relasi dua arah yang akurat)
+        const directAssigned = Array.isArray(item.assignedExtracurriculars) && item.assignedExtracurriculars.length > 0
           ? item.assignedExtracurriculars
           : [];
 
-        // If empty in teacher record, look up matching extracurricular where this teacher is assigned as coach
-        if (sourceAssigned.length === 0) {
-          const matchedEkskul = (extracurriculars || []).find(e => 
-            (e.coachId && (e.coachId === item.id || e.coachId === targetSeqId)) ||
-            (e.coachName && e.coachName.trim().toLowerCase() === item.fullName.trim().toLowerCase())
-          );
-          if (matchedEkskul) {
-            sourceAssigned = [matchedEkskul.id];
-          }
-        }
+        // Temukan seluruh ekskul di mana guru ini tercatat sebagai coach (berdasarkan ID atau nama)
+        const matchingEkskuls = (extracurriculars || []).filter(e => 
+          (e.coachId && (e.coachId === teacherDocId || e.coachId === item.id)) ||
+          (e.coachName && normalizeName(e.coachName) === normalizeName(item.fullName))
+        );
 
-        // Distinct assignment for dance extracurriculars
-        if (item.fullName.toLowerCase().includes('nurlita')) {
-          const kreasi = (extracurriculars || []).find(e => e.name.toLowerCase().includes('kreasi'));
-          if (kreasi) sourceAssigned = [kreasi.id];
-        } else if (item.fullName.toLowerCase().includes('irna rumeon')) {
-          const trad = (extracurriculars || []).find(e => e.name.toLowerCase().includes('tradisional'));
-          if (trad) sourceAssigned = [trad.id];
-        }
+        const allSourceAssigned = Array.from(new Set([
+          ...directAssigned,
+          ...matchingEkskuls.map(e => e.id)
+        ]));
 
-        const cleanAssigned = canonicalizeAssignedEkskulIds(sourceAssigned, extracurriculars).slice(0, 1);
+        const cleanAssigned = canonicalizeAssignedEkskulIds(allSourceAssigned, extracurriculars);
         const cleanAssignedNames = cleanAssigned.map(id => {
           const match = (extracurriculars || []).find(e => e.id === id);
           return match ? match.name : id;
         });
         const cleanAssignedNameStr = cleanAssignedNames.join(', ');
 
-        if (item.id !== targetSeqId) {
-          oldDocIdsToDelete.push(item.id);
-          migratedCount++;
-        }
-
         const isPembinaRole = cleanAssigned.length > 0;
         const standardizedTeacher: Teacher = {
           ...item,
-          id: targetSeqId,
-          code: targetCode,
+          id: teacherDocId,
+          code: teacherCode,
           fullName: (item.fullName || (item as any).name || '').trim(),
           nip: item.nip && item.nip.trim() ? item.nip.trim() : '-',
           gender: item.gender || 'L',
@@ -3606,40 +3601,39 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
         updatedTeachers.push(standardizedTeacher);
 
-        // Write new standardized document to Firestore
-        await setDoc(doc(db, 'teachers', targetSeqId), standardizedTeacher);
+        // Tulis pembaruan standar ke dokumen guru yang bersangkutan (ID tidak berubah)
+        await setDoc(doc(db, 'teachers', teacherDocId), standardizedTeacher, { merge: true });
+        migratedCount++;
 
-        // Clear tombstones for this new standard ID
-        removeDeletedUid(targetSeqId);
-        removeDeletedUid(`user_${targetSeqId}`);
+        // Clear tombstones for this standard ID
+        removeDeletedUid(teacherDocId);
+        removeDeletedUid(`user_${teacherDocId}`);
 
-        // Sync corresponding extracurricular document coach
-        if (cleanAssigned.length > 0) {
-          const targetEkskulId = cleanAssigned[0];
+        // Sinkronisasi seluruh dokumen ekstrakurikuler pembina yang dibina guru ini
+        for (const targetEkskulId of cleanAssigned) {
           try {
             await updateDoc(doc(db, 'extracurriculars', targetEkskulId), {
-              coachId: targetSeqId,
-              coachName: standardizedTeacher.fullName
+              coachId: teacherDocId,
+              coachName: standardizedTeacher.fullName,
+              coachCode: standardizedTeacher.code
             });
           } catch (e) {}
         }
       }
 
-      // Safely delete obsolete documents with non-standard IDs from Firestore
-      const newIdSet = new Set(updatedTeachers.map(u => u.id));
+      // Hapus hanya dokumen sampah yang benar-benar bukan guru (misal user_super_admin)
       for (const oldId of oldDocIdsToDelete) {
-        if (oldId && !newIdSet.has(oldId)) {
+        if (oldId && !updatedTeachers.some(t => t.id === oldId)) {
           try {
             await deleteDoc(doc(db, 'teachers', oldId));
           } catch (e) {}
         }
       }
 
-      // Auto-sync into cPanel Users collection (Kolom 1: users)
+      // Auto-sync into cPanel Users collection
       if (syncUsersFromTeachers) {
         try {
           await syncUsersFromTeachers(updatedTeachers, extracurriculars);
-          await deleteDoc(doc(db, 'users', 'user_guru_01')).catch(() => {});
           await deleteDoc(doc(db, 'users', 'user_teacher_pitria_lawenusa')).catch(() => {});
         } catch (e) {}
       }
@@ -3657,13 +3651,14 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         localStorage.setItem('sim_teachers', JSON.stringify(updatedTeachers));
       } catch (e) {}
 
-      logAction('HARMONIZE_TEACHERS', 'Dewan Guru', `Mengharmonisasi ${updatedTeachers.length} data guru ke format urut standar (${updatedTeachers[0]?.id || 'guru_01'} s.d ${updatedTeachers[updatedTeachers.length - 1]?.id})`);
+      logAction('HARMONIZE_TEACHERS', 'Dewan Guru', `Mengharmonisasi ${updatedTeachers.length} data guru dengan menjaga integritas ID dokumen dan relasi ekstrakurikuler`);
       setIsSyncing(false);
 
       return {
         success: true,
         migratedCount,
-        message: `Berhasil merapikan dan menstandarisasi ${updatedTeachers.length} data guru ke format urut standar (${updatedTeachers[0]?.id || 'guru_01'} s.d ${updatedTeachers[updatedTeachers.length - 1]?.id || ''}) di Firestore.`
+        message: `Berhasil merapikan dan menstandarisasi ${updatedTeachers.length} data guru tanpa mengubah ID dokumen asli sehingga relasi binaan dan riwayat data tetap aman.`,
+        teachers: updatedTeachers
       };
     } catch (err: any) {
       setIsSyncing(false);
@@ -3705,7 +3700,8 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         }
         // Case 2: Ekskul previously belonged to this teacher, and teacher's name/title changed
         else if (
-          (ekskul.coachId === teacher.id || (oldTeacher && ekskul.coachName?.toLowerCase() === oldTeacher.fullName.toLowerCase())) &&
+          oldTeacher &&
+          (ekskul.coachId === teacher.id || (ekskul.coachName && normalizeName(ekskul.coachName) === normalizeName(oldTeacher.fullName))) &&
           ekskul.coachName !== teacher.fullName
         ) {
           if (teacher.isActive !== false) {
@@ -3996,7 +3992,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
 
     const roleLabel = getRoleLabelFromUserRole(user.role);
-    const assignedIds = canonicalizeAssignedEkskulIds(user.extracurricularIds || [], extracurriculars).slice(0, 1);
+    const assignedIds = canonicalizeAssignedEkskulIds(user.assignedExtracurricularIds || user.extracurricularIds || [], extracurriculars);
 
     // 1. Sync Dewan Guru (teachers list)
     setTeachers(prev => {
@@ -4943,10 +4939,10 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     logAction('DELETE_VIOLATION', 'Pelanggaran Siswa', `Mencabut/menghapus pelanggaran ID ${id}`);
   };
 
-  const reconcileAllStudentPoints = async () => {
+  const reconcileAllStudentPoints = async (): Promise<{ updatedCount: number }> => {
     if (!canManageViolations(currentUser)) {
       console.warn('[SchoolContext] reconcileAllStudentPoints ditolak: Dibatasi untuk Super Admin, Waka Kesiswaan, dan Guru BK.');
-      return 0;
+      return { updatedCount: 0 };
     }
     let updatedCount = 0;
     const activeViolations = violations.filter(v => !v.isDeleted && v.status !== 'Dibatalkan');
@@ -5051,16 +5047,17 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       // 3. Harmonize teachers document IDs and structure
       const teachRes = await harmonizeTeachersFirestore();
       const teachersHarmonized = teachRes.migratedCount || 0;
+      const latestTeachers = teachRes.teachers && teachRes.teachers.length > 0 ? teachRes.teachers : teachers;
 
       // 4. Auto-heal orphan extracurricular members, coaches, and cross-collection references
-      const healRes = await autoHealOrphanRecords();
+      const healRes = await autoHealOrphanRecords(latestTeachers);
       const ekskulHealed = healRes.healedMembers + healRes.healedCoaches;
 
       // 5. Harmonize user accounts and authentication credentials
       let userAccountsSynced = 0;
       if (syncUsersFromTeachers) {
         try {
-          userAccountsSynced = await syncUsersFromTeachers(teachers, extracurriculars);
+          userAccountsSynced = await syncUsersFromTeachers(latestTeachers, extracurriculars);
         } catch (e) {
           console.warn('Sync user accounts during harmonization note:', e);
         }
@@ -5088,7 +5085,10 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   // FASE 4: DISASTER RECOVERY, RESTORE POINTS & AUTO-HEALING ENGINE
   // =========================================================================
 
-  const autoHealOrphanRecords = async (): Promise<{
+  const autoHealOrphanRecords = async (
+    freshTeachers?: Teacher[],
+    freshExtracurriculars?: Extracurricular[]
+  ): Promise<{
     healedViolations: number;
     healedCounselings: number;
     healedMembers: number;
@@ -5099,6 +5099,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     healedTeacherAccounts?: number;
     totalHealed: number;
   }> => {
+    const targetTeachers = freshTeachers && freshTeachers.length > 0 ? freshTeachers : teachers;
+    const targetExtracurriculars = freshExtracurriculars && freshExtracurriculars.length > 0 ? freshExtracurriculars : extracurriculars;
+
     let healedViolations = 0;
     let healedCounselings = 0;
     let healedMembers = 0;
@@ -5136,7 +5139,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // 2. Heal Counselings with missing or broken student / counselor pointers
     const updatedCounseling = counseling.map(c => {
       const student = resolveStudent(students, { id: c.studentId, code: c.studentCode, nis: c.studentNis, name: c.studentName });
-      const counselor = c.counselorId ? resolveTeacher(teachers, { id: c.counselorId, name: c.counselorName }) : undefined;
+      const counselor = c.counselorId ? resolveTeacher(targetTeachers, { id: c.counselorId, name: c.counselorName }) : undefined;
       let changed = false;
       const healed = { ...c };
 
@@ -5176,7 +5179,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // 3. Heal Extracurricular Members (Student & Club Relational Links)
     const updatedMembers = members.map(m => {
       const student = resolveStudent(students, { id: m.studentId, code: m.studentCode, nis: m.studentNis, name: m.studentName });
-      const ekskul = extracurriculars.find(e => e.id === m.extracurricularId || (m.extracurricularName && e.name.toLowerCase() === m.extracurricularName.toLowerCase()));
+      const ekskul = targetExtracurriculars.find(e => e.id === m.extracurricularId || (m.extracurricularName && e.name.toLowerCase() === m.extracurricularName.toLowerCase()));
       let changed = false;
       const healed = { ...m };
 
@@ -5221,14 +5224,15 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
 
     let countsReconciled = false;
-    const updatedEkskuls = extracurriculars.map(e => {
+    const updatedEkskuls = targetExtracurriculars.map(e => {
       let changed = false;
       let healed = { ...e };
 
-      if (e.coachId) {
-        const teacher = resolveTeacher(teachers, { id: e.coachId, code: e.coachCode, name: e.coachName });
-        if (teacher && (e.coachName !== teacher.fullName || e.coachCode !== teacher.code)) {
+      if (e.coachId || e.coachName) {
+        const teacher = resolveTeacher(targetTeachers, { id: e.coachId, code: e.coachCode, name: e.coachName });
+        if (teacher && (e.coachId !== teacher.id || e.coachName !== teacher.fullName || e.coachCode !== teacher.code)) {
           healedCoaches++;
+          healed.coachId = teacher.id;
           healed.coachName = teacher.fullName;
           healed.coachCode = teacher.code;
           changed = true;

@@ -245,6 +245,28 @@ export const isOsimMemberUserMatch = (u: UserProfile, m: OsimMember): boolean =>
 };
 
 /**
+ * Check whether an email is a generic shared/placeholder email (e.g. guru@..., admin@...).
+ */
+export const isGenericPlaceholderEmail = (email?: string): boolean => {
+  if (!email) return true;
+  const em = email.trim().toLowerCase();
+  return (
+    em === '-' ||
+    em === '' ||
+    em.startsWith('guru@') ||
+    em.startsWith('admin@') ||
+    em.startsWith('info@') ||
+    em.startsWith('user@') ||
+    em.includes('placeholder') ||
+    em.includes('example.com') ||
+    em === 'guru@sekolah.sch.id' ||
+    em === 'guru@madrasah.sch.id' ||
+    em === 'admin@sekolah.sch.id' ||
+    em === 'admin@madrasah.sch.id'
+  );
+};
+
+/**
  * Deduplicate UserProfile array to guarantee strictly ONE record per person/role.
  * Resolves duplicate IDs such as 'user_osim_dept_bph' vs 'user_osim_ketua', or
  * 't_...' vs 'user_t_...'.
@@ -273,6 +295,7 @@ export const deduplicateUsersList = (users: UserProfile[]): UserProfile[] => {
     }
 
     const email = u.email ? u.email.trim().toLowerCase() : '';
+    const isGenericEmail = isGenericPlaceholderEmail(email);
     const username = u.username ? u.username.trim().toLowerCase() : '';
     const cleanNip = cleanDigits(u.nip);
     const normName = normalizeName(u.displayName);
@@ -294,7 +317,7 @@ export const deduplicateUsersList = (users: UserProfile[]): UserProfile[] => {
 
     if (seenUids.has(u.uid)) {
       duplicateIdx = result.findIndex(r => r.uid === u.uid);
-    } else if (email && seenEmails.has(email)) {
+    } else if (email && !isGenericEmail && seenEmails.has(email)) {
       duplicateIdx = result.findIndex(r => r.email && r.email.trim().toLowerCase() === email);
     } else if (username && seenUsernames.has(username)) {
       duplicateIdx = result.findIndex(r => r.username && r.username.trim().toLowerCase() === username);
@@ -333,7 +356,7 @@ export const deduplicateUsersList = (users: UserProfile[]): UserProfile[] => {
     } else {
       // First time seeing this user
       seenUids.add(u.uid);
-      if (email) seenEmails.add(email);
+      if (email && !isGenericEmail) seenEmails.add(email);
       if (username) seenUsernames.add(username);
       if (cleanNip && cleanNip.length >= 4) seenNips.add(cleanNip);
       if (bphKey) seenOsimRoles.add(bphKey);
@@ -448,24 +471,22 @@ export const canonicalizeAssignedEkskulIds = (
 
 /**
  * Deduplicate Teachers array to guarantee strictly ONE record per teacher.
- * Merges entries where IDs are 't_...' vs 'user_t_...' or where NIP/name matches.
- * Aturan bisnis: pembaruan tugas binaan bersifat me-replace (mengganti), bukan menggabungkan riwayat lama,
- * dan mengunci 1 guru pembina maksimal 1 unit ekstrakurikuler binaan utama.
+ * Merges duplicate entries while preserving ALL valid extracurricular assignments (no single-item truncation).
  */
 export const deduplicateTeachersList = (teachers: Teacher[], allEkskuls?: Array<{ id: string; name: string }>): Teacher[] => {
   if (!Array.isArray(teachers) || teachers.length <= 1) {
     if (Array.isArray(teachers) && teachers.length === 1) {
-      const singleAssigned = canonicalizeAssignedEkskulIds(teachers[0].assignedExtracurriculars, allEkskuls).slice(0, 1);
-      const cleanNames = singleAssigned.map(id => {
+      const cleanAssigned = canonicalizeAssignedEkskulIds(teachers[0].assignedExtracurriculars, allEkskuls);
+      const cleanNames = cleanAssigned.map(id => {
         const match = (allEkskuls || []).find(e => e.id === id);
         return match ? match.name : id;
       }).filter(n => !/^\d+$/.test(n) && !/^ekskul_\d+$/.test(n));
 
       return [{
         ...teachers[0],
-        assignedExtracurriculars: singleAssigned,
+        assignedExtracurriculars: cleanAssigned,
         extracurricularNames: cleanNames,
-        extracurricularName: cleanNames[0] || undefined
+        extracurricularName: cleanNames.join(', ') || undefined
       }];
     }
     return teachers || [];
@@ -484,30 +505,59 @@ export const deduplicateTeachersList = (teachers: Teacher[], allEkskuls?: Array<
     const cleanNip = cleanDigits(t.nip);
     const email = t.email ? t.email.trim().toLowerCase() : '';
     const normName = normalizeName(t.fullName);
+    const isGenericEmail = isGenericPlaceholderEmail(email);
 
     let duplicateIdx = -1;
 
+    // 1. Pencocokan ID Persis
     if (seenIds.has(t.id)) {
       duplicateIdx = result.findIndex(r => r.id === t.id);
-    } else if (cleanNip && cleanNip.length >= 6 && seenNips.has(cleanNip)) {
+    } 
+    // 2. Pencocokan NIP Resmi (minimal 8 digit agar tidak bentrok angka pendek/placeholder)
+    else if (cleanNip && cleanNip.length >= 8 && seenNips.has(cleanNip)) {
       duplicateIdx = result.findIndex(r => cleanDigits(r.nip) === cleanNip);
-    } else if (email && seenEmails.has(email)) {
-      duplicateIdx = result.findIndex(r => r.email && r.email.trim().toLowerCase() === email);
-    } else if (normName && normName.length >= 6 && seenNormNames.has(normName)) {
-      duplicateIdx = result.findIndex(r => normalizeName(r.fullName) === normName);
+    } 
+    // 3. Pencocokan Email Pribadi Unik (HANYA jika bukan email generic dan NIP tidak bertentangan)
+    else if (!isGenericEmail && seenEmails.has(email)) {
+      duplicateIdx = result.findIndex(r => {
+        if (!r.email || r.email.trim().toLowerCase() !== email) return false;
+        const rNip = cleanDigits(r.nip);
+        if (cleanNip && rNip && cleanNip.length >= 6 && rNip.length >= 6 && cleanNip !== rNip) {
+          return false; // NIP berbeda = orang berbeda, jangan digabung!
+        }
+        return true;
+      });
+    } 
+    // 4. Pencocokan Nama Ternormalisasi (HANYA jika nama panjang >= 8 karakter dan didukung NIP/No HP yang sama)
+    else if (normName && normName.length >= 8 && seenNormNames.has(normName)) {
+      duplicateIdx = result.findIndex(r => {
+        if (normalizeName(r.fullName) !== normName) return false;
+        const rNip = cleanDigits(r.nip);
+        if (cleanNip && rNip && cleanNip.length >= 6 && rNip.length >= 6 && cleanNip !== rNip) {
+          return false; // NIP berbeda = orang berbeda
+        }
+        // Jika salah satu atau keduanya belum memiliki NIP, periksa kecocokan No HP atau Subject
+        if ((!cleanNip || cleanNip.length < 6) && (!rNip || rNip.length < 6)) {
+          if (t.phone && r.phone && cleanDigits(t.phone) === cleanDigits(r.phone) && cleanDigits(t.phone).length >= 8) {
+            return true;
+          }
+          // Jangan gabung hanya berdasarkan kesamaan nama tanpa data pendukung lain
+          return false;
+        }
+        return true;
+      });
     }
 
     if (duplicateIdx >= 0) {
       const existing = result[duplicateIdx];
-      // POLA ME-REPLACE: Jika t menyediakan assignedExtracurriculars, gunakan t untuk menggantikan riwayat lama!
-      const targetAssigned = (t.assignedExtracurriculars !== undefined && t.assignedExtracurriculars !== null)
-        ? t.assignedExtracurriculars
-        : (existing.assignedExtracurriculars || []);
+      // Gabungkan seluruh tugas binaan ekstrakurikuler yang valid
+      const combinedAssigned = Array.from(new Set([
+        ...(Array.isArray(existing.assignedExtracurriculars) ? existing.assignedExtracurriculars : []),
+        ...(Array.isArray(t.assignedExtracurriculars) ? t.assignedExtracurriculars : [])
+      ]));
 
-      const cleanAssigned = canonicalizeAssignedEkskulIds(targetAssigned, allEkskuls);
-      // Kunci aturan bisnis: maksimal 1 unit ekstrakurikuler binaan utama!
-      const singleAssigned = cleanAssigned.slice(0, 1);
-      const cleanNames = singleAssigned.map(id => {
+      const cleanAssigned = canonicalizeAssignedEkskulIds(combinedAssigned, allEkskuls);
+      const cleanNames = cleanAssigned.map(id => {
         const match = (allEkskuls || []).find(e => e.id === id);
         return match ? match.name : id;
       }).filter(name => !/^\d+$/.test(name) && !/^ekskul_\d+$/.test(name));
@@ -516,33 +566,31 @@ export const deduplicateTeachersList = (teachers: Teacher[], allEkskuls?: Array<
         ...existing,
         ...t,
         id: existing.id,
-        phone: existing.phone || t.phone,
-        email: existing.email || t.email,
+        phone: existing.phone && existing.phone !== '-' ? existing.phone : t.phone,
+        email: existing.email && !existing.email.includes('placeholder') ? existing.email : t.email,
         nip: existing.nip && existing.nip !== '-' ? existing.nip : t.nip,
-        assignedExtracurriculars: singleAssigned,
+        assignedExtracurriculars: cleanAssigned,
         extracurricularNames: cleanNames,
-        extracurricularName: cleanNames[0] || undefined
+        extracurricularName: cleanNames.join(', ') || undefined
       };
       result[duplicateIdx] = merged;
     } else {
       seenIds.add(t.id);
-      if (cleanNip && cleanNip.length >= 6) seenNips.add(cleanNip);
-      if (email) seenEmails.add(email);
-      if (normName && normName.length >= 6) seenNormNames.add(normName);
+      if (cleanNip && cleanNip.length >= 8) seenNips.add(cleanNip);
+      if (!isGenericEmail) seenEmails.add(email);
+      if (normName && normName.length >= 8) seenNormNames.add(normName);
 
       const cleanAssigned = canonicalizeAssignedEkskulIds(t.assignedExtracurriculars, allEkskuls);
-      // Kunci aturan bisnis: maksimal 1 unit ekstrakurikuler binaan utama!
-      const singleAssigned = cleanAssigned.slice(0, 1);
-      const cleanNames = singleAssigned.map(id => {
+      const cleanNames = cleanAssigned.map(id => {
         const match = (allEkskuls || []).find(e => e.id === id);
         return match ? match.name : id;
       }).filter(name => !/^\d+$/.test(name) && !/^ekskul_\d+$/.test(name));
 
       result.push({
         ...t,
-        assignedExtracurriculars: singleAssigned,
+        assignedExtracurriculars: cleanAssigned,
         extracurricularNames: cleanNames,
-        extracurricularName: cleanNames[0] || undefined
+        extracurricularName: cleanNames.join(', ') || undefined
       });
     }
   }

@@ -58,10 +58,31 @@ export const resolveTeacher = (
 ): Teacher | undefined => {
   if (!identifier || !teachers || teachers.length === 0) return undefined;
 
-  // 1. Match by exact ID
+  const queryName = identifier.name ? normalizeName(identifier.name) : '';
+  const queryNip = cleanDigits(identifier.nip);
+  const isInvalidName = !queryName || queryName === 'belum ditentukan' || queryName === '-';
+
+  // 1. If exact ID is provided
   if (identifier.id) {
     const byId = teachers.find(t => t.id === identifier.id);
-    if (byId) return byId;
+    if (byId) {
+      // If no valid name was given, or if byId's name matches queryName, this is an authentic match
+      if (isInvalidName || normalizeName(byId.fullName) === queryName) {
+        return byId;
+      }
+      // If a specific name was provided and contradicts byId's name, the ID is likely a stale/corrupted pointer.
+      // Search for the authentic teacher by name or NIP first so the system can heal the foreign key.
+      if (!isInvalidName) {
+        const byName = teachers.find(t => normalizeName(t.fullName) === queryName);
+        if (byName) return byName;
+      }
+      if (queryNip && queryNip.length >= 6) {
+        const byNip = teachers.find(t => t.nip && cleanDigits(t.nip) === queryNip);
+        if (byNip) return byNip;
+      }
+      // Fallback to byId only if no other match found
+      return byId;
+    }
   }
 
   // 2. Match by standardized Code (e.g. G01-BS)
@@ -72,19 +93,15 @@ export const resolveTeacher = (
   }
 
   // 3. Match by Clean NIP (if at least 6 digits)
-  const queryNip = cleanDigits(identifier.nip);
   if (queryNip && queryNip.length >= 6) {
     const byNip = teachers.find(t => t.nip && cleanDigits(t.nip) === queryNip);
     if (byNip) return byNip;
   }
 
   // 4. Match by Normalized Name
-  if (identifier.name) {
-    const normName = normalizeName(identifier.name);
-    if (normName) {
-      const byName = teachers.find(t => normalizeName(t.fullName) === normName);
-      if (byName) return byName;
-    }
+  if (!isInvalidName) {
+    const byName = teachers.find(t => normalizeName(t.fullName) === queryName);
+    if (byName) return byName;
   }
 
   return undefined;

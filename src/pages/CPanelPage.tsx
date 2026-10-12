@@ -698,8 +698,8 @@ export const CPanelPage: React.FC = () => {
     const cleanUsername = formData.username.trim() || formData.email.split('@')[0].trim().toLowerCase();
     const resolvedUid = formData.uid?.trim() || `user_${cleanNip || cleanUsername || Date.now()}`;
     const canonicalRole = normalizeUserRole(formData.role) || formData.role;
-    const selectedEkskuls = (canonicalRole === 'coach_ekstrakurikuler')
-      ? (formData.extracurricularIds || []).filter(id => id && !/^\d+$/.test(id.trim())).slice(0, 1)
+    const selectedEkskuls = (canonicalRole === 'coach_ekstrakurikuler' || (formData.extracurricularIds && formData.extracurricularIds.length > 0))
+      ? (formData.extracurricularIds || []).filter(id => id && !/^\d+$/.test(id.trim()))
       : [];
 
     const hasEkskulAssignment = selectedEkskuls.length > 0;
@@ -707,7 +707,6 @@ export const CPanelPage: React.FC = () => {
       ? selectedEkskuls
           .map(id => extracurriculars.find(e => e.id === id || e.name.toLowerCase() === id.toLowerCase())?.name)
           .filter((name): name is string => Boolean(name && !/^\d+$/.test(name.trim()) && !/^ekskul_\d+$/.test(name.trim())))
-          .slice(0, 1)
       : undefined;
 
     const newUser: UserProfile = {
@@ -723,7 +722,7 @@ export const CPanelPage: React.FC = () => {
       assignedExtracurricularIds: hasEkskulAssignment ? selectedEkskuls : undefined,
       extracurricularIds: hasEkskulAssignment ? selectedEkskuls : undefined,
       extracurricularNames: resolvedEkskulNames,
-      extracurricularName: resolvedEkskulNames ? resolvedEkskulNames[0] : undefined,
+      extracurricularName: resolvedEkskulNames ? resolvedEkskulNames.join(', ') : undefined,
       status: formData.status,
       isCashManager: formData.isCashManager,
       cashManagerTitle: formData.isCashManager ? (formData.cashManagerTitle.trim() || 'Bendahara') : undefined
@@ -745,13 +744,12 @@ export const CPanelPage: React.FC = () => {
     if (!selectedUserForAction) return;
 
     const canonicalRole = normalizeUserRole(formData.role) || formData.role;
-    const selectedEkskuls = (formData.extracurricularIds || []).filter(id => id && !/^\d+$/.test(id.trim())).slice(0, 1);
+    const selectedEkskuls = (formData.extracurricularIds || []).filter(id => id && !/^\d+$/.test(id.trim()));
     const hasEkskulAssignment = selectedEkskuls.length > 0;
     const resolvedEkskulNames = hasEkskulAssignment
       ? selectedEkskuls
           .map(id => extracurriculars.find(e => e.id === id || e.name.toLowerCase() === id.toLowerCase())?.name)
           .filter((name): name is string => Boolean(name && !/^\d+$/.test(name.trim()) && !/^ekskul_\d+$/.test(name.trim())))
-          .slice(0, 1)
       : undefined;
 
     const updatedData: Partial<UserProfile> = {
@@ -765,7 +763,7 @@ export const CPanelPage: React.FC = () => {
       assignedExtracurricularIds: hasEkskulAssignment ? selectedEkskuls : undefined,
       extracurricularIds: hasEkskulAssignment ? selectedEkskuls : undefined,
       extracurricularNames: resolvedEkskulNames,
-      extracurricularName: resolvedEkskulNames ? resolvedEkskulNames[0] : undefined,
+      extracurricularName: resolvedEkskulNames ? resolvedEkskulNames.join(', ') : undefined,
       status: formData.status,
       isCashManager: formData.isCashManager,
       cashManagerTitle: formData.isCashManager ? (formData.cashManagerTitle.trim() || 'Bendahara') : undefined

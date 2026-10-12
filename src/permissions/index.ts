@@ -416,10 +416,8 @@ export function hasPermission(
       case 'dashboard.view':
       case 'students.view':
       case 'violations.view':
-      case 'attendance.view':
-      case 'attendance.record':
       case 'dispensations.view':
-      case 'dispensations.create':
+      case 'dispensations.manage':
       case 'reports.view':
         return true;
       case 'violations.manage':
@@ -436,8 +434,6 @@ export function hasPermission(
       case 'dashboard.view':
       case 'students.view':
       case 'violations.view':
-      case 'attendance.view':
-      case 'attendance.record':
       case 'dispensations.view':
       case 'reports.view':
         return true;
