@@ -86,6 +86,7 @@ import { handleFirestoreError, OperationType, isPermissionError } from '../servi
 import { collection, getDocs, getDoc, doc, setDoc, updateDoc, deleteDoc, addDoc, writeBatch, onSnapshot, query, where, runTransaction } from 'firebase/firestore';
 import { useAuth } from './AuthContext';
 import { initGlobalRbacSync } from '../services/rbacService';
+import { canManageViolations } from '../permissions';
 import { findMatchingClass, resolveStudentClass, isStudentInClass, deduplicateClassesList, normalizeClassString } from '../utils/classResolver';
 import { normalizeTeacherCode, formatTeacherCode, formatStudentCode, formatTeacherDocId, getNextTeacherDocId } from '../utils/idGenerator';
 import { resolveStudent, resolveTeacher, auditRelationalIntegrity, RelationalHealthReport } from '../utils/relationResolvers';
@@ -94,7 +95,9 @@ import {
   cashTransactionSchema,
   studentViolationSchema,
   counselingSessionSchema,
-  osimProgramSchema
+  osimProgramSchema,
+  runFase7DefensiveAudit,
+  Fase7AuditReport
 } from '../services/schemaValidation';
 
 import { extractSekbidNumber, isBphMember, normalizeSekbidName } from '../utils/osimAccountHelper';
@@ -371,6 +374,7 @@ interface SchoolContextType {
     healedTransactions: number;
     healedStudents?: number;
     healedOsimMembers?: number;
+    healedTeacherAccounts?: number;
     totalHealed: number;
   }>;
   createDisasterRecoverySnapshot: (customLabel?: string) => Promise<{
@@ -388,6 +392,8 @@ interface SchoolContextType {
     data?: any;
   }>;
   deleteDisasterRecoverySnapshot: (snapshotId: string) => void;
+  // Fase 7: Defensive Schema Validation & Enterprise Health Shield
+  executeFase7Audit: () => Promise<Fase7AuditReport>;
 }
 
 const SchoolContext = createContext<SchoolContextType | undefined>(undefined);
@@ -495,7 +501,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const filtered = prev.filter(e => !isPurgedExtracurricular(e.name) && !isPurgedExtracurricular(e.id));
       if (filtered.length !== prev.length) {
         // Also delete removed documents from Firestore if authenticated admin
-        if (auth.currentUser) {
+        if (auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
           const removed = prev.filter(e => isPurgedExtracurricular(e.name) || isPurgedExtracurricular(e.id));
           removed.forEach(e => {
             deleteDoc(doc(db, 'extracurriculars', e.id)).catch(() => {});
@@ -506,7 +512,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return prev;
     });
 
-    if (auth.currentUser) {
+    if (auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
       try {
         PURGED_DEMO_EKSKUL_IDS.forEach(id => {
           deleteDoc(doc(db, 'extracurriculars', id)).catch(() => {});
@@ -520,7 +526,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setClasses(prev => {
       const filtered = prev.filter(c => !isPurgedClassId(c.id) && !isDeletedClassId(c.id));
       if (filtered.length !== prev.length) {
-        if (auth.currentUser) {
+        if (auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
           const removed = prev.filter(c => isPurgedClassId(c.id) || isDeletedClassId(c.id));
           removed.forEach(c => {
             addDeletedClassId(c.id);
@@ -532,7 +538,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return prev;
     });
 
-    if (auth.currentUser) {
+    if (auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
       try {
         PURGED_DEMO_CLASS_IDS.forEach(id => {
           deleteDoc(doc(db, 'classes', id)).catch(() => {});
@@ -651,7 +657,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           try {
             localStorage.setItem('sim_students', JSON.stringify(sortedStudents));
           } catch (e) {}
-          if (dupStudentIds.length > 0) {
+          if (dupStudentIds.length > 0 && auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
             dupStudentIds.forEach(dupId => {
               deleteDoc(doc(db, 'students', dupId)).catch(() => {});
             });
@@ -665,17 +671,19 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const id = docSnap.id;
             const data = docSnap.data() as SchoolClass;
             if (deletedClassSet.has(id) || isPurgedClassId(id) || isPurgedClassId(data?.name)) {
-              deleteDoc(docSnap.ref).catch(() => {});
+              if (auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
+                deleteDoc(docSnap.ref).catch(() => {});
+              }
               return;
             }
-            loadedClasses.push({ id, ...data });
+            loadedClasses.push({ id: docSnap.id, ...data });
           });
           const { deduplicated: cleanClasses, duplicateIds: dupClassIds } = deduplicateClassesList(loadedClasses, cleanStudents);
           setClasses(cleanClasses);
           try {
             localStorage.setItem('sim_classes', JSON.stringify(cleanClasses));
           } catch (e) {}
-          if (dupClassIds.length > 0) {
+          if (dupClassIds.length > 0 && auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
             dupClassIds.forEach(dupId => {
               deleteDoc(doc(db, 'classes', dupId)).catch(() => {});
             });
@@ -693,7 +701,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               isDeletedUid(id) ||
               (cleanNip.length >= 6 && isDeletedUid(cleanNip))
             ) {
-              deleteDoc(docSnap.ref).catch(() => {});
+              if (auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
+                deleteDoc(docSnap.ref).catch(() => {});
+              }
             } else {
               rawLoadedTeachers.push({ id, ...data });
             }
@@ -708,7 +718,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               const cleaned = canonicalizeAssignedEkskulIds(t.assignedExtracurriculars, extracurriculars);
               const isDirty = t.assignedExtracurriculars.some(item => !item.startsWith('ekskul_')) ||
                 t.assignedExtracurriculars.length !== cleaned.length;
-              if (isDirty) {
+              if (isDirty && auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
                 setDoc(doc(db, 'teachers', t.id), { assignedExtracurriculars: cleaned }, { merge: true }).catch(() => {});
               }
             }
@@ -736,7 +746,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             removeDeletedUid(pitriaId);
             removeDeletedUid(`user_${pitriaId}`);
             loadedTeachers.unshift(pitriaTeacher);
-            setDoc(doc(db, 'teachers', pitriaTeacher.id), pitriaTeacher).catch(() => {});
+            if (auth.currentUser && (currentUser?.role === 'super_admin' || (currentUser?.role as string) === 'admin' || currentUser?.role === 'waka_kesiswaan')) {
+              setDoc(doc(db, 'teachers', pitriaTeacher.id), pitriaTeacher).catch(() => {});
+            }
             if (syncUsersFromTeachers) {
               syncUsersFromTeachers([pitriaTeacher]);
             }
@@ -748,7 +760,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           } catch (e) {}
 
           // Immediate hydration of teachers into user registry on cold boot
-          if (syncUsersFromTeachers && loadedTeachers.length > 0) {
+          if (syncUsersFromTeachers && loadedTeachers.length > 0 && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
             syncUsersFromTeachers(loadedTeachers);
           }
 
@@ -762,7 +774,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               isPurgedExtracurricular(data?.name) ||
               isPurgedExtracurricular(docSnap.id)
             ) {
-              deleteDoc(doc(db, 'extracurriculars', docSnap.id)).catch(() => {});
+              if (auth.currentUser && (currentUser?.role === 'super_admin' || (currentUser?.role as string) === 'admin' || currentUser?.role === 'waka_kesiswaan')) {
+                deleteDoc(doc(db, 'extracurriculars', docSnap.id)).catch(() => {});
+              }
             } else {
               loadedEkskul.push({ id: docSnap.id, ...data });
             }
@@ -782,7 +796,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               isPurgedExtracurricular(data.extracurricularId) ||
               isPurgedExtracurricular(data.extracurricularName || '')
             ) {
-              deleteDoc(doc(db, 'extracurricular_members', docSnap.id)).catch(() => {});
+              if (auth.currentUser && (currentUser?.role === 'super_admin' || (currentUser?.role as string) === 'admin' || currentUser?.role === 'waka_kesiswaan')) {
+                deleteDoc(doc(db, 'extracurricular_members', docSnap.id)).catch(() => {});
+              }
             } else {
               loadedMembers.push({ id: docSnap.id, ...data });
             }
@@ -854,7 +870,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               isPurgedExtracurricular(data.extracurricularId) ||
               isPurgedExtracurricular(data.extracurricularName || '')
             ) {
-              deleteDoc(doc(db, 'attendance', docSnap.id)).catch(() => {});
+              if (auth.currentUser && (currentUser?.role === 'super_admin' || (currentUser?.role as string) === 'admin' || currentUser?.role === 'waka_kesiswaan')) {
+                deleteDoc(doc(db, 'attendance', docSnap.id)).catch(() => {});
+              }
             } else {
               loadedAtt.push({ id: docSnap.id, ...data });
             }
@@ -965,7 +983,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const data = docSnap.data() as OsimMember;
             const id = docSnap.id;
             if (data.id === 'om1' || (data as any).isDeleted) {
-              deleteDoc(docSnap.ref).catch(() => {});
+              if (auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
+                deleteDoc(docSnap.ref).catch(() => {});
+              }
               return;
             }
             // Safely clear accidental blacklist for real members
@@ -983,7 +1003,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           } catch (e) {}
 
           // Asynchronously purge obsolete duplicate documents from Firestore if duplicates existed
-          if (rawOsimMem.length > loadedOsimMem.length) {
+          if (rawOsimMem.length > loadedOsimMem.length && auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
             const keptIds = new Set(loadedOsimMem.map(m => m.id));
             const obsoleteMembers = rawOsimMem.filter(m => !keptIds.has(m.id));
             obsoleteMembers.forEach(obs => {
@@ -1075,8 +1095,10 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               } catch (e) {}
             } else {
               // Non-destructive update: seed official Decree B-380 rules
-              for (const r of INITIAL_SCHOOL_RULES) {
-                setDoc(doc(db, 'school_rules', r.id), r).catch(() => {});
+              if (auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
+                for (const r of INITIAL_SCHOOL_RULES) {
+                  setDoc(doc(db, 'school_rules', r.id), r).catch(() => {});
+                }
               }
               setSchoolRules(INITIAL_SCHOOL_RULES);
               try {
@@ -1085,8 +1107,10 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }
           } else {
             // Seed official Decree B-380 rules
-            for (const r of INITIAL_SCHOOL_RULES) {
-              setDoc(doc(db, 'school_rules', r.id), r).catch(() => {});
+            if (auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
+              for (const r of INITIAL_SCHOOL_RULES) {
+                setDoc(doc(db, 'school_rules', r.id), r).catch(() => {});
+              }
             }
             setSchoolRules(INITIAL_SCHOOL_RULES);
             try {
@@ -1105,14 +1129,18 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 localStorage.setItem('sim_handbook_meta', JSON.stringify(loadedMeta));
               } catch (e) {}
             } else {
-              setDoc(doc(db, 'settings', 'handbook_meta'), INITIAL_HANDBOOK_META).catch(() => {});
+              if (auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
+                setDoc(doc(db, 'settings', 'handbook_meta'), INITIAL_HANDBOOK_META).catch(() => {});
+              }
               setHandbookMeta(INITIAL_HANDBOOK_META);
               try {
                 localStorage.setItem('sim_handbook_meta', JSON.stringify(INITIAL_HANDBOOK_META));
               } catch (e) {}
             }
           } else {
-            setDoc(doc(db, 'settings', 'handbook_meta'), INITIAL_HANDBOOK_META).catch(() => {});
+            if (auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
+              setDoc(doc(db, 'settings', 'handbook_meta'), INITIAL_HANDBOOK_META).catch(() => {});
+            }
             setHandbookMeta(INITIAL_HANDBOOK_META);
             try {
               localStorage.setItem('sim_handbook_meta', JSON.stringify(INITIAL_HANDBOOK_META));
@@ -1150,12 +1178,8 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }
           }
         } else {
-          // Cloud database is empty: auto initialize master data to Firestore
-          try {
-            await seedAllFirebaseData();
-          } catch (seedErr) {
-            console.warn('Auto-init database note:', seedErr);
-          }
+          // Cloud database is uninitialized: unauthenticated or client visits do not auto-seed.
+          // Super Administrator can explicitly seed initial structure via cPanel if desired.
         }
       })();
 
@@ -1204,7 +1228,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           } catch (e) {}
         }
       }, (err) => {
-        handleFirestoreError(err, OperationType.GET, 'extracurriculars');
+        if (isPermissionError(err)) {
+          console.warn('[Firestore] Izin baca ditolak untuk extracurriculars:', err);
+        } else {
+          handleFirestoreError(err, OperationType.GET, 'extracurriculars');
+        }
       });
       unsubscribers.push(unsub);
     } catch (e) {}
@@ -1219,7 +1247,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const id = docSnap.id;
             const data = docSnap.data() as SchoolClass;
             if (deletedClassSet.has(id) || isPurgedClassId(id) || isPurgedClassId(data?.name)) {
-              deleteDoc(docSnap.ref).catch(() => {});
+              if (auth.currentUser) {
+                deleteDoc(docSnap.ref).catch(() => {});
+              }
               return;
             }
             loaded.push({ id: docSnap.id, ...data });
@@ -1229,14 +1259,18 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           try {
             localStorage.setItem('sim_classes', JSON.stringify(cleanClasses));
           } catch (e) {}
-          if (duplicateIds.length > 0) {
+          if (duplicateIds.length > 0 && auth.currentUser) {
             duplicateIds.forEach(dupId => {
               deleteDoc(doc(db, 'classes', dupId)).catch(() => {});
             });
           }
         }
       }, (err) => {
-        handleFirestoreError(err, OperationType.GET, 'classes');
+        if (isPermissionError(err)) {
+          console.warn('[Firestore] Izin baca ditolak untuk classes:', err);
+        } else {
+          handleFirestoreError(err, OperationType.GET, 'classes');
+        }
       });
       unsubscribers.push(unsub);
     } catch (e) {}
@@ -1287,7 +1321,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           }
         }
       }, (err) => {
-        handleFirestoreError(err, OperationType.GET, 'schools');
+        if (isPermissionError(err)) {
+          console.warn('[Firestore] Izin baca ditolak untuk schools:', err);
+        } else {
+          handleFirestoreError(err, OperationType.GET, 'schools');
+        }
       });
       unsubscribers.push(unsub);
     } catch (e) {}
@@ -1306,7 +1344,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           } catch (e) {}
         }
       }, (err) => {
-        handleFirestoreError(err, OperationType.GET, 'academic_years');
+        if (isPermissionError(err)) {
+          console.warn('[Firestore] Izin baca ditolak untuk academic_years:', err);
+        } else {
+          handleFirestoreError(err, OperationType.GET, 'academic_years');
+        }
       });
       unsubscribers.push(unsub);
     } catch (e) {}
@@ -1323,7 +1365,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           localStorage.setItem('sim_attendance', JSON.stringify(loaded));
         } catch (e) {}
       }, (err) => {
-        handleFirestoreError(err, OperationType.GET, 'attendance');
+        if (isPermissionError(err)) {
+          console.warn('[Firestore] Izin baca ditolak untuk attendance:', err);
+        } else {
+          handleFirestoreError(err, OperationType.GET, 'attendance');
+        }
       });
       unsubscribers.push(unsub);
     } catch (e) {}
@@ -1340,7 +1386,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           localStorage.setItem('sim_activities', JSON.stringify(loaded));
         } catch (e) {}
       }, (err) => {
-        handleFirestoreError(err, OperationType.GET, 'activities');
+        if (isPermissionError(err)) {
+          console.warn('[Firestore] Izin baca ditolak untuk activities:', err);
+        } else {
+          handleFirestoreError(err, OperationType.GET, 'activities');
+        }
       });
       unsubscribers.push(unsub);
     } catch (e) {}
@@ -1357,7 +1407,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           localStorage.setItem('sim_activity_reports', JSON.stringify(loaded));
         } catch (e) {}
       }, (err) => {
-        handleFirestoreError(err, OperationType.GET, 'activity_reports');
+        if (isPermissionError(err)) {
+          console.warn('[Firestore] Izin baca ditolak untuk activity_reports:', err);
+        } else {
+          handleFirestoreError(err, OperationType.GET, 'activity_reports');
+        }
       });
       unsubscribers.push(unsub);
     } catch (e) {}
@@ -1377,7 +1431,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           localStorage.setItem('sim_schedules', JSON.stringify(loaded));
         } catch (e) {}
       }, (err) => {
-        handleFirestoreError(err, OperationType.GET, 'schedules');
+        if (isPermissionError(err)) {
+          console.warn('[Firestore] Izin baca ditolak untuk schedules:', err);
+        } else {
+          handleFirestoreError(err, OperationType.GET, 'schedules');
+        }
       });
       unsubscribers.push(unsub);
     } catch (e) {}
@@ -1394,7 +1452,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           localStorage.setItem('sim_achievements', JSON.stringify(loaded));
         } catch (e) {}
       }, (err) => {
-        handleFirestoreError(err, OperationType.GET, 'achievements');
+        if (isPermissionError(err)) {
+          console.warn('[Firestore] Izin baca ditolak untuk achievements:', err);
+        } else {
+          handleFirestoreError(err, OperationType.GET, 'achievements');
+        }
       });
       unsubscribers.push(unsub);
     } catch (e) {}
@@ -1411,7 +1473,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           localStorage.setItem('sim_announcements', JSON.stringify(loaded));
         } catch (e) {}
       }, (err) => {
-        handleFirestoreError(err, OperationType.GET, 'announcements');
+        if (isPermissionError(err)) {
+          console.warn('[Firestore] Izin baca ditolak untuk announcements:', err);
+        } else {
+          handleFirestoreError(err, OperationType.GET, 'announcements');
+        }
       });
       unsubscribers.push(unsub);
     } catch (e) {}
@@ -1455,14 +1521,18 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             localStorage.setItem('sim_students', JSON.stringify(sorted));
           } catch (e) {}
 
-          if (duplicateIds.length > 0) {
+          if (duplicateIds.length > 0 && auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
             duplicateIds.forEach(dupId => {
               deleteDoc(doc(db, 'students', dupId)).catch(() => {});
             });
           }
         }
       }, (err) => {
-        handleFirestoreError(err, OperationType.GET, 'students');
+        if (isPermissionError(err)) {
+          console.warn('[Firestore] Izin baca ditolak untuk students:', err);
+        } else {
+          handleFirestoreError(err, OperationType.GET, 'students');
+        }
       });
       unsubscribers.push(unsub);
     } catch (e) {}
@@ -1521,7 +1591,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           return finalMembers;
         });
       }, (err) => {
-        handleFirestoreError(err, OperationType.GET, 'extracurricular_members');
+        if (isPermissionError(err)) {
+          console.warn('[Firestore] Izin baca ditolak untuk extracurricular_members:', err);
+        } else {
+          handleFirestoreError(err, OperationType.GET, 'extracurricular_members');
+        }
       });
       unsubscribers.push(unsub);
     } catch (e) {}
@@ -1542,7 +1616,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               isDeletedUid(id) ||
               (cleanNip.length >= 6 && isDeletedUid(cleanNip))
             ) {
-              deleteDoc(docSnap.ref).catch(() => {});
+              if (auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
+                deleteDoc(docSnap.ref).catch(() => {});
+              }
               return;
             }
             raw.push({ id, ...data });
@@ -1564,7 +1640,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 const isDirty = t.assignedExtracurriculars.some(item => !item.startsWith('ekskul_')) ||
                   t.assignedExtracurriculars.length !== cleaned.length ||
                   !t.extracurricularNames || t.extracurricularNames.length !== cleanNames.length;
-                if (isDirty) {
+                if (isDirty && auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
                   setDoc(doc(db, 'teachers', t.id), { 
                     assignedExtracurriculars: cleaned,
                     extracurricularNames: cleanNames,
@@ -1576,13 +1652,17 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           }
         }
       }, (err) => {
-        handleFirestoreError(err, OperationType.GET, 'teachers');
+        if (isPermissionError(err)) {
+          console.warn('[Firestore] Izin baca ditolak untuk teachers:', err);
+        } else {
+          handleFirestoreError(err, OperationType.GET, 'teachers');
+        }
       });
       unsubscribers.push(unsub);
     } catch (e) {}
 
     const userRole = currentUser?.role;
-    const isStaff = userRole && ['super_admin', 'admin', 'waka_kesiswaan', 'waka', 'admin_kesiswaan', 'guru_bk', 'bk', 'pembina_osim', 'pembina', 'pembina_ekstrakurikuler', 'pembina_ekskul', 'coach_ekstrakurikuler'].includes(userRole);
+    const isStaff = userRole && ['super_admin', 'admin', 'waka_kesiswaan', 'waka', 'admin_kesiswaan', 'guru_bk', 'bk', 'pembina_osim', 'pembina', 'pembina_ekstrakurikuler', 'pembina_ekskul', 'coach_ekstrakurikuler', 'wali_kelas', 'homeroom_teacher', 'guru', 'teacher', 'guru_mapel'].includes(userRole);
     const isBkOrAdmin = userRole && ['super_admin', 'admin', 'waka_kesiswaan', 'waka', 'admin_kesiswaan', 'guru_bk', 'bk'].includes(userRole);
 
     // Violations Listener (restricted to Staff & Admin)
@@ -1643,7 +1723,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           localStorage.setItem('sim_permissions', JSON.stringify(loaded));
         } catch (e) {}
       }, (err) => {
-        handleFirestoreError(err, OperationType.GET, 'permissions');
+        if (isPermissionError(err)) {
+          console.warn('[Firestore] Izin baca ditolak untuk permissions:', err);
+        } else {
+          handleFirestoreError(err, OperationType.GET, 'permissions');
+        }
       });
       unsubscribers.push(unsub);
     } catch (e) {}
@@ -1665,7 +1749,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           localStorage.setItem('sim_osim_members', JSON.stringify(deduplicated));
         } catch (e) {}
       }, (err) => {
-        handleFirestoreError(err, OperationType.GET, 'osim_members');
+        if (isPermissionError(err)) {
+          console.warn('[Firestore] Izin baca ditolak untuk osim_members:', err);
+        } else {
+          handleFirestoreError(err, OperationType.GET, 'osim_members');
+        }
       });
       unsubscribers.push(unsub);
     } catch (e) {}
@@ -1682,7 +1770,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           localStorage.setItem('sim_osim_programs', JSON.stringify(loaded));
         } catch (e) {}
       }, (err) => {
-        handleFirestoreError(err, OperationType.GET, 'osim_programs');
+        if (isPermissionError(err)) {
+          console.warn('[Firestore] Izin baca ditolak untuk osim_programs:', err);
+        } else {
+          handleFirestoreError(err, OperationType.GET, 'osim_programs');
+        }
       });
       unsubscribers.push(unsub);
     } catch (e) {}
@@ -1755,14 +1847,17 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const verifyCloudDataIntegrity = async () => {
     try {
+      const isBkOrAdminUser = currentUser && ['super_admin', 'admin', 'waka_kesiswaan', 'waka', 'guru_bk', 'bk'].includes(currentUser.role);
+      const isStaffUser = currentUser && ['super_admin', 'admin', 'waka_kesiswaan', 'waka', 'admin_kesiswaan', 'guru_bk', 'bk', 'pembina_osim', 'pembina', 'pembina_ekstrakurikuler', 'pembina_ekskul', 'coach_ekstrakurikuler', 'wali_kelas', 'homeroom_teacher', 'guru', 'teacher', 'guru_mapel'].includes(currentUser.role);
+
       const [tSnap, sSnap, cSnap, eSnap, uSnap, vSnap, csSnap, ctSnap] = await Promise.all([
         getDocs(collection(db, 'teachers')).catch(() => null),
         getDocs(collection(db, 'students')).catch(() => null),
         getDocs(collection(db, 'classes')).catch(() => null),
         getDocs(collection(db, 'extracurriculars')).catch(() => null),
         getDocs(collection(db, 'users')).catch(() => null),
-        getDocs(collection(db, 'violations')).catch(() => null),
-        getDocs(collection(db, 'counseling')).catch(() => null),
+        (isStaffUser && auth.currentUser) ? getDocs(collection(db, 'violations')).catch(() => null) : Promise.resolve(null),
+        (isBkOrAdminUser && auth.currentUser) ? getDocs(collection(db, 'counseling')).catch(() => null) : Promise.resolve(null),
         getDocs(collection(db, 'cash_transactions')).catch(() => null)
       ]);
       return {
@@ -1964,7 +2059,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return next;
     });
     // Non-blocking write to Firestore
-    setDoc(doc(db, 'audit_logs', newLog.id), newLog).catch(() => {});
+    if (auth.currentUser) {
+      setDoc(doc(db, 'audit_logs', newLog.id), newLog).catch(() => {});
+    }
   };
 
   const clearAuditLogs = async () => {
@@ -1972,20 +2069,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     try {
       localStorage.removeItem('sim_audit_logs');
     } catch (e) {}
-    // Non-blocking batch clear in background
-    (async () => {
-      try {
-        const snap = await getDocs(collection(db, 'audit_logs'));
-        if (!snap.empty) {
-          const batch = writeBatch(db);
-          snap.docs.forEach(d => batch.delete(d.ref));
-          await batch.commit();
-        }
-      } catch (e) {
-        console.warn('Batch clear audit logs note:', e);
-      }
-    })();
-    logAction('CLEAR_LOGS', 'Audit Log & Keamanan', 'Administrator mengosongkan seluruh riwayat log aktivitas aplikasi');
+    // Invariant: Catatan audit_logs di Firestore bersifat mutlak/immutable (allow update, delete: if false)
+    // Pembersihan hanya mereset tampilan lokal/memori dan mencatat aksi pembersihan ke log audit resmi
+    logAction('CLEAR_LOGS', 'Audit Log & Keamanan', 'Administrator mengosongkan riwayat tampilan log aktivitas aplikasi');
   };
 
   const refreshAuditLogs = async () => {
@@ -2018,7 +2104,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const next = { ...prev, currentAcademicYear: year, currentSemester: semester };
       try {
         localStorage.setItem('sim_school_setting', JSON.stringify(next));
-        setDoc(doc(db, 'schools', 'main_school'), { currentAcademicYear: year, currentSemester: semester }, { merge: true });
+        if (auth.currentUser) {
+          setDoc(doc(db, 'schools', 'main_school'), { currentAcademicYear: year, currentSemester: semester }, { merge: true }).catch(() => {});
+        }
       } catch (e) {}
       return next;
     });
@@ -2028,11 +2116,15 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const isTarget = ay.name === year || ay.year === year;
         if (isTarget) {
           try {
-            setDoc(doc(db, 'academic_years', ay.id), { isActive: true }, { merge: true });
+            if (auth.currentUser) {
+              setDoc(doc(db, 'academic_years', ay.id), { isActive: true }, { merge: true }).catch(() => {});
+            }
           } catch (e) {}
         } else if (ay.isActive) {
           try {
-            setDoc(doc(db, 'academic_years', ay.id), { isActive: false }, { merge: true });
+            if (auth.currentUser) {
+              setDoc(doc(db, 'academic_years', ay.id), { isActive: false }, { merge: true }).catch(() => {});
+            }
           } catch (e) {}
         }
         return {
@@ -2045,7 +2137,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       } catch (e) {}
       return updated;
     });
-    logAction('CHANGE_ACADEMIC_YEAR', 'Tahun Ajaran', `Mengubah periode aktif ke ${year} (${semester})`);
+    if (auth.currentUser) {
+      logAction('CHANGE_ACADEMIC_YEAR', 'Tahun Ajaran', `Mengubah periode aktif ke ${year} (${semester})`);
+    }
   };
 
   const addAcademicYear = async (data: Omit<AcademicYear, 'id'> | AcademicYear) => {
@@ -2075,11 +2169,15 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
 
     try {
-      setDoc(doc(db, 'academic_years', newYear.id), newYear);
+      if (auth.currentUser) {
+        setDoc(doc(db, 'academic_years', newYear.id), newYear).catch(() => {});
+      }
     } catch (e) {
       console.warn('Firestore addAcademicYear notice:', e);
     }
-    logAction('ADD_ACADEMIC_YEAR', 'Tahun Ajaran', `Menambahkan tahun pelajaran baru: ${newYear.year}`);
+    if (auth.currentUser) {
+      logAction('ADD_ACADEMIC_YEAR', 'Tahun Ajaran', `Menambahkan tahun pelajaran baru: ${newYear.year}`);
+    }
   };
 
   const updateAcademicYear = async (id: string, data: Partial<AcademicYear>) => {
@@ -2118,11 +2216,15 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
 
     try {
-      setDoc(doc(db, 'academic_years', id), data, { merge: true });
+      if (auth.currentUser) {
+        setDoc(doc(db, 'academic_years', id), data, { merge: true }).catch(() => {});
+      }
     } catch (e) {
       console.warn('Firestore updateAcademicYear notice:', e);
     }
-    logAction('UPDATE_ACADEMIC_YEAR', 'Tahun Ajaran', `Memperbarui data tahun pelajaran ID: ${id}`);
+    if (auth.currentUser) {
+      logAction('UPDATE_ACADEMIC_YEAR', 'Tahun Ajaran', `Memperbarui data tahun pelajaran ID: ${id}`);
+    }
   };
 
   const deleteAcademicYear = async (id: string) => {
@@ -2287,7 +2389,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return updated;
       });
       try {
-        setDoc(doc(db, 'academic_years', newAY.id), newAY);
+        if (auth.currentUser) {
+          setDoc(doc(db, 'academic_years', newAY.id), newAY).catch(() => {});
+        }
       } catch (e) {}
     } else {
       setAcademicYears(prev => {
@@ -2311,7 +2415,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setSchoolSetting(updatedSetting);
     try {
       localStorage.setItem('sim_school_setting', JSON.stringify(updatedSetting));
-      setDoc(doc(db, 'schools', 'main_school'), updatedSetting, { merge: true });
+      if (auth.currentUser) {
+        setDoc(doc(db, 'schools', 'main_school'), updatedSetting, { merge: true }).catch(() => {});
+      }
     } catch (e) {}
 
     logAction(
@@ -2750,7 +2856,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return merged;
     });
     try {
-      setDoc(doc(db, 'classes', newClass.id), newClass);
+      setDoc(doc(db, 'classes', newClass.id), newClass).catch(() => {});
     } catch (e) {}
 
     // Resiliently link existing students matching this class name
@@ -2788,7 +2894,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return merged;
     });
     try {
-      updateDoc(doc(db, 'classes', id), data);
+      updateDoc(doc(db, 'classes', id), data).catch(() => {});
     } catch (e) {}
 
     // If class name changed, update students belonging to this class
@@ -2874,7 +2980,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     });
 
     try {
-      updateDoc(doc(db, 'classes', classId), { homeroomTeacher: teacherName });
+      updateDoc(doc(db, 'classes', classId), { homeroomTeacher: teacherName }).catch(() => {});
     } catch (e) {}
 
     // If teacher exists, ensure teacher role or notes updated
@@ -3653,7 +3759,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         };
         try {
           localStorage.setItem('sim_school_setting', JSON.stringify(next));
-          setDoc(doc(db, 'schools', next.id || 'main_school'), next, { merge: true });
+          setDoc(doc(db, 'schools', next.id || 'main_school'), next, { merge: true }).catch(() => {});
         } catch (e) {}
         return next;
       });
@@ -3692,7 +3798,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         };
         try {
           localStorage.setItem('sim_school_setting', JSON.stringify(next));
-          setDoc(doc(db, 'schools', next.id || 'main_school'), next, { merge: true });
+          setDoc(doc(db, 'schools', next.id || 'main_school'), next, { merge: true }).catch(() => {});
         } catch (e) {}
         return next;
       });
@@ -3847,9 +3953,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             email: user.email || updated[idx].email,
             status: user.status === 'Nonaktif' ? 'Nonaktif' : 'Aktif',
             loginUsername: user.username,
-            loginPassword: user.password,
             username: user.username,
-            password: user.password,
             position: (user.osimPosition as any) || updated[idx].position,
             sekbid: isUserBph ? 'BPH (Badan Pengurus Harian)' : (normalizeSekbidName(user.osimDepartmentName) || updated[idx].sekbid),
             className: user.studentClass || updated[idx].className
@@ -3857,7 +3961,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           updated[idx] = updatedMember;
           try {
             localStorage.setItem('sim_osim_members', JSON.stringify(updated));
-            setDoc(doc(db, 'osim_members', updatedMember.id), updatedMember, { merge: true });
+            setDoc(doc(db, 'osim_members', updatedMember.id), updatedMember, { merge: true }).catch(() => {});
           } catch (e) {}
           return updated;
         } else {
@@ -3877,15 +3981,13 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             status: user.status === 'Nonaktif' ? 'Nonaktif' : 'Aktif',
             period: activeAcademicYear || '2026/2027',
             loginUsername: user.username,
-            loginPassword: user.password,
             username: user.username,
-            password: user.password,
             createdAt: new Date().toISOString()
           };
           const updated = [...prev, newMember];
           try {
             localStorage.setItem('sim_osim_members', JSON.stringify(updated));
-            setDoc(doc(db, 'osim_members', newMember.id), newMember, { merge: true });
+            setDoc(doc(db, 'osim_members', newMember.id), newMember, { merge: true }).catch(() => {});
           } catch (e) {}
           return updated;
         }
@@ -3921,7 +4023,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         };
         updated[idx] = updatedTeacher;
         try {
-          setDoc(doc(db, 'teachers', updatedTeacher.id), updatedTeacher, { merge: true });
+          setDoc(doc(db, 'teachers', updatedTeacher.id), updatedTeacher, { merge: true }).catch(() => {});
         } catch (e) {}
         return updated;
       } else {
@@ -3937,7 +4039,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           isActive: user.status !== 'Nonaktif'
         };
         try {
-          setDoc(doc(db, 'teachers', newTeacher.id), newTeacher, { merge: true });
+          setDoc(doc(db, 'teachers', newTeacher.id), newTeacher, { merge: true }).catch(() => {});
         } catch (e) {}
         return [newTeacher, ...prev];
       }
@@ -3993,7 +4095,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         };
         localStorage.setItem('sim_school_setting', JSON.stringify(nextSetting));
         try {
-          setDoc(doc(db, 'schools', nextSetting.id || 'main_school'), nextSetting, { merge: true });
+          setDoc(doc(db, 'schools', nextSetting.id || 'main_school'), nextSetting, { merge: true }).catch(() => {});
         } catch (e) {}
         return nextSetting;
       });
@@ -4239,7 +4341,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return updated;
     });
     try {
-      updateDoc(doc(db, 'extracurriculars', id), data);
+      updateDoc(doc(db, 'extracurriculars', id), data).catch(() => {});
     } catch (e) {}
 
     // Reverse sync coach assignments to teachers list using canonical ID
@@ -4701,7 +4803,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         feedback,
         approvedBy: currentUser?.displayName || 'Waka Kesiswaan',
         approvedAt: new Date().toISOString().split('T')[0]
-      });
+      }).catch(() => {});
     } catch (e) {}
     logAction('REVIEW_REPORT', 'Laporan Kegiatan', `Verifikasi laporan ID ${id} menjadi [${status}]`);
   };
@@ -4735,6 +4837,14 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const addViolation = async (data: Omit<StudentViolation, 'id' | 'createdAt'>) => {
+    // Role-based Access Control Guard:
+    // Wali Kelas & Guru Mapel hanya dapat melihat pelanggaran siswa (read-only).
+    // Hak akses penuh mencatat/mengubah/menghapus pelanggaran adalah Super Admin, Waka Kesiswaan, dan Guru BK.
+    if (!canManageViolations(currentUser)) {
+      console.warn('[SchoolContext] addViolation ditolak: Hak akses mencatat pelanggaran hanya untuk Super Admin, Waka Kesiswaan, dan Guru BK.');
+      return;
+    }
+
     // Validate payload against schema guard
     const validation = validatePayload(studentViolationSchema, data);
     if (!validation.success) {
@@ -4779,6 +4889,10 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateViolation = async (id: string, data: Partial<StudentViolation>) => {
+    if (!canManageViolations(currentUser)) {
+      console.warn('[SchoolContext] updateViolation ditolak: Hak akses mengubah pelanggaran hanya untuk Super Admin, Waka Kesiswaan, dan Guru BK.');
+      return;
+    }
     let targetStudentId = '';
     const updatedViolations = violations.map(v => {
       if (v.id === id) {
@@ -4799,6 +4913,10 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deleteViolation = async (id: string) => {
+    if (!canManageViolations(currentUser)) {
+      console.warn('[SchoolContext] deleteViolation ditolak: Hak akses menghapus pelanggaran hanya untuk Super Admin, Waka Kesiswaan, dan Guru BK.');
+      return;
+    }
     let targetStudentId = '';
     // Soft delete to protect relational history
     const updatedViolations = violations.map(v => {
@@ -4826,6 +4944,10 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const reconcileAllStudentPoints = async () => {
+    if (!canManageViolations(currentUser)) {
+      console.warn('[SchoolContext] reconcileAllStudentPoints ditolak: Dibatasi untuk Super Admin, Waka Kesiswaan, dan Guru BK.');
+      return 0;
+    }
     let updatedCount = 0;
     const activeViolations = violations.filter(v => !v.isDeleted && v.status !== 'Dibatalkan');
     
@@ -4841,7 +4963,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if ((s.violationPoints || 0) !== realPoints) {
         updatedCount++;
         try {
-          updateDoc(doc(db, 'students', s.id), { violationPoints: realPoints });
+          updateDoc(doc(db, 'students', s.id), { violationPoints: realPoints }).catch(() => {});
         } catch (e) {}
         return { ...s, violationPoints: realPoints };
       }
@@ -4934,13 +5056,23 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const healRes = await autoHealOrphanRecords();
       const ekskulHealed = healRes.healedMembers + healRes.healedCoaches;
 
+      // 5. Harmonize user accounts and authentication credentials
+      let userAccountsSynced = 0;
+      if (syncUsersFromTeachers) {
+        try {
+          userAccountsSynced = await syncUsersFromTeachers(teachers, extracurriculars);
+        } catch (e) {
+          console.warn('Sync user accounts during harmonization note:', e);
+        }
+      }
+
       setIsSyncing(false);
-      const msg = `Harmonisasi Basis Data Berhasil: ${studentPointsFixed} akumulasi poin siswa diperbaiki, ${cashBalancesFixed} saldo akun kas diselaraskan, ${teachersHarmonized} data guru distandarisasi, dan ${ekskulHealed} relasi keanggotaan ekstrakurikuler dipulihkan.`;
+      const msg = `Harmonisasi Basis Data Berhasil: ${studentPointsFixed} akumulasi poin siswa diperbaiki, ${cashBalancesFixed} saldo akun kas diselaraskan, ${teachersHarmonized} data guru distandarisasi, ${ekskulHealed} relasi ekstrakurikuler dipulihkan, dan ${userAccountsSynced} akun pengguna/guru disinkronkan ke Firebase Auth.`;
       logAction('FULL_HARMONIZATION', 'Basis Data', msg);
       return {
         success: true,
         message: msg,
-        details: { studentPointsFixed, cashBalancesFixed, teachersHarmonized }
+        details: { studentPointsFixed, cashBalancesFixed, teachersHarmonized, userAccountsSynced } as any
       };
     } catch (err: any) {
       setIsSyncing(false);
@@ -4964,6 +5096,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     healedTransactions: number;
     healedStudents?: number;
     healedOsimMembers?: number;
+    healedTeacherAccounts?: number;
     totalHealed: number;
   }> => {
     let healedViolations = 0;
@@ -5216,7 +5349,20 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       } catch (e) {}
     }
 
-    const totalHealed = healedViolations + healedCounselings + healedMembers + healedCoaches + healedTransactions + healedStudents + healedOsimMembers;
+    // 8. Heal Teacher User Accounts (ensure every teacher has a valid synchronized user profile)
+    let healedTeacherAccounts = 0;
+    if (syncUsersFromTeachers) {
+      try {
+        const count = await syncUsersFromTeachers(teachers, extracurriculars);
+        if (count > 0) {
+          healedTeacherAccounts = count;
+        }
+      } catch (e) {
+        console.warn('Auto-heal teacher accounts note:', e);
+      }
+    }
+
+    const totalHealed = healedViolations + healedCounselings + healedMembers + healedCoaches + healedTransactions + healedStudents + healedOsimMembers + healedTeacherAccounts;
     if (totalHealed > 0) {
       logAction('AUTO_HEAL', 'Ketahanan Data', `Auto-heal Fase 4 berhasil memulihkan ${totalHealed} anomali relasi.`);
     }
@@ -5229,6 +5375,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       healedTransactions,
       healedStudents,
       healedOsimMembers,
+      healedTeacherAccounts,
       totalHealed
     };
   };
@@ -5286,7 +5433,8 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         osimPrograms,
         schedules,
         attendance,
-        activities
+        activities,
+        users: allUsers
       }
     };
 
@@ -5298,13 +5446,25 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     try {
       if (auth.currentUser) {
-        setDoc(doc(db, 'system_snapshots', snapshotId), {
+        const firestoreSnapshotData: any = {
           id: snapshotId,
           label,
           timestamp,
           counts,
           createdBy: auth.currentUser.email || auth.currentUser.uid
-        }).catch(() => {});
+        };
+        try {
+          firestoreSnapshotData.data = payload.data;
+          await setDoc(doc(db, 'system_snapshots', snapshotId), firestoreSnapshotData);
+        } catch {
+          await setDoc(doc(db, 'system_snapshots', snapshotId), {
+            id: snapshotId,
+            label,
+            timestamp,
+            counts,
+            createdBy: auth.currentUser.email || auth.currentUser.uid
+          });
+        }
       }
     } catch (e) {}
 
@@ -5326,9 +5486,32 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     logAction('DELETE_SNAPSHOT', 'Disaster Recovery', `Menghapus snapshot ID ${snapshotId}`);
   };
 
+  // Fase 7: Defensive Schema Validation & Enterprise Health Shield
+  const executeFase7Audit = async (): Promise<Fase7AuditReport> => {
+    return runFase7DefensiveAudit({
+      students,
+      teachers,
+      users: allUsers,
+      violations,
+      counseling,
+      osimPrograms,
+      cashAccounts,
+      cashTransactions
+    });
+  };
+
   const restoreFromDisasterSnapshot = async (snapshotId: string): Promise<{ success: boolean; message: string }> => {
     const existing = getDisasterRecoverySnapshots();
-    const target = existing.find((s: any) => s.id === snapshotId);
+    let target = existing.find((s: any) => s.id === snapshotId);
+    if (!target || !target.data) {
+      try {
+        const snapDoc = await getDoc(doc(db, 'system_snapshots', snapshotId));
+        if (snapDoc.exists() && snapDoc.data()?.data) {
+          target = snapDoc.data() as any;
+        }
+      } catch (e) {}
+    }
+
     if (!target || !target.data) {
       return { success: false, message: 'Snapshot tidak ditemukan atau data korup.' };
     }
@@ -5364,7 +5547,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (d.osimMembers) localStorage.setItem('sim_osim_members', JSON.stringify(d.osimMembers));
       if (d.osimPrograms) localStorage.setItem('sim_osim_programs', JSON.stringify(d.osimPrograms));
 
-      // Push restored extracurriculars & members to Firestore to guarantee persistence
+      // Push restored extracurriculars, members & user accounts to Firestore to guarantee persistence
       if (auth.currentUser) {
         if (Array.isArray(d.extracurriculars)) {
           d.extracurriculars.forEach((e: any) => {
@@ -5376,10 +5559,15 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             if (m && m.id) setDoc(doc(db, 'extracurricular_members', m.id), m).catch(() => {});
           });
         }
+        if (Array.isArray(d.users)) {
+          d.users.forEach((u: any) => {
+            if (u && u.uid) setDoc(doc(db, 'users', u.uid), u, { merge: true }).catch(() => {});
+          });
+        }
       }
 
       setIsSyncing(false);
-      const msg = `Berhasil memulihkan database dari titik "${target.label}" (${target.timestamp}). Seluruh entitas telah dikembalikan ke kondisi stabil.`;
+      const msg = `Berhasil memulihkan database dari titik "${target.label}" (${target.timestamp}). Seluruh entitas dan kredensial telah dikembalikan ke kondisi stabil.`;
       logAction('RESTORE_SNAPSHOT', 'Disaster Recovery', msg);
       return { success: true, message: msg };
     } catch (err: any) {
@@ -5852,7 +6040,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     setOsimMembers(prev => prev.map(m => m.id === id ? { ...m, ...normalizedData } : m));
     try {
-      updateDoc(doc(db, 'osim_members', id), normalizedData);
+      updateDoc(doc(db, 'osim_members', id), normalizedData).catch(() => {});
     } catch (e) {}
     logAction('UPDATE_OSIM_MEMBER', 'Intrakurikuler & OSIM', `Memperbarui data pengurus OSIM ID ${id}`);
   };
@@ -6667,7 +6855,8 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         createDisasterRecoverySnapshot,
         restoreFromDisasterSnapshot,
         getDisasterRecoverySnapshots,
-        deleteDisasterRecoverySnapshot
+        deleteDisasterRecoverySnapshot,
+        executeFase7Audit
       }}
     >
       {children}

@@ -45,7 +45,16 @@ try {
 export const auth: Auth = getAuth(app);
 export const db: Firestore = firestoreInstance;
 export const storage: FirebaseStorage = getStorage(app);
-export { app };
+export { app, firebaseConfig };
+
+export function getSecondaryAuth(): Auth {
+  const secondaryAppName = 'SIM_SECONDARY_AUTH';
+  let secApp = getApps().find(a => a.name === secondaryAppName);
+  if (!secApp) {
+    secApp = initializeApp(firebaseConfig, secondaryAppName);
+  }
+  return getAuth(secApp);
+}
 
 async function testConnection() {
   try {

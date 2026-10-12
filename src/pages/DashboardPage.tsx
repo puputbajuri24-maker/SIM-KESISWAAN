@@ -44,7 +44,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
     isPengurusOsim,
     osimPosition,
     canManageCash,
-    isOsimBendahara
+    isOsimBendahara,
+    isWaliKelas,
+    isGuruMapel,
+    isTeacher
   } = useAuth();
   const {
     classes = [],
@@ -65,6 +68,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
     homeVisits,
     parentCallLetters,
     careerGuidances,
+    permissions,
     activeAcademicYear,
     activeSemester,
     seedFirebaseDatabase,
@@ -92,6 +96,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
   const safeHomeVisits = homeVisits || [];
   const safeParentCallLetters = parentCallLetters || [];
   const safeCareerGuidances = careerGuidances || [];
+  const safePermissions = permissions || [];
 
   // Statistics calculation for School-wide
   const totalStudents = useMemo(() => {
@@ -1394,6 +1399,242 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // VIEW 3.5: WALI KELAS & GURU MATA PELAJARAN DASHBOARD
+  // ==========================================
+  if (isWaliKelas || isGuruMapel || (!isSuperAdmin && !isWaka && !isGuruBK && !isPembinaOsim && !isPembinaEkskul && !isPembina && !isPengurusOsim)) {
+    // Resolve Teacher's homeroom class or matching profile
+    const teacherProfile = safeTeachers.find(
+      t =>
+        (currentUser?.nip && t.nip && t.nip !== '-' && t.nip.replace(/\D/g, '') === (currentUser.nip || '').replace(/\D/g, '')) ||
+        (currentUser?.uid && (t.id === currentUser.uid || `user_${t.id}` === currentUser.uid)) ||
+        (currentUser?.displayName && (t.fullName.toLowerCase() === currentUser.displayName.toLowerCase() || t.fullName.toLowerCase().includes(currentUser.displayName.toLowerCase())))
+    );
+
+    const homeroomClass = safeClasses.find(c =>
+      (teacherProfile && (
+        c.homeroomTeacher?.toLowerCase() === teacherProfile.fullName.toLowerCase() ||
+        c.homeroomTeacherName?.toLowerCase() === teacherProfile.fullName.toLowerCase() ||
+        c.homeroomTeacher === teacherProfile.id
+      )) ||
+      (currentUser?.displayName && (
+        c.homeroomTeacher?.toLowerCase() === currentUser.displayName.toLowerCase() ||
+        c.homeroomTeacherName?.toLowerCase() === currentUser.displayName.toLowerCase()
+      ))
+    ) || null;
+
+    const myClassStudents = homeroomClass
+      ? safeStudents.filter(s => s && (s.className === homeroomClass.name || s.classId === homeroomClass.id))
+      : safeStudents;
+
+    const myClassViolations = homeroomClass
+      ? safeViolations.filter(v => v && (v.studentClass === homeroomClass.name || myClassStudents.some(s => s.id === v.studentId)))
+      : safeViolations;
+
+    const myClassPermissions = homeroomClass
+      ? safePermissions.filter(p => p && (p.studentClass === homeroomClass.name || myClassStudents.some(s => s.id === p.studentId)))
+      : safePermissions;
+
+    const totalActiveStudents = myClassStudents.filter(s => (s.status || 'Aktif').toLowerCase() === 'aktif').length;
+    const totalInfractionPoints = myClassViolations.reduce((sum, v) => sum + (Number(v.points) || 0), 0);
+
+    return (
+      <div className="space-y-3 font-sans text-xs select-none">
+        {/* Active Official Announcements Banner */}
+        <AnnouncementDashboardWidget onNavigate={onNavigate} />
+
+        {/* 1. Header Banner */}
+        <div className="p-3 bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-center space-x-3">
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-mono font-bold text-sm shrink-0 border ${
+              isWaliKelas
+                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+                : 'bg-teal-500/10 border-teal-500/30 text-teal-600 dark:text-teal-400'
+            }`}>
+              {isWaliKelas ? 'WK' : 'GM'}
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="font-mono text-[10px] font-bold text-emerald-600 dark:text-emerald-500 uppercase tracking-widest">
+                  {isWaliKelas ? `PORTAL WALI KELAS ${homeroomClass?.name ? `(${homeroomClass.name})` : ''}` : 'PORTAL GURU MATA PELAJARAN'}
+                </span>
+                <span className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-[9px] px-1.5 py-0.2 rounded border border-emerald-500/20 font-mono font-bold">
+                  {activeAcademicYear} ({activeSemester})
+                </span>
+              </div>
+              <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-zinc-100 mt-0.5">
+                {currentUser?.displayName} — Pembinaan Karakter & Akademik Siswa
+              </h2>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5 font-mono">
+            <button
+              onClick={() => onNavigate('violations')}
+              className="px-2.5 py-1 rounded bg-rose-600 hover:bg-rose-500 text-white font-medium text-[11px] flex items-center space-x-1.5 shadow-[0_0_10px_rgba(244,63,94,0.3)] transition-colors"
+            >
+              <ShieldAlert className="w-3.5 h-3.5" />
+              <span>+ CATAT PELANGGARAN</span>
+            </button>
+            <button
+              onClick={() => onNavigate('students')}
+              className="px-2.5 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white font-medium text-[11px] flex items-center space-x-1.5 transition-colors"
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>DIREKTORI SISWA</span>
+            </button>
+            <button
+              onClick={() => onNavigate('permissions')}
+              className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-[11px] flex items-center space-x-1.5 transition-colors"
+            >
+              <ClipboardCheck className="w-3.5 h-3.5" />
+              <span>PRESENSI & IZIN</span>
+            </button>
+            <button
+              onClick={() => onNavigate('reports')}
+              className="px-2.5 py-1 rounded bg-[#161618] border border-[#27272a] hover:border-emerald-500/40 text-emerald-400 font-medium text-[11px] flex items-center space-x-1.5 transition-colors"
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>LAPORAN</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 2. Key Metrics */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+          <StatCard
+            id="kpi-teacher-students"
+            title={homeroomClass ? `SISWA KELAS ${homeroomClass.name}` : 'TOTAL SISWA MADRASAH'}
+            value={totalActiveStudents}
+            icon={Users}
+            subtitle={homeroomClass ? `Wali: ${currentUser?.displayName}` : 'Status Aktif Terdaftar'}
+            colorTheme="emerald"
+            onClick={() => onNavigate('students')}
+          />
+          <StatCard
+            id="kpi-teacher-violations"
+            title="TOTAL POIN PELANGGARAN"
+            value={totalInfractionPoints}
+            icon={ShieldAlert}
+            subtitle={`${myClassViolations.length} Kasus Disiplin Tercatat`}
+            colorTheme="rose"
+            onClick={() => onNavigate('violations')}
+          />
+          <StatCard
+            id="kpi-teacher-permissions"
+            title="SURAT IZIN & DISPENSASI"
+            value={myClassPermissions.length}
+            icon={ClipboardCheck}
+            subtitle="Izin Resmi Terverifikasi"
+            colorTheme="indigo"
+            onClick={() => onNavigate('permissions')}
+          />
+          <StatCard
+            id="kpi-teacher-tatib"
+            title="BUKU SAKU TATA TERTIB"
+            value="SK B-380"
+            icon={BookOpenCheck}
+            subtitle="Pedoman Poin & Disiplin"
+            colorTheme="amber"
+            onClick={() => onNavigate('tatib')}
+          />
+        </div>
+
+        {/* 3. Content Grid: Siswa Binaan & Pelanggaran */}
+        <div className="grid grid-cols-12 gap-2">
+          {/* Left Column (8 cols): Roster Siswa */}
+          <div className="col-span-12 lg:col-span-8 p-3 bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] rounded-xl flex flex-col shadow-xs">
+            <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-200 dark:border-[#27272a]">
+              <div className="flex items-center space-x-2">
+                <Users className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <h3 className="text-[10px] font-mono font-bold text-slate-600 dark:text-zinc-400 uppercase tracking-widest">
+                  {homeroomClass ? `ROSTER SISWA BINAAN KELAS ${homeroomClass.name}` : 'DAFTAR SISWA TERBARU'} ({myClassStudents.length})
+                </h3>
+              </div>
+              <button
+                onClick={() => onNavigate('students')}
+                className="text-[10px] font-mono font-bold text-emerald-600 dark:text-emerald-400 hover:underline"
+              >
+                LIHAT SEMUA →
+              </button>
+            </div>
+
+            <div className="space-y-1.5 flex-1 font-mono text-[11px] overflow-y-auto max-h-[300px]">
+              {myClassStudents.slice(0, 6).map(s => (
+                <div key={s.id} className="p-2 bg-slate-50 dark:bg-[#161618] border border-slate-200 dark:border-[#27272a] rounded-lg flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-6 h-6 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 font-bold text-[10px] flex items-center justify-center shrink-0 border border-emerald-500/30">
+                      {(s.fullName || (s as any).name || 'S').charAt(0)}
+                    </div>
+                    <div>
+                      <div className="font-bold text-slate-900 dark:text-zinc-200">{s.fullName || (s as any).name}</div>
+                      <div className="text-[10px] text-slate-600 dark:text-zinc-500">NIS: {s.nis} • Kelas: {s.className}</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {(s.violationPoints || 0) > 0 ? (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20 font-bold">
+                        {s.violationPoints} Poin
+                      </span>
+                    ) : (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 font-bold">
+                        Tertib (0 P)
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {myClassStudents.length === 0 && (
+                <div className="py-8 text-center text-slate-500 dark:text-zinc-500 font-mono bg-slate-50 dark:bg-[#161618] rounded-lg border border-slate-200 dark:border-[#27272a]/60">
+                  Belum ada data siswa terdaftar.
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right Column (4 cols): Catatan Kedisiplinan Terkini */}
+          <div className="col-span-12 lg:col-span-4 p-3 bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] rounded-xl flex flex-col shadow-xs">
+            <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-200 dark:border-[#27272a]">
+              <div className="flex items-center space-x-2">
+                <ShieldAlert className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+                <h3 className="text-[10px] font-mono font-bold text-slate-600 dark:text-zinc-400 uppercase tracking-widest">
+                  DISIPLIN & PELANGGARAN
+                </h3>
+              </div>
+              <button
+                onClick={() => onNavigate('violations')}
+                className="text-[10px] font-mono font-bold text-rose-600 dark:text-rose-400 hover:underline"
+              >
+                + INPUT →
+              </button>
+            </div>
+
+            <div className="space-y-1.5 flex-1 font-mono text-[10px] overflow-y-auto max-h-[300px]">
+              {myClassViolations.slice(0, 4).map(v => (
+                <div key={v.id} className="p-2 bg-slate-50 dark:bg-[#161618] border border-slate-200 dark:border-[#27272a] rounded-lg hover:border-rose-500/40">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-900 dark:text-zinc-200 truncate">{v.studentName}</span>
+                    <span className="text-rose-600 dark:text-rose-400 font-bold">+{v.points} P</span>
+                  </div>
+                  <div className="text-[10px] text-slate-600 dark:text-zinc-400 mt-0.5 line-clamp-1">{v.violationType}</div>
+                  <div className="text-[9px] text-slate-500 dark:text-zinc-500 mt-1 flex justify-between">
+                    <span>{v.date}</span>
+                    <span className="text-slate-600 dark:text-zinc-400">{v.status || 'Diproses'}</span>
+                  </div>
+                </div>
+              ))}
+              {myClassViolations.length === 0 && (
+                <div className="py-8 text-center text-slate-500 dark:text-zinc-500 font-mono bg-slate-50 dark:bg-[#161618] rounded-lg border border-slate-200 dark:border-[#27272a]/60">
+                  Semua siswa tercatat tertib. Belum ada pelanggaran.
+                </div>
+              )}
             </div>
           </div>
         </div>

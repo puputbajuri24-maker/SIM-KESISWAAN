@@ -27,6 +27,7 @@ import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { ExportActions } from '../components/common/ExportActions';
 import { ClassGridFilter } from '../components/common/ClassGridFilter';
 import { calculateRecordCountsByClass, isStudentInClass } from '../utils/classResolver';
+import { canManageViolations } from '../permissions';
 
 interface ViolationsPageProps {
   onReferToCounseling?: (violation: Violation) => void;
@@ -34,6 +35,7 @@ interface ViolationsPageProps {
 
 export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounseling }) => {
   const { isWakaOrAdmin, isGuruBK, currentUser } = useAuth();
+  const canManage = isWakaOrAdmin || isGuruBK || canManageViolations(currentUser);
   const { toast } = useToast();
   const [isSavingViolation, setIsSavingViolation] = useState(false);
   const {
@@ -161,8 +163,12 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
   }, [violations, selectedClass, selectedCategory, selectedStatus, stageFilter, classes, students]);
 
   const handleOpenAdd = () => {
-    setSelectedViolation(null);
+    if (!canManage) {
+      toast.warning('Akses Dibatasi: Wali Kelas & Guru Mapel hanya dapat melihat pelanggaran siswa. Pencatatan pelanggaran adalah hak akses Super Admin, Waka Kesiswaan, dan Guru BK.');
+      return;
+    }
     const defaultStudent = students[0];
+    setSelectedViolation(null);
     setFormData({
       studentId: defaultStudent?.id || '',
       studentName: defaultStudent?.fullName || '',
@@ -182,6 +188,10 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
 
   const handleOpenEdit = (v: Violation, e?: React.MouseEvent) => {
     e?.stopPropagation();
+    if (!canManage) {
+      toast.warning('Akses Dibatasi: Wali Kelas & Guru Mapel hanya dapat melihat pelanggaran siswa.');
+      return;
+    }
     setSelectedViolation(v);
     setFormData(v);
     setIsFormOpen(true);
@@ -194,12 +204,20 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
 
   const handleOpenDelete = (v: Violation, e?: React.MouseEvent) => {
     e?.stopPropagation();
+    if (!canManage) {
+      toast.warning('Akses Dibatasi: Hanya Super Admin, Waka Kesiswaan, dan Guru BK yang berhak menghapus pelanggaran.');
+      return;
+    }
     setSelectedViolation(v);
     setIsDeleteOpen(true);
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canManage) {
+      toast.warning('Akses Dibatasi: Anda hanya memiliki izin untuk melihat pelanggaran siswa.');
+      return;
+    }
     if (!formData.studentId || !formData.violationType) {
       toast.warning('Mohon pilih siswa dan jenis pelanggaran.');
       return;
@@ -266,6 +284,11 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
   };
 
   const handleDeleteConfirm = async () => {
+    if (!canManage) {
+      toast.warning('Akses Dibatasi: Anda tidak memiliki wewenang untuk menghapus pelanggaran.');
+      setIsDeleteOpen(false);
+      return;
+    }
     if (selectedViolation) {
       try {
         await deleteViolation(selectedViolation.id);
@@ -366,7 +389,7 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
 
         return (
           <div className="flex items-center justify-end gap-1.5" onClick={e => e.stopPropagation()}>
-            {onReferToCounseling && v.status !== 'Selesai' && (
+            {canManage && onReferToCounseling && v.status !== 'Selesai' && (
               <button
                 onClick={() => onReferToCounseling(v)}
                 className={`px-2.5 py-1 text-xs font-bold rounded-lg border flex items-center gap-1 transition-all ${
@@ -384,32 +407,36 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
                 </span>
               </button>
             )}
-          <button
-            onClick={() => handleOpenDetail(v)}
-            className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-950/60 dark:hover:bg-indigo-900 dark:text-indigo-400 transition-colors"
-            title="Lihat Detail Pelanggaran"
-          >
-            <Eye className="w-4 h-4" />
-          </button>
-          <button
-            onClick={e => handleOpenEdit(v, e)}
-            className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:hover:bg-amber-900 dark:text-amber-400 transition-colors"
-            title="Edit Pelanggaran Siswa"
-          >
-            <Edit2 className="w-4 h-4" />
-          </button>
-          <button
-            onClick={e => handleOpenDelete(v, e)}
-            className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-400 transition-colors"
-            title="Hapus Catatan Pelanggaran"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </div>
-      );
+            <button
+              onClick={() => handleOpenDetail(v)}
+              className="p-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-950/60 dark:hover:bg-indigo-900 dark:text-indigo-400 transition-colors"
+              title="Lihat Detail Pelanggaran"
+            >
+              <Eye className="w-4 h-4" />
+            </button>
+            {canManage && (
+              <>
+                <button
+                  onClick={e => handleOpenEdit(v, e)}
+                  className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:hover:bg-amber-900 dark:text-amber-400 transition-colors"
+                  title="Edit Pelanggaran Siswa"
+                >
+                  <Edit2 className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={e => handleOpenDelete(v, e)}
+                  className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-400 transition-colors"
+                  title="Hapus Catatan Pelanggaran"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </>
+            )}
+          </div>
+        );
+      }
     }
-  }
-];
+  ];
 
   return (
     <div className="space-y-6">
@@ -425,7 +452,7 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
         </div>
 
         <div className="flex items-center gap-2">
-          {(isWakaOrAdmin || isGuruBK) && (
+          {canManage && (
             <button
               onClick={handleSyncPoints}
               disabled={isSyncingPoints}
@@ -457,15 +484,41 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
             ]}
           />
 
-          <button
-            onClick={handleOpenAdd}
-            className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md shadow-rose-600/20 flex items-center gap-2 transition-all hover:scale-105"
-          >
-            <Plus className="w-4 h-4" />
-            <span>+ Catat Pelanggaran</span>
-          </button>
+          {canManage ? (
+            <button
+              onClick={handleOpenAdd}
+              className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md shadow-rose-600/20 flex items-center gap-2 transition-all hover:scale-105"
+            >
+              <Plus className="w-4 h-4" />
+              <span>+ Catat Pelanggaran</span>
+            </button>
+          ) : (
+            <div className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 text-xs font-semibold flex items-center gap-2">
+              <Eye className="w-3.5 h-3.5 text-blue-500" />
+              <span>Mode Lihat Pelanggaran</span>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Read-Only Notice for Homeroom and Subject Teachers */}
+      {!canManage && (
+        <div className="p-3.5 bg-blue-50/90 dark:bg-blue-950/40 border border-blue-200/80 dark:border-blue-900/60 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-blue-900 dark:text-blue-200 shadow-sm">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-lg bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 shrink-0">
+              <Eye className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="font-bold text-slate-800 dark:text-slate-100">
+                Mode Akses Pantau Pelanggaran (Hanya Lihat)
+              </p>
+              <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                Wali Kelas & Guru Mata Pelajaran memiliki akses penuh untuk memantau data pelanggaran dan akumulasi poin siswa. Wewenang pencatatan, pengubahan, dan pencabutan sanksi berada pada Super Admin, Waka Kesiswaan, dan Guru BK.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Sync Notification Banner */}
       {syncNotice && (

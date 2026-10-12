@@ -323,7 +323,6 @@ export const deduplicateUsersList = (users: UserProfile[]): UserProfile[] => {
         ...existing,
         ...u,
         uid: existing.uid, // Keep primary existing UID
-        password: (existing.password && existing.password !== 'password') ? existing.password : (u.password || existing.password),
         phone: existing.phone || u.phone,
         nip: existing.nip || u.nip,
         extracurricularIds: Array.from(new Set([...(existing.extracurricularIds || []), ...(u.extracurricularIds || [])])),
@@ -666,8 +665,7 @@ export const deduplicateOsimMembersList = (members: OsimMember[], masterStudents
         className: refreshedMember.className || existing.className,
         fullName: refreshedMember.fullName || existing.fullName,
         photoUrl: refreshedMember.photoUrl || existing.photoUrl,
-        loginUsername: refreshedMember.loginUsername || existing.loginUsername,
-        loginPassword: (refreshedMember.loginPassword && refreshedMember.loginPassword !== 'password') ? refreshedMember.loginPassword : (existing.loginPassword || refreshedMember.loginPassword)
+        loginUsername: refreshedMember.loginUsername || existing.loginUsername
       };
       result[duplicateIdx] = merged;
     } else {

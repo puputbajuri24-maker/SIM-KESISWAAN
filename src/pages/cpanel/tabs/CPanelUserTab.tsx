@@ -47,8 +47,6 @@ export interface CPanelUserTabProps {
   setSelectedPembinaUserId: (id: string) => void;
   selectedOsimUserId: string;
   setSelectedOsimUserId: (id: string) => void;
-  loginWithUser: (user: UserProfile) => void;
-  loginWithDemoRole: (role: any) => void;
   getPembinaEkskulName: (user: UserProfile) => string;
   getOsimPositionName: (user: UserProfile) => string;
   rolePillFilter: string;
@@ -77,6 +75,9 @@ export interface CPanelUserTabProps {
   handlePromptDeleteUser: (user: UserProfile) => void;
   extracurriculars: Extracurricular[];
   getEkskulTheme: (id: string, category?: string) => any;
+  loginWithUser?: (user: UserProfile) => void;
+  loginWithDemoRole?: (role: any, customUid?: string) => void;
+  isSuperAdmin?: boolean;
 }
 
 export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
@@ -99,8 +100,6 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
   setSelectedPembinaUserId,
   selectedOsimUserId,
   setSelectedOsimUserId,
-  loginWithUser,
-  loginWithDemoRole,
   getPembinaEkskulName,
   getOsimPositionName,
   rolePillFilter,
@@ -129,6 +128,9 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
   handlePromptDeleteUser,
   extracurriculars,
   getEkskulTheme,
+  loginWithUser,
+  loginWithDemoRole,
+  isSuperAdmin,
 }) => {
   // Helper: Dapatkan tugas binaan ekstrakurikuler yang valid, bersih dari angka serial, dan dikunci 1 pembina = 1 unit binaan utama
   const getUserEkskuls = (u: UserProfile) => {
@@ -327,27 +329,47 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
             </div>
 
             <div className="space-y-1.5">
-              <button
-                type="button"
-                onClick={() => {
-                  if (adminUsers[0]) loginWithUser(adminUsers[0]);
-                }}
-                className="w-full py-1.5 px-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center justify-center space-x-1.5 transition-colors"
-              >
-                <Crown className="w-3.5 h-3.5 text-amber-300" />
-                <span>Mode Administrator</span>
-              </button>
-              {wakaUsers.length > 0 && (
+              <div className="grid grid-cols-2 gap-1.5">
                 <button
                   type="button"
-                  onClick={() => {
-                    if (wakaUsers[0]) loginWithUser(wakaUsers[0]);
-                  }}
-                  className="w-full py-1.5 px-2.5 rounded-lg bg-blue-900/40 hover:bg-blue-900/60 border border-blue-700/40 text-blue-200 font-bold text-xs flex items-center justify-center space-x-1.5 transition-colors"
+                  onClick={() => setRolePillFilter('super_admin')}
+                  className="py-1 px-2 rounded-lg bg-[#242428] hover:bg-[#2c2c32] text-zinc-300 font-semibold text-[11px] flex items-center justify-center space-x-1 transition-colors"
                 >
-                  <Shield className="w-3.5 h-3.5 text-blue-400" />
-                  <span>Mode Waka Kesiswaan</span>
+                  <Filter className="w-3 h-3 text-blue-400" />
+                  <span>Filter ({adminUsers.length})</span>
                 </button>
+                {loginWithDemoRole && (
+                  <button
+                    type="button"
+                    onClick={() => loginWithDemoRole('super_admin', adminUsers[0]?.uid)}
+                    className="py-1 px-2 rounded-lg bg-blue-600/30 hover:bg-blue-600/50 text-blue-200 border border-blue-500/40 font-bold text-[11px] flex items-center justify-center space-x-1 transition-colors"
+                  >
+                    <LogIn className="w-3 h-3 text-amber-300" />
+                    <span>Uji Admin</span>
+                  </button>
+                )}
+              </div>
+              {wakaUsers.length > 0 && (
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setRolePillFilter('waka_kesiswaan')}
+                    className="py-1 px-2 rounded-lg bg-[#242428] hover:bg-[#2c2c32] text-zinc-300 font-semibold text-[11px] flex items-center justify-center space-x-1 transition-colors"
+                  >
+                    <Filter className="w-3 h-3 text-blue-400" />
+                    <span>Filter Waka</span>
+                  </button>
+                  {loginWithDemoRole && (
+                    <button
+                      type="button"
+                      onClick={() => loginWithDemoRole('waka_kesiswaan', wakaUsers[0]?.uid)}
+                      className="py-1 px-2 rounded-lg bg-blue-900/40 hover:bg-blue-900/60 border border-blue-700/40 text-blue-200 font-bold text-[11px] flex items-center justify-center space-x-1 transition-colors"
+                    >
+                      <LogIn className="w-3 h-3 text-blue-300" />
+                      <span>Uji Waka</span>
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -374,7 +396,7 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
             <div className="space-y-2">
               <div className="space-y-1">
                 <label className="text-[10px] font-semibold text-purple-300 flex items-center justify-between">
-                  <span>Pilih Konselor BK:</span>
+                  <span>Daftar Konselor BK:</span>
                 </label>
                 <select
                   value={selectedBkUserId || (bkUsers[0]?.uid || '')}
@@ -394,21 +416,30 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
                 </select>
               </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  const target = bkUsers.find(u => u.uid === (selectedBkUserId || bkUsers[0]?.uid)) || bkUsers[0];
-                  if (target) {
-                    loginWithUser(target);
-                  } else {
-                    loginWithDemoRole('guru_bk');
-                  }
-                }}
-                className="w-full py-1.5 px-2.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs flex items-center justify-center space-x-1.5 transition-colors shadow-sm shadow-purple-900/30"
-              >
-                <HeartHandshake className="w-3.5 h-3.5 text-purple-200" />
-                <span>Uji Tampilan Sebagai Guru BK</span>
-              </button>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setRolePillFilter('guru_bk')}
+                  className="py-1 px-2 rounded-lg bg-[#242428] hover:bg-[#2c2c32] text-zinc-300 font-semibold text-[11px] flex items-center justify-center space-x-1 transition-colors"
+                >
+                  <Filter className="w-3 h-3 text-purple-400" />
+                  <span>Filter BK</span>
+                </button>
+                {loginWithUser && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = bkUsers.find(u => u.uid === (selectedBkUserId || bkUsers[0]?.uid)) || bkUsers[0];
+                      if (target) loginWithUser(target);
+                    }}
+                    disabled={bkUsers.length === 0}
+                    className="py-1 px-2 rounded-lg bg-purple-600/30 hover:bg-purple-600/50 text-purple-200 border border-purple-500/40 font-bold text-[11px] flex items-center justify-center space-x-1 transition-colors disabled:opacity-50"
+                  >
+                    <LogIn className="w-3 h-3 text-purple-300" />
+                    <span>Uji BK</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -439,20 +470,30 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
                 </strong>
               </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  if (pembinaOsimUsers[0]) {
-                    loginWithUser(pembinaOsimUsers[0]);
-                  } else {
-                    loginWithDemoRole('pembina_osim');
-                  }
-                }}
-                className="w-full py-1.5 px-2.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center justify-center space-x-1.5 transition-colors shadow-sm shadow-amber-900/30"
-              >
-                <Users className="w-3.5 h-3.5 text-amber-200" />
-                <span>Uji Tampilan Pembina OSIM</span>
-              </button>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setRolePillFilter('pembina_osim')}
+                  className="py-1 px-2 rounded-lg bg-[#242428] hover:bg-[#2c2c32] text-zinc-300 font-semibold text-[11px] flex items-center justify-center space-x-1 transition-colors"
+                >
+                  <Filter className="w-3 h-3 text-amber-400" />
+                  <span>Filter OSIM</span>
+                </button>
+                {loginWithUser && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = pembinaOsimUsers[0];
+                      if (target) loginWithUser(target);
+                    }}
+                    disabled={pembinaOsimUsers.length === 0}
+                    className="py-1 px-2 rounded-lg bg-amber-600/30 hover:bg-amber-600/50 text-amber-200 border border-amber-500/40 font-bold text-[11px] flex items-center justify-center space-x-1 transition-colors disabled:opacity-50"
+                  >
+                    <LogIn className="w-3 h-3 text-amber-300" />
+                    <span>Uji Pembina</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -478,7 +519,7 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
             <div className="space-y-2">
               <div className="space-y-1">
                 <label className="text-[10px] font-semibold text-emerald-300 flex items-center justify-between">
-                  <span>Pilih Guru Pembina Ekstra:</span>
+                  <span>Daftar Guru Pembina Ekstra:</span>
                 </label>
                 <select
                   value={selectedPembinaUserId || (pembinaEkskulUsers[0]?.uid || '')}
@@ -498,21 +539,30 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
                 </select>
               </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  const target = pembinaEkskulUsers.find(u => u.uid === (selectedPembinaUserId || pembinaEkskulUsers[0]?.uid)) || pembinaEkskulUsers[0];
-                  if (target) {
-                    loginWithUser(target);
-                  } else {
-                    loginWithDemoRole('pembina_ekskul');
-                  }
-                }}
-                className="w-full py-1.5 px-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center space-x-1.5 transition-colors shadow-sm shadow-emerald-900/30"
-              >
-                <Compass className="w-3.5 h-3.5 text-emerald-200" />
-                <span>Uji Tampilan Sebagai Pembina</span>
-              </button>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setRolePillFilter('coach_ekstrakurikuler')}
+                  className="py-1 px-2 rounded-lg bg-[#242428] hover:bg-[#2c2c32] text-zinc-300 font-semibold text-[11px] flex items-center justify-center space-x-1 transition-colors"
+                >
+                  <Filter className="w-3 h-3 text-emerald-400" />
+                  <span>Filter Ekstra</span>
+                </button>
+                {loginWithUser && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = pembinaEkskulUsers.find(u => u.uid === (selectedPembinaUserId || pembinaEkskulUsers[0]?.uid)) || pembinaEkskulUsers[0];
+                      if (target) loginWithUser(target);
+                    }}
+                    disabled={pembinaEkskulUsers.length === 0}
+                    className="py-1 px-2 rounded-lg bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-200 border border-emerald-500/40 font-bold text-[11px] flex items-center justify-center space-x-1 transition-colors disabled:opacity-50"
+                  >
+                    <LogIn className="w-3 h-3 text-emerald-300" />
+                    <span>Uji Ekskul</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -538,7 +588,7 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
             <div className="space-y-2">
               <div className="space-y-1">
                 <label className="text-[10px] font-semibold text-indigo-300 flex items-center justify-between">
-                  <span>Pilih Jabatan / Sekbid:</span>
+                  <span>Daftar Jabatan / Sekbid:</span>
                 </label>
                 <select
                   value={selectedOsimUserId || (osimPengurusUsers[0]?.uid || '')}
@@ -558,21 +608,30 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
                 </select>
               </div>
 
-              <button
-                type="button"
-                onClick={() => {
-                  const target = osimPengurusUsers.find(u => u.uid === (selectedOsimUserId || osimPengurusUsers[0]?.uid)) || osimPengurusUsers[0];
-                  if (target) {
-                    loginWithUser(target);
-                  } else {
-                    loginWithDemoRole('pengurus_osim');
-                  }
-                }}
-                className="w-full py-1.5 px-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center justify-center space-x-1.5 transition-colors shadow-sm shadow-indigo-900/30"
-              >
-                <Key className="w-3.5 h-3.5 text-indigo-200" />
-                <span>Uji Tampilan Akun Terpilih</span>
-              </button>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setRolePillFilter('anggota_osim')}
+                  className="py-1 px-2 rounded-lg bg-[#242428] hover:bg-[#2c2c32] text-zinc-300 font-semibold text-[11px] flex items-center justify-center space-x-1 transition-colors"
+                >
+                  <Filter className="w-3 h-3 text-indigo-400" />
+                  <span>Filter OSIM</span>
+                </button>
+                {loginWithUser && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const target = osimPengurusUsers.find(u => u.uid === (selectedOsimUserId || osimPengurusUsers[0]?.uid)) || osimPengurusUsers[0];
+                      if (target) loginWithUser(target);
+                    }}
+                    disabled={osimPengurusUsers.length === 0}
+                    className="py-1 px-2 rounded-lg bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/40 font-bold text-[11px] flex items-center justify-center space-x-1 transition-colors disabled:opacity-50"
+                  >
+                    <LogIn className="w-3 h-3 text-indigo-300" />
+                    <span>Uji Sekbid</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -694,6 +753,34 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
         </button>
         <button
           type="button"
+          onClick={() => setRolePillFilter('wali_kelas')}
+          className={`px-3 py-1.5 rounded-lg font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+            rolePillFilter === 'wali_kelas'
+              ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-900/40'
+              : 'bg-[#18181b] hover:bg-[#222226] text-emerald-300 border border-emerald-500/20'
+          }`}
+        >
+          <span>Wali Kelas</span>
+          <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${rolePillFilter === 'wali_kelas' ? 'bg-emerald-800 text-emerald-100' : 'bg-emerald-950/60 text-emerald-300'}`}>
+            {roleCounts.wali_kelas || 0}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setRolePillFilter('guru')}
+          className={`px-3 py-1.5 rounded-lg font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+            rolePillFilter === 'guru'
+              ? 'bg-teal-600 text-white shadow-sm shadow-teal-900/40'
+              : 'bg-[#18181b] hover:bg-[#222226] text-teal-300 border border-teal-500/20'
+          }`}
+        >
+          <span>Guru Mapel</span>
+          <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${rolePillFilter === 'guru' ? 'bg-teal-800 text-teal-100' : 'bg-teal-950/60 text-teal-300'}`}>
+            {roleCounts.guru || 0}
+          </span>
+        </button>
+        <button
+          type="button"
           onClick={() => setRolePillFilter('cash_manager')}
           className={`px-3 py-1.5 rounded-lg font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
             rolePillFilter === 'cash_manager'
@@ -746,6 +833,8 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
               <option value="guru_bk">3. Guru Bimbingan Konseling (BK)</option>
               <option value="pembina_osim">4. Pembina OSIM</option>
               <option value="pembina_ekskul">5. Pembina / Coach Ekstrakurikuler</option>
+              <option value="wali_kelas">Wali Kelas</option>
+              <option value="guru">Guru Mata Pelajaran</option>
               <option value="pengurus_osim">6-7. Pengurus OSIM (BPH & Sekbid)</option>
             </select>
           </div>
@@ -939,25 +1028,15 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
                       <span className="text-zinc-500 text-[10px]">USER:</span>{' '}
                       <span className="text-zinc-200 font-bold">@{u.username || u.email.split('@')[0]}</span>
                       <span className="mx-1 text-zinc-600">|</span>
-                      <span className="text-zinc-500 text-[10px]">PASS:</span>{' '}
-                      <span className="text-emerald-400 font-bold">
-                        {isRevealed ? u.password || 'password' : '••••••••'}
-                      </span>
+                      <span className="text-zinc-500 text-[10px]">AUTH:</span>{' '}
+                      <span className="text-emerald-400 font-bold">Firebase Auth</span>
                     </div>
                     <div className="flex items-center space-x-1 shrink-0">
                       <button
                         type="button"
-                        onClick={() => togglePasswordVisibility(u.uid)}
-                        className="text-zinc-400 hover:text-white p-1 rounded hover:bg-zinc-800"
-                        title={isRevealed ? 'Sembunyikan password' : 'Lihat password'}
-                      >
-                        {isRevealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                      </button>
-                      <button
-                        type="button"
                         onClick={() => handleCopyCredentials(u)}
                         className="text-zinc-400 hover:text-white p-1 rounded hover:bg-zinc-800"
-                        title="Salin username & password"
+                        title="Salin informasi akun"
                       >
                         <Copy className="w-3.5 h-3.5" />
                       </button>
@@ -968,15 +1047,6 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
                 {/* Card Footer: Action Toolbar */}
                 <div className="pt-2 border-t border-[#222226] flex items-center justify-between">
                   <div className="flex items-center space-x-1">
-                    <button
-                      type="button"
-                      onClick={() => loginWithUser(u)}
-                      title={`Uji Tampilan Sebagai ${u.displayName}`}
-                      className="px-2 py-1 rounded-md bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold flex items-center gap-1 transition-colors"
-                    >
-                      <LogIn className="w-3 h-3" />
-                      <span>Uji</span>
-                    </button>
                     <button
                       type="button"
                       onClick={() => handleOpenDetailModal(u)}
@@ -993,6 +1063,17 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
                     >
                       <Printer className="w-3.5 h-3.5 text-emerald-400" />
                     </button>
+                    {loginWithUser && (
+                      <button
+                        type="button"
+                        onClick={() => loginWithUser(u)}
+                        title={`Uji Sesi Akun: ${u.displayName} (${u.role})`}
+                        className="p-1 rounded-md bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 border border-emerald-500/40 transition-colors flex items-center gap-1 px-1.5"
+                      >
+                        <LogIn className="w-3.5 h-3.5 text-emerald-300" />
+                        <span className="text-[10px] font-bold">Uji</span>
+                      </button>
+                    )}
                   </div>
 
                   <div className="flex items-center space-x-1">
@@ -1103,20 +1184,13 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
 
                       <td className="py-3 px-4 font-mono text-[11px]">
                         <div className="text-zinc-200">
-                          NIP: <span className="font-bold text-white">{u.nip || '-'}</span>
+                          NIP/NIS: <span className="font-bold text-white">{u.nip || '-'}</span>
                         </div>
                         <div className="flex items-center space-x-1.5 mt-0.5">
-                          <span className="text-zinc-300 font-medium">Pass:</span>
-                          <span className="font-bold text-emerald-400">
-                            {isRevealed ? u.password || 'password' : '••••••••'}
+                          <span className="text-zinc-400 text-[10px]">Auth:</span>
+                          <span className="font-bold text-emerald-400 text-[10px] bg-emerald-950/40 px-1.5 py-0.5 rounded border border-emerald-500/30">
+                            Firebase Auth
                           </span>
-                          <button
-                            onClick={() => togglePasswordVisibility(u.uid)}
-                            className="text-zinc-400 hover:text-white p-0.5"
-                            title={isRevealed ? 'Sembunyikan' : 'Lihat password'}
-                          >
-                            {isRevealed ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                          </button>
                         </div>
                       </td>
 
@@ -1188,13 +1262,6 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end space-x-1">
                           <button
-                            onClick={() => loginWithUser(u)}
-                            title={`Masuk & Uji Tampilan Sebagai ${u.displayName} (${u.role.toUpperCase()})`}
-                            className="p-1.5 rounded bg-[#222226] hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 transition-colors"
-                          >
-                            <LogIn className="w-3.5 h-3.5" />
-                          </button>
-                          <button
                             onClick={() => handleOpenDetailModal(u)}
                             title="Lihat Detail Akun"
                             className="p-1.5 rounded bg-[#222226] hover:bg-[#2e2e35] text-zinc-100 transition-colors"
@@ -1215,6 +1282,16 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
                           >
                             <Printer className="w-3.5 h-3.5 text-emerald-400" />
                           </button>
+                          {loginWithUser && (
+                            <button
+                              onClick={() => loginWithUser(u)}
+                              title={`Uji Sesi Akun: ${u.displayName} (${u.role})`}
+                              className="px-2 py-1 rounded bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 border border-emerald-500/40 text-[10px] font-bold flex items-center gap-1 transition-colors"
+                            >
+                              <LogIn className="w-3 h-3 text-emerald-300" />
+                              <span>Uji Sesi</span>
+                            </button>
+                          )}
                           <button
                             onClick={() => handlePromptResetPassword(u)}
                             title="Reset Password ke default"

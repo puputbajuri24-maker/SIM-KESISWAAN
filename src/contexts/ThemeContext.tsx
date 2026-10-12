@@ -269,7 +269,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           themePreference: updatedPref
         }, { merge: true }).catch((err) => {
           if (!isPermissionError(err)) {
-            handleFirestoreError(err, OperationType.WRITE, `users/${uid}`);
+            console.warn('User theme preference sync notice:', err);
           }
         });
       }

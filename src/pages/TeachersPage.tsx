@@ -27,13 +27,16 @@ import {
   HeartHandshake,
   Sparkles,
   Layers,
-  CheckCheck
+  CheckCheck,
+  Key,
+  EyeOff,
+  ShieldCheck
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../contexts/ToastContext';
-import { useCrudPermission } from '../utils/rbacRules';
-import { Teacher } from '../types';
+import { useCrudPermission, canResetUserPassword } from '../utils/rbacRules';
+import { Teacher, UserProfile } from '../types';
 import { DataTable, Column } from '../components/common/DataTable';
 import { StatusBadge } from '../components/common/Badge';
 import { Modal } from '../components/common/Modal';
@@ -54,11 +57,12 @@ import {
 import {
   getTeacherHierarchyClassification,
   sortTeachersByHierarchy,
-  canonicalizeAssignedEkskulIds
+  canonicalizeAssignedEkskulIds,
+  isTeacherUserMatch
 } from '../utils/syncUtils';
 
 export const TeachersPage: React.FC = () => {
-  const { isWakaOrAdmin, currentUser } = useAuth();
+  const { isWakaOrAdmin, currentUser, allUsers, resetUserPassword, syncUsersFromTeachers } = useAuth();
   const { toast } = useToast();
   const [isSavingTeacher, setIsSavingTeacher] = useState(false);
   const canCrudTeachers = useCrudPermission('teachers', currentUser?.role, currentUser);
@@ -88,6 +92,15 @@ export const TeachersPage: React.FC = () => {
 
   // Bulk Selection State
   const [selectedTeacherIds, setSelectedTeacherIds] = useState<Set<string>>(new Set());
+
+  // User Account & Reset Password Modal states (Fase 3: Cross-Module Sync)
+  const [isResetPasswordModalOpen, setIsResetPasswordModalOpen] = useState(false);
+  const [targetTeacherForReset, setTargetTeacherForReset] = useState<Teacher | null>(null);
+  const [targetUserForReset, setTargetUserForReset] = useState<UserProfile | null>(null);
+  const [customResetPassword, setCustomResetPassword] = useState('guru12345');
+  const [showResetPasswordText, setShowResetPasswordText] = useState(false);
+  const [isSubmittingPassword, setIsSubmittingPassword] = useState(false);
+  const [isSyncingAccounts, setIsSyncingAccounts] = useState(false);
 
   // Role Pill Filter State ('all' | 'waka' | 'guru_bk' | 'pembina_osim' | 'pembina_ekskul' | 'wali_kelas' | 'dewan_guru')
   const [rolePillFilter, setRolePillFilter] = useState<'all' | 'waka' | 'guru_bk' | 'pembina_osim' | 'pembina_ekskul' | 'wali_kelas' | 'dewan_guru'>('all');
@@ -267,6 +280,96 @@ export const TeachersPage: React.FC = () => {
     setImportError(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
+    }
+  };
+
+  // User Account Matching & Reset Password Handlers (Fase 3: Cross-Module Sync)
+  const findMatchingUserForTeacher = (t: Teacher): UserProfile | undefined => {
+    return (allUsers || []).find(u => 
+      isTeacherUserMatch(u, t) ||
+      u.uid === t.id ||
+      u.uid === `user_${t.id}` ||
+      (t.email && u.email && u.email.toLowerCase() === t.email.toLowerCase()) ||
+      (t.nip && u.nip && t.nip !== '-' && u.nip.replace(/\s+/g, '') === t.nip.replace(/\s+/g, ''))
+    );
+  };
+
+  const handlePromptResetTeacherPassword = (t: Teacher, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    const matchedUser = findMatchingUserForTeacher(t);
+    setTargetTeacherForReset(t);
+    setTargetUserForReset(matchedUser || null);
+
+    if (matchedUser) {
+      const check = canResetUserPassword(currentUser, matchedUser);
+      if (!check.allowed) {
+        toast.error(check.reason || 'Anda tidak memiliki wewenang untuk mereset kata sandi akun ini.');
+        return;
+      }
+    }
+    setCustomResetPassword('guru12345');
+    setShowResetPasswordText(false);
+    setIsResetPasswordModalOpen(true);
+  };
+
+  const handleConfirmResetTeacherPassword = async (useEmailResetLink = false) => {
+    if (!targetTeacherForReset) return;
+    setIsSubmittingPassword(true);
+    try {
+      let targetUser = targetUserForReset;
+      // If user profile is not linked yet, auto-sync this teacher first
+      if (!targetUser && syncUsersFromTeachers) {
+        await syncUsersFromTeachers([targetTeacherForReset], extracurriculars);
+        targetUser = findMatchingUserForTeacher(targetTeacherForReset) || null;
+      }
+
+      if (!targetUser) {
+        toast.error('Akun pengguna untuk guru ini belum dapat ditemukan di sistem.');
+        return;
+      }
+
+      const check = canResetUserPassword(currentUser, targetUser);
+      if (!check.allowed) {
+        toast.error(check.reason || 'Anda tidak memiliki wewenang untuk mereset kata sandi akun ini.');
+        setIsResetPasswordModalOpen(false);
+        return;
+      }
+
+      if (useEmailResetLink) {
+        const res = await resetUserPassword(targetUser.uid);
+        if (res.success) {
+          toast.success(`Instruksi pemulihan kata sandi Firebase Auth berhasil dikirim ke email ${targetTeacherForReset.fullName} (${targetUser.email || targetTeacherForReset.email || '-'})!`);
+          setIsResetPasswordModalOpen(false);
+        } else {
+          toast.error(res.error || 'Gagal mengirim instruksi reset kata sandi.');
+        }
+      } else {
+        const newPass = customResetPassword.trim() || 'guru12345';
+        const res = await resetUserPassword(targetUser.uid, newPass);
+        if (res.success) {
+          toast.success(`Kata sandi akun ${targetTeacherForReset.fullName} berhasil diubah menjadi "${newPass}" & tersinkronisasi ke Firebase Auth!`);
+          setIsResetPasswordModalOpen(false);
+        } else {
+          toast.error(res.error || 'Gagal memperbarui kata sandi.');
+        }
+      }
+    } catch (err: any) {
+      toast.error('Gagal memproses kata sandi: ' + (err?.message || 'Kesalahan sistem'));
+    } finally {
+      setIsSubmittingPassword(false);
+    }
+  };
+
+  const handleQuickSyncAllTeacherAccounts = async () => {
+    if (!syncUsersFromTeachers) return;
+    setIsSyncingAccounts(true);
+    try {
+      const count = await syncUsersFromTeachers(teachers, extracurriculars);
+      toast.success(`Berhasil menyinkronkan ${count} akun dewan guru ke cPanel & Firebase Auth!`);
+    } catch (err: any) {
+      toast.error('Gagal menyinkronkan akun guru: ' + (err?.message || 'Kesalahan sistem'));
+    } finally {
+      setIsSyncingAccounts(false);
     }
   };
 
@@ -646,6 +749,13 @@ export const TeachersPage: React.FC = () => {
           {canCrudTeachers && (
             <>
               <button
+                onClick={e => handlePromptResetTeacherPassword(t, e)}
+                className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 dark:bg-blue-950/60 dark:hover:bg-blue-900 dark:text-blue-400 transition-colors"
+                title="Kelola Akun Login & Reset Kata Sandi"
+              >
+                <Key className="w-4 h-4" />
+              </button>
+              <button
                 onClick={e => handleOpenEdit(t, e)}
                 className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:hover:bg-amber-900 dark:text-amber-400 transition-colors"
                 title="Edit Data Guru"
@@ -717,6 +827,17 @@ export const TeachersPage: React.FC = () => {
 
               {isWakaOrAdmin && teachers.length > 0 && (
                 <>
+                  <button
+                    type="button"
+                    onClick={handleQuickSyncAllTeacherAccounts}
+                    disabled={isSyncingAccounts}
+                    className="px-3.5 py-2 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-300 dark:border-blue-700/80 hover:border-blue-400 text-blue-900 dark:text-blue-200 text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all disabled:opacity-50"
+                    title="Fase 3: Sinkronkan seluruh akun dewan guru ke cPanel & Firebase Auth secara serentak"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 text-blue-600 dark:text-blue-400 ${isSyncingAccounts ? 'animate-spin' : ''}`} />
+                    <span>{isSyncingAccounts ? 'Menyinkronkan...' : 'Sinkron Akun Login'}</span>
+                  </button>
+
                   <button
                     type="button"
                     onClick={handleHarmonizeFirestore}
@@ -1569,6 +1690,52 @@ export const TeachersPage: React.FC = () => {
               <p><strong>Email:</strong> {selectedTeacher.email || '-'}</p>
               <p><strong>Status Akun:</strong> {selectedTeacher.isActive ? 'Aktif' : 'Nonaktif'}</p>
               <p><strong>Sinkronisasi Akun cPanel:</strong> <span className="text-emerald-600 dark:text-emerald-400 font-semibold">✓ Otomatis terhubung dengan kredensial login NIP/Email</span></p>
+
+              {/* Kredensial & Akun Login Card */}
+              {(() => {
+                const matchedUser = findMatchingUserForTeacher(selectedTeacher);
+                const loginUsername = matchedUser?.username || (selectedTeacher.nip && selectedTeacher.nip !== '-' ? selectedTeacher.nip : selectedTeacher.email?.split('@')[0] || '-');
+                const loginEmail = matchedUser?.email || selectedTeacher.email || '-';
+                return (
+                  <div className="p-3 rounded-xl bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 space-y-2 mt-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-blue-950 dark:text-blue-200 flex items-center gap-1.5 text-xs">
+                        <Key className="w-3.5 h-3.5 text-blue-600" />
+                        Kredensial & Akun Login (Firebase Auth & cPanel)
+                      </span>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                        {matchedUser ? 'TERHUBUNG' : 'PROVISI OTOMATIS'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-[11px]">
+                      <div>
+                        <span className="text-slate-500 dark:text-slate-400 block">Username Login:</span>
+                        <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{loginUsername}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-500 dark:text-slate-400 block">Email Login:</span>
+                        <span className="font-mono text-slate-800 dark:text-slate-200 truncate block">{loginEmail}</span>
+                      </div>
+                    </div>
+                    {canCrudTeachers && (
+                      <div className="pt-1.5 flex items-center justify-end">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsDetailOpen(false);
+                            handlePromptResetTeacherPassword(selectedTeacher);
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 transition-colors shadow-xs"
+                        >
+                          <Key className="w-3.5 h-3.5" />
+                          <span>Ubah / Reset Kata Sandi</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               <div className="mt-2">
                 <p className="font-bold mb-1">Ekskul Binaan:</p>
                 <div className="flex flex-wrap gap-1">
@@ -1606,6 +1773,122 @@ export const TeachersPage: React.FC = () => {
           </div>
         </Modal>
       )}
+
+      {/* Modal: Reset / Ubah Kata Sandi Akun Guru (Fase 3) */}
+      <Modal
+        isOpen={isResetPasswordModalOpen && Boolean(targetTeacherForReset)}
+        onClose={() => setIsResetPasswordModalOpen(false)}
+        title={`Kelola Kata Sandi: ${targetTeacherForReset?.fullName || ''}`}
+        subtitle={`NIP: ${targetTeacherForReset?.nip || '-'} • Peran: ${targetTeacherForReset?.role || ''}`}
+        maxWidth="md"
+        footer={
+          <div className="flex items-center justify-between w-full">
+            <button
+              type="button"
+              onClick={() => handleConfirmResetTeacherPassword(true)}
+              disabled={isSubmittingPassword}
+              className="px-3 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
+              title="Kirim email berisi link reset kata sandi resmi Firebase Authentication"
+            >
+              Kirim Link Email
+            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsResetPasswordModalOpen(false)}
+                disabled={isSubmittingPassword}
+                className="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => handleConfirmResetTeacherPassword(false)}
+                disabled={isSubmittingPassword}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md flex items-center gap-1.5 transition-all disabled:opacity-50"
+              >
+                <Key className="w-3.5 h-3.5" />
+                <span>{isSubmittingPassword ? 'Menyimpan...' : 'Simpan & Sinkronkan Sandi'}</span>
+              </button>
+            </div>
+          </div>
+        }
+      >
+        <div className="space-y-4 text-xs">
+          {targetTeacherForReset && (
+            <div className="p-3 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl space-y-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h5 className="font-bold text-slate-800 dark:text-slate-200">{targetTeacherForReset.fullName}</h5>
+                  <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
+                    Email: {targetUserForReset?.email || targetTeacherForReset.email || '-'}
+                  </p>
+                </div>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300">
+                  {targetTeacherForReset.role}
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-600 dark:text-slate-400">
+                <strong>Username Login:</strong>{' '}
+                <span className="font-mono font-bold text-slate-900 dark:text-slate-100">
+                  {targetUserForReset?.username || (targetTeacherForReset.nip && targetTeacherForReset.nip !== '-' ? targetTeacherForReset.nip : targetTeacherForReset.email?.split('@')[0])}
+                </span>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="font-bold text-slate-700 dark:text-slate-300">
+                Kata Sandi Baru:
+              </label>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCustomResetPassword('guru12345')}
+                  className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline font-semibold"
+                >
+                  Sandi 'guru12345'
+                </button>
+                <span className="text-slate-400">•</span>
+                <button
+                  type="button"
+                  onClick={() => setCustomResetPassword('guru' + Math.floor(1000 + Math.random() * 9000))}
+                  className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline font-semibold"
+                >
+                  Acak
+                </button>
+              </div>
+            </div>
+            <div className="relative">
+              <input
+                type={showResetPasswordText ? "text" : "password"}
+                value={customResetPassword}
+                onChange={e => setCustomResetPassword(e.target.value)}
+                placeholder="Masukkan kata sandi baru (minimal 6 karakter)"
+                className="w-full px-3 py-2 pr-10 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                type="button"
+                onClick={() => setShowResetPasswordText(!showResetPasswordText)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                {showResetPasswordText ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          <div className="p-3 bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 rounded-xl space-y-1 text-[11px] text-slate-600 dark:text-slate-400">
+            <div className="flex items-center gap-1.5 font-bold text-blue-900 dark:text-blue-300">
+              <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+              <span>Sinkronisasi Otomatis Firebase Auth & Firestore:</span>
+            </div>
+            <p>
+              Kata sandi yang disimpan di sini akan langsung diperbarui ke <strong>Firebase Authentication</strong> dan profil Firestore. Guru dapat langsung masuk ke aplikasi menggunakan kata sandi baru ini.
+            </p>
+          </div>
+        </div>
+      </Modal>
 
       {/* Delete Dialog */}
       <ConfirmDialog

@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { 
   Users, 
   Shield, 
+  ShieldCheck,
   Plus, 
   Edit, 
   Trash2, 
@@ -97,10 +98,7 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
       return;
     }
     setSelectedUserForReset(u);
-    const defP = u.role === 'pengurus_osim'
-      ? ((u.password && u.password !== 'password') ? u.password : getDefaultOsimPassword(u.osimDepartmentCode || u.osimRole || u.username))
-      : (u.password || 'password');
-    setNewPasswordInput(defP);
+    setNewPasswordInput('');
     setShowResetInput(false);
     setIsResetModalOpen(true);
   };
@@ -114,14 +112,13 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
       setIsResetModalOpen(false);
       return;
     }
-    const passToSet = newPasswordInput.trim() || 'password';
-    const res = await resetUserPassword(selectedUserForReset.uid, passToSet);
+    const res = await resetUserPassword(selectedUserForReset.uid);
     if (res.success) {
-      const successMsg = `Kata sandi akun ${selectedUserForReset.displayName} (@${selectedUserForReset.username || selectedUserForReset.email}) berhasil diperbarui menjadi "${passToSet}"!`;
+      const successMsg = `Email pemulihan kata sandi Firebase Auth berhasil dikirim ke ${selectedUserForReset.email || selectedUserForReset.displayName}!`;
       showToast(successMsg, 'success');
       setIsResetModalOpen(false);
     } else {
-      showToast(res.error || 'Gagal mengubah kata sandi.', 'error');
+      showToast(res.error || 'Gagal memproses reset kata sandi Firebase Auth.', 'error');
     }
   };
 
@@ -777,7 +774,6 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
 
         if (isRoleHolder) {
           const defaultUsername = editingOsimMember.loginUsername || getDefaultOsimUsername(editingOsimMember);
-          const defaultPassword = editingOsimMember.loginPassword || getDefaultOsimPasswordForMember({ ...editingOsimMember, position: pos as any, sekbid: osimMemberForm.sekbid });
           const osimRoleVal = isBph
             ? (posLower.includes('ketua') && !posLower.includes('wakil') ? 'ketua' : posLower.includes('wakil') ? 'wakil' : posLower.includes('sekretaris') ? 'sekretaris' : posLower.includes('bendahara') ? 'bendahara' : 'sekbid')
             : 'sekbid';
@@ -785,7 +781,7 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
           if (linkedAccount) {
             await updateUser(linkedAccount.uid, {
               displayName: editingOsimMember.fullName,
-              role: 'pengurus_osim',
+              role: 'anggota_osim',
               osimRole: osimRoleVal,
               osimPosition: pos,
               osimDepartmentName: osimMemberForm.sekbid,
@@ -800,8 +796,7 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
               displayName: editingOsimMember.fullName,
               username: defaultUsername,
               email: `${defaultUsername}@madrasah.sch.id`,
-              password: defaultPassword,
-              role: 'pengurus_osim',
+              role: 'anggota_osim',
               osimRole: osimRoleVal,
               osimPosition: pos,
               osimDepartmentName: osimMemberForm.sekbid,
@@ -830,7 +825,6 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
 
         setIsSubmitting(true);
         const defaultUsername = student.nis || `osim.${student.fullName.toLowerCase().split(' ')[0].replace(/[^a-z0-9]/g, '')}`;
-        const defaultPassword = getDefaultOsimPassword(sekbidNum ? `sekbid${sekbidNum}` : 'sekbid');
 
         await addOsimMember({
           studentId: student.id,
@@ -844,8 +838,7 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
           phone: osimMemberForm.phone || (student as any).phone || '',
           status: osimMemberForm.status || 'Aktif',
           period: activeAcademicYear || '2026/2027',
-          loginUsername: defaultUsername,
-          loginPassword: defaultPassword
+          loginUsername: defaultUsername
         });
 
         // Jika Ketua Sekbid atau BPH, buat akun cPanel
@@ -860,7 +853,6 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
             displayName: student.fullName,
             username: defaultUsername,
             email: `${defaultUsername}@madrasah.sch.id`,
-            password: defaultPassword,
             role: 'pengurus_osim',
             osimRole: osimRoleVal,
             osimPosition: pos,
@@ -1764,18 +1756,9 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
                           {u.nip || '-'}
                         </td>
                         <td className="py-3 px-4">
-                          <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded bg-slate-900 border border-slate-800 font-mono text-[11px]">
-                            <span className="text-emerald-400 font-bold">
-                              {isRevealed ? (u.password || 'password') : '••••••••'}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => togglePasswordVisibility(u.uid)}
-                              className="text-slate-400 hover:text-white"
-                              title={isRevealed ? 'Sembunyikan' : 'Lihat sandi'}
-                            >
-                              {isRevealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                            </button>
+                          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-emerald-950/40 border border-emerald-500/30 text-[10px] font-medium text-emerald-300">
+                            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>Terkelola Firebase Auth</span>
                           </div>
                         </td>
                         <td className="py-3 px-4 text-right">

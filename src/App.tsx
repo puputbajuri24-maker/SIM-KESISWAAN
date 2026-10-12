@@ -28,7 +28,143 @@ import { TataTertibPage } from './pages/TataTertibPage';
 import { LoginPage } from './pages/LoginPage';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { Schedule, Violation } from './types';
-import { ShieldAlert, ArrowLeft, Lock } from 'lucide-react';
+import { ShieldAlert, ArrowLeft, Lock, Loader2, LogOut, RefreshCw, UserX, WifiOff } from 'lucide-react';
+
+const BootstrapLoadingScreen: React.FC<{ state: string }> = ({ state }) => {
+  const message = state === 'AUTH_LOADING'
+    ? 'Memverifikasi identitas Firebase Authentication...'
+    : state === 'PROFILE_LOADING'
+    ? 'Memuat profil pengguna SIM-KESISWAAN dari Firestore...'
+    : 'Menyiapkan data ruang kerja kesiswaan...';
+
+  return (
+    <div className="min-h-screen bg-[#082a1b] text-white flex flex-col items-center justify-center p-6 select-none font-sans">
+      <div className="w-full max-w-md bg-[#041d13]/90 border border-emerald-500/40 rounded-3xl p-8 shadow-2xl text-center flex flex-col items-center">
+        <div className="w-16 h-16 rounded-2xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-300 mb-5 shadow-lg">
+          <Loader2 className="w-8 h-8 animate-spin" />
+        </div>
+        <h2 className="text-xl font-black text-white tracking-wider uppercase mb-1">
+          SIM-KESISWAAN
+        </h2>
+        <p className="text-xs font-bold text-amber-400 tracking-widest uppercase mb-4">
+          MAN 2 SERAM BAGIAN TIMUR
+        </p>
+        <div className="w-48 h-1.5 bg-emerald-950 rounded-full overflow-hidden mb-4 border border-emerald-800">
+          <div className="h-full bg-gradient-to-r from-emerald-400 to-amber-400 rounded-full animate-pulse w-3/4" />
+        </div>
+        <p className="text-xs text-emerald-100 font-medium leading-relaxed">
+          {message}
+        </p>
+      </div>
+    </div>
+  );
+};
+
+const UnregisteredProfileScreen: React.FC<{ error: string | null; onLogout: () => void }> = ({ error, onLogout }) => {
+  return (
+    <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-6 select-none font-sans">
+      <div className="w-full max-w-lg bg-slate-800 border border-amber-500/40 rounded-3xl p-8 shadow-2xl text-center flex flex-col items-center">
+        <div className="w-16 h-16 rounded-2xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-amber-400 mb-5 shadow-lg">
+          <UserX className="w-8 h-8" />
+        </div>
+        <span className="text-[10px] font-bold text-amber-400 tracking-widest uppercase bg-amber-500/20 px-3 py-1 rounded-full border border-amber-500/30 mb-3">
+          Status Akun: Belum Terdaftar
+        </span>
+        <h2 className="text-lg font-bold text-white tracking-wide mb-2">
+          Profil SIM-KESISWAAN Belum Ditemukan
+        </h2>
+        <p className="text-xs text-slate-300 leading-relaxed mb-6">
+          {error || 'Akun Firebase Anda berhasil diautentikasi, namun belum memiliki dokumen profil terdaftar di users/{uid}. Sesuai kebijakan keamanan, akun baru tidak otomatis diberikan hak akses.'}
+        </p>
+        <div className="bg-slate-900/80 border border-slate-700/60 rounded-2xl p-4 w-full text-left text-xs text-slate-300 space-y-2 mb-6">
+          <p className="font-bold text-amber-400 flex items-center gap-1.5">
+            <span>Petunjuk untuk Pengguna:</span>
+          </p>
+          <ul className="list-disc list-inside space-y-1 text-[11px] text-slate-300">
+            <li>Hubungi <strong>Administrator SIM-KESISWAAN / Proktor Madrasah</strong>.</li>
+            <li>Sampaikan alamat email Firebase yang digunakan saat login.</li>
+            <li>Admin akan mendaftarkan profil pengguna dan peran (role) resmi Anda di sistem.</li>
+          </ul>
+        </div>
+        <div className="flex flex-wrap items-center justify-center gap-3 w-full">
+          <button
+            onClick={() => window.location.reload()}
+            className="flex-1 py-2.5 px-4 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs flex items-center justify-center gap-2 transition"
+          >
+            <RefreshCw className="w-4 h-4" />
+            <span>Cek Ulang Status</span>
+          </button>
+          <button
+            onClick={onLogout}
+            className="flex-1 py-2.5 px-4 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition shadow-md shadow-red-600/30"
+          >
+            <LogOut className="w-4 h-4" />
+            <span>Keluar / Ganti Akun</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const AuthErrorScreen: React.FC<{ error: string | null; onLogout: () => void }> = ({ error, onLogout }) => {
+  return (
+    <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-6 select-none font-sans">
+      <div className="w-full max-w-md bg-slate-800 border border-red-500/40 rounded-3xl p-8 shadow-2xl text-center flex flex-col items-center">
+        <div className="w-16 h-16 rounded-2xl bg-red-500/20 border border-red-400/40 flex items-center justify-center text-red-400 mb-5 shadow-lg">
+          <ShieldAlert className="w-8 h-8" />
+        </div>
+        <h2 className="text-lg font-bold text-white tracking-wide mb-2">
+          Kendala Autentikasi Akun
+        </h2>
+        <p className="text-xs text-slate-300 leading-relaxed mb-6">
+          {error || 'Terjadi kesalahan saat memverifikasi identitas atau profil pengguna.'}
+        </p>
+        <div className="flex flex-wrap items-center justify-center gap-3 w-full">
+          <button
+            onClick={() => window.location.reload()}
+            className="flex-1 py-2.5 px-4 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-bold text-xs flex items-center justify-center gap-2 transition"
+          >
+            <RefreshCw className="w-4 h-4" />
+            <span>Muat Ulang</span>
+          </button>
+          <button
+            onClick={onLogout}
+            className="flex-1 py-2.5 px-4 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition"
+          >
+            <LogOut className="w-4 h-4" />
+            <span>Keluar Akun</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const AuthOfflineScreen: React.FC = () => {
+  return (
+    <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-6 select-none font-sans">
+      <div className="w-full max-w-md bg-slate-800 border border-amber-500/40 rounded-3xl p-8 shadow-2xl text-center flex flex-col items-center">
+        <div className="w-16 h-16 rounded-2xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-amber-400 mb-5 shadow-lg">
+          <WifiOff className="w-8 h-8" />
+        </div>
+        <h2 className="text-lg font-bold text-white tracking-wide mb-2">
+          Status Jaringan Terputus (Offline)
+        </h2>
+        <p className="text-xs text-slate-300 leading-relaxed mb-6">
+          Tidak dapat terhubung ke server Firebase. Pastikan perangkat Anda terhubung ke internet dan muat ulang halaman.
+        </p>
+        <button
+          onClick={() => window.location.reload()}
+          className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition"
+        >
+          <RefreshCw className="w-4 h-4" />
+          <span>Coba Hubungkan Kembali</span>
+        </button>
+      </div>
+    </div>
+  );
+};
 
 const VALID_TABS: NavTab[] = [
   'dashboard',
@@ -76,7 +212,17 @@ const MainContent: React.FC = () => {
   const [activeTab, setActiveTabState] = useState<NavTab>(getInitialTab);
   const [targetScheduleForAttendance, setTargetScheduleForAttendance] = useState<Schedule | null>(null);
   const [counselingReferralViolation, setCounselingReferralViolation] = useState<Violation | null>(null);
-  const { currentUser, userRole, canAccessTab, isPembinaOsim, isPembinaEkskul, isPengurusOsim } = useAuth();
+  const {
+    currentUser,
+    userRole,
+    canAccessTab,
+    isPembinaOsim,
+    isPembinaEkskul,
+    isPengurusOsim,
+    bootstrapState,
+    bootstrapError,
+    logout
+  } = useAuth();
 
   // Custom setter that syncs with URL hash & localStorage
   const setActiveTab = (tab: NavTab) => {
@@ -135,6 +281,23 @@ const MainContent: React.FC = () => {
       }
     }
   }, [currentUser]);
+
+  // FASE 1: Verifikasi Bootstrap State Sebelum Memuat Antarmuka Pengguna
+  if (bootstrapState === 'AUTH_LOADING' || bootstrapState === 'PROFILE_LOADING' || bootstrapState === 'DATA_LOADING') {
+    return <BootstrapLoadingScreen state={bootstrapState} />;
+  }
+
+  if (bootstrapState === 'PROFILE_UNREGISTERED') {
+    return <UnregisteredProfileScreen error={bootstrapError} onLogout={logout} />;
+  }
+
+  if (bootstrapState === 'ERROR') {
+    return <AuthErrorScreen error={bootstrapError} onLogout={logout} />;
+  }
+
+  if (bootstrapState === 'OFFLINE') {
+    return <AuthOfflineScreen />;
+  }
 
   // If not logged in, show the official SIM Kesiswaan Login Page
   if (!currentUser) {

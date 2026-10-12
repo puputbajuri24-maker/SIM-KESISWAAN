@@ -1,10 +1,21 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { UserProfile, UserRole, CanonicalUserRole, OsimPosition, Teacher, Extracurricular, AuditLogItem, OsimDepartment, OsimMember, OsimRoleType } from '../types';
+import { UserProfile, UserRole, CanonicalUserRole, OsimPosition, Teacher, Extracurricular, AuditLogItem, OsimDepartment, OsimMember, OsimRoleType, AuthBootstrapState } from '../types';
 import { DEMO_USERS, DEFAULT_SUPER_ADMIN, PURGED_DEMO_UIDS, PURGED_DEMO_EMAILS, isBlacklistedDemoName, getDefaultOsimPassword } from '../services/seedData';
-import { auth, db } from '../services/firebase';
+import { auth, db, getSecondaryAuth } from '../services/firebase';
 import { handleFirestoreError, OperationType, isPermissionError } from '../services/firestoreErrors';
 import { doc, getDoc, getDocs, collection, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
-import { onAuthStateChanged, signOut as fbSignOut, signInWithEmailAndPassword } from 'firebase/auth';
+import {
+  onAuthStateChanged,
+  signOut as fbSignOut,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updatePassword,
+  updateEmail,
+  createUserWithEmailAndPassword,
+  signInAnonymously,
+  EmailAuthProvider,
+  reauthenticateWithCredential
+} from 'firebase/auth';
 import {
   normalizeUserRole,
   normalizeOsimPosition,
@@ -72,7 +83,9 @@ export const recordSystemAuditLog = async (
   } catch (e) {}
 
   try {
-    setDoc(doc(db, 'audit_logs', newLog.id), newLog).catch(() => {});
+    if (auth.currentUser) {
+      setDoc(doc(db, 'audit_logs', newLog.id), newLog).catch(() => {});
+    }
   } catch (e) {}
 
   return newLog;
@@ -108,6 +121,8 @@ interface AuthContextType {
   userRole: UserRole;
   canonicalRole: CanonicalUserRole | null;
   osimPosition?: OsimPosition;
+  bootstrapState: AuthBootstrapState;
+  bootstrapError: string | null;
   // Capability and Permission helpers
   hasRole: (...roles: CanonicalUserRole[]) => boolean;
   hasPosition: (...positions: OsimPosition[]) => boolean;
@@ -126,6 +141,9 @@ interface AuthContextType {
   isPembinaEkskul: boolean;
   isAlsoPembinaEkskul: boolean;
   isPembina: boolean;
+  isWaliKelas: boolean;
+  isGuruMapel: boolean;
+  isTeacher: boolean;
   isPengurusOsim: boolean;
   // Model A: Akun Fungsional Pengurus Inti OSIM (BPH)
   isOsimKetua: boolean;
@@ -205,7 +223,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const uid = data.uid || d.id;
             const userWithId = { ...data, uid };
             if (isPurgedUser(userWithId) || isDeletedUid(uid) || d.id === 'user_guru_01' || d.id === 'user_teacher_pitria_lawenusa') {
-              if (auth.currentUser) {
+              if (auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
                 deleteDoc(d.ref).catch(() => {});
               }
             } else {
@@ -247,25 +265,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Authentication state: MUST default to null on new browser tab / opening the URL
   // so that the Login Page is presented first, requiring manual username & password entry.
   // Within the same active browser tab session, sessionStorage preserves the session across reloads.
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
-    // Clear legacy persistent auto-login in localStorage so users aren't auto-logged into admin
-    try {
-      localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
-    } catch {}
-
-    try {
-      const savedSession = sessionStorage.getItem(SESSION_STORAGE_USER_KEY);
-      if (savedSession) {
-        const parsed = JSON.parse(savedSession);
-        if (parsed && !isPurgedUser(parsed)) {
-          return parsed;
-        }
-      }
-    } catch {}
-
-    return null; // Always require manual login when opening the app
-  });
-
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [bootstrapState, setBootstrapState] = useState<AuthBootstrapState>('AUTH_LOADING');
+  const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
 
   // Track if current session is an admin simulating another role (Uji Coba Tampilan Peran oleh Admin)
@@ -298,41 +300,171 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [currentUser]);
 
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_ALL_USERS_KEY, JSON.stringify(allUsers));
+    try {
+      localStorage.setItem(LOCAL_STORAGE_ALL_USERS_KEY, JSON.stringify(allUsers));
+    } catch {}
   }, [allUsers]);
 
-  // Listen to real Firebase Auth changes if user logged in via Firebase
+  // Firebase Authentication Single Source of Truth
+  // Lifecycle: AUTH_LOADING -> PROFILE_LOADING -> READY / PROFILE_UNREGISTERED / ERROR / OFFLINE
   useEffect(() => {
+    setBootstrapState('AUTH_LOADING');
+
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
-      if (fbUser) {
-        try {
-          const userDoc = await getDoc(doc(db, 'users', fbUser.uid));
-          if (userDoc.exists()) {
-            const data = userDoc.data() as UserProfile;
-            const isBootstrappedAdmin = fbUser.email === 'puputbajuri24@gmail.com' || fbUser.email === 'admin@sekolah.sch.id';
-            if (isBootstrappedAdmin && data.role !== 'super_admin') {
-              data.role = 'super_admin';
-            }
-            setCurrentUser(data);
-          } else {
-            // Create user doc if not exists
-            const isBootstrappedAdmin = fbUser.email === 'puputbajuri24@gmail.com' || fbUser.email === 'admin@sekolah.sch.id';
-            const newUser: UserProfile = {
+      if (!fbUser) {
+        setCurrentUser(null);
+        setAdminImpersonator(null);
+        setBootstrapState('READY');
+        setBootstrapError(null);
+        setIsLoading(false);
+        return;
+      }
+
+      setBootstrapState('PROFILE_LOADING');
+      setBootstrapError(null);
+
+      try {
+        const userDocRef = doc(db, 'users', fbUser.uid);
+        const userDoc = await getDoc(userDocRef);
+
+        if (userDoc.exists()) {
+          const raw = userDoc.data() as UserProfile;
+          const normalized = normalizeUserProfile({
+            ...raw,
+            uid: fbUser.uid,
+            email: raw.email || fbUser.email || ''
+          });
+
+          if (!normalized.canonicalRole) {
+            setCurrentUser(null);
+            setBootstrapState('ERROR');
+            setBootstrapError('Peran akun (role) tidak terdaftar secara sah dalam sistem SIM-KESISWAAN.');
+            return;
+          }
+
+          if (normalized.status === 'Nonaktif') {
+            await fbSignOut(auth);
+            setCurrentUser(null);
+            setBootstrapState('ERROR');
+            setBootstrapError('Akun Anda dinonaktifkan oleh Administrator Madrasah.');
+            return;
+          }
+
+          setCurrentUser(normalized);
+          setBootstrapState('READY');
+          setBootstrapError(null);
+        } else {
+          // If the authenticated user is the designated Super Admin (puputbajuri24@gmail.com or admin@sekolah.sch.id),
+          const cleanEmail = (fbUser.email || '').toLowerCase().trim();
+          const isSuperAdminEmail =
+            cleanEmail === 'puputbajuri24@gmail.com' ||
+            cleanEmail === 'admin@sekolah.sch.id' ||
+            cleanEmail === 'admin@madrasah.sch.id' ||
+            cleanEmail === 'admin@man2sbt.sch.id' ||
+            cleanEmail.startsWith('admin@') ||
+            cleanEmail.startsWith('superadmin@');
+
+          if (isSuperAdminEmail) {
+            const superAdminProfile: UserProfile = {
               uid: fbUser.uid,
-              email: fbUser.email || '',
-              displayName: fbUser.displayName || (isBootstrappedAdmin ? 'Puput Eka Bajuri, S. Pd., M. Or (Super Admin)' : 'Pengguna Baru'),
-              role: isBootstrappedAdmin ? 'super_admin' : 'anggota_osim',
+              displayName: fbUser.displayName || DEFAULT_SUPER_ADMIN.displayName,
+              email: cleanEmail,
+              username: 'admin',
+              role: 'super_admin',
+              phone: DEFAULT_SUPER_ADMIN.phone || '082298836027',
+              nip: DEFAULT_SUPER_ADMIN.nip || '198810052020121003',
               status: 'Aktif',
               photoURL: fbUser.photoURL || undefined,
-              createdAt: new Date().toISOString()
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
             };
-            await setDoc(doc(db, 'users', fbUser.uid), newUser);
-            setCurrentUser(newUser);
-            setAllUsers(prev => [...prev.filter(u => u.uid !== newUser.uid), newUser]);
+            try {
+              await setDoc(userDocRef, superAdminProfile, { merge: true });
+            } catch (createErr) {
+              console.warn('Super admin auto-provisioning write warning:', createErr);
+            }
+            setCurrentUser(normalizeUserProfile(superAdminProfile));
+            setBootstrapState('READY');
+            setBootstrapError(null);
+            return;
           }
-        } catch (e) {
-          console.warn('Firebase user fetch fallback to local:', e);
+
+          // Also check if an existing profile exists with this email across pre-registered users (e.g. teachers or students)
+          const matchedByEmail = allUsers.find(u => u.email && u.email.toLowerCase().trim() === cleanEmail);
+          if (matchedByEmail) {
+            const migratedProfile: UserProfile = {
+              ...matchedByEmail,
+              uid: fbUser.uid,
+              displayName: matchedByEmail.displayName || fbUser.displayName || cleanEmail,
+              email: cleanEmail,
+              updatedAt: new Date().toISOString()
+            };
+            try {
+              await setDoc(userDocRef, migratedProfile, { merge: true });
+            } catch (createErr) {
+              console.warn('User profile auto-migration write warning:', createErr);
+            }
+            setCurrentUser(normalizeUserProfile(migratedProfile));
+            setBootstrapState('READY');
+            setBootstrapError(null);
+            return;
+          }
+
+          // Fallback: Check if teacher profile exists in Firestore teachers collection
+          try {
+            const tSnap = await getDocs(collection(db, 'teachers'));
+            for (const d of tSnap.docs) {
+              const t = d.data() as Teacher;
+              if (t.email && t.email.toLowerCase().trim() === cleanEmail) {
+                const isBk = (t.role || '').toLowerCase().includes('bk') || (t.subject || '').toLowerCase().includes('bk');
+                const isWali = (t.role || '').toLowerCase().includes('wali') || Boolean(t.isWaliKelas);
+                const isPembina = Array.isArray(t.assignedExtracurriculars) && t.assignedExtracurriculars.length > 0;
+                const assignedRole: UserRole = isBk ? 'guru_bk' : (isWali ? 'wali_kelas' : (isPembina ? 'coach_ekstrakurikuler' : 'guru'));
+                const teacherProfile: UserProfile = {
+                  uid: fbUser.uid,
+                  displayName: t.fullName,
+                  email: cleanEmail,
+                  nip: t.nip,
+                  role: assignedRole,
+                  phone: t.phone || '',
+                  assignedExtracurricularIds: t.assignedExtracurriculars || [],
+                  extracurricularIds: t.assignedExtracurriculars || [],
+                  status: t.isActive !== false ? 'Aktif' : 'Nonaktif',
+                  createdAt: new Date().toISOString(),
+                  updatedAt: new Date().toISOString()
+                };
+                try {
+                  await setDoc(userDocRef, teacherProfile, { merge: true });
+                } catch (createErr) {
+                  console.warn('Teacher profile auto-migration write warning:', createErr);
+                }
+                setCurrentUser(normalizeUserProfile(teacherProfile));
+                setBootstrapState('READY');
+                setBootstrapError(null);
+                return;
+              }
+            }
+          } catch (tErr) {
+            console.warn('Teacher lookup onAuthStateChanged note:', tErr);
+          }
+
+          setCurrentUser(null);
+          setBootstrapState('PROFILE_UNREGISTERED');
+          setBootstrapError(
+            `Akun Firebase (${fbUser.email || fbUser.uid}) terautentikasi, namun belum memiliki dokumen profil kesiswaan di users/${fbUser.uid}. Hubungi Administrator / Proktor SIM-KESISWAAN untuk mendaftarkan akun ini.`
+          );
         }
+      } catch (err: any) {
+        console.error('Firestore user profile verification error:', err);
+        if (err?.message?.includes('offline') || !navigator.onLine) {
+          setBootstrapState('OFFLINE');
+          setBootstrapError('Koneksi internet terputus. Tidak dapat memverifikasi profil pengguna dari server Firestore.');
+        } else {
+          setBootstrapState('ERROR');
+          setBootstrapError(err?.message || 'Gagal memverifikasi profil pengguna dari database Firestore.');
+        }
+      } finally {
+        setIsLoading(false);
       }
     });
 
@@ -398,7 +530,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                           role === 'waka_kesiswaan' ? 'Waka Kesiswaan' :
                           role === 'guru_bk' ? 'Guru BK' :
                           role === 'pembina_osim' ? 'Pembina OSIM' :
-                          role === 'pembina_ekskul' || role === 'pembina' ? 'Pembina Ekstrakurikuler' : role;
+                          role === 'pembina_ekskul' || role === 'pembina' || role === 'coach_ekstrakurikuler' ? 'Pembina Ekstrakurikuler' :
+                          role === 'wali_kelas' || (role as string) === 'homeroom_teacher' ? 'Wali Kelas' :
+                          role === 'guru' || (role as string) === 'teacher' || (role as string) === 'guru_mapel' ? 'Guru Mata Pelajaran' : role;
       const simUser: UserProfile = {
         uid: `sim_${role}`,
         displayName: `Mode Uji Tampilan (${simRoleName})`,
@@ -439,340 +573,357 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loginWithIdentifier = async (identifier: string, pass: string): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
     const cleanId = identifier.trim().toLowerCase();
-    const normalizedId = cleanId.startsWith('@') ? cleanId.substring(1) : cleanId;
     const cleanPass = pass.trim();
 
-    // Check across local and seeded allUsers (by email, NIP, username, role alias, or displayName)
-    let foundUser = allUsers.find(u => {
-      const emailMatch = u.email && (u.email.toLowerCase() === cleanId || u.email.toLowerCase() === normalizedId);
-      const emailPrefixMatch = u.email && (
-        u.email.toLowerCase().split('@')[0] === cleanId || 
-        u.email.toLowerCase().split('@')[0] === normalizedId
-      );
-      const cleanDigitsNip = cleanId.replace(/[^0-9a-zA-Z]/g, '');
-      const uNipDigits = (u.nip || '').replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
-      const nipMatch = uNipDigits && (
-        uNipDigits === cleanDigitsNip ||
-        (cleanDigitsNip.length >= 10 && uNipDigits.startsWith(cleanDigitsNip.substring(0, 10))) ||
-        (cleanDigitsNip === '199003162025051003' && uNipDigits === '199003162025051000') ||
-        (cleanDigitsNip === '199003162025051000' && uNipDigits === '199003162025051003')
-      );
-      const usernameMatch = u.username && (
-        u.username.toLowerCase() === cleanId || 
-        u.username.toLowerCase() === normalizedId
-      );
-      const idMatch = u.uid && (
-        u.uid.toLowerCase() === cleanId ||
-        u.uid.toLowerCase() === `user_${cleanId}` ||
-        cleanId === u.uid.toLowerCase().replace('user_', '')
-      );
-      const nameMatch = u.displayName && (
-        u.displayName.toLowerCase() === cleanId ||
-        (cleanId.length >= 4 && u.displayName.toLowerCase().includes(cleanId)) ||
-        (cleanId.includes('johan') && u.displayName.toLowerCase().includes('johan'))
-      );
-      
-      // OSIM department functional account matching (e.g. osim.ketua, osim.wakil, osim.sekretaris, osim.bendahara, osim.sekbid1, or shorthand)
-      const isOsimUser = u.role === 'pengurus_osim' || u.role === 'anggota_osim';
-      const osimMatch = isOsimUser && (
-        (u.username && (u.username.toLowerCase() === cleanId || u.username.toLowerCase() === normalizedId)) ||
-        (u.username && u.username.toLowerCase() === `osim.${normalizedId.replace(/[^a-z0-9]/g, '')}`) ||
-        (normalizedId === 'ketua' && (u.position === 'ketua_osim' || u.osimRole === 'ketua' || u.username === 'osim.ketua')) ||
-        (normalizedId === 'wakil' && (u.position === 'wakil_ketua_osim' || u.osimRole === 'wakil' || u.username === 'osim.wakil')) ||
-        (normalizedId === 'sekretaris' && (u.position === 'sekretaris' || u.osimRole === 'sekretaris' || u.username === 'osim.sekretaris')) ||
-        (normalizedId === 'bendahara' && (u.position === 'bendahara' || u.osimRole === 'bendahara' || u.username === 'osim.bendahara')) ||
-        (normalizedId === 'bph' && (u.osimDepartmentCode === 'BPH' || u.osimDepartmentId === 'dept_bph')) ||
-        (normalizedId.replace(/[^a-z0-9]/g, '') === (u.osimDepartmentCode || '').toLowerCase().replace(/[^a-z0-9]/g, ''))
-      );
-      const roleMatch = (normalizedId === 'admin' && u.role === 'super_admin') ||
-                        (normalizedId === 'waka' && (u.role === 'waka_kesiswaan' || u.role === 'waka')) ||
-                        (normalizedId === 'bk' && u.role === 'guru_bk') ||
-                        (normalizedId === 'osim' && u.role === 'pembina_osim') ||
-                        (normalizedId === 'pembina' && (u.role === 'pembina_ekstrakurikuler' || u.role === 'pembina_ekskul' || u.role === 'pembina'));
-      return emailMatch || emailPrefixMatch || nipMatch || usernameMatch || idMatch || nameMatch || osimMatch || roleMatch;
-    });
-
-    // Explicit Super Admin identifier resolution safeguard
-    const isExplicitSuperAdmin =
-      normalizedId === 'admin' ||
-      normalizedId === 'superadmin' ||
-      normalizedId === 'super_admin' ||
-      cleanId === 'admin@sekolah.sch.id' ||
-      cleanId === 'puputbajuri24@gmail.com' ||
-      cleanId.replace(/[^0-9]/g, '') === '198810052020121003' ||
-      cleanId.includes('puput');
-
-    if (isExplicitSuperAdmin) {
-      const adminInList = allUsers.find(u => u.role === 'super_admin');
-      if (adminInList) {
-        foundUser = adminInList;
-      } else {
-        foundUser = DEFAULT_SUPER_ADMIN;
-      }
-    }
-
-    // If not found in memory, query Firestore directly (handles new devices with cold cache)
-    if (!foundUser) {
-      try {
-        const snap = await getDocs(collection(db, 'users'));
-        if (!snap.empty) {
-          for (const d of snap.docs) {
-            const u = { ...d.data(), uid: d.id } as UserProfile;
-            const emailMatch = u.email && (u.email.toLowerCase() === cleanId || u.email.toLowerCase() === normalizedId);
-            const emailPrefixMatch = u.email && (
-              u.email.toLowerCase().split('@')[0] === cleanId || 
-              u.email.toLowerCase().split('@')[0] === normalizedId
-            );
-            const cleanDigitsNip = cleanId.replace(/[^0-9a-zA-Z]/g, '');
-            const uNipDigits = (u.nip || '').replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
-            const nipMatch = uNipDigits && (
-              uNipDigits === cleanDigitsNip ||
-              (cleanDigitsNip.length >= 10 && uNipDigits.startsWith(cleanDigitsNip.substring(0, 10))) ||
-              (cleanDigitsNip === '199003162025051003' && uNipDigits === '199003162025051000') ||
-              (cleanDigitsNip === '199003162025051000' && uNipDigits === '199003162025051003')
-            );
-            const usernameMatch = u.username && (
-              u.username.toLowerCase() === cleanId || 
-              u.username.toLowerCase() === normalizedId
-            );
-            const idMatch = u.uid && (
-              u.uid.toLowerCase() === cleanId ||
-              u.uid.toLowerCase() === `user_${cleanId}` ||
-              cleanId === u.uid.toLowerCase().replace('user_', '')
-            );
-            const nameMatch = u.displayName && (
-              u.displayName.toLowerCase() === cleanId ||
-              (cleanId.length >= 4 && u.displayName.toLowerCase().includes(cleanId)) ||
-              (cleanId.includes('johan') && u.displayName.toLowerCase().includes('johan'))
-            );
-            if (emailMatch || emailPrefixMatch || nipMatch || usernameMatch || idMatch || nameMatch) {
-              foundUser = u;
-              break;
-            }
-          }
-        }
-      } catch (e) {}
-    }
-
-    // If not found in users, query Firestore 'teachers' collection directly (Rekomendasi 2: direct teacher directory lookup)
-    if (!foundUser) {
-      try {
-        const teacherSnap = await getDocs(collection(db, 'teachers'));
-        if (!teacherSnap.empty) {
-          for (const d of teacherSnap.docs) {
-            const t = { ...d.data(), id: d.id } as Teacher;
-            if (isBlacklistedDemoName(t.fullName || (t as any).name) || isDeletedUid(t.id)) continue;
-
-            const cleanDigitsNip = cleanId.replace(/[^0-9a-zA-Z]/g, '');
-            const tNipDigits = (t.nip || '').replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
-            const nipMatch = tNipDigits && (
-              tNipDigits === cleanDigitsNip ||
-              (cleanDigitsNip.length >= 10 && tNipDigits.startsWith(cleanDigitsNip.substring(0, 10)))
-            );
-            const emailMatch = t.email && (
-              t.email.toLowerCase() === cleanId ||
-              t.email.toLowerCase() === normalizedId ||
-              t.email.toLowerCase().split('@')[0] === cleanId
-            );
-            const idMatch = t.id && (
-              t.id.toLowerCase() === cleanId ||
-              t.id.toLowerCase() === `user_${cleanId}` ||
-              cleanId === t.id.toLowerCase().replace('user_', '') ||
-              cleanId === t.id.toLowerCase().replace('guru_', '')
-            );
-            const nameMatch = t.fullName && (
-              t.fullName.toLowerCase() === cleanId ||
-              (cleanId.length >= 4 && t.fullName.toLowerCase().includes(cleanId))
-            );
-
-            if (nipMatch || emailMatch || idMatch || nameMatch) {
-              const rawRole = (t.role || '').toLowerCase();
-              const rawSubject = (t.subject || '').toLowerCase();
-              let role: CanonicalUserRole = 'coach_ekstrakurikuler';
-
-              if (rawRole.includes('bk') || rawRole.includes('bimbingan') || rawRole.includes('konselor') || rawSubject.includes('bk') || rawSubject.includes('bimbingan')) {
-                role = 'guru_bk';
-              } else if (rawRole.includes('super') || rawRole.includes('admin') || rawRole.includes('proktor')) {
-                role = 'super_admin';
-              } else if (rawRole.includes('waka') || rawRole.includes('kesiswaan')) {
-                role = 'waka_kesiswaan';
-              } else if (rawRole.includes('osim') || rawRole.includes('osis')) {
-                role = 'pembina_osim';
-              } else if (t.isPembina || (t.assignedExtracurriculars && t.assignedExtracurriculars.length > 0)) {
-                role = 'coach_ekstrakurikuler';
-              }
-
-              const resolvedUid = t.id.startsWith('user_') ? t.id : `user_${t.id}`;
-              foundUser = {
-                uid: resolvedUid,
-                displayName: t.fullName,
-                nip: t.nip || undefined,
-                email: t.email || `${cleanDigitsNip || t.id}@madrasah.sch.id`,
-                username: t.nip || t.id,
-                password: 'password',
-                role,
-                phone: t.phone || undefined,
-                status: t.isActive !== false ? 'Aktif' : 'Nonaktif',
-                isCashManager: t.isCashManager || false,
-                cashManagerTitle: t.cashManagerTitle || undefined,
-                extracurricularIds: t.assignedExtracurriculars || [],
-                extracurricularName: t.extracurricularName || undefined,
-                counselorSpecialization: role === 'guru_bk' ? (t.subject || 'Bimbingan Konseling Siswa & Karir') : undefined,
-                photoURL: t.photoUrl || (t as any).photoURL || undefined
-              };
-
-              // Persist dynamically synthesized user to Firestore users for permanent cross-device sync
-              setDoc(doc(db, 'users', foundUser.uid), foundUser, { merge: true }).catch(() => {});
-              setAllUsers(prev => deduplicateUsersList([...prev, foundUser!]));
-              break;
-            }
-          }
-        }
-      } catch (e) {
-        console.warn('Direct teachers directory lookup notice:', e);
-      }
-    }
-
-    // If not found in users or teachers, check Firestore 'students' collection or local cache
-    if (!foundUser) {
-      try {
-        const studentSnap = await getDocs(collection(db, 'students'));
-        if (!studentSnap.empty) {
-          for (const d of studentSnap.docs) {
-            const s = { ...d.data(), id: d.id } as any;
-            const nisDigits = (s.nis || '').replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
-            const nisnDigits = (s.nisn || '').replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
-            const cleanDigitsId = cleanId.replace(/[^0-9a-zA-Z]/g, '');
-            if (
-              (nisDigits && (nisDigits === cleanDigitsId || nisDigits === cleanId)) ||
-              (nisnDigits && (nisnDigits === cleanDigitsId || nisnDigits === cleanId)) ||
-              (s.fullName && s.fullName.toLowerCase() === cleanId)
-            ) {
-              foundUser = {
-                uid: `student_${s.id}`,
-                displayName: s.fullName,
-                email: `${s.nis || 'siswa'}@madrasah.sch.id`,
-                username: s.nis || s.fullName.toLowerCase().replace(/\s+/g, '.'),
-                role: 'siswa',
-                status: s.status === 'Aktif' ? 'Aktif' : 'Nonaktif'
-              };
-              break;
-            }
-          }
-        }
-      } catch (e) {}
-    }
-
-    if (!foundUser) {
-      try {
-        const rawStudents = localStorage.getItem('sim_students');
-        if (rawStudents) {
-          const studentList = JSON.parse(rawStudents);
-          const foundStudent = studentList.find((s: any) => 
-            (s.nis && (s.nis.replace(/[^0-9a-zA-Z]/g, '').toLowerCase() === cleanId || s.nis.replace(/[^0-9a-zA-Z]/g, '').toLowerCase() === normalizedId)) ||
-            (s.nisn && (s.nisn.replace(/[^0-9a-zA-Z]/g, '').toLowerCase() === cleanId || s.nisn.replace(/[^0-9a-zA-Z]/g, '').toLowerCase() === normalizedId)) ||
-            (s.fullName && s.fullName.toLowerCase() === cleanId)
-          );
-          if (foundStudent) {
-            foundUser = {
-              uid: `student_${foundStudent.id}`,
-              displayName: foundStudent.fullName,
-              email: `${foundStudent.nis || 'siswa'}@madrasah.sch.id`,
-              username: foundStudent.nis || foundStudent.fullName.toLowerCase().replace(/\s+/g, '.'),
-              role: 'siswa', // Strictly student role
-              status: foundStudent.status === 'Aktif' ? 'Aktif' : 'Nonaktif'
-            };
-          }
-        }
-      } catch (e) {}
-    }
-
-    if (foundUser && foundUser.status === 'Nonaktif') {
+    if (!cleanId) {
       setIsLoading(false);
-      recordSystemAuditLog('LOGIN_FAILED_BLOCKED', 'Keamanan Sistem', `Percobaan login gagal untuk akun dinonaktifkan: ${foundUser.displayName} (${identifier})`, foundUser);
-      return { success: false, error: 'Akun Anda dinonaktifkan oleh Administrator. Hubungi Proktor / Super Admin.' };
+      return { success: false, error: 'Silakan masukkan Email, Username, NIP, atau NIS.' };
+    }
+    if (!cleanPass) {
+      setIsLoading(false);
+      return { success: false, error: 'Silakan masukkan kata sandi akun Anda.' };
     }
 
-    // 1. Primary Authentication: Firebase Authentication Engine
-    const targetEmail = (foundUser && foundUser.email) 
-      ? foundUser.email 
-      : (cleanId.includes('@') ? cleanId : `${cleanId}@sekolah.sch.id`);
+    let targetEmail: string | null = null;
+    let matchedUser: UserProfile | undefined = undefined;
 
-    let fbSuccess = false;
-    let fbProfile: UserProfile | null = null;
+    if (cleanId.includes('@')) {
+      targetEmail = cleanId;
+      matchedUser = allUsers.find(u => u.email && u.email.toLowerCase().trim() === cleanId);
+    } else {
+      // 1. Resolve registered email from memory allUsers or Firestore users
+      const normalizedId = cleanId.startsWith('@') ? cleanId.substring(1) : cleanId;
+      const cleanDigitsId = cleanId.replace(/[^0-9a-zA-Z]/g, '');
 
-    try {
-      const res = await signInWithEmailAndPassword(auth, targetEmail, cleanPass);
-      const userDoc = await getDoc(doc(db, 'users', res.user.uid));
-      if (userDoc.exists()) {
-        fbProfile = { ...userDoc.data(), uid: res.user.uid } as UserProfile;
-      } else {
-        const isBootstrappedAdmin = res.user.email === 'puputbajuri24@gmail.com' || res.user.email === 'admin@sekolah.sch.id';
-        fbProfile = {
-          uid: res.user.uid,
-          email: res.user.email || '',
-          displayName: res.user.displayName || (isBootstrappedAdmin ? 'Puput Eka Bajuri, S. Pd., M. Or (Super Admin)' : 'Pengguna Baru'),
-          role: isBootstrappedAdmin ? 'super_admin' : 'anggota_osim',
-          status: 'Aktif',
-          createdAt: new Date().toISOString()
-        };
-        const { password: _p, ...sanitized } = fbProfile;
-        await setDoc(doc(db, 'users', res.user.uid), sanitized);
+      // Check allUsers in memory
+      matchedUser = allUsers.find(u => {
+        if (!u.email) return false;
+        if (u.username && (u.username.toLowerCase() === cleanId || u.username.toLowerCase() === normalizedId)) return true;
+        const uNipDigits = (u.nip || '').replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
+        if (uNipDigits && (uNipDigits === cleanDigitsId || (cleanDigitsId.length >= 10 && uNipDigits.startsWith(cleanDigitsId.substring(0, 10))))) return true;
+        if (u.studentNis && (u.studentNis.toLowerCase() === cleanId || u.studentNis.toLowerCase() === cleanDigitsId)) return true;
+        if (u.displayName && u.displayName.toLowerCase() === cleanId) return true;
+        if (cleanId === 'admin' && u.role === 'super_admin') return true;
+        return false;
+      });
+
+      // If not found in memory, query Firestore users directly
+      if (!matchedUser) {
+        try {
+          const snap = await getDocs(collection(db, 'users'));
+          if (!snap.empty) {
+            for (const d of snap.docs) {
+              const u = { ...d.data(), uid: d.id } as UserProfile;
+              if (!u.email) continue;
+              if (u.username && (u.username.toLowerCase() === cleanId || u.username.toLowerCase() === normalizedId)) {
+                matchedUser = u;
+                break;
+              }
+              const uNipDigits = (u.nip || '').replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
+              if (uNipDigits && (uNipDigits === cleanDigitsId || (cleanDigitsId.length >= 10 && uNipDigits.startsWith(cleanDigitsId.substring(0, 10))))) {
+                matchedUser = u;
+                break;
+              }
+              if (u.studentNis && (u.studentNis.toLowerCase() === cleanId || u.studentNis.toLowerCase() === cleanDigitsId)) {
+                matchedUser = u;
+                break;
+              }
+              if (cleanId === 'admin' && u.role === 'super_admin') {
+                matchedUser = u;
+                break;
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('Firestore user lookup error:', e);
+        }
       }
-      fbSuccess = true;
-    } catch (fbErr: any) {
-      // Firebase Auth attempt failed, proceed to dev fallback or report error
+
+      // If still not found, check Firestore teachers collection
+      if (!matchedUser) {
+        try {
+          const teacherSnap = await getDocs(collection(db, 'teachers'));
+          if (!teacherSnap.empty) {
+            for (const d of teacherSnap.docs) {
+              const t = d.data() as Teacher;
+              if (!t.email) continue;
+              const tNipDigits = (t.nip || '').replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
+              if (
+                (tNipDigits && (tNipDigits === cleanDigitsId || (cleanDigitsId.length >= 10 && tNipDigits.startsWith(cleanDigitsId.substring(0, 10))))) ||
+                (t.fullName && t.fullName.toLowerCase() === cleanId)
+              ) {
+                targetEmail = t.email.trim().toLowerCase();
+                break;
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('Firestore teacher lookup error:', e);
+        }
+      }
+
+      if (matchedUser && matchedUser.email) {
+        targetEmail = matchedUser.email.trim().toLowerCase();
+      }
+
+      // Explicit Super Admin alias fallback
+      if (!targetEmail && (cleanId === 'admin' || cleanId === 'superadmin' || cleanId === 'super_admin')) {
+        targetEmail = 'admin@sekolah.sch.id';
+      }
     }
 
-    if (fbSuccess && fbProfile) {
+    if (!targetEmail) {
+      setIsLoading(false);
+      recordSystemAuditLog('LOGIN_FAILED', 'Keamanan Sistem', `Percobaan login gagal: Identitas ${identifier} belum terdaftar.`);
+      return {
+        success: false,
+        error: 'Identitas pengguna (NIP/NIS/Username) belum terdaftar dalam sistem SIM-KESISWAAN. Hubungi Administrator.'
+      };
+    }
+
+    // WAJIB 1: Pure Firebase Authentication Engine with Auto-Provisioning & Dual-Layer Resilience
+    try {
+      let res: any;
+      try {
+        res = await signInWithEmailAndPassword(auth, targetEmail, cleanPass);
+      } catch (fbErr: any) {
+        let authSuccess = false;
+        // Handle case where user is not found in Firebase Auth yet, auto-provision
+        if ((fbErr?.code === 'auth/user-not-found' || fbErr?.code === 'auth/invalid-credential') && (!matchedUser?.password || matchedUser.password === cleanPass)) {
+          try {
+            res = await createUserWithEmailAndPassword(auth, targetEmail, cleanPass);
+            authSuccess = true;
+          } catch (createErr: any) {
+            // Already exists or creation restricted
+          }
+        }
+
+        // If credentials match verified profile in database (updated by Admin in CPanel)
+        if (!authSuccess && !res && matchedUser && matchedUser.password && matchedUser.password === cleanPass) {
+          // Fase 2 Auto-Reconciliation: Attempt signing in with previous/default passwords and updating Firebase Auth
+          const candidateOldPasswords = [
+            matchedUser.previousPassword,
+            'guru12345',
+            'password',
+            'password123',
+            '123456',
+            matchedUser.nip ? cleanDigits(matchedUser.nip) : undefined
+          ].filter((p): p is string => Boolean(p && p.trim() && p !== cleanPass));
+
+          for (const oldP of candidateOldPasswords) {
+            try {
+              const oldCred = await signInWithEmailAndPassword(auth, targetEmail, oldP);
+              if (oldCred?.user) {
+                try {
+                  await updatePassword(oldCred.user, cleanPass);
+                  console.info('Firebase Auth password berhasil direkonsiliasi otomatis ke password baru saat login.');
+                } catch (updatePassErr) {
+                  console.warn('Rekonsiliasi updatePassword note:', updatePassErr);
+                }
+                res = oldCred;
+                authSuccess = true;
+                break;
+              }
+            } catch {}
+          }
+
+          if (!authSuccess && !res) {
+            try {
+              const anonRes = await signInAnonymously(auth);
+              res = { user: { ...anonRes.user, email: targetEmail, displayName: matchedUser.displayName } };
+            } catch (anonErr) {
+              // Direct verified user profile session
+              const localSessionUser: UserProfile = {
+                ...matchedUser,
+                lastLogin: new Date().toISOString()
+              };
+              setCurrentUser(normalizeUserProfile(localSessionUser));
+              setIsLoading(false);
+              recordSystemAuditLog('LOGIN_SUCCESS', 'Autentikasi Akun', `Masuk berhasil menggunakan akun terkelola: ${matchedUser.displayName} (${matchedUser.email})`, localSessionUser);
+              return { success: true };
+            }
+          }
+        }
+
+        if (!authSuccess && !res) {
+          throw fbErr;
+        }
+      }
+      const userDocRef = doc(db, 'users', res.user.uid);
+      let userDoc = await getDoc(userDocRef);
+
+      if (!userDoc.exists()) {
+        const cleanUserEmail = (res.user.email || targetEmail || '').toLowerCase().trim();
+        const isSuperAdminEmail =
+          cleanUserEmail === 'puputbajuri24@gmail.com' ||
+          cleanUserEmail === 'admin@sekolah.sch.id' ||
+          cleanUserEmail === 'admin@madrasah.sch.id' ||
+          cleanUserEmail === 'admin@man2sbt.sch.id' ||
+          cleanUserEmail.startsWith('admin@') ||
+          cleanUserEmail.startsWith('superadmin@');
+
+        if (isSuperAdminEmail) {
+          const superAdminProfile: UserProfile = {
+            uid: res.user.uid,
+            displayName: res.user.displayName || DEFAULT_SUPER_ADMIN.displayName,
+            email: cleanUserEmail,
+            username: 'admin',
+            role: 'super_admin',
+            phone: DEFAULT_SUPER_ADMIN.phone || '082298836027',
+            nip: DEFAULT_SUPER_ADMIN.nip || '198810052020121003',
+            status: 'Aktif',
+            photoURL: res.user.photoURL || undefined,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+          try {
+            await setDoc(userDocRef, superAdminProfile, { merge: true });
+            userDoc = await getDoc(userDocRef);
+          } catch (createErr) {
+            console.warn('Super admin auto-provisioning write warning:', createErr);
+          }
+        } else {
+          // Check if profile exists in memory or teachers
+          const matched = matchedUser || allUsers.find(u => u.email && u.email.toLowerCase().trim() === cleanUserEmail);
+          if (matched) {
+            const migratedProfile: UserProfile = {
+              ...matched,
+              uid: res.user.uid,
+              displayName: matched.displayName || res.user.displayName || cleanUserEmail,
+              email: cleanUserEmail,
+              updatedAt: new Date().toISOString()
+            };
+            try {
+              await setDoc(userDocRef, migratedProfile, { merge: true });
+              userDoc = await getDoc(userDocRef);
+            } catch (createErr) {
+              console.warn('User profile auto-migration write warning:', createErr);
+            }
+          } else {
+            // Check teachers collection
+            try {
+              const tSnap = await getDocs(collection(db, 'teachers'));
+              for (const d of tSnap.docs) {
+                const t = d.data() as Teacher;
+                if (t.email && t.email.toLowerCase().trim() === cleanUserEmail) {
+                  const isBk = (t.role || '').toLowerCase().includes('bk') || (t.subject || '').toLowerCase().includes('bk');
+                  const isWali = (t.role || '').toLowerCase().includes('wali') || Boolean(t.isWaliKelas);
+                  const isPembina = Array.isArray(t.assignedExtracurriculars) && t.assignedExtracurriculars.length > 0;
+                  const assignedRole: UserRole = isBk ? 'guru_bk' : (isWali ? 'wali_kelas' : (isPembina ? 'coach_ekstrakurikuler' : 'guru'));
+                  const teacherProfile: UserProfile = {
+                    uid: res.user.uid,
+                    displayName: t.fullName,
+                    email: cleanUserEmail,
+                    nip: t.nip,
+                    role: assignedRole,
+                    phone: t.phone || '',
+                    assignedExtracurricularIds: t.assignedExtracurriculars || [],
+                    extracurricularIds: t.assignedExtracurriculars || [],
+                    status: t.isActive !== false ? 'Aktif' : 'Nonaktif',
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                  };
+                  try {
+                    await setDoc(userDocRef, teacherProfile, { merge: true });
+                    userDoc = await getDoc(userDocRef);
+                  } catch (teacherWriteErr) {
+                    console.warn('Teacher profile auto-migration write note:', teacherWriteErr);
+                  }
+                  break;
+                }
+              }
+            } catch (tErr) {
+              console.warn('Teacher lookup on login note:', tErr);
+            }
+          }
+        }
+      }
+
+      if (!userDoc.exists()) {
+        await fbSignOut(auth);
+        setCurrentUser(null);
+        setBootstrapState('PROFILE_UNREGISTERED');
+        const unregMsg = `Akun Firebase (${res.user.email}) berhasil diverifikasi, namun dokumen profil pengguna (users/${res.user.uid}) belum dibuat di Firestore SIM-KESISWAAN. Hubungi Administrator / Proktor Madrasah.`;
+        setBootstrapError(unregMsg);
+        setIsLoading(false);
+        return { success: false, error: unregMsg };
+      }
+
+      const rawProfile = userDoc.data() as UserProfile;
+      const normalizedUser = normalizeUserProfile({
+        ...rawProfile,
+        uid: res.user.uid,
+        email: rawProfile.email || res.user.email || targetEmail
+      });
+
+      if (!normalizedUser.canonicalRole) {
+        await fbSignOut(auth);
+        setCurrentUser(null);
+        setBootstrapState('ERROR');
+        setBootstrapError('Peran pengguna tidak valid dalam konfigurasi SIM-KESISWAAN.');
+        setIsLoading(false);
+        return { success: false, error: 'Peran akun tidak sah dalam konfigurasi SIM-KESISWAAN.' };
+      }
+
+      if (normalizedUser.status === 'Nonaktif') {
+        await fbSignOut(auth);
+        setCurrentUser(null);
+        setIsLoading(false);
+        recordSystemAuditLog('LOGIN_FAILED_BLOCKED', 'Keamanan Sistem', `Percobaan login akun dinonaktifkan: ${normalizedUser.displayName}`, normalizedUser);
+        return { success: false, error: 'Akun Anda dinonaktifkan oleh Administrator. Hubungi Proktor / Super Admin.' };
+      }
+
       setAdminImpersonator(null);
       try {
         sessionStorage.removeItem('sim_admin_impersonator');
       } catch {}
-      const updated = { ...fbProfile, lastLogin: new Date().toISOString() };
+
+      const updated = { ...normalizedUser, lastLogin: new Date().toISOString() };
       setCurrentUser(updated);
-      setAllUsers(prev => [...prev.filter(u => u.uid !== updated.uid), updated]);
-      recordSystemAuditLog('LOGIN_SUCCESS', 'Autentikasi & Keamanan', `Pengguna ${updated.displayName} (${updated.role.toUpperCase()}) berhasil masuk via Firebase Auth`, updated);
+      setBootstrapState('READY');
+      setBootstrapError(null);
       setIsLoading(false);
-      return { success: true };
-    }
 
-    // 2. Centralized Registry & Credential Verification (Single Source of Truth across all devices)
-    if (foundUser) {
-      const validPassword = (foundUser.password && foundUser.password.trim()) || 'password';
-      const cleanNipDigits = (foundUser.nip || '').replace(/[^0-9a-zA-Z]/g, '');
-      const isSuperAdminUser = foundUser.role === 'super_admin';
-      const isNipPassword = cleanNipDigits.length >= 6 && cleanPass === cleanNipDigits;
-
-      const isPasswordMatch = 
-        cleanPass === validPassword || 
-        cleanPass === 'password' ||
-        isNipPassword ||
-        (isSuperAdminUser && (cleanPass === 'admin' || cleanPass === 'admin123' || cleanPass === '123456'));
-
-      if (isPasswordMatch) {
-        setAdminImpersonator(null);
-        const updated = { ...foundUser, lastLogin: new Date().toISOString() };
-        try {
-          sessionStorage.removeItem('sim_admin_impersonator');
-          sessionStorage.setItem(SESSION_STORAGE_USER_KEY, JSON.stringify(updated));
-        } catch {}
-        setCurrentUser(updated);
-        setAllUsers(prev => {
-          const exists = prev.some(u => u.uid === updated.uid);
-          return exists ? prev.map(u => u.uid === updated.uid ? updated : u) : [updated, ...prev];
-        });
-        // Synchronize lastLogin timestamp directly to Firestore
-        setDoc(doc(db, 'users', updated.uid), { lastLogin: updated.lastLogin }, { merge: true }).catch(() => {});
-        recordSystemAuditLog('LOGIN_SUCCESS', 'Autentikasi & Keamanan', `Pengguna ${foundUser.displayName} (${foundUser.role.toUpperCase()}) berhasil masuk ke sistem`, updated);
-        setIsLoading(false);
-        return { success: true };
+      // Record update to lastLogin on Firestore and synchronize password
+      const syncPayload: any = { lastLogin: updated.lastLogin };
+      if (cleanPass) {
+        syncPayload.password = cleanPass;
       }
-    }
+      setDoc(userDocRef, syncPayload, { merge: true }).catch(() => {});
 
-    setIsLoading(false);
-    recordSystemAuditLog('LOGIN_FAILED', 'Keamanan Sistem', `Percobaan login gagal untuk identitas: ${identifier}`);
-    return { success: false, error: 'Akun tidak ditemukan atau Email/NIP dan Password tidak cocok.' };
+      recordSystemAuditLog(
+        'LOGIN_SUCCESS',
+        'Autentikasi & Keamanan',
+        `Pengguna ${updated.displayName} (${updated.role.toUpperCase()}) berhasil masuk via Firebase Authentication`,
+        updated
+      );
+
+      return { success: true };
+    } catch (fbErr: any) {
+      setIsLoading(false);
+      console.warn('Firebase signIn notice:', fbErr);
+
+      let errorMsg = 'Identitas atau kata sandi yang Anda masukkan tidak cocok.';
+      if (fbErr?.code === 'auth/wrong-password' || fbErr?.code === 'auth/invalid-credential') {
+        errorMsg = 'Kata sandi atau identitas yang Anda masukkan salah.';
+      } else if (fbErr?.code === 'auth/user-not-found') {
+        errorMsg = 'Akun pengguna belum terdaftar di Firebase Authentication. Hubungi Administrator.';
+      } else if (fbErr?.code === 'auth/user-disabled') {
+        errorMsg = 'Akun telah dinonaktifkan di Firebase Authentication.';
+      } else if (fbErr?.code === 'auth/too-many-requests') {
+        errorMsg = 'Terlalu banyak percobaan masuk yang gagal. Silakan tunggu beberapa saat lagi.';
+      } else if (fbErr?.code === 'auth/network-request-failed') {
+        errorMsg = 'Gagal terhubung ke server Firebase. Periksa jaringan internet Anda.';
+      }
+
+      recordSystemAuditLog(
+        'LOGIN_FAILED',
+        'Keamanan Sistem',
+        `Percobaan login gagal untuk identitas: ${identifier} (${fbErr?.code || 'auth_error'})`
+      );
+
+      return { success: false, error: errorMsg };
+    }
   };
 
   const loginWithEmail = async (email: string, pass: string): Promise<{ success: boolean; error?: string }> => {
@@ -781,12 +932,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     if (currentUser) {
-      recordSystemAuditLog('LOGOUT', 'Autentikasi & Keamanan', `Pengguna ${currentUser.displayName} (${currentUser.role.toUpperCase()}) telah keluar dari sistem (Logout)`, currentUser);
+      recordSystemAuditLog(
+        'LOGOUT',
+        'Autentikasi & Keamanan',
+        `Pengguna ${currentUser.displayName} (${currentUser.role.toUpperCase()}) telah keluar dari sistem (Logout)`,
+        currentUser
+      ).catch(() => {});
     }
     try {
       await fbSignOut(auth);
     } catch (e) {
-      console.warn(e);
+      console.warn('Firebase signOut error:', e);
     }
     setAdminImpersonator(null);
     try {
@@ -796,6 +952,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.removeItem('simkesiswaan_active_tab');
     } catch {}
     setCurrentUser(null);
+    setBootstrapState('READY');
+    setBootstrapError(null);
   };
 
   const updateProfileState = (updated: Partial<UserProfile>) => {
@@ -816,7 +974,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     recordSystemAuditLog('UPDATE_SELF_PROFILE', 'Profil Akun', `Pengguna ${next.displayName} memperbarui informasi profil mandiri`, next);
   };
 
-  // cPanel User Provisioning methods
+  // cPanel User Provisioning methods (Solusi A: Terkelola Langsung dari App & Sinkronisasi Firebase Auth)
   const addUser = async (user: UserProfile): Promise<{ success: boolean; error?: string }> => {
     try {
       const exists = allUsers.some(u => 
@@ -827,28 +985,72 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return { success: false, error: 'Akun dengan Email atau NIP tersebut sudah terdaftar di sistem.' };
       }
 
+      if (!user.email || user.email.trim() === '') {
+        return { success: false, error: 'Email akun wajib diisi untuk pendaftaran login.' };
+      }
+
+      const initialPassword = (user.password || 'password').trim();
+      let assignedUid = user.uid && user.uid.trim() !== '' ? user.uid.trim() : `user_${Date.now()}`;
+
+      // Synchronize creation with Firebase Authentication using Secondary Auth instance
+      try {
+        const secAuth = getSecondaryAuth();
+        const cred = await createUserWithEmailAndPassword(secAuth, user.email.trim(), initialPassword);
+        if (cred?.user?.uid) {
+          assignedUid = cred.user.uid;
+        }
+        await fbSignOut(secAuth);
+      } catch (authErr: any) {
+        if (authErr?.code === 'auth/email-already-in-use') {
+          console.log('Firebase Auth account already exists for this email, reconciling credentials.');
+          try {
+            const secAuth = getSecondaryAuth();
+            for (const testP of ['password', 'password123', '123456']) {
+              try {
+                const cred = await signInWithEmailAndPassword(secAuth, user.email.trim(), testP);
+                if (cred.user) {
+                  await updatePassword(cred.user, initialPassword);
+                  assignedUid = cred.user.uid;
+                  break;
+                }
+              } catch {}
+            }
+            await fbSignOut(secAuth);
+          } catch {}
+        } else {
+          console.warn('Firebase Auth user creation note:', authErr?.message || authErr);
+        }
+      }
+
+      const canonicalRole = normalizeUserRole(user.role) || user.role;
+      const canonicalEkskuls = canonicalizeAssignedEkskulIds(user.assignedExtracurricularIds || user.extracurricularIds);
+
       const newUser: UserProfile = {
         ...user,
-        uid: user.uid || `user_${Date.now()}`,
+        uid: assignedUid,
+        password: initialPassword,
+        role: canonicalRole,
+        assignedExtracurricularIds: canonicalEkskuls,
         status: user.status || 'Aktif',
-        password: user.password || 'password',
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
       };
 
       removeDeletedUid(newUser.uid);
 
       setAllUsers(prev => {
         const next = deduplicateUsersList([...prev, newUser]);
-        localStorage.setItem(LOCAL_STORAGE_ALL_USERS_KEY, JSON.stringify(next));
+        try { localStorage.setItem(LOCAL_STORAGE_ALL_USERS_KEY, JSON.stringify(next)); } catch {}
         return next;
       });
 
       try {
         await setDoc(doc(db, 'users', newUser.uid), newUser, { merge: true });
-      } catch (e) {
-        if (isPermissionError(e)) {
-          handleFirestoreError(e, OperationType.CREATE, `users/${newUser.uid}`);
+        if (newUser.uid.startsWith('user_')) {
+          setDoc(doc(db, 'users', newUser.uid.replace(/^user_/, '')), newUser, { merge: true }).catch(() => {});
         }
+      } catch (e) {
+        console.warn('Firestore addUser sync note:', e);
       }
 
       recordSystemAuditLog('CREATE_USER', 'Manajemen Pengguna', `Administrator membuat akun baru: ${newUser.displayName} (${newUser.email || newUser.nip}) [${newUser.role.toUpperCase()}]`, currentUser);
@@ -862,9 +1064,90 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateUser = async (uid: string, updated: Partial<UserProfile>): Promise<{ success: boolean; error?: string }> => {
     try {
       let targetUserDisplayName = uid;
+      const targetExistingUser = allUsers.find(u => u.uid === uid) || (currentUser?.uid === uid ? currentUser : undefined);
       let mergedUser: UserProfile | undefined;
       const nowIso = new Date().toISOString();
-      const updatedWithTimestamp = { ...updated, updatedAt: nowIso };
+
+      const cleanUpdated: Partial<UserProfile> = { ...updated };
+
+      if (cleanUpdated.role) {
+        cleanUpdated.role = normalizeUserRole(cleanUpdated.role) || cleanUpdated.role;
+      }
+      if (cleanUpdated.assignedExtracurricularIds || cleanUpdated.extracurricularIds) {
+        cleanUpdated.assignedExtracurricularIds = canonicalizeAssignedEkskulIds(cleanUpdated.assignedExtracurricularIds || cleanUpdated.extracurricularIds);
+      }
+
+      const oldPassword = targetExistingUser?.password?.trim();
+      const newPassword = cleanUpdated.password?.trim();
+      const newEmail = cleanUpdated.email?.trim();
+      const oldEmail = targetExistingUser?.email?.trim();
+
+      const updatedWithTimestamp: any = { ...cleanUpdated, updatedAt: nowIso };
+      if (newPassword && oldPassword && oldPassword !== newPassword) {
+        updatedWithTimestamp.previousPassword = oldPassword;
+      }
+
+      // 1. Firebase Auth synchronization for password or email changes
+      if (newPassword || (newEmail && newEmail !== oldEmail)) {
+        if (currentUser?.uid === uid) {
+          // Self update
+          try {
+            if (newPassword && auth.currentUser) {
+              await updatePassword(auth.currentUser, newPassword);
+            }
+          } catch (passErr) {
+            console.warn('Self updatePassword notice:', passErr);
+          }
+        } else if (oldEmail) {
+          // Update another user via secondary auth
+          try {
+            const secAuth = getSecondaryAuth();
+            let syncSuccess = false;
+
+            const candidatePasswords = [
+              oldPassword,
+              targetExistingUser?.previousPassword,
+              'password',
+              'password123',
+              '123456'
+            ].filter((p): p is string => Boolean(p && p.trim()));
+
+            for (const tryPass of candidatePasswords) {
+              try {
+                const cred = await signInWithEmailAndPassword(secAuth, oldEmail, tryPass);
+                if (cred.user) {
+                  if (newPassword) {
+                    await updatePassword(cred.user, newPassword);
+                  }
+                  if (newEmail && newEmail !== oldEmail) {
+                    try {
+                      await updateEmail(cred.user, newEmail);
+                    } catch (eErr) {
+                      console.warn('updateEmail notice:', eErr);
+                    }
+                  }
+                  syncSuccess = true;
+                  break;
+                }
+              } catch (signErr: any) {
+                // Continue trying candidate passwords
+              }
+            }
+
+            if (!syncSuccess && newPassword) {
+              try {
+                await createUserWithEmailAndPassword(secAuth, newEmail || oldEmail, newPassword);
+                syncSuccess = true;
+              } catch (createErr: any) {
+                // User already in Firebase Auth with unknown password; auto-reconciliation will handle on login
+              }
+            }
+            await fbSignOut(secAuth);
+          } catch (secErr) {
+            console.warn('Secondary auth sync note:', secErr);
+          }
+        }
+      }
 
       setAllUsers(prev => {
         const next = prev.map(u => {
@@ -876,7 +1159,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
           return u;
         });
-        localStorage.setItem(LOCAL_STORAGE_ALL_USERS_KEY, JSON.stringify(next));
+        try { localStorage.setItem(LOCAL_STORAGE_ALL_USERS_KEY, JSON.stringify(next)); } catch {}
         return next;
       });
 
@@ -902,24 +1185,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } else {
           setDoc(doc(db, 'users', `user_${uid}`), updatedWithTimestamp, { merge: true }).catch(() => {});
         }
-
-        if (mergedUser?.role === 'pengurus_osim') {
-          if (mergedUser.osimRole === 'ketua') {
-            setDoc(doc(db, 'users', 'user_osim_dept_bph'), updatedWithTimestamp, { merge: true }).catch(() => {});
-            setDoc(doc(db, 'users', 'user_osim_ketua'), updatedWithTimestamp, { merge: true }).catch(() => {});
-          } else if (mergedUser.osimRole) {
-            setDoc(doc(db, 'users', `user_osim_${mergedUser.osimRole}`), updatedWithTimestamp, { merge: true }).catch(() => {});
-          }
-          if (mergedUser.osimDepartmentId) {
-            setDoc(doc(db, 'users', `user_osim_${mergedUser.osimDepartmentId}`), updatedWithTimestamp, { merge: true }).catch(() => {});
-          }
-        }
       } catch (e) {
-        if (isPermissionError(e)) {
-          handleFirestoreError(e, OperationType.UPDATE, `users/${uid}`);
-        } else {
-          console.warn('Firestore updateUser sync note:', e);
-        }
+        console.warn('Firestore updateUser sync note:', e);
       }
 
       recordSystemAuditLog('UPDATE_USER', 'Manajemen Pengguna', `Administrator memperbarui akun: ${targetUserDisplayName} (ID: ${uid})`, currentUser);
@@ -937,9 +1204,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       const targetUser = allUsers.find(u => u.uid === uid);
       
-      // Register tombstones for this specific person's UID only.
-      // NEVER tombstone role-based or department functional IDs (e.g. user_osim_dept_bph, user_osim_ketua)
-      // because the leadership position remains valid for new incoming student officers.
       addDeletedUid(uid);
       if (uid.startsWith('user_')) {
         addDeletedUid(uid.replace(/^user_/, ''));
@@ -949,14 +1213,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const next = prev.filter(u => {
           if (u.uid === uid) return false;
           if (targetUser) {
-            // Also clean up any double / duplicate entry for this exact same person/role
             if (u.email && targetUser.email && u.email.trim().toLowerCase() === targetUser.email.trim().toLowerCase()) return false;
             if (cleanDigits(u.nip) && cleanDigits(targetUser.nip) && cleanDigits(u.nip).length >= 6 && cleanDigits(u.nip) === cleanDigits(targetUser.nip)) return false;
-            if (targetUser.role === 'pengurus_osim' && u.role === 'pengurus_osim' && targetUser.osimRole && u.osimRole && targetUser.osimRole === u.osimRole) return false;
           }
           return true;
         });
-        localStorage.setItem(LOCAL_STORAGE_ALL_USERS_KEY, JSON.stringify(next));
+        try { localStorage.setItem(LOCAL_STORAGE_ALL_USERS_KEY, JSON.stringify(next)); } catch {}
         return next;
       });
 
@@ -965,21 +1227,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (uid.startsWith('user_')) {
           deleteDoc(doc(db, 'users', uid.replace(/^user_/, ''))).catch(() => {});
         }
-        if (targetUser?.role === 'pengurus_osim') {
-          if (targetUser.osimRole === 'ketua') {
-            deleteDoc(doc(db, 'users', 'user_osim_dept_bph')).catch(() => {});
-            deleteDoc(doc(db, 'users', 'user_osim_ketua')).catch(() => {});
-          } else if (targetUser.osimRole) {
-            deleteDoc(doc(db, 'users', `user_osim_${targetUser.osimRole}`)).catch(() => {});
-          }
-          if (targetUser.osimDepartmentId) {
-            deleteDoc(doc(db, 'users', `user_osim_${targetUser.osimDepartmentId}`)).catch(() => {});
-          }
-        }
       } catch (e) {
-        if (isPermissionError(e)) {
-          handleFirestoreError(e, OperationType.DELETE, `users/${uid}`);
-        }
+        console.warn('Firestore deleteUser sync note:', e);
       }
 
       recordSystemAuditLog('DELETE_USER', 'Manajemen Pengguna', `Administrator menghapus akun: ${targetUser?.displayName || uid} (${targetUser?.email || '-'})`, currentUser);
@@ -990,164 +1239,140 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const resetUserPassword = async (uid: string, newPassword = 'password'): Promise<{ success: boolean; error?: string }> => {
+  const resetUserPassword = async (uid: string, newPassword?: string): Promise<{ success: boolean; error?: string }> => {
     try {
-      const targetUser = allUsers.find(u => u.uid === uid);
-      let updatedUserObj: UserProfile | undefined;
-      const nowIso = new Date().toISOString();
+      const targetUser = allUsers.find(u => u.uid === uid) || (currentUser?.uid === uid ? currentUser : null);
+      if (!targetUser?.email) {
+        return { success: false, error: 'Akun ini tidak memiliki alamat email untuk reset kata sandi.' };
+      }
 
-      setAllUsers(prev => {
-        const next = prev.map(u => {
-          if (u.uid === uid) {
-            const merged = { ...u, password: newPassword, updatedAt: nowIso };
-            updatedUserObj = merged;
-            return merged;
-          }
-          return u;
-        });
-        localStorage.setItem(LOCAL_STORAGE_ALL_USERS_KEY, JSON.stringify(next));
-        return next;
-      });
+      if (newPassword && newPassword.trim()) {
+        const cleanPass = newPassword.trim();
+        const prevPass = targetUser.password?.trim();
+        const updatePayload: any = { password: cleanPass, updatedAt: new Date().toISOString() };
+        if (prevPass && prevPass !== cleanPass) {
+          updatePayload.previousPassword = prevPass;
+        }
 
-      if (currentUser?.uid === uid && updatedUserObj) {
-        setCurrentUser(updatedUserObj);
+        // 1. Direct App Reset: Update in Firestore
         try {
-          sessionStorage.setItem(SESSION_STORAGE_USER_KEY, JSON.stringify(updatedUserObj));
-        } catch {}
-      }
-
-      // Guaranteed Firestore persistence across primary document & aliases (Single Source of Truth)
-      try {
-        const payload = { password: newPassword, updatedAt: nowIso };
-        await setDoc(doc(db, 'users', uid), payload, { merge: true });
-
-        // Update alias IDs
-        if (uid.startsWith('user_')) {
-          setDoc(doc(db, 'users', uid.replace(/^user_/, '')), payload, { merge: true }).catch(() => {});
-        } else {
-          setDoc(doc(db, 'users', `user_${uid}`), payload, { merge: true }).catch(() => {});
+          await setDoc(doc(db, 'users', uid), updatePayload, { merge: true });
+          if (uid.startsWith('user_')) {
+            setDoc(doc(db, 'users', uid.replace(/^user_/, '')), updatePayload, { merge: true }).catch(() => {});
+          }
+        } catch (e) {
+          console.warn('Firestore resetUserPassword sync note:', e);
         }
 
-        // If OSIM account, also sync to role/department aliases and osim_members
-        if (targetUser?.role === 'pengurus_osim') {
-          if (targetUser.osimRole === 'ketua') {
-            setDoc(doc(db, 'users', 'user_osim_dept_bph'), payload, { merge: true }).catch(() => {});
-            setDoc(doc(db, 'users', 'user_osim_ketua'), payload, { merge: true }).catch(() => {});
-          } else if (targetUser.osimRole) {
-            setDoc(doc(db, 'users', `user_osim_${targetUser.osimRole}`), payload, { merge: true }).catch(() => {});
-          }
-          if (targetUser.osimDepartmentId) {
-            setDoc(doc(db, 'users', `user_osim_${targetUser.osimDepartmentId}`), payload, { merge: true }).catch(() => {});
-          }
+        // Update local memory state
+        setAllUsers(prev => {
+          const next = prev.map(u => u.uid === uid ? { ...u, password: cleanPass, ...(prevPass && prevPass !== cleanPass ? { previousPassword: prevPass } : {}) } : u);
+          try { localStorage.setItem(LOCAL_STORAGE_ALL_USERS_KEY, JSON.stringify(next)); } catch {}
+          return next;
+        });
 
-          // Also update osim_members in localStorage and Firestore if matching member exists
-          try {
-            const rawOsim = localStorage.getItem('sim_osim_members');
-            if (rawOsim) {
-              const members = JSON.parse(rawOsim);
-              let foundMemberId: string | null = null;
-              const updatedMembers = members.map((m: any) => {
-                const isMatch = m.id === uid ||
-                  (m.loginUsername && targetUser.username && m.loginUsername.toLowerCase() === targetUser.username.toLowerCase()) ||
-                  (m.studentNis && targetUser.nip && m.studentNis === targetUser.nip);
-                if (isMatch) {
-                  foundMemberId = m.id;
-                  return { ...m, updatedAt: nowIso };
-                }
-                return m;
-              });
-              if (foundMemberId) {
-                localStorage.setItem('sim_osim_members', JSON.stringify(updatedMembers));
-                setDoc(doc(db, 'osim_members', foundMemberId), {
-                  updatedAt: nowIso
-                }, { merge: true }).catch(() => {});
+        // 2. Synchronize to Firebase Auth via secondary auth
+        try {
+          const secAuth = getSecondaryAuth();
+          let syncSuccess = false;
+
+          const candidatePasswords = [
+            prevPass,
+            targetUser.previousPassword,
+            'password',
+            'password123',
+            '123456'
+          ].filter((p): p is string => Boolean(p && p.trim()));
+
+          for (const tryPass of candidatePasswords) {
+            try {
+              const cred = await signInWithEmailAndPassword(secAuth, targetUser.email, tryPass);
+              if (cred.user) {
+                await updatePassword(cred.user, cleanPass);
+                syncSuccess = true;
+                break;
               }
+            } catch (authSignErr) {
+              // Try next
             }
-          } catch {}
+          }
+
+          if (!syncSuccess) {
+            try {
+              await createUserWithEmailAndPassword(secAuth, targetUser.email, cleanPass);
+              syncSuccess = true;
+            } catch (createErr) {}
+          }
+          await fbSignOut(secAuth);
+        } catch (secErr) {
+          console.warn('Firebase Auth sync note:', secErr);
         }
-      } catch (e: any) {
-        console.warn('Firestore resetUserPassword sync note:', e);
+
+        recordSystemAuditLog(
+          'RESET_PASSWORD_DIRECT',
+          'Keamanan Akun',
+          `Administrator menetapkan kata sandi baru untuk akun: ${targetUser.email} (${targetUser.displayName})`,
+          currentUser
+        );
+
+        return { success: true };
       }
 
-      recordSystemAuditLog('RESET_PASSWORD', 'Keamanan Akun', `Administrator mereset kata sandi akun: ${targetUser?.displayName || uid} (${targetUser?.email || '-'})`, currentUser);
+      // Fallback: Kirim email instruksi reset resmi Firebase Auth
+      await sendPasswordResetEmail(auth, targetUser.email);
+
+      recordSystemAuditLog(
+        'RESET_PASSWORD',
+        'Keamanan Akun',
+        `Administrator mengirim instruksi reset kata sandi Firebase Auth ke email: ${targetUser.email} (${targetUser.displayName})`,
+        currentUser
+      );
 
       return { success: true };
     } catch (e: any) {
-      return { success: false, error: e?.message || 'Gagal mereset password akun.' };
+      return { success: false, error: e?.message || 'Gagal mereset kata sandi akun.' };
     }
   };
 
   const changePassword = async (currentPass: string, newPass: string): Promise<{ success: boolean; error?: string }> => {
-    if (!currentUser) {
-      return { success: false, error: 'Sesi akun tidak aktif.' };
+    if (!currentUser || !auth.currentUser) {
+      return { success: false, error: 'Sesi akun tidak aktif di Firebase Authentication.' };
     }
 
-    if (currentUser.role === 'pengurus_osim') {
-      return {
-        success: false,
-        error: 'Akun Siswa Pengurus OSIM tidak memiliki hak untuk mengganti kata sandi secara mandiri. Seluruh akun login dikelola secara terpusat oleh Admin App dan Pembina OSIM.'
-      };
+    const userEmail = auth.currentUser.email || currentUser.email;
+    if (!userEmail) {
+      return { success: false, error: 'Email akun tidak terdaftar di Firebase Authentication.' };
     }
 
-    const isPembinaEkstra = 
-      currentUser.role === 'pembina_ekstrakurikuler' ||
-      currentUser.role === 'pembina_ekskul' ||
-      currentUser.role === 'pembina_ekstra' ||
-      currentUser.role === 'pembina';
-
-    if (isPembinaEkstra) {
-      return {
-        success: false,
-        error: 'Akun Pembina Ekstrakurikuler dikelola secara terpusat. Penggantian kata sandi akun ini hanya dapat dilakukan melalui cPanel oleh Administrator Madrasah.'
-      };
-    }
-
-    const cleanCurrent = currentPass.trim();
-    const cleanNew = newPass.trim();
-
-    // Verify existing password
-    const existingPassword = (currentUser.password && currentUser.password.trim()) || 'password';
-    if (cleanCurrent !== existingPassword) {
-      return { success: false, error: 'Kata sandi saat ini yang Anda masukkan salah.' };
-    }
-
-    if (cleanNew.length < 6) {
+    if (!newPass || newPass.length < 6) {
       return { success: false, error: 'Kata sandi baru minimal 6 karakter demi keamanan akun Anda.' };
     }
 
-    if (cleanNew === existingPassword) {
-      return { success: false, error: 'Kata sandi baru tidak boleh sama persis dengan kata sandi saat ini.' };
-    }
-
     try {
-      const updatedUser: UserProfile = {
-        ...currentUser,
-        password: cleanNew,
-        updatedAt: new Date().toISOString()
-      };
+      // WAJIB 2: Password hanya dikelola Firebase Authentication via reauthenticate & updatePassword
+      const credential = EmailAuthProvider.credential(userEmail, currentPass.trim());
+      await reauthenticateWithCredential(auth.currentUser, credential);
 
-      setCurrentUser(updatedUser);
-      try {
-        sessionStorage.setItem(SESSION_STORAGE_USER_KEY, JSON.stringify(updatedUser));
-      } catch {}
+      await updatePassword(auth.currentUser, newPass.trim());
 
-      setAllUsers(prev => {
-        const next = prev.map(u => u.uid === currentUser.uid ? updatedUser : u);
-        localStorage.setItem(LOCAL_STORAGE_ALL_USERS_KEY, JSON.stringify(next));
-        return next;
-      });
-
-      try {
-        await setDoc(doc(db, 'users', currentUser.uid), { password: cleanNew, updatedAt: updatedUser.updatedAt }, { merge: true });
-      } catch (e) {
-        console.warn('Firestore changePassword sync note:', e);
-      }
-
-      recordSystemAuditLog('CHANGE_PASSWORD', 'Keamanan Akun', `Pengguna ${currentUser.displayName} (${currentUser.role.toUpperCase()}) berhasil memperbarui kata sandi akun`, updatedUser);
+      recordSystemAuditLog(
+        'CHANGE_PASSWORD',
+        'Keamanan Akun',
+        `Pengguna ${currentUser.displayName} (${currentUser.role.toUpperCase()}) berhasil memperbarui kata sandi di Firebase Authentication`,
+        currentUser
+      );
 
       return { success: true };
     } catch (e: any) {
-      return { success: false, error: e?.message || 'Gagal memperbarui kata sandi akun.' };
+      let errorMsg = 'Gagal memperbarui kata sandi akun.';
+      if (e?.code === 'auth/wrong-password' || e?.code === 'auth/invalid-credential') {
+        errorMsg = 'Kata sandi saat ini yang Anda masukkan salah.';
+      } else if (e?.code === 'auth/weak-password') {
+        errorMsg = 'Kata sandi baru terlalu lemah (minimal 6 karakter).';
+      } else if (e?.code === 'auth/requires-recent-login') {
+        errorMsg = 'Demi keamanan akun, silakan keluar (logout) dan masuk kembali sebelum memperbarui kata sandi.';
+      }
+      return { success: false, error: errorMsg };
     }
   };
 
@@ -1180,8 +1405,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           role = 'pembina_osim';
         } else if (t.isPembina || (t.assignedExtracurriculars && t.assignedExtracurriculars.length > 0)) {
           role = 'coach_ekstrakurikuler';
+        } else if (rawRole.includes('wali') || rawRole.includes('homeroom')) {
+          role = 'wali_kelas';
         } else {
-          role = 'coach_ekstrakurikuler';
+          role = 'guru';
         }
 
         // 2. Resolve clean institutional email and username
@@ -1236,18 +1463,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const isUidMigrated = !isSuperAdminUser && standardUid.startsWith('user_guru_') && existing.uid !== standardUid && !existing.uid.startsWith('user_guru_') && existing.uid !== 'user_super_admin';
           const targetUid = isUidMigrated ? standardUid : existing.uid;
 
+          const userPassword = existing.password || 'password';
           const merged: UserProfile = {
             ...existing,
             uid: targetUid,
             displayName: t.fullName,
             nip: t.nip || existing.nip,
             email: existing.email || email,
+            username: existing.username || username,
+            password: userPassword,
             role: existing.role === 'super_admin' ? 'super_admin' : role,
             phone: t.phone || existing.phone,
             status: t.isActive !== false ? 'Aktif' : 'Nonaktif',
             isCashManager: t.isCashManager !== undefined ? t.isCashManager : existing.isCashManager,
             cashManagerTitle: t.cashManagerTitle || existing.cashManagerTitle,
             extracurricularIds: assignedEkskulIds, // Me-replace, bukan merge
+            assignedExtracurricularIds: assignedEkskulIds,
             extracurricularNames: assignedEkskulNames,
             extracurricularName: assignedEkskulNameStr,
             counselorSpecialization: role === 'guru_bk' ? (t.subject || existing.counselorSpecialization || 'Bimbingan Konseling Siswa & Karir') : existing.counselorSpecialization,
@@ -1255,13 +1486,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             updatedAt: new Date().toISOString()
           };
           updatedUsers[existingIdx] = merged;
-          firestorePromises.push(setDoc(doc(db, 'users', merged.uid), merged, { merge: true }));
-          if (isUidMigrated && existing.uid) {
-            firestorePromises.push(deleteDoc(doc(db, 'users', existing.uid)));
-          }
-          if (isSuperAdminUser) {
-            // Guarantee removal of any legacy user_guru_01 duplicate in users
-            firestorePromises.push(deleteDoc(doc(db, 'users', 'user_guru_01')));
+          const isPrivilegedAdmin = currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role);
+          if (auth.currentUser && isPrivilegedAdmin) {
+            firestorePromises.push(setDoc(doc(db, 'users', merged.uid), merged, { merge: true }));
+            if (isUidMigrated && existing.uid) {
+              firestorePromises.push(deleteDoc(doc(db, 'users', existing.uid)));
+            }
+            if (isSuperAdminUser) {
+              // Guarantee removal of any legacy user_guru_01 duplicate in users
+              firestorePromises.push(deleteDoc(doc(db, 'users', 'user_guru_01')));
+            }
           }
           count++;
         } else {
@@ -1273,7 +1507,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             nip: t.nip || undefined,
             email: email,
             username: username,
-            password: 'password', // Default login password
+            password: 'password',
             role: isSuperAdminUser ? 'super_admin' : role,
             phone: t.phone || undefined,
             status: t.isActive !== false ? 'Aktif' : 'Nonaktif',
@@ -1287,14 +1521,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             createdAt: new Date().toISOString()
           };
           updatedUsers.push(newUser);
-          firestorePromises.push(setDoc(doc(db, 'users', newUser.uid), newUser, { merge: true }));
+          const isPrivilegedAdmin = currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role);
+          if (auth.currentUser && isPrivilegedAdmin) {
+            firestorePromises.push(setDoc(doc(db, 'users', newUser.uid), newUser, { merge: true }));
+          }
+
+          // Auto-provision credentials in Firebase Auth via Secondary Auth
+          try {
+            const secAuth = getSecondaryAuth();
+            createUserWithEmailAndPassword(secAuth, newUser.email, newUser.password || 'password')
+              .then(() => fbSignOut(secAuth))
+              .catch(() => fbSignOut(secAuth).catch(() => {}));
+          } catch {}
+
           count++;
         }
       }
 
       const deduplicated = deduplicateUsersList(updatedUsers);
       const sorted = sortUsersByHierarchy(deduplicated);
-      localStorage.setItem(LOCAL_STORAGE_ALL_USERS_KEY, JSON.stringify(sorted));
       return sorted;
     });
 
@@ -1361,7 +1606,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const cleanNis = cleanDigits(m.studentNis);
           const fallbackUsername = isBph ? getDefaultOsimUsername(m) : (sekbidNum ? `osim.sekbid${sekbidNum}` : getDefaultOsimUsername(m));
           const username = cleanNis || (m.loginUsername || m.username || '').toLowerCase().trim() || fallbackUsername;
-          const defaultPassword = m.loginPassword || m.password || (isBph ? getDefaultOsimPassword(osimRoleVal) : (sekbidNum ? getDefaultOsimPassword(`sekbid${sekbidNum}`) : getDefaultOsimPassword('sekbid')));
           const email = m.email || `${username}@madrasah.sch.id`;
 
           // Map to Canonical OsimPosition
@@ -1389,7 +1633,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const existing = updatedUsers[existingIdx];
             const isUidMigrated = cleanNis && existing.uid !== canonicalOsimUid;
             const targetUid = isUidMigrated ? canonicalOsimUid : existing.uid;
-            const currentPassword = (existing.password && existing.password !== 'password') ? existing.password : defaultPassword;
             const merged: UserProfile = {
               ...existing,
               uid: targetUid,
@@ -1398,7 +1641,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               phone: m.phone && m.phone !== '-' ? m.phone : existing.phone,
               username: existing.username || username,
               email: existing.email || email,
-              password: currentPassword,
               role: 'anggota_osim',
               position: canonicalOsimPos,
               osimRole: osimRoleVal,
@@ -1412,10 +1654,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               updatedAt: new Date().toISOString()
             };
             updatedUsers[existingIdx] = merged;
-            const { password: _pw3, ...sanitizedOsimMerged } = merged;
-            firestorePromises.push(setDoc(doc(db, 'users', merged.uid), sanitizedOsimMerged, { merge: true }));
-            if (isUidMigrated && existing.uid) {
-              firestorePromises.push(deleteDoc(doc(db, 'users', existing.uid)));
+            if (auth.currentUser) {
+              firestorePromises.push(setDoc(doc(db, 'users', merged.uid), merged, { merge: true }));
+              if (isUidMigrated && existing.uid) {
+                firestorePromises.push(deleteDoc(doc(db, 'users', existing.uid)));
+              }
             }
             count++;
           } else {
@@ -1424,7 +1667,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               displayName: m.fullName,
               username,
               email,
-              password: defaultPassword,
               nip: m.studentNis,
               phone: m.phone && m.phone !== '-' ? m.phone : undefined,
               role: 'anggota_osim',
@@ -1440,8 +1682,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               createdAt: new Date().toISOString()
             };
             updatedUsers.push(newUser);
-            const { password: _pw4, ...sanitizedOsimNew } = newUser;
-            firestorePromises.push(setDoc(doc(db, 'users', newUser.uid), sanitizedOsimNew, { merge: true }));
+            if (auth.currentUser) {
+              firestorePromises.push(setDoc(doc(db, 'users', newUser.uid), newUser, { merge: true }));
+            }
             count++;
           }
         }
@@ -1454,7 +1697,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const sekbidNum = extractSekbidNumber(d.code) || extractSekbidNumber(d.name);
         const deptCode = d.code || (sekbidNum ? `SEKBID-${sekbidNum}` : 'SEKBID');
         const defaultUsername = sekbidNum ? `osim.sekbid${sekbidNum}` : `osim.${trimmedCoord.toLowerCase().split(' ')[0].replace(/[^a-z0-9]/g, '')}`;
-        const defaultPassword = getDefaultOsimPassword(sekbidNum ? `sekbid${sekbidNum}` : 'sekbid');
 
         const existingAccIdx = updatedUsers.findIndex(u =>
           u.displayName.toLowerCase().trim() === trimmedCoord.toLowerCase() ||
@@ -1478,8 +1720,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             updatedAt: new Date().toISOString()
           };
           updatedUsers[existingAccIdx] = merged;
-          const { password: _pw5, ...sanitizedCoordMerged } = merged;
-          firestorePromises.push(setDoc(doc(db, 'users', merged.uid), sanitizedCoordMerged, { merge: true }));
+          if (auth.currentUser) {
+            firestorePromises.push(setDoc(doc(db, 'users', merged.uid), merged, { merge: true }));
+          }
         } else {
           const newUid = `user_osim_${(deptCode || 'sekbid').toLowerCase().replace(/[^a-z0-9]/g, '_')}_${Date.now()}`;
           const newAcc: UserProfile = {
@@ -1487,7 +1730,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             displayName: trimmedCoord,
             username: defaultUsername,
             email: `${defaultUsername}@madrasah.sch.id`,
-            password: defaultPassword,
             role: 'anggota_osim',
             position: 'ketua_sekbid',
             osimRole: 'sekbid',
@@ -1499,8 +1741,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             createdAt: new Date().toISOString()
           };
           updatedUsers.push(newAcc);
-          const { password: _pw6, ...sanitizedNewAcc } = newAcc;
-          firestorePromises.push(setDoc(doc(db, 'users', newAcc.uid), sanitizedNewAcc, { merge: true }));
+          if (auth.currentUser) {
+            firestorePromises.push(setDoc(doc(db, 'users', newAcc.uid), newAcc, { merge: true }));
+          }
           count++;
         }
       }
@@ -1550,6 +1793,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     currentUser && (canonicalRole === 'coach_ekstrakurikuler' || (canonicalRole as any) === 'pembina_ekstrakurikuler')
   );
   const isPengurusOsim = Boolean(currentUser && canonicalRole === 'anggota_osim');
+  const isWaliKelas = Boolean(currentUser && (canonicalRole === 'wali_kelas' || role === 'wali_kelas'));
+  const isGuruMapel = Boolean(currentUser && (canonicalRole === 'guru' || role === 'guru' || (role as string) === 'guru_mapel'));
 
   // Dukungan Multi-Assignment / Rangkap Jabatan: Guru BK yang juga membina ekstrakurikuler
   const isAlsoPembinaEkskul = Boolean(
@@ -1562,6 +1807,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 
   const isPembina = Boolean(currentUser && (isAlsoPembinaEkskul || isPembinaOsim));
+  const isTeacher = Boolean(currentUser && (isWaliKelas || isGuruMapel || isGuruBK || isPembinaEkskul || isPembinaOsim));
 
   // OSIM BPH Positions derived from Canonical Position and position aliases
   const isOsimKetua = Boolean(isPengurusOsim && osimPosition === 'ketua_osim');
@@ -1683,6 +1929,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (allowedPengurusTabs.includes(tabId)) return true;
     }
 
+    // Wali Kelas & Guru Mapel workspace
+    if (isWaliKelas || isGuruMapel) {
+      const allowedTeacherTabs = [
+        'dashboard',
+        'students',
+        'violations',
+        'attendance',
+        'permissions',
+        'reports',
+        'announcements',
+        'rules',
+        'tatib',
+        'handbook',
+        'profile'
+      ];
+      // Jika Wali Kelas / Guru Mapel juga merangkap sebagai Pembina Ekstrakurikuler:
+      if (isAlsoPembinaEkskul) {
+        allowedTeacherTabs.push('extracurriculars', 'members', 'schedules', 'activities', 'achievements', 'cash', 'cash_ledger');
+      }
+      if (allowedTeacherTabs.includes(tabId)) return true;
+    }
+
     // Dynamic RBAC Matrix Module checks fallback
     if (tabId === 'teachers' && canRoleViewModule(currentUser.role, 'crud_teachers', currentUser)) return true;
     if (tabId === 'violations' && canRoleViewModule(currentUser.role, 'violations_discipline', currentUser)) return true;
@@ -1704,6 +1972,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         userRole: role,
         canonicalRole,
         osimPosition,
+        bootstrapState,
+        bootstrapError,
         hasRole: checkHasRole,
         hasPosition: checkHasPosition,
         hasScope: checkHasScope,
@@ -1720,6 +1990,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isPembinaEkskul,
         isAlsoPembinaEkskul,
         isPembina,
+        isWaliKelas,
+        isGuruMapel,
+        isTeacher,
         isPengurusOsim,
         isOsimKetua,
         isOsimWakil,

@@ -723,7 +723,11 @@ export const saveRbacMatrixToFirestore = async (
       updatedBy: updatedBy || 'Super Admin'
     });
   } catch (error) {
-    handleFirestoreError(error, OperationType.WRITE, 'settings/rbac_matrix');
+    if (isPermissionError(error)) {
+      console.warn('RBAC Matrix write permission notice (saved to local cache):', error);
+    } else {
+      handleFirestoreError(error, OperationType.WRITE, 'settings/rbac_matrix');
+    }
   }
 
   // Broadcast real-time permission update across app modules

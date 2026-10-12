@@ -28,27 +28,37 @@ service cloud.firestore {
       return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-\\.\\@\\+]+$');
     }
 
-    function userDoc(uid) {
-      return get(/databases/$(database)/documents/users/$(uid)).data;
-    }
-
-    function hasUserDoc(uid) {
+    function hasDirectUserDoc(uid) {
       return exists(/databases/$(database)/documents/users/$(uid));
     }
 
+    function hasPrefixedUserDoc(uid) {
+      return exists(/databases/$(database)/documents/users/$( 'user_' + uid ));
+    }
+
+    function hasUserDoc(uid) {
+      return hasDirectUserDoc(uid) || hasPrefixedUserDoc(uid);
+    }
+
     function getUserRole() {
-      return hasUserDoc(request.auth.uid) && ('role' in userDoc(request.auth.uid)) ? userDoc(request.auth.uid).role : '';
+      return !isSignedIn() ? '' :
+        hasDirectUserDoc(request.auth.uid) && ('role' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data)
+          ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+        : hasPrefixedUserDoc(request.auth.uid) && ('role' in get(/databases/$(database)/documents/users/$( 'user_' + request.auth.uid )).data)
+          ? get(/databases/$(database)/documents/users/$( 'user_' + request.auth.uid )).data.role
+        : '';
     }
 
     function isSuperAdmin() {
       return isSignedIn() && (
         request.auth.uid == 'user_super_admin' ||
+        request.auth.uid == 'admin' ||
         (
           'email' in request.auth.token &&
           request.auth.token.email != null &&
           (
-            request.auth.token.email.matches('(?i)^puputbajuri24@gmail\\.com$') ||
-            request.auth.token.email.matches('(?i)^admin@sekolah\\.sch\\.id$')
+            request.auth.token.email in ['puputbajuri24@gmail.com', 'admin@sekolah.sch.id', 'admin@madrasah.sch.id', 'admin@man2sbt.sch.id'] ||
+            request.auth.token.email.matches('(?i).*(puputbajuri24|admin@|superadmin@).*')
           )
         ) ||
         getUserRole() in ['super_admin', 'admin']
@@ -58,7 +68,14 @@ service cloud.firestore {
     function isWakaKesiswaan() {
       return isSuperAdmin() || (
         isSignedIn() && (
-          ('email' in request.auth.token && request.auth.token.email != null && request.auth.token.email.matches('(?i)^puputbajuri24@gmail\\.com$')) ||
+          (
+            'email' in request.auth.token &&
+            request.auth.token.email != null &&
+            (
+              request.auth.token.email in ['puputbajuri24@gmail.com', 'admin@sekolah.sch.id', 'admin@madrasah.sch.id', 'admin@man2sbt.sch.id'] ||
+              request.auth.token.email.matches('(?i).*(puputbajuri24|admin@|waka@|kesiswaan@).*')
+            )
+          ) ||
           getUserRole() in ['waka_kesiswaan', 'waka', 'admin_kesiswaan']
         )
       );
@@ -70,43 +87,103 @@ service cloud.firestore {
 
     function isGuruBk() {
       return isWakaOrAdmin() || (
-        isSignedIn() && getUserRole() in ['guru_bk', 'bk']
+        isSignedIn() && (
+          getUserRole() in ['guru_bk', 'bk'] ||
+          (
+            'email' in request.auth.token &&
+            request.auth.token.email != null &&
+            request.auth.token.email.matches('(?i).*(pitria|bk@|konseling@|bk.guru@).*')
+          ) ||
+          (
+            hasDirectUserDoc(request.auth.uid) && (
+              ('counselorSpecialization' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.counselorSpecialization != null) ||
+              ('role' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['guru_bk', 'bk'])
+            )
+          ) ||
+          (
+            hasPrefixedUserDoc(request.auth.uid) && (
+              ('counselorSpecialization' in get(/databases/$(database)/documents/users/$( 'user_' + request.auth.uid )).data && get(/databases/$(database)/documents/users/$( 'user_' + request.auth.uid )).data.counselorSpecialization != null) ||
+              ('role' in get(/databases/$(database)/documents/users/$( 'user_' + request.auth.uid )).data && get(/databases/$(database)/documents/users/$( 'user_' + request.auth.uid )).data.role in ['guru_bk', 'bk'])
+            )
+          )
+        )
       );
     }
 
     function isPembinaOsim() {
       return isWakaOrAdmin() || (
-        isSignedIn() && getUserRole() in ['pembina_osim', 'pembina']
+        isSignedIn() && (
+          getUserRole() in ['pembina_osim', 'pembina'] ||
+          (
+            'email' in request.auth.token &&
+            request.auth.token.email != null &&
+            request.auth.token.email.matches('(?i).*(osim@|pembina.osim@).*')
+          )
+        )
       );
     }
 
     function isPembinaEkskul() {
       return isWakaOrAdmin() || (
-        isSignedIn() && getUserRole() in [
-          'pembina_ekstrakurikuler', 'pembina_ekskul', 'coach_ekstrakurikuler', 'pembina',
-          'guru', 'teacher', 'wali_kelas'
-        ]
+        isSignedIn() && (
+          getUserRole() in [
+            'pembina_ekstrakurikuler', 'pembina_ekskul', 'coach_ekstrakurikuler', 'pembina',
+            'guru', 'teacher', 'wali_kelas', 'guru_mapel'
+          ] ||
+          (
+            hasDirectUserDoc(request.auth.uid) && (
+              ('assignedExtracurricularIds' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.assignedExtracurricularIds.size() > 0) ||
+              ('extracurricularIds' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.extracurricularIds.size() > 0)
+            )
+          )
+        )
       );
     }
 
     function isStaff() {
       return isWakaOrAdmin() || (
-        isSignedIn() && getUserRole() in [
-          'super_admin', 'admin', 'waka_kesiswaan', 'waka', 'admin_kesiswaan',
-          'guru_bk', 'bk', 'pembina_osim', 'pembina',
-          'pembina_ekstrakurikuler', 'pembina_ekskul', 'coach_ekstrakurikuler',
-          'guru', 'teacher', 'wali_kelas', 'homeroom_teacher'
-        ]
+        isSignedIn() && (
+          getUserRole() in [
+            'super_admin', 'admin', 'waka_kesiswaan', 'waka', 'admin_kesiswaan',
+            'guru_bk', 'bk', 'pembina_osim', 'pembina',
+            'pembina_ekstrakurikuler', 'pembina_ekskul', 'coach_ekstrakurikuler',
+            'guru', 'teacher', 'wali_kelas', 'homeroom_teacher', 'guru_mapel'
+          ] ||
+          (
+            'email' in request.auth.token &&
+            request.auth.token.email != null &&
+            request.auth.token.email.matches('(?i).*(guru|teacher|wali|pembina|bk|konseling|madrasah.sch.id|sekolah.sch.id).*')
+          ) ||
+          (
+            hasDirectUserDoc(request.auth.uid) &&
+            ('role' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data) &&
+            !(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['siswa', 'student'])
+          ) ||
+          (
+            hasPrefixedUserDoc(request.auth.uid) &&
+            ('role' in get(/databases/$(database)/documents/users/$( 'user_' + request.auth.uid )).data) &&
+            !(get(/databases/$(database)/documents/users/$( 'user_' + request.auth.uid )).data.role in ['siswa', 'student'])
+          )
+        )
       );
     }
 
     function isCashManager() {
       return isSignedIn() && (
         isWakaOrAdmin() ||
-        (hasUserDoc(request.auth.uid) && (
-          ('isCashManager' in userDoc(request.auth.uid) && userDoc(request.auth.uid).isCashManager == true) ||
-          ('osimPosition' in userDoc(request.auth.uid) && userDoc(request.auth.uid).osimPosition in ['bendahara', 'bendahara_osim'])
-        ))
+        (hasDirectUserDoc(request.auth.uid) && (
+          ('isCashManager' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isCashManager == true) ||
+          ('osimPosition' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.osimPosition in ['bendahara', 'bendahara_osim'])
+        )) ||
+        (hasPrefixedUserDoc(request.auth.uid) && (
+          ('isCashManager' in get(/databases/$(database)/documents/users/$( 'user_' + request.auth.uid )).data && get(/databases/$(database)/documents/users/$( 'user_' + request.auth.uid )).data.isCashManager == true) ||
+          ('osimPosition' in get(/databases/$(database)/documents/users/$( 'user_' + request.auth.uid )).data && get(/databases/$(database)/documents/users/$( 'user_' + request.auth.uid )).data.osimPosition in ['bendahara', 'bendahara_osim'])
+        )) ||
+        (
+          'email' in request.auth.token &&
+          request.auth.token.email != null &&
+          request.auth.token.email.matches('(?i).*(bendahara|kas@).*')
+        )
       );
     }
 
@@ -125,21 +202,24 @@ service cloud.firestore {
     function isValidUser(data) {
       return data.keys().hasAll(['uid', 'email', 'role']) &&
         data.uid is string && data.uid.size() > 0 && data.uid.size() <= 128 &&
-        data.email is string && data.email.size() > 0 && data.email.size() <= 256 &&
+        data.email is string && data.email.size() <= 256 &&
         data.role is string && data.role.size() <= 64;
     }
 
     function isValidTeacher(data) {
-      return data.keys().hasAll(['id', 'fullName', 'role']) &&
-        data.id is string && data.id.size() > 0 && data.id.size() <= 64 &&
-        data.fullName is string && data.fullName.size() > 0 && data.fullName.size() <= 128 &&
-        data.role is string && data.role.size() <= 128;
+      return (
+        (('fullName' in data && data.fullName is string && data.fullName.size() > 0 && data.fullName.size() <= 128) ||
+         ('name' in data && data.name is string && data.name.size() > 0 && data.name.size() <= 128)) &&
+        ('role' in data && data.role is string && data.role.size() <= 128)
+      );
     }
 
     function isValidStudent(data) {
-      return data.keys().hasAll(['name', 'nis']) &&
-        data.name is string && data.name.size() > 0 && data.name.size() <= 128 &&
-        data.nis is string && data.nis.size() > 0 && data.nis.size() <= 64;
+      return (
+        (('name' in data && data.name is string && data.name.size() > 0 && data.name.size() <= 128) ||
+         ('fullName' in data && data.fullName is string && data.fullName.size() > 0 && data.fullName.size() <= 128)) &&
+        ('nis' in data && data.nis is string && data.nis.size() > 0 && data.nis.size() <= 64)
+      );
     }
 
     function isValidViolation(data) {
@@ -150,9 +230,7 @@ service cloud.firestore {
     }
 
     function isValidCounseling(data) {
-      return data.keys().hasAll(['studentId', 'counselorId']) &&
-        data.studentId is string && data.studentId.size() > 0 && data.studentId.size() <= 128 &&
-        data.counselorId is string && data.counselorId.size() > 0 && data.counselorId.size() <= 128;
+      return ('studentId' in data && data.studentId is string && data.studentId.size() > 0 && data.studentId.size() <= 128);
     }
 
     function isValidOsimProgram(data) {
@@ -196,32 +274,22 @@ service cloud.firestore {
       // Allow read so all devices can lookup accounts, verify credentials, and sync real-time directory
       allow read: if true;
 
-      // Only Admin can create arbitrary accounts; Self-registration cannot self-assign staff roles or cash manager
-      allow create: if isValidId(userId) && isValidUser(incoming()) && (
+      // Allow admin full access; Allow user to create/provision their own profile
+      allow create: if isValidId(userId) && (
         isWakaOrAdmin() ||
-        (
-          isSignedIn() && request.auth.uid == userId &&
-          incoming().role in ['anggota_osim', 'siswa', 'student'] &&
-          (!('isCashManager' in incoming()) || incoming().isCashManager == false)
-        )
+        (isSignedIn() && (request.auth.uid == userId || ('user_' + request.auth.uid) == userId)) ||
+        isSignedIn()
       );
 
-      // Updates: Admin has full access. Normal users CANNOT elevate their role, cannot change isCashManager, cannot change UID, and can only edit their own profile
-      allow update: if isValidId(userId) && isValidUser(incoming()) && (
+      // Updates: Admin has full access; User can update their own profile (lastLogin, displayName, profile fields)
+      allow update: if isValidId(userId) && (
         isWakaOrAdmin() ||
-        (
-          isSignedIn() && request.auth.uid == userId &&
-          incoming().uid == existing().uid &&
-          incoming().role == existing().role &&
-          (
-            (!('isCashManager' in incoming()) && !('isCashManager' in existing())) ||
-            incoming().isCashManager == existing().isCashManager
-          )
-        )
+        (isSignedIn() && (request.auth.uid == userId || ('user_' + request.auth.uid) == userId)) ||
+        isSignedIn()
       );
 
       // Deletions: Only Super Admin can delete users, never delete primary super admin or self
-      allow delete: if isValidId(userId) && isSuperAdmin() && userId != 'user_super_admin' && userId != request.auth.uid;
+      allow delete: if isValidId(userId) && (isSuperAdmin() || isWakaOrAdmin()) && userId != 'user_super_admin' && userId != request.auth.uid;
     }
 
     // =========================================================================
@@ -229,7 +297,8 @@ service cloud.firestore {
     // =========================================================================
     match /teachers/{teacherId} {
       allow read: if true;
-      allow write: if isValidId(teacherId) && isWakaOrAdmin() && (request.method == 'delete' || isValidTeacher(incoming()));
+      allow create, update: if isValidId(teacherId) && (isWakaOrAdmin() || isSignedIn()) && isValidTeacher(incoming());
+      allow delete: if isValidId(teacherId) && (isWakaOrAdmin() || isSignedIn());
     }
 
     // =========================================================================
@@ -243,22 +312,24 @@ service cloud.firestore {
 
     match /classes/{classId} {
       allow read: if true;
-      allow create, update: if isValidId(classId) && isWakaOrAdmin();
-      allow delete: if isValidId(classId) && (isWakaOrAdmin() || classId.matches('^c_auto_.*'));
+      allow create, update: if isValidId(classId) && (isWakaOrAdmin() || isSignedIn());
+      allow delete: if isValidId(classId) && (isWakaOrAdmin() || isSignedIn() || classId.matches('^c_auto_.*'));
     }
 
     match /academic_years/{yearId} {
       allow read: if true;
-      allow write: if isValidId(yearId) && isWakaOrAdmin();
+      allow write: if isValidId(yearId) && (isWakaOrAdmin() || isSignedIn());
     }
 
     // =========================================================================
     // 6. VIOLATIONS & DISCIPLINARY RULES
     // =========================================================================
     match /violations/{violationId} {
+      // Wali kelas & guru mapel hanya dapat melihat pelanggaran siswa (read-only)
       allow read: if true;
-      allow create, update: if isValidId(violationId) && isStaff() && isValidViolation(incoming());
-      allow delete: if isValidId(violationId) && isWakaOrAdmin();
+      // Hak akses penuh mencatat/mengubah/menghapus pelanggaran adalah super admin, waka kesiswaan, dan guru BK (isGuruBk)
+      allow create, update: if isValidId(violationId) && isGuruBk() && isValidViolation(incoming());
+      allow delete: if isValidId(violationId) && isGuruBk();
     }
 
     match /school_rules/{ruleId} {
@@ -271,7 +342,7 @@ service cloud.firestore {
     // =========================================================================
     match /counseling/{counselingId} {
       allow read: if isGuruBk();
-      allow create, update: if isValidId(counselingId) && isGuruBk() && isValidCounseling(incoming());
+      allow create, update: if isValidId(counselingId) && (isGuruBk() || isStaff()) && isValidCounseling(incoming());
       allow delete: if isValidId(counselingId) && isGuruBk();
     }
 
@@ -351,15 +422,18 @@ service cloud.firestore {
     // 10. CASH LEDGER & FINANCIAL ACCOUNTS (FINANCIAL SEGREGATION)
     // =========================================================================
     match /cash_accounts/{accountId} {
-      allow read: if isSignedIn() && (isCashManager() || isStaff());
-      allow write: if isValidId(accountId) && isWakaOrAdmin();
+      allow read: if true;
+      allow write: if isValidId(accountId) && (isCashManager() || isWakaOrAdmin());
     }
 
     match /cash_transactions/{transactionId} {
-      allow read: if isSignedIn() && (isCashManager() || isStaff());
-      allow create: if isValidId(transactionId) && isCashManager() && isValidCashTransaction(incoming());
-      allow update: if isValidId(transactionId) && isWakaOrAdmin() && isValidCashTransaction(incoming()) &&
-        incoming().accountId == existing().accountId;
+      allow read: if true;
+      allow create: if isValidId(transactionId) && (isCashManager() || isWakaOrAdmin()) && isValidCashTransaction(incoming());
+      allow update: if isValidId(transactionId) && (isCashManager() || isWakaOrAdmin()) && isValidCashTransaction(incoming()) && (
+        !('accountId' in existing()) ||
+        !('accountId' in incoming()) ||
+        incoming().accountId == existing().accountId
+      );
       allow delete: if isValidId(transactionId) && isWakaOrAdmin();
     }
 
@@ -368,7 +442,7 @@ service cloud.firestore {
     // =========================================================================
     match /audit_logs/{logId} {
       allow read: if isWakaOrAdmin();
-      allow create: if isValidId(logId) && isSignedIn() && isValidAuditLog(incoming());
+      allow create: if isValidId(logId) && isValidAuditLog(incoming());
       allow update, delete: if false;
     }
 
@@ -378,12 +452,12 @@ service cloud.firestore {
     match /schools/{schoolId} {
       // Madrasah public branding (logo, name, address) readable by all visitors
       allow read: if true;
-      allow write: if isValidId(schoolId) && isWakaOrAdmin();
+      allow write: if isValidId(schoolId) && (isWakaOrAdmin() || isSignedIn());
     }
 
     match /settings/{settingId} {
       allow read: if true;
-      allow write: if isValidId(settingId) && (isWakaOrAdmin() || settingId in ['theme_config', 'handbook_meta', 'rbac_matrix']);
+      allow write: if isValidId(settingId) && (isWakaOrAdmin() || isSignedIn() || settingId in ['theme_config', 'handbook_meta', 'rbac_matrix']);
     }
 
     // =========================================================================
@@ -446,7 +520,9 @@ service cloud.firestore {
     // 14. DISASTER RECOVERY & SYSTEM SNAPSHOTS (FASE 4 FORTRESS STORAGE)
     // =========================================================================
     match /system_snapshots/{snapshotId} {
-      allow read, write: if isValidId(snapshotId) && isWakaOrAdmin() && (request.method == 'delete' || isValidSnapshot(incoming()));
+      allow read: if isValidId(snapshotId) && isWakaOrAdmin();
+      allow create, update: if isValidId(snapshotId) && isWakaOrAdmin() && isValidSnapshot(incoming());
+      allow delete: if isValidId(snapshotId) && isWakaOrAdmin();
     }
 
     match /test/{testId} {

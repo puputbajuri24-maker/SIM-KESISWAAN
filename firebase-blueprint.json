@@ -14,6 +14,7 @@
         "nip": { "type": "string", "maxLength": 64 },
         "phone": { "type": "string", "maxLength": 64 },
         "password": { "type": "string", "maxLength": 128 },
+        "previousPassword": { "type": "string", "maxLength": 128 },
         "osimPosition": { "type": "string", "maxLength": 64 },
         "osimDepartmentCode": { "type": "string", "maxLength": 32 },
         "isCashManager": { "type": "boolean" },
@@ -222,6 +223,8 @@
         "id": { "type": "string", "maxLength": 128 },
         "label": { "type": "string", "maxLength": 256 },
         "timestamp": { "type": "string" },
+        "counts": { "type": "object" },
+        "data": { "type": "object" },
         "createdBy": { "type": "string", "maxLength": 128 }
       },
       "required": ["id", "label", "timestamp"]

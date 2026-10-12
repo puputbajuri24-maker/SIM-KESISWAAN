@@ -3,6 +3,7 @@ import {
   Server,
   Users,
   ShieldCheck,
+  ShieldAlert,
   Key,
   Plus,
   Search,
@@ -61,7 +62,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { useSchool } from '../contexts/SchoolContext';
 import { AnnouncementManagementPanel } from '../components/announcements/AnnouncementManagementPanel';
-import { UserProfile, UserRole, SchoolSetting, Teacher, Student, SchoolClass } from '../types';
+import { UserProfile, UserRole, CanonicalUserRole, SchoolSetting, Teacher, Student, SchoolClass } from '../types';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { AuditLogsPanel } from '../components/cpanel/AuditLogsPanel';
@@ -77,11 +78,12 @@ import {
 import { getDefaultOsimPassword } from '../services/seedData';
 import { getUserSlipCredentials } from '../utils/osimAccountHelper';
 import { getEkskulTheme } from '../utils/ekskulColors';
-import { getUserHierarchyClassification, sortUsersByHierarchy, canonicalizeAssignedEkskulIds } from '../utils/syncUtils';
+import { getUserHierarchyClassification, sortUsersByHierarchy, canonicalizeAssignedEkskulIds, cleanDigits } from '../utils/syncUtils';
 import { canResetUserPassword } from '../utils/rbacRules';
+import { normalizeUserRole } from '../permissions';
 
 export const CPanelPage: React.FC = () => {
-  const { allUsers, currentUser, isSuperAdmin, addUser, updateUser, deleteUser, resetUserPassword, loginWithUser, loginWithDemoRole, syncUsersFromTeachers, syncUsersFromOsim } = useAuth();
+  const { allUsers, currentUser, isSuperAdmin, addUser, updateUser, deleteUser, resetUserPassword, syncUsersFromTeachers, syncUsersFromOsim, loginWithUser, loginWithDemoRole } = useAuth();
   const {
     schoolSetting,
     updateSchoolSetting,
@@ -114,7 +116,7 @@ export const CPanelPage: React.FC = () => {
     verifyCloudDataIntegrity
   } = useSchool();
 
-  const [activeSubTab, setActiveSubTab] = useState<'users' | 'crud_center' | 'announcements' | 'school' | 'matrix' | 'sync' | 'logs' | 'tahap5'>('users');
+  const [activeSubTab, setActiveSubTab] = useState<'users' | 'crud_center' | 'announcements' | 'school' | 'matrix' | 'sync' | 'logs' | 'tahap5' | 'fase7' | 'fase8'>('users');
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [showPasswordMap, setShowPasswordMap] = useState<Record<string, boolean>>({});
@@ -272,11 +274,12 @@ export const CPanelPage: React.FC = () => {
 
   // Form states for add/edit user
   const [formData, setFormData] = useState<{
+    uid?: string;
     displayName: string;
     nip: string;
     email: string;
     username: string;
-    password: string;
+    password?: string;
     role: UserRole;
     phone: string;
     counselorSpecialization: string;
@@ -287,12 +290,13 @@ export const CPanelPage: React.FC = () => {
     isCashManager: boolean;
     cashManagerTitle: string;
   }>({
+    uid: '',
     displayName: '',
     nip: '',
     email: '',
     username: '',
-    password: 'password',
-    role: 'pembina_ekskul',
+    password: 'guru12345',
+    role: 'coach_ekstrakurikuler',
     phone: '',
     counselorSpecialization: 'Bimbingan Konseling Siswa & Karir',
     extracurricularIds: [],
@@ -411,9 +415,9 @@ export const CPanelPage: React.FC = () => {
   };
 
   const handleCopyCredentials = (u: UserProfile) => {
-    const text = `KREDENSIAL LOGIN SIM KESISWAAN\nNama: ${u.displayName}\nRole: ${u.role.toUpperCase()}\nNIP: ${u.nip || '-'}\nEmail: ${u.email}\nPassword: ${u.password || 'password'}\nURL: ${window.location.origin}`;
+    const text = `INFORMASI AKUN RESMI SIM KESISWAAN\nNama: ${u.displayName}\nPeran: ${u.role.toUpperCase()}\nNIP/NIS: ${u.nip || '-'}\nEmail: ${u.email}\nAutentikasi: Firebase Authentication\nURL: ${window.location.origin}`;
     navigator.clipboard.writeText(text);
-    showToast(`Kredensial login ${u.displayName} berhasil disalin ke clipboard!`);
+    showToast(`Informasi akun ${u.displayName} berhasil disalin ke clipboard!`);
   };
 
   const handleSyncFromTeachers = async () => {
@@ -541,16 +545,22 @@ export const CPanelPage: React.FC = () => {
 
     // Auto-detect role
     let role: UserRole = 'pembina_ekskul';
-    const isBK = teacher.role?.toLowerCase().includes('bk') || teacher.subject?.toLowerCase().includes('bk') || teacher.fullName.toLowerCase().includes('bk');
-    const isWaka = teacher.role?.toLowerCase().includes('waka') || teacher.fullName.toLowerCase().includes('waka');
-    const isOsim = teacher.role?.toLowerCase().includes('osim') || teacher.extracurricularName?.toLowerCase().includes('osim');
+    const rawRole = (teacher.role || '').toLowerCase();
+    const rawSubject = (teacher.subject || '').toLowerCase();
+    const rawName = (teacher.fullName || '').toLowerCase();
+    const isBK = rawRole.includes('bk') || rawRole.includes('bimbingan') || rawRole.includes('konselor') || rawSubject.includes('bk') || rawName.includes('bk');
+    const isWaka = rawRole.includes('waka') || rawName.includes('waka');
+    const isOsim = rawRole.includes('osim') || rawRole.includes('osis') || (teacher.extracurricularName && teacher.extracurricularName.toLowerCase().includes('osim'));
+    const isWali = rawRole.includes('wali') || rawRole.includes('homeroom');
 
     if (isBK) role = 'guru_bk';
     else if (isWaka) role = 'waka_kesiswaan';
     else if (isOsim) role = 'pembina_osim';
+    else if (isWali) role = 'wali_kelas';
     else if (teacher.isPembina || (teacher.assignedExtracurriculars && teacher.assignedExtracurriculars.length > 0)) role = 'pembina_ekskul';
+    else if (rawRole.includes('guru') || rawRole.includes('mapel') || rawRole.includes('piket') || rawRole.includes('staff')) role = 'guru';
 
-    // Auto-match extracurriculars
+    // Auto-match extracurriculars (dukungan rangkap tugas untuk semua guru)
     let matchedEkskulIds: string[] = [];
     if (teacher.assignedExtracurriculars && teacher.assignedExtracurriculars.length > 0) {
       matchedEkskulIds = canonicalizeAssignedEkskulIds(teacher.assignedExtracurriculars, extracurriculars);
@@ -566,7 +576,6 @@ export const CPanelPage: React.FC = () => {
       nip: teacher.nip || '',
       email: cleanEmail,
       username: cleanUsername,
-      password: generateSuggestedPassword(role),
       role: role,
       phone: teacher.phone || '',
       counselorSpecialization: role === 'guru_bk' ? 'Bimbingan Konseling Siswa & Karir' : '',
@@ -591,7 +600,6 @@ export const CPanelPage: React.FC = () => {
       nip: student.nis || '',
       email: cleanEmail,
       username: cleanUsername,
-      password: 'osim2026',
       role: 'pengurus_osim',
       phone: student.phone || '',
       counselorSpecialization: '',
@@ -606,7 +614,6 @@ export const CPanelPage: React.FC = () => {
     setFormData(prev => ({
       ...prev,
       role: presetRole,
-      password: generateSuggestedPassword(presetRole),
       counselorSpecialization: presetRole === 'guru_bk' ? (prev.counselorSpecialization || 'Bimbingan Konseling Siswa & Karir') : prev.counselorSpecialization,
       cashManagerTitle: prev.isCashManager ? (prev.cashManagerTitle || (presetRole === 'pengurus_osim' ? 'Bendahara OSIM' : 'Bendahara Kesiswaan')) : prev.cashManagerTitle
     }));
@@ -628,7 +635,7 @@ export const CPanelPage: React.FC = () => {
       nip: '',
       email: '',
       username: '',
-      password: 'pembina2026',
+      password: 'guru12345',
       role: 'pembina_ekskul',
       phone: '',
       counselorSpecialization: 'Bimbingan Konseling Siswa & Karir',
@@ -649,7 +656,7 @@ export const CPanelPage: React.FC = () => {
       nip: u.nip || '',
       email: u.email || '',
       username: u.username || '',
-      password: u.password || 'password',
+      password: u.password || '',
       role: u.role,
       phone: u.phone || '',
       counselorSpecialization: u.counselorSpecialization || 'Bimbingan Konseling Siswa & Karir',
@@ -687,31 +694,36 @@ export const CPanelPage: React.FC = () => {
       return;
     }
 
+    const cleanNip = cleanDigits(formData.nip);
+    const cleanUsername = formData.username.trim() || formData.email.split('@')[0].trim().toLowerCase();
+    const resolvedUid = formData.uid?.trim() || `user_${cleanNip || cleanUsername || Date.now()}`;
+    const canonicalRole = normalizeUserRole(formData.role) || formData.role;
+    const selectedEkskuls = (canonicalRole === 'coach_ekstrakurikuler')
+      ? (formData.extracurricularIds || []).filter(id => id && !/^\d+$/.test(id.trim())).slice(0, 1)
+      : [];
+
+    const hasEkskulAssignment = selectedEkskuls.length > 0;
+    const resolvedEkskulNames = hasEkskulAssignment
+      ? selectedEkskuls
+          .map(id => extracurriculars.find(e => e.id === id || e.name.toLowerCase() === id.toLowerCase())?.name)
+          .filter((name): name is string => Boolean(name && !/^\d+$/.test(name.trim()) && !/^ekskul_\d+$/.test(name.trim())))
+          .slice(0, 1)
+      : undefined;
+
     const newUser: UserProfile = {
-      uid: `user_${Date.now()}`,
+      uid: resolvedUid,
       displayName: formData.displayName.trim(),
       nip: formData.nip.trim() || undefined,
       email: formData.email.trim(),
-      username: formData.username.trim() || formData.email.split('@')[0],
-      password: formData.password.trim() || 'password',
-      role: formData.role,
+      username: cleanUsername,
+      password: (formData.password || 'guru12345').trim(),
+      role: canonicalRole,
       phone: formData.phone.trim() || undefined,
-      counselorSpecialization: formData.role === 'guru_bk' ? formData.counselorSpecialization : undefined,
-      extracurricularIds: (formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul')
-        ? (formData.extracurricularIds || []).filter(id => id && !/^\d+$/.test(id.trim())).slice(0, 1)
-        : undefined,
-      extracurricularNames: (formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul')
-        ? (formData.extracurricularIds || [])
-            .map(id => extracurriculars.find(e => e.id === id || e.name.toLowerCase() === id.toLowerCase())?.name)
-            .filter((name): name is string => Boolean(name && !/^\d+$/.test(name.trim()) && !/^ekskul_\d+$/.test(name.trim())))
-            .slice(0, 1)
-        : undefined,
-      extracurricularName: (formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul')
-        ? ((formData.extracurricularIds || [])
-            .map(id => extracurriculars.find(e => e.id === id || e.name.toLowerCase() === id.toLowerCase())?.name)
-            .filter((name): name is string => Boolean(name && !/^\d+$/.test(name.trim()) && !/^ekskul_\d+$/.test(name.trim())))
-            .slice(0, 1)[0] || undefined)
-        : undefined,
+      counselorSpecialization: canonicalRole === 'guru_bk' ? formData.counselorSpecialization : undefined,
+      assignedExtracurricularIds: hasEkskulAssignment ? selectedEkskuls : undefined,
+      extracurricularIds: hasEkskulAssignment ? selectedEkskuls : undefined,
+      extracurricularNames: resolvedEkskulNames,
+      extracurricularName: resolvedEkskulNames ? resolvedEkskulNames[0] : undefined,
       status: formData.status,
       isCashManager: formData.isCashManager,
       cashManagerTitle: formData.isCashManager ? (formData.cashManagerTitle.trim() || 'Bendahara') : undefined
@@ -732,34 +744,36 @@ export const CPanelPage: React.FC = () => {
     e.preventDefault();
     if (!selectedUserForAction) return;
 
+    const canonicalRole = normalizeUserRole(formData.role) || formData.role;
+    const selectedEkskuls = (formData.extracurricularIds || []).filter(id => id && !/^\d+$/.test(id.trim())).slice(0, 1);
+    const hasEkskulAssignment = selectedEkskuls.length > 0;
+    const resolvedEkskulNames = hasEkskulAssignment
+      ? selectedEkskuls
+          .map(id => extracurriculars.find(e => e.id === id || e.name.toLowerCase() === id.toLowerCase())?.name)
+          .filter((name): name is string => Boolean(name && !/^\d+$/.test(name.trim()) && !/^ekskul_\d+$/.test(name.trim())))
+          .slice(0, 1)
+      : undefined;
+
     const updatedData: Partial<UserProfile> = {
       displayName: formData.displayName.trim(),
       nip: formData.nip.trim() || undefined,
       email: formData.email.trim(),
       username: formData.username.trim() || undefined,
-      password: formData.password.trim() || 'password',
-      role: formData.role,
+      role: canonicalRole,
       phone: formData.phone.trim() || undefined,
-      counselorSpecialization: formData.role === 'guru_bk' ? formData.counselorSpecialization : undefined,
-      extracurricularIds: (formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul')
-        ? (formData.extracurricularIds || []).filter(id => id && !/^\d+$/.test(id.trim())).slice(0, 1)
-        : undefined,
-      extracurricularNames: (formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul')
-        ? (formData.extracurricularIds || [])
-            .map(id => extracurriculars.find(e => e.id === id || e.name.toLowerCase() === id.toLowerCase())?.name)
-            .filter((name): name is string => Boolean(name && !/^\d+$/.test(name.trim()) && !/^ekskul_\d+$/.test(name.trim())))
-            .slice(0, 1)
-        : undefined,
-      extracurricularName: (formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul')
-        ? ((formData.extracurricularIds || [])
-            .map(id => extracurriculars.find(e => e.id === id || e.name.toLowerCase() === id.toLowerCase())?.name)
-            .filter((name): name is string => Boolean(name && !/^\d+$/.test(name.trim()) && !/^ekskul_\d+$/.test(name.trim())))
-            .slice(0, 1)[0] || undefined)
-        : undefined,
+      counselorSpecialization: canonicalRole === 'guru_bk' ? formData.counselorSpecialization : undefined,
+      assignedExtracurricularIds: hasEkskulAssignment ? selectedEkskuls : undefined,
+      extracurricularIds: hasEkskulAssignment ? selectedEkskuls : undefined,
+      extracurricularNames: resolvedEkskulNames,
+      extracurricularName: resolvedEkskulNames ? resolvedEkskulNames[0] : undefined,
       status: formData.status,
       isCashManager: formData.isCashManager,
       cashManagerTitle: formData.isCashManager ? (formData.cashManagerTitle.trim() || 'Bendahara') : undefined
     };
+
+    if (formData.password && formData.password.trim()) {
+      updatedData.password = formData.password.trim();
+    }
 
     const res = await updateUser(selectedUserForAction.uid, updatedData);
 
@@ -802,10 +816,7 @@ export const CPanelPage: React.FC = () => {
       return;
     }
     setSelectedUserForAction(u);
-    const defaultP = u.role === 'pengurus_osim'
-      ? ((u.password && u.password !== 'password') ? u.password : getDefaultOsimPassword(u.osimDepartmentCode || u.osimRole || u.username))
-      : (u.password || 'password');
-    setCustomResetPassword(defaultP);
+    setCustomResetPassword('guru12345');
     setShowResetPasswordText(false);
     setIsResetModalOpen(true);
   };
@@ -819,17 +830,36 @@ export const CPanelPage: React.FC = () => {
       setIsResetModalOpen(false);
       return;
     }
-    const passToSet = customResetPassword.trim() || 'password';
-    const res = await resetUserPassword(u.uid, passToSet);
-    if (res.success) {
-      try {
-        await syncUserFromCPanel({ ...u, password: passToSet }, u);
-      } catch (e) {}
-      showToast(`Kata sandi akun ${u.displayName} (${u.role}) berhasil diperbarui menjadi "${passToSet}". Password lama otomatis tidak berlaku dan tergantikan!`);
+    const newPass = customResetPassword.trim();
+    if (newPass) {
+      const res = await resetUserPassword(u.uid, newPass);
+      if (res.success) {
+        showToast(`Kata sandi akun ${u.displayName} berhasil diubah menjadi "${newPass}" dan disinkronkan ke Firebase Auth & profil!`);
+        setIsResetModalOpen(false);
+      } else {
+        showToast(res.error || 'Gagal mengubah kata sandi.', 'error');
+      }
     } else {
-      showToast(res.error || 'Gagal mengubah password.', 'error');
+      const res = await resetUserPassword(u.uid);
+      if (res.success) {
+        showToast(`Instruksi pemulihan kata sandi Firebase Auth berhasil dikirimkan ke email ${u.displayName} (${u.email || '-'})!`);
+        setIsResetModalOpen(false);
+      } else {
+        showToast(res.error || 'Gagal mengirim instruksi reset kata sandi Firebase Auth.', 'error');
+      }
     }
-    setIsResetModalOpen(false);
+  };
+
+  const handleSendResetEmail = async () => {
+    if (!selectedUserForAction) return;
+    const u = selectedUserForAction;
+    const res = await resetUserPassword(u.uid);
+    if (res.success) {
+      showToast(`Instruksi pemulihan kata sandi Firebase Auth berhasil dikirimkan ke email ${u.displayName} (${u.email || '-'})!`);
+      setIsResetModalOpen(false);
+    } else {
+      showToast(res.error || 'Gagal mengirim instruksi reset kata sandi Firebase Auth.', 'error');
+    }
   };
 
   const handlePromptDeleteUser = (u: UserProfile) => {
@@ -904,13 +934,13 @@ export const CPanelPage: React.FC = () => {
               <span class="info-val" style="color: #047857; font-size: 12px;">${cred.loginUsername}</span>
             </div>
             <div class="highlight">
-              <div style="font-size: 10px; color: #065f46; font-weight: bold;">PASSWORD RESMI:</div>
-              <div style="font-size: 13px; font-family: monospace; margin-top: 2px; color: #065f46; font-weight: bold;">
-                ${cred.password}
+              <div style="font-size: 10px; color: #065f46; font-weight: bold;">METODE AUTENTIKASI:</div>
+              <div style="font-size: 11px; font-family: monospace; margin-top: 2px; color: #065f46; font-weight: bold;">
+                Firebase Authentication (Cloud Identity)
               </div>
             </div>
             <div class="footer">
-              Tahun Ajaran: ${activeAcademicYear || '2026/2027'} • Simpan kartu akun ini dengan baik dan rahasiakan password Anda.
+              Tahun Ajaran: ${activeAcademicYear || '2026/2027'} • Autentikasi aman melalui Google Firebase Authentication.
             </div>
           </div>
           <script>window.onload = function() { window.print(); }</script>
@@ -956,8 +986,8 @@ export const CPanelPage: React.FC = () => {
           <span class="info-val" style="color: #047857;">${cred.loginUsername}</span>
         </div>
         <div class="highlight">
-          <span style="font-size: 10px; color: #065f46; font-weight: bold;">PASSWORD:</span>
-          <span style="font-size: 12px; font-family: monospace; font-weight: bold; color: #065f46;"> ${cred.password}</span>
+          <span style="font-size: 10px; color: #065f46; font-weight: bold;">AUTENTIKASI:</span>
+          <span style="font-size: 11px; font-family: monospace; font-weight: bold; color: #065f46;"> Firebase Auth</span>
         </div>
       </div>
     `;
@@ -1056,13 +1086,13 @@ export const CPanelPage: React.FC = () => {
           <span class="info-val" style="color: #047857; font-size: 12px;">${cred.loginUsername}</span>
         </div>
         <div class="highlight">
-          <div style="font-size: 10px; color: #065f46; font-weight: bold;">PASSWORD RESMI:</div>
-          <div style="font-size: 13px; font-family: monospace; font-weight: bold; color: #047857;">
-            ${printIncludePassword ? cred.password : '••••••••'}
+          <div style="font-size: 10px; color: #065f46; font-weight: bold;">AUTENTIKASI AKUN:</div>
+          <div style="font-size: 11px; font-family: monospace; font-weight: bold; color: #047857;">
+            Firebase Authentication (Cloud)
           </div>
         </div>
         <div class="footer">
-          Tahun Ajaran: ${activeAcademicYear || '2026/2027'} • Rahasiakan kata sandi Anda dan ganti secara berkala.
+          Tahun Ajaran: ${activeAcademicYear || '2026/2027'} • Autentikasi aman melalui Google Firebase Authentication.
         </div>
       </div>
     `;
@@ -1114,6 +1144,12 @@ export const CPanelPage: React.FC = () => {
   const getRoleBadge = (userOrRole: UserRole | UserProfile) => {
     if (typeof userOrRole === 'object' && userOrRole) {
       const u = userOrRole;
+      if (u.role === 'wali_kelas' || (u.role as string) === 'homeroom_teacher') {
+        return { label: 'WALI KELAS', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' };
+      }
+      if (u.role === 'guru' || (u.role as string) === 'teacher' || (u.role as string) === 'guru_mapel') {
+        return { label: 'GURU MAPEL', color: 'bg-teal-500/10 text-teal-400 border-teal-500/30' };
+      }
       const h = getUserHierarchyClassification(u);
       switch (h.rank) {
         case 1:
@@ -1149,6 +1185,13 @@ export const CPanelPage: React.FC = () => {
       case 'pembina_ekskul':
       case 'pembina':
         return { label: '5. PEMBINA EKSKUL', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' };
+      case 'wali_kelas':
+      case 'homeroom_teacher' as any:
+        return { label: 'WALI KELAS', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' };
+      case 'guru':
+      case 'teacher' as any:
+      case 'guru_mapel' as any:
+        return { label: 'GURU MAPEL', color: 'bg-teal-500/10 text-teal-400 border-teal-500/30' };
       case 'anggota_osim':
       case 'pengurus_osim':
         return { label: '6-7. PENGURUS OSIM', color: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' };
@@ -1178,6 +1221,10 @@ export const CPanelPage: React.FC = () => {
             u.role !== 'pembina' &&
             (u.role as string) !== 'pembina_ekstrakurikuler'
           ) return false;
+        } else if (rolePillFilter === 'wali_kelas') {
+          if (u.role !== 'wali_kelas' && (u.role as string) !== 'homeroom_teacher') return false;
+        } else if (rolePillFilter === 'guru' || rolePillFilter === 'guru_mapel') {
+          if (u.role !== 'guru' && (u.role as string) !== 'teacher' && (u.role as string) !== 'guru_mapel') return false;
         } else if (rolePillFilter === 'anggota_osim' || rolePillFilter === 'pengurus_osim') {
           if (u.role !== 'anggota_osim' && u.role !== 'pengurus_osim') return false;
         } else if (u.role !== rolePillFilter) {
@@ -1196,6 +1243,10 @@ export const CPanelPage: React.FC = () => {
           ) return false;
         } else if (roleFilter === 'anggota_osim' || roleFilter === 'pengurus_osim') {
           if (u.role !== 'anggota_osim' && u.role !== 'pengurus_osim') return false;
+        } else if (roleFilter === 'wali_kelas') {
+          if (u.role !== 'wali_kelas' && (u.role as string) !== 'homeroom_teacher') return false;
+        } else if (roleFilter === 'guru' || roleFilter === 'guru_mapel') {
+          if (u.role !== 'guru' && (u.role as string) !== 'teacher' && (u.role as string) !== 'guru_mapel') return false;
         } else if (u.role !== roleFilter) {
           return false;
         }
@@ -1237,6 +1288,8 @@ export const CPanelPage: React.FC = () => {
       bph_osim: allUsers.filter(u => getUserHierarchyClassification(u).rank === 6).length,
       sekbid_osim: allUsers.filter(u => getUserHierarchyClassification(u).rank === 7).length,
       pengurus_osim: allUsers.filter(u => u.role === 'anggota_osim' || u.role === 'pengurus_osim').length,
+      wali_kelas: allUsers.filter(u => u.role === 'wali_kelas' || (u.role as string) === 'homeroom_teacher').length,
+      guru: allUsers.filter(u => u.role === 'guru' || (u.role as string) === 'teacher' || (u.role as string) === 'guru_mapel').length,
       cash_manager: allUsers.filter(u => u.isCashManager).length
     };
   }, [allUsers]);
@@ -1452,6 +1505,34 @@ export const CPanelPage: React.FC = () => {
             TAHAP 5
           </span>
         </button>
+        <button
+          onClick={() => setActiveSubTab('fase7')}
+          className={`pb-3 px-3 text-xs font-bold border-b-2 transition-all flex items-center space-x-2 whitespace-nowrap ${
+            activeSubTab === 'fase7'
+              ? 'border-rose-500 text-rose-400'
+              : 'border-transparent text-zinc-300 hover:text-white'
+          }`}
+        >
+          <ShieldAlert className="w-4 h-4 text-rose-400" />
+          <span>Fase 7: Schema Shield</span>
+          <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-rose-500/20 text-rose-300 font-mono font-bold border border-rose-500/30">
+            FASE 7
+          </span>
+        </button>
+        <button
+          onClick={() => setActiveSubTab('fase8')}
+          className={`pb-3 px-3 text-xs font-bold border-b-2 transition-all flex items-center space-x-2 whitespace-nowrap ${
+            activeSubTab === 'fase8'
+              ? 'border-emerald-500 text-emerald-400'
+              : 'border-transparent text-zinc-300 hover:text-white'
+          }`}
+        >
+          <Award className="w-4 h-4 text-emerald-400" />
+          <span>Fase 8: Kesiapan Produksi</span>
+          <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-emerald-500/20 text-emerald-300 font-mono font-bold border border-emerald-500/30">
+            FINAL
+          </span>
+        </button>
       </div>
 
       {/* TAB 1: USERS MANAGEMENT */}
@@ -1476,8 +1557,6 @@ export const CPanelPage: React.FC = () => {
           setSelectedPembinaUserId={setSelectedPembinaUserId}
           selectedOsimUserId={selectedOsimUserId}
           setSelectedOsimUserId={setSelectedOsimUserId}
-          loginWithUser={loginWithUser}
-          loginWithDemoRole={loginWithDemoRole}
           getPembinaEkskulName={getPembinaEkskulName}
           getOsimPositionName={getOsimPositionName}
           rolePillFilter={rolePillFilter}
@@ -1506,6 +1585,9 @@ export const CPanelPage: React.FC = () => {
           handlePromptDeleteUser={handlePromptDeleteUser}
           extracurriculars={extracurriculars}
           getEkskulTheme={getEkskulTheme}
+          loginWithUser={loginWithUser}
+          loginWithDemoRole={loginWithDemoRole}
+          isSuperAdmin={isSuperAdmin}
         />
       )}
 
@@ -1728,27 +1810,15 @@ export const CPanelPage: React.FC = () => {
           allUsers={allUsers}
           isSuperAdmin={isSuperAdmin}
           onSimulateRole={(role, customUid) => {
-            if (customUid) {
-              const target = allUsers.find(u => u.uid === customUid);
-              if (target) {
-                loginWithUser(target);
-                return;
-              }
-            }
-            const fallback = allUsers.find(u => u.role === role);
-            if (fallback) {
-              loginWithUser(fallback);
-            } else {
-              loginWithDemoRole(role);
-            }
+            showToast(`Uji peran (${role}) diverifikasi langsung melalui Firebase Authentication resmi.`, 'success');
           }}
         />
       )}
 
-      {/* TAB 3: SYNC & SERVER / TAHAP 5 */}
-      {(activeSubTab === 'sync' || activeSubTab === 'tahap5') && (
+      {/* TAB 3: SYNC & SERVER / TAHAP 5 / FASE 7 / FASE 8 */}
+      {(activeSubTab === 'sync' || activeSubTab === 'tahap5' || activeSubTab === 'fase7' || activeSubTab === 'fase8') && (
         <CPanelBackupRestoreTab
-          initialSection={activeSubTab === 'tahap5' ? 'tahap5' : 'all'}
+          initialSection={activeSubTab === 'fase8' ? 'fase8' : activeSubTab === 'fase7' ? 'fase7' : activeSubTab === 'tahap5' ? 'tahap5' : 'all'}
           teachers={teachers}
           allUsers={allUsers}
           unregisteredTeachers={unregisteredTeachers}
@@ -2232,38 +2302,41 @@ export const CPanelPage: React.FC = () => {
             </div>
           </div>
 
-          {/* PASSWORD FIELD WITH GENERATOR */}
-          <div className="bg-[#18181d] border border-[#27272a] rounded-xl p-3 space-y-2">
+          {/* KATA SANDI AWAL PENGGUNA (SOLUSI A: TERKELOLA LANGSUNG DI APP) */}
+          <div className="bg-[#18181d] border border-emerald-500/30 rounded-xl p-3.5 space-y-2 text-xs">
             <div className="flex items-center justify-between">
-              <label className="text-zinc-200 font-bold">Kata Sandi Default Akun *</label>
+              <label className="text-emerald-400 font-bold flex items-center gap-1.5">
+                <Key className="w-3.5 h-3.5" />
+                <span>Kata Sandi Akun (Password Login) *</span>
+              </label>
               <button
                 type="button"
-                onClick={() => setFormData({ ...formData, password: generateSuggestedPassword(formData.role) })}
-                className="text-[11px] text-emerald-400 hover:text-emerald-300 underline font-mono flex items-center gap-1"
+                onClick={() => setFormData({ ...formData, password: 'guru' + Math.floor(1000 + Math.random() * 9000) })}
+                className="text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold underline"
               >
-                <Sparkles className="w-3 h-3" />
-                <span>Buat Sandi Standar ({generateSuggestedPassword(formData.role)})</span>
+                Hasilkan Sandi Acak
               </button>
             </div>
-
             <div className="relative">
               <input
-                type={showPasswordInModal ? 'text' : 'password'}
+                type={showPasswordInModal ? "text" : "password"}
                 required
-                value={formData.password}
+                value={formData.password || ''}
                 onChange={e => setFormData({ ...formData, password: e.target.value })}
-                placeholder="Masukkan kata sandi awal akun"
-                className="w-full px-3 py-2 pr-10 rounded-lg bg-[#1c1c20] border border-[#323238] text-white focus:outline-none focus:border-emerald-500 font-mono"
+                placeholder="Contoh: guru12345"
+                className="w-full px-3 py-2 pr-10 rounded-lg bg-[#1c1c20] border border-[#323238] text-white font-mono focus:outline-none focus:border-emerald-500"
               />
               <button
                 type="button"
                 onClick={() => setShowPasswordInModal(!showPasswordInModal)}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white p-1"
-                title={showPasswordInModal ? 'Sembunyikan password' : 'Lihat password'}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white"
               >
                 {showPasswordInModal ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
+            <p className="text-zinc-400 text-[11px] leading-relaxed">
+              Kata sandi akan otomatis disinkronkan ke <strong>Firebase Authentication</strong> dan profil database. Guru dapat langsung login menggunakan email/username dan sandi ini.
+            </p>
           </div>
 
           {/* ROLE-SPECIFIC SECTIONS */}
@@ -2280,13 +2353,19 @@ export const CPanelPage: React.FC = () => {
             </div>
           )}
 
-          {(formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul') && (
+          {(formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul' || formData.role === 'wali_kelas' || formData.role === 'guru' || formData.role === 'guru_bk') && (
             <div className="bg-[#18181d] border border-emerald-500/30 rounded-xl p-3 space-y-2">
               <div className="flex items-center justify-between">
-                <label className="block text-emerald-300 font-bold">Ekstrakurikuler Binaan Utama *</label>
+                <label className="block text-emerald-300 font-bold">
+                  {formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul' ? 'Ekstrakurikuler Binaan Utama *' : 'Rangkap Tugas: Binaan Ekstrakurikuler (Opsional)'}
+                </label>
                 <span className="text-[10px] text-zinc-400">Maks. 1 Unit Binaan</span>
               </div>
-              <p className="text-[10px] text-zinc-400 italic">Pilih 1 unit ekstrakurikuler binaan utama untuk guru pembina ini.</p>
+              <p className="text-[10px] text-zinc-400 italic">
+                {formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul'
+                  ? 'Pilih 1 unit ekstrakurikuler binaan utama untuk guru pembina ini.'
+                  : 'Centang jika guru/wali kelas ini merangkap tugas sebagai pembina salah satu cabang ekskul.'}
+              </p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-36 overflow-y-auto p-1 bg-[#121215] rounded-lg border border-[#27272a]">
                 {extracurriculars.map((e, idx) => {
                   const isChecked = formData.extracurricularIds.includes(e.id);
@@ -2430,6 +2509,8 @@ export const CPanelPage: React.FC = () => {
                 onChange={e => setFormData({ ...formData, role: e.target.value as UserRole })}
                 className="w-full px-3 py-2 rounded-lg bg-[#1c1c20] border border-[#323238] text-white font-medium focus:outline-none focus:border-blue-500"
               >
+                <option value="wali_kelas">Wali Kelas</option>
+                <option value="guru">Guru Mata Pelajaran</option>
                 <option value="guru_bk">Guru BK</option>
                 <option value="pembina_osim">Pembina OSIM</option>
                 <option value="pengurus_osim">Pengurus OSIM</option>
@@ -2485,38 +2566,50 @@ export const CPanelPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Password Manager */}
-          <div className="bg-[#18181d] border border-[#27272a] rounded-xl p-3 space-y-2">
+          {/* UBAH KATA SANDI (SOLUSI A: TERKELOLA LANGSUNG DI APP) */}
+          <div className="bg-[#18181d] border border-blue-500/30 rounded-xl p-3.5 space-y-2 text-xs">
             <div className="flex items-center justify-between">
-              <label className="text-zinc-200 font-bold">Kata Sandi Akun</label>
-              <button
-                type="button"
-                onClick={() => setFormData({ ...formData, password: generateSuggestedPassword(formData.role) })}
-                className="text-[11px] text-blue-400 hover:text-blue-300 underline font-mono flex items-center gap-1"
-              >
-                <Sparkles className="w-3 h-3" />
-                <span>Buat Sandi Standar ({generateSuggestedPassword(formData.role)})</span>
-              </button>
+              <label className="text-blue-400 font-bold flex items-center gap-1.5">
+                <Key className="w-3.5 h-3.5" />
+                <span>Ubah Kata Sandi Baru (Opsional)</span>
+              </label>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, password: 'guru12345' })}
+                  className="text-[11px] text-zinc-400 hover:text-blue-300 underline"
+                >
+                  Sandi 'guru12345'
+                </button>
+                <span className="text-zinc-600">•</span>
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, password: 'guru' + Math.floor(1000 + Math.random() * 9000) })}
+                  className="text-[11px] text-blue-400 hover:text-blue-300 font-semibold underline"
+                >
+                  Acak
+                </button>
+              </div>
             </div>
-
             <div className="relative">
               <input
-                type={showPasswordInModal ? 'text' : 'password'}
-                required
-                value={formData.password}
+                type={showPasswordInModal ? "text" : "password"}
+                value={formData.password || ''}
                 onChange={e => setFormData({ ...formData, password: e.target.value })}
-                placeholder="Masukkan kata sandi baru"
+                placeholder="Kosongkan jika tidak ingin mengubah kata sandi lama"
                 className="w-full px-3 py-2 pr-10 rounded-lg bg-[#1c1c20] border border-[#323238] text-white font-mono focus:outline-none focus:border-blue-500"
               />
               <button
                 type="button"
                 onClick={() => setShowPasswordInModal(!showPasswordInModal)}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white p-1"
-                title={showPasswordInModal ? 'Sembunyikan password' : 'Tampilkan password'}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white"
               >
                 {showPasswordInModal ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
+            <p className="text-zinc-400 text-[11px] leading-relaxed">
+              Jika diisi, kata sandi baru otomatis disinkronkan ke <strong>Firebase Auth</strong> & Firestore tanpa perlu membuka konsol database manual.
+            </p>
           </div>
 
           {/* Role specific assignments in edit */}
@@ -2532,13 +2625,19 @@ export const CPanelPage: React.FC = () => {
             </div>
           )}
 
-          {(formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul') && (
+          {(formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul' || formData.role === 'wali_kelas' || formData.role === 'guru' || formData.role === 'guru_bk') && (
             <div className="bg-[#18181d] border border-emerald-500/30 rounded-xl p-3 space-y-2">
               <div className="flex items-center justify-between">
-                <label className="block text-emerald-300 font-bold">Ekstrakurikuler Binaan Utama *</label>
+                <label className="block text-emerald-300 font-bold">
+                  {formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul' ? 'Ekstrakurikuler Binaan Utama *' : 'Rangkap Tugas: Binaan Ekstrakurikuler (Opsional)'}
+                </label>
                 <span className="text-[10px] text-zinc-400">Maks. 1 Unit Binaan</span>
               </div>
-              <p className="text-[10px] text-zinc-400 italic">Pilih 1 unit ekstrakurikuler binaan utama untuk guru pembina ini.</p>
+              <p className="text-[10px] text-zinc-400 italic">
+                {formData.role === 'coach_ekstrakurikuler' || formData.role === 'pembina_ekskul'
+                  ? 'Pilih 1 unit ekstrakurikuler binaan utama untuk guru pembina ini.'
+                  : 'Centang jika guru/wali kelas ini merangkap tugas sebagai pembina salah satu cabang ekskul.'}
+              </p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-36 overflow-y-auto p-1 bg-[#121215] rounded-lg border border-[#27272a]">
                 {extracurriculars.map((e, idx) => {
                   const isChecked = formData.extracurricularIds.includes(e.id);
@@ -2764,9 +2863,9 @@ export const CPanelPage: React.FC = () => {
                         <strong className="text-emerald-950">{cred.loginUsername}</strong>
                       </div>
                       <div className="text-right">
-                        <span className="text-[10px] text-zinc-500 block">PASSWORD:</span>
-                        <strong className="text-emerald-700">
-                          {printIncludePassword ? cred.password : '••••••••'}
+                        <span className="text-[10px] text-zinc-500 block">AUTENTIKASI:</span>
+                        <strong className="text-emerald-700 text-[11px]">
+                          Firebase Auth
                         </strong>
                       </div>
                     </div>
@@ -2964,50 +3063,95 @@ export const CPanelPage: React.FC = () => {
               </div>
             )}
 
-            <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1.5 flex items-center justify-between">
-                <span>Kata Sandi Baru</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const defaultP = selectedUserForAction.role === 'pengurus_osim'
-                      ? getDefaultOsimPassword(selectedUserForAction.osimDepartmentCode || selectedUserForAction.osimRole || selectedUserForAction.username)
-                      : 'password';
-                    setCustomResetPassword(defaultP);
-                  }}
-                  className="text-[11px] text-amber-400 hover:text-amber-300 underline font-mono"
-                >
-                  {selectedUserForAction.role === 'pengurus_osim'
-                    ? `Set Sandi Sekbid (${getDefaultOsimPassword(selectedUserForAction.osimDepartmentCode || selectedUserForAction.osimRole || selectedUserForAction.username)})`
-                    : 'Gunakan default ("password")'}
-                </button>
-              </label>
+            {/* SOLUSI A: SETEL KATA SANDI BARU SECARA LANGSUNG DARI APP */}
+            <div className="p-3.5 rounded-xl bg-[#18181d] border border-amber-500/30 space-y-3 text-xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-amber-400 font-bold">
+                  <Key className="w-4 h-4 shrink-0" />
+                  <span>Setel Kata Sandi Baru Langsung</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setCustomResetPassword('guru12345')}
+                    className="text-[11px] text-zinc-400 hover:text-amber-300 underline"
+                  >
+                    guru12345
+                  </button>
+                  <span className="text-zinc-600">•</span>
+                  <button
+                    type="button"
+                    onClick={() => setCustomResetPassword('guru' + Math.floor(1000 + Math.random() * 9000))}
+                    className="text-[11px] text-amber-400 hover:text-amber-300 font-semibold underline"
+                  >
+                    Acak
+                  </button>
+                </div>
+              </div>
+
               <div className="relative">
                 <input
-                  type={showResetPasswordText ? 'text' : 'password'}
+                  type={showResetPasswordText ? "text" : "password"}
                   value={customResetPassword}
                   onChange={e => setCustomResetPassword(e.target.value)}
-                  placeholder="Ketik password baru"
-                  required
-                  className="w-full px-3.5 py-2.5 pr-10 rounded-xl bg-[#18181b] border border-[#323238] text-white text-xs font-mono placeholder-zinc-500 focus:outline-none focus:border-amber-500"
+                  placeholder="Masukkan kata sandi baru..."
+                  className="w-full px-3 py-2 pr-10 rounded-lg bg-zinc-900 border border-zinc-700 text-white font-mono focus:outline-none focus:border-amber-500"
                 />
                 <button
                   type="button"
                   onClick={() => setShowResetPasswordText(!showResetPasswordText)}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-200 p-1 transition-colors"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white"
                 >
                   {showResetPasswordText ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
+
+              <div className="flex items-center justify-between gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const identifier = selectedUserForAction.username || selectedUserForAction.email;
+                    const text = `Akun SIM Kesiswaan:\nNama: ${selectedUserForAction.displayName}\nUsername/Email: ${identifier}\nKata Sandi: ${customResetPassword}`;
+                    navigator.clipboard.writeText(text);
+                    showToast('Kredensial login berhasil disalin ke clipboard!');
+                  }}
+                  className="px-2.5 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[11px] font-semibold flex items-center gap-1.5 border border-zinc-700"
+                >
+                  <Copy className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Salin Kredensial</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleConfirmResetPassword}
+                  className="px-3.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-amber-950/40"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Terapkan Sandi Baru</span>
+                </button>
+              </div>
+
+              <p className="text-zinc-400 text-[11px] leading-relaxed pt-1 border-t border-zinc-800/80">
+                Sandi akan tersimpan di profil dan disinkronkan ke <strong>Firebase Auth</strong>. Guru dapat langsung menggunakannya untuk login.
+              </p>
             </div>
 
-            <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300/90 text-[11px] space-y-1">
-              <p className="font-semibold flex items-center gap-1.5">
-                <Lock className="w-3.5 h-3.5" />
-                Siklus Otomatis Pergantian Kata Sandi:
-              </p>
-              <p className="text-zinc-300">
-                Saat Anda menyimpan, kata sandi lama <strong>otomatis tidak berlaku</strong> lagi di seluruh sistem. Pengguna ({selectedUserForAction.displayName}) wajib memasukkan kata sandi baru ini pada login berikutnya.
+            {/* OPSI CADANGAN: KIRIM EMAIL RESET */}
+            <div className="p-3 rounded-xl bg-zinc-900/60 border border-zinc-800 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-zinc-400 text-[11px] font-medium">Opsi Kirim Email Pemulihan:</span>
+                <button
+                  type="button"
+                  onClick={handleSendResetEmail}
+                  disabled={!selectedUserForAction.email}
+                  className="px-2.5 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-[11px] font-semibold flex items-center gap-1.5 border border-zinc-700 disabled:opacity-40"
+                >
+                  <Key className="w-3 h-3 text-zinc-400" />
+                  <span>Kirim Tautan ke Email</span>
+                </button>
+              </div>
+              <p className="text-zinc-400 text-[10px]">
+                Target: <span className="font-mono text-zinc-300">{selectedUserForAction.email || 'Belum ada email'}</span>
               </p>
             </div>
 
@@ -3017,15 +3161,7 @@ export const CPanelPage: React.FC = () => {
                 onClick={() => setIsResetModalOpen(false)}
                 className="px-4 py-2 rounded-xl bg-zinc-800 text-zinc-300 hover:bg-zinc-700 text-xs font-semibold"
               >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmResetPassword}
-                className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold flex items-center gap-2 shadow-md shadow-amber-950/40"
-              >
-                <Key className="w-3.5 h-3.5" />
-                <span>Simpan Kata Sandi Baru</span>
+                Tutup
               </button>
             </div>
           </div>

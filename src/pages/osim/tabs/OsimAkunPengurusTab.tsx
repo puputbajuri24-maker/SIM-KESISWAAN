@@ -266,7 +266,7 @@ export const OsimAkunPengurusTab: React.FC<OsimAkunPengurusTabProps> = ({
                 <tr className="border-b border-zinc-800 bg-zinc-900/80 text-zinc-400 uppercase font-mono text-[10px]">
                   <th className="py-2.5 px-3">Nama & Jabatan Pengurus</th>
                   <th className="py-2.5 px-3">Username Login</th>
-                  <th className="py-2.5 px-3">Kata Sandi Login</th>
+                  <th className="py-2.5 px-3">Keamanan & Autentikasi</th>
                   <th className="py-2.5 px-3">Seksi Bidang</th>
                   <th className="py-2.5 px-3">Status</th>
                   <th className="py-2.5 px-3 text-right">Aksi Pembina</th>
@@ -334,18 +334,14 @@ export const OsimAkunPengurusTab: React.FC<OsimAkunPengurusTabProps> = ({
 
                       <td className="py-3 px-3 font-mono">
                         <div className="flex items-center gap-2">
-                          {showAccountPasswords ? (
-                            <span className="text-emerald-400 font-bold bg-emerald-950/30 px-2 py-0.5 rounded border border-emerald-500/30">
-                              {u.password || 'password'}
-                            </span>
-                          ) : (
-                            <span className="text-zinc-500">••••••••</span>
-                          )}
+                          <span className="text-emerald-400 font-bold bg-emerald-950/30 px-2 py-0.5 rounded border border-emerald-500/30 text-[10px]">
+                            Firebase Auth
+                          </span>
                           <button
                             type="button"
                             onClick={() => onPromptQuickResetOsimPassword(u)}
                             className="p-1 rounded hover:bg-zinc-800 text-amber-400 transition"
-                            title="Ganti Kata Sandi Siswa"
+                            title="Reset Kata Sandi Firebase Auth"
                           >
                             <Key className="w-3.5 h-3.5" />
                           </button>

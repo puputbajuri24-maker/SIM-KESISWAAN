@@ -5,7 +5,18 @@ export type CanonicalUserRole =
   | 'pembina_osim' 
   | 'coach_ekstrakurikuler' 
   | 'anggota_osim'
-  | 'siswa';
+  | 'siswa'
+  | 'wali_kelas'
+  | 'guru';
+
+export type AuthBootstrapState = 
+  | 'AUTH_LOADING'
+  | 'PROFILE_LOADING'
+  | 'DATA_LOADING'
+  | 'READY'
+  | 'PROFILE_UNREGISTERED'
+  | 'OFFLINE'
+  | 'ERROR';
 
 /**
  * Deprecated legacy role values supported only for migration and backward normalization.
@@ -17,7 +28,11 @@ export type LegacyUserRole =
   | 'pembina_ekskul' 
   | 'pembina' 
   | 'pengurus_osim'
-  | 'student';
+  | 'admin_kesiswaan'
+  | 'student'
+  | 'teacher'
+  | 'guru_mapel'
+  | 'homeroom_teacher';
 
 export type UserRole = CanonicalUserRole | LegacyUserRole;
 
@@ -59,10 +74,12 @@ export interface UserProfile {
   email: string;
   username?: string;
   password?: string;
+  previousPassword?: string;
   displayName: string;
   role: UserRole;
   position?: OsimPosition; // Canonical internal OSIM position
   assignments?: UserAssignment[]; // Multi-assignment support (e.g. Guru BK + Pembina Ekskul)
+  assignedExtracurricularIds?: string[]; // Canonical scoped extracurricular IDs for coach
   extracurricularIds?: string[]; // If pembina, club IDs they manage
   extracurricularNames?: string[]; // Readable names of extracurricular clubs
   extracurricularName?: string; // Primary or formatted extracurricular name
@@ -241,6 +258,7 @@ export interface Teacher {
   email: string;
   role: string;
   isPembina?: boolean;
+  isWaliKelas?: boolean;
   photoUrl?: string;
   photoURL?: string;
   extracurricularName?: string;
@@ -891,9 +909,7 @@ export interface OsimMember {
   academicYear?: string;
   nis?: string;
   loginUsername?: string;
-  loginPassword?: string;
   username?: string;
-  password?: string;
   createdAt?: string;
 }
 

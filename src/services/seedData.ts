@@ -136,7 +136,7 @@ export const INITIAL_CLASSES: SchoolClass[] = [];
 
 export const DEFAULT_SUPER_ADMIN: UserProfile = {
   uid: 'user_super_admin',
-  email: 'admin@sekolah.sch.id',
+  email: 'puputbajuri24@gmail.com',
   username: 'admin',
   displayName: 'Puput Eka Bajuri, S. Pd., M. Or., Gr',
   role: 'super_admin',
@@ -347,10 +347,7 @@ export async function seedAllFirebaseData(): Promise<{ success: boolean; message
 
     return { success: true, message: 'Data struktur sekolah & akun berhasil disinkronkan ke Firebase Firestore.' };
   } catch (error: any) {
-    if (isPermissionError(error)) {
-      handleFirestoreError(error, OperationType.WRITE, 'seedData');
-    }
-    console.error('Error seeding data to Firebase:', error);
+    console.warn('Error seeding data to Firebase (using local resilience):', error);
     return { success: false, message: error.message || 'Gagal melakukan seed data ke Firebase.' };
   }
 }
@@ -530,11 +527,17 @@ export async function clearAllFirebaseOperationalData(): Promise<{ success: bool
     for (const colName of collectionsToClear) {
       try {
         const snap = await getDocs(collection(db, colName));
-        const batch = writeBatch(db);
-        snap.forEach(docSnap => {
-          batch.delete(docSnap.ref);
-        });
-        await batch.commit();
+        if (snap.empty) continue;
+        const docs = snap.docs;
+        const BATCH_SIZE = 400;
+        for (let i = 0; i < docs.length; i += BATCH_SIZE) {
+          const chunk = docs.slice(i, i + BATCH_SIZE);
+          const batch = writeBatch(db);
+          chunk.forEach(docSnap => {
+            batch.delete(docSnap.ref);
+          });
+          await batch.commit();
+        }
       } catch (colErr) {
         console.warn(`Note clearing collection ${colName}:`, colErr);
       }

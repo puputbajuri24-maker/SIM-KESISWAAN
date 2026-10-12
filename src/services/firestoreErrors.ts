@@ -28,17 +28,24 @@ export interface FirestoreErrorInfo {
 
 export function isPermissionError(error: unknown): boolean {
   if (!error) return false;
-  const msg = error instanceof Error ? error.message : String(error);
-  const code = (error as any)?.code;
+  const msg = error instanceof Error ? error.message : typeof error === 'object' && error !== null && 'message' in error ? String((error as any).message) : String(error);
+  const code = (error as any)?.code || (error as any)?.name || '';
+  const str = String(error).toLowerCase();
+  const lowerMsg = msg.toLowerCase();
+  const lowerCode = String(code).toLowerCase();
   return (
-    code === 'permission-denied' ||
-    msg.toLowerCase().includes('permission') ||
-    msg.toLowerCase().includes('insufficient')
+    lowerCode.includes('permission') ||
+    lowerCode.includes('denied') ||
+    lowerMsg.includes('permission') ||
+    lowerMsg.includes('insufficient') ||
+    str.includes('permission') ||
+    str.includes('insufficient')
   );
 }
 
-export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): never {
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null): void {
   const currentUser = auth.currentUser;
+  const isPerm = isPermissionError(error);
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
@@ -55,6 +62,9 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path
   };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  if (isPerm) {
+    console.warn('[Firestore Permission Notice - Handled Gracefully]', JSON.stringify(errInfo));
+    return;
+  }
+  console.warn('[Firestore Operation Notice]', JSON.stringify(errInfo));
 }

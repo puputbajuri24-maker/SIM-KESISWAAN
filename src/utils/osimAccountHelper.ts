@@ -219,7 +219,8 @@ export interface UserSlipCredentials {
   loginUsername: string; // e.g. "@osim.ketua"
   rawUsername: string;   // e.g. "osim.ketua"
   email: string;
-  password: string;      // verified effective active password
+  password?: string;      // Legacy placeholder
+  passwordNotice: string; // Firebase Auth indicator
   nipOrNis: string;
   studentClass?: string;
   position?: string;
@@ -228,7 +229,7 @@ export interface UserSlipCredentials {
 
 /**
  * Standardized single source of truth for slip credentials across CPanel and OSIM tabs.
- * Guarantees username and password consistency between single slip and batch printing.
+ * Guarantees identity consistency between single slip and batch printing.
  */
 export const getUserSlipCredentials = (
   u: UserProfile,
@@ -247,22 +248,6 @@ export const getUserSlipCredentials = (
       )
     : undefined;
 
-  let effectivePassword = (u.password && u.password.trim()) || '';
-
-  if (!effectivePassword || effectivePassword === 'password') {
-    if (linkedMem?.loginPassword && linkedMem.loginPassword.trim() && linkedMem.loginPassword !== 'password') {
-      effectivePassword = linkedMem.loginPassword.trim();
-    } else if (u.role === 'pengurus_osim') {
-      if (linkedMem) {
-        effectivePassword = getDefaultOsimPasswordForMember(linkedMem);
-      } else {
-        effectivePassword = getDefaultOsimPassword(u.osimDepartmentCode || u.osimRole || rawUsername);
-      }
-    } else {
-      effectivePassword = 'password';
-    }
-  }
-
   return {
     displayName: u.displayName,
     role: u.role,
@@ -270,7 +255,8 @@ export const getUserSlipCredentials = (
     loginUsername: `@${rawUsername}`,
     rawUsername,
     email: u.email,
-    password: effectivePassword,
+    password: 'Dikelola oleh Firebase Auth',
+    passwordNotice: 'Dikelola secara aman oleh Firebase Authentication',
     nipOrNis: u.nip || linkedMem?.studentNis || '-',
     studentClass: linkedMem?.className || u.studentClass || '-',
     position: linkedMem?.position || u.osimPosition,

@@ -65,7 +65,9 @@ export const CANONICAL_ROLES: CanonicalUserRole[] = [
   'pembina_osim',
   'coach_ekstrakurikuler',
   'anggota_osim',
-  'siswa'
+  'siswa',
+  'wali_kelas',
+  'guru'
 ];
 
 export const OSIM_POSITIONS: OsimPosition[] = [
@@ -106,6 +108,12 @@ export function normalizeUserRole(role: UserRole | string | undefined | null): C
   }
   if (r === 'siswa' || r === 'student' || r === 'santri') {
     return 'siswa';
+  }
+  if (r === 'wali_kelas' || r === 'homeroom_teacher') {
+    return 'wali_kelas';
+  }
+  if (r === 'guru' || r === 'teacher' || r === 'guru_mapel') {
+    return 'guru';
   }
 
   // Deny-by-default for any unrecognized role string
@@ -173,11 +181,17 @@ export function normalizeUserProfile(user: UserProfile): UserProfile & {
 } {
   const canonicalRole = normalizeUserRole(user.role);
   const canonicalPosition = normalizeOsimPosition(user);
+  const assignedExtracurricularIds = (user.assignedExtracurricularIds && Array.isArray(user.assignedExtracurricularIds))
+    ? user.assignedExtracurricularIds
+    : (user.extracurricularIds && Array.isArray(user.extracurricularIds))
+      ? user.extracurricularIds
+      : [];
 
   return {
     ...user,
     role: canonicalRole || user.role,
     position: canonicalPosition || user.position,
+    assignedExtracurricularIds,
     canonicalRole,
     canonicalPosition
   };
@@ -227,8 +241,15 @@ export function hasScope(
   }
 
   if (scopeType === 'extracurricular') {
-    // Check direct extracurricularIds array
-    if (user.extracurricularIds && user.extracurricularIds.includes(targetId)) {
+    // Role coach_ekstrakurikuler: MUST have assignedExtracurricularIds.
+    // If assignedExtracurricularIds is empty, NO access to any extracurricular.
+    const assigned = (user.assignedExtracurricularIds && Array.isArray(user.assignedExtracurricularIds) && user.assignedExtracurricularIds.length > 0)
+      ? user.assignedExtracurricularIds
+      : (user.extracurricularIds && Array.isArray(user.extracurricularIds))
+        ? user.extracurricularIds
+        : [];
+
+    if (assigned.includes(targetId)) {
       return true;
     }
     // Check assignments array
@@ -389,7 +410,46 @@ export function hasPermission(
     }
   }
 
-  // 7. Siswa (Restricted Student Portal: Read-only Dashboard and Reports)
+  // 7. Wali Kelas permissions (Homeroom Teacher - Read-only for violations)
+  if (role === 'wali_kelas') {
+    switch (permission) {
+      case 'dashboard.view':
+      case 'students.view':
+      case 'violations.view':
+      case 'attendance.view':
+      case 'attendance.record':
+      case 'dispensations.view':
+      case 'dispensations.create':
+      case 'reports.view':
+        return true;
+      case 'violations.manage':
+        // Wali Kelas can ONLY view violations; recording is reserved for Super Admin, Waka, and Guru BK
+        return false;
+      default:
+        return false;
+    }
+  }
+
+  // 8. Guru Mapel / Guru Umum permissions (Subject Teacher - Read-only for violations)
+  if (role === 'guru') {
+    switch (permission) {
+      case 'dashboard.view':
+      case 'students.view':
+      case 'violations.view':
+      case 'attendance.view':
+      case 'attendance.record':
+      case 'dispensations.view':
+      case 'reports.view':
+        return true;
+      case 'violations.manage':
+        // Guru Mapel can ONLY view violations; recording is reserved for Super Admin, Waka, and Guru BK
+        return false;
+      default:
+        return false;
+    }
+  }
+
+  // 9. Siswa (Restricted Student Portal: Read-only Dashboard and Reports)
   if (role === 'siswa') {
     switch (permission) {
       case 'dashboard.view':
@@ -401,6 +461,46 @@ export function hasPermission(
   }
 
   return false;
+}
+
+/**
+ * Capability Helper: Can the user record or manage student violations?
+ * Sesuai aturan madrasah:
+ * - Wali kelas & Guru mapel HANYA DAPAT MELIHAT pelanggaran siswa (Read-only).
+ * - Hak akses penuh untuk mencatat & mengelola pelanggaran adalah:
+ *   1. Super Admin
+ *   2. Waka Kesiswaan
+ *   3. Guru BK
+ */
+export function canManageViolations(user: UserProfile | null | undefined): boolean {
+  if (!user) return false;
+  const role = normalizeUserRole(user.role);
+  if (!role) return false;
+
+  return (
+    role === 'super_admin' ||
+    role === 'waka_kesiswaan' ||
+    role === 'guru_bk'
+  );
+}
+
+/**
+ * Capability Helper: Can the user view student violations?
+ * Super Admin, Waka Kesiswaan, Guru BK, Wali Kelas, dan Guru Mapel dapat melihat.
+ */
+export function canViewViolations(user: UserProfile | null | undefined): boolean {
+  if (!user) return false;
+  const role = normalizeUserRole(user.role);
+  if (!role) return false;
+
+  return (
+    role === 'super_admin' ||
+    role === 'waka_kesiswaan' ||
+    role === 'guru_bk' ||
+    role === 'wali_kelas' ||
+    role === 'guru' ||
+    canRoleViewModule(user.role, 'violations_discipline', user)
+  );
 }
 
 /**
@@ -470,7 +570,14 @@ export function canManageExtracurricular(
   }
 
   if (role === 'coach_ekstrakurikuler' || (role as any) === 'pembina_ekstrakurikuler') {
-    if (!ekskulId) return true;
+    if (!ekskulId) {
+      const assigned = (user.assignedExtracurricularIds && Array.isArray(user.assignedExtracurricularIds) && user.assignedExtracurricularIds.length > 0)
+        ? user.assignedExtracurricularIds
+        : (user.extracurricularIds && Array.isArray(user.extracurricularIds))
+          ? user.extracurricularIds
+          : [];
+      return assigned.length > 0;
+    }
     return hasScope(user, 'extracurricular', ekskulId);
   }
 
@@ -505,7 +612,9 @@ export function canAccessMenu(
         role === 'waka_kesiswaan' ||
         role === 'guru_bk' ||
         role === 'pembina_osim' ||
-        role === 'coach_ekstrakurikuler'
+        role === 'coach_ekstrakurikuler' ||
+        role === 'wali_kelas' ||
+        role === 'guru'
       );
 
     case 'teachers':
@@ -555,7 +664,22 @@ export function canAccessMenu(
       return role === 'waka_kesiswaan' || role === 'guru_bk' || canRoleViewModule(user.role, 'counseling_confidential', user);
 
     case 'violations':
-      return role === 'waka_kesiswaan' || role === 'guru_bk' || canRoleViewModule(user.role, 'violations_discipline', user);
+      return (
+        role === 'waka_kesiswaan' ||
+        role === 'guru_bk' ||
+        role === 'wali_kelas' ||
+        role === 'guru' ||
+        canRoleViewModule(user.role, 'violations_discipline', user)
+      );
+
+    case 'attendance':
+      return (
+        role === 'waka_kesiswaan' ||
+        role === 'coach_ekstrakurikuler' ||
+        role === 'wali_kelas' ||
+        role === 'guru' ||
+        Boolean(user.extracurricularIds && user.extracurricularIds.length > 0)
+      );
 
     case 'dispensations':
     case 'permissions':
@@ -564,6 +688,8 @@ export function canAccessMenu(
         role === 'guru_bk' ||
         role === 'pembina_osim' ||
         role === 'coach_ekstrakurikuler' ||
+        role === 'wali_kelas' ||
+        role === 'guru' ||
         canRoleViewModule(user.role, 'dispensation_letters', user)
       );
 

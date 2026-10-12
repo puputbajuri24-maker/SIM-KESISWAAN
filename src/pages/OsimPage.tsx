@@ -1233,16 +1233,13 @@ export const OsimPage: React.FC = () => {
 
     // Find linked login user account using our robust matcher (guaranteed not to confuse Sekbid with Ketua Umum)
     const matched = findLinkedOsimAccount(m, osimAccounts);
-    const fallbackPassword = getDefaultOsimPasswordForMember(m);
     if (matched) {
       setMemberLoginUsername(matched.username || getDefaultOsimUsername(m));
-      const validPass = (matched.password && matched.password !== 'password') ? matched.password : (m.loginPassword || fallbackPassword);
-      setMemberLoginPassword(validPass);
+      setMemberLoginPassword('');
     } else {
       const defaultUsername = m.loginUsername || getDefaultOsimUsername(m);
-      const defaultPass = m.loginPassword || fallbackPassword;
       setMemberLoginUsername(defaultUsername);
-      setMemberLoginPassword(defaultPass);
+      setMemberLoginPassword('');
     }
     setShowMemberLoginPassword(false);
     setIsMemberModalOpen(true);
@@ -1283,9 +1280,7 @@ export const OsimPage: React.FC = () => {
         ...memberForm,
         className: memberForm.className || defaultClassFallback,
         loginUsername: isRoleHolder ? effectiveUsername : undefined,
-        loginPassword: isRoleHolder ? passToSet : undefined,
-        username: isRoleHolder ? effectiveUsername : undefined,
-        password: isRoleHolder ? passToSet : undefined
+        username: isRoleHolder ? effectiveUsername : undefined
       } as OsimMember;
 
       let savedMemberId = selectedMember?.id;
@@ -1306,9 +1301,7 @@ export const OsimPage: React.FC = () => {
           flagshipProgram: memberForm.flagshipProgram || '',
           period: memberForm.period || activeAcademicYear,
           loginUsername: isRoleHolder ? effectiveUsername : undefined,
-          loginPassword: isRoleHolder ? passToSet : undefined,
-          username: isRoleHolder ? effectiveUsername : undefined,
-          password: isRoleHolder ? passToSet : undefined
+          username: isRoleHolder ? effectiveUsername : undefined
         });
       }
 
@@ -1355,7 +1348,6 @@ export const OsimPage: React.FC = () => {
               ...existingAccount,
               displayName: memberForm.fullName || existingAccount.displayName,
               username: finalUsername,
-              password: passToSet,
               role: 'anggota_osim',
               position: isBph ? (osimRoleVal === 'ketua' ? 'ketua_osim' : osimRoleVal === 'wakil' ? 'wakil_ketua_osim' : osimRoleVal === 'bendahara' ? 'bendahara_osim' : 'sekretaris_osim') : 'ketua_sekbid',
               status: memberForm.status === 'Nonaktif' || memberForm.status === 'Demisioner' ? 'Nonaktif' : 'Aktif',
@@ -1379,7 +1371,6 @@ export const OsimPage: React.FC = () => {
               displayName: memberForm.fullName!,
               username: finalUsername,
               email: memberForm.email || `${finalUsername}@madrasah.sch.id`,
-              password: passToSet,
               role: 'anggota_osim',
               position: isBph ? (osimRoleVal === 'ketua' ? 'ketua_osim' : osimRoleVal === 'wakil' ? 'wakil_ketua_osim' : osimRoleVal === 'bendahara' ? 'bendahara_osim' : 'sekretaris_osim') : 'ketua_sekbid',
               osimRole: osimRoleVal,
@@ -1429,12 +1420,11 @@ export const OsimPage: React.FC = () => {
     if (matched) {
       setSelectedOsimAccount(matched);
       setIsAddingOsimAccount(false);
-      const validPass = (matched.password && matched.password !== 'password') ? matched.password : (m.loginPassword || fallbackPassword);
       setOsimAccountForm({
         displayName: matched.displayName,
         username: matched.username || getDefaultOsimUsername(m),
         email: matched.email || '',
-        password: validPass,
+        password: fallbackPassword,
         osimRole: matched.osimRole || 'sekbid',
         osimPosition: matched.osimPosition || m.position,
         osimDepartmentName: matched.osimDepartmentName || m.sekbid,
@@ -1445,7 +1435,7 @@ export const OsimPage: React.FC = () => {
       setIsOsimAccountModalOpen(true);
     } else {
       const defaultUsername = m.loginUsername || getDefaultOsimUsername(m);
-      const defaultPass = m.loginPassword || fallbackPassword;
+      const defaultPass = fallbackPassword;
 
       const inferredRole: 'ketua' | 'wakil' | 'sekretaris' | 'bendahara' | 'sekbid' = 
         pos.includes('ketua') && !pos.includes('wakil') && !pos.includes('sekbid') ? 'ketua'
@@ -1516,9 +1506,7 @@ export const OsimPage: React.FC = () => {
     setIsAddingOsimAccount(false);
     setSelectedStudentForAccount(null);
     setIsChangingStudentForAccount(false);
-    const validPass = (u.password && u.password !== 'password') 
-      ? u.password 
-      : getDefaultOsimPassword(u.osimDepartmentCode || u.osimRole || u.username);
+    const validPass = getDefaultOsimPassword(u.osimDepartmentCode || u.osimRole || u.username);
     setOsimAccountForm({
       displayName: u.displayName,
       username: u.username || '',
@@ -1544,7 +1532,6 @@ export const OsimPage: React.FC = () => {
     try {
       const cleanUsername = osimAccountForm.username.trim().toLowerCase();
       const cleanEmail = osimAccountForm.email.trim() || `${cleanUsername}@madrasah.sch.id`;
-      const passToSet = osimAccountForm.password.trim() || 'password';
 
       if (isAddingOsimAccount) {
         const newUid = `user_osim_${Date.now()}`;
@@ -1553,7 +1540,6 @@ export const OsimPage: React.FC = () => {
           displayName: osimAccountForm.displayName.trim(),
           username: cleanUsername,
           email: cleanEmail,
-          password: passToSet,
           role: 'anggota_osim',
           position: (osimAccountForm.osimRole !== 'sekbid'
             ? (osimAccountForm.osimRole === 'ketua' ? 'ketua_osim' : osimAccountForm.osimRole === 'wakil' ? 'wakil_ketua_osim' : osimAccountForm.osimRole === 'bendahara' ? 'bendahara_osim' : 'sekretaris_osim')
@@ -1586,10 +1572,7 @@ export const OsimPage: React.FC = () => {
               photoUrl: selectedStudentForAccount?.photoUrl || '',
               status: newAcc.status === 'Nonaktif' ? 'Nonaktif' : 'Aktif',
               period: activeAcademicYear,
-              loginUsername: newAcc.username,
-              loginPassword: newAcc.password,
-              username: newAcc.username,
-              password: newAcc.password
+              loginUsername: newAcc.username
             });
           } catch (e) {
             console.warn('Note on addOsimMember sync:', e);
@@ -1600,7 +1583,7 @@ export const OsimPage: React.FC = () => {
               await syncUserFromCPanel(newAcc);
             } catch (e) {}
           }
-          alert(`Akun login untuk ${newAcc.displayName} (@${newAcc.username}) berhasil ditambahkan dan disinkronkan ke Struktur Kabinet!\nPassword baru: "${newAcc.password}". Siswa dapat langsung login.`);
+          alert(`Akun login untuk ${newAcc.displayName} (@${newAcc.username}) berhasil ditambahkan dan disinkronkan ke Struktur Kabinet!\nAutentikasi dikelola oleh Firebase Authentication.`);
           setIsOsimAccountModalOpen(false);
         } else {
           alert(res.error || 'Gagal menambahkan akun OSIM.');
@@ -1610,7 +1593,6 @@ export const OsimPage: React.FC = () => {
           displayName: osimAccountForm.displayName.trim(),
           username: cleanUsername,
           email: cleanEmail,
-          password: passToSet,
           osimRole: osimAccountForm.osimRole,
           osimPosition: osimAccountForm.osimPosition,
           osimDepartmentName: osimAccountForm.osimDepartmentName,
@@ -1635,10 +1617,7 @@ export const OsimPage: React.FC = () => {
                 position: mergedAccount.osimPosition as any,
                 sekbid: (mergedAccount.osimDepartmentName as any) || linkedMember.sekbid,
                 status: mergedAccount.status === 'Nonaktif' ? 'Nonaktif' : 'Aktif',
-                loginUsername: mergedAccount.username,
-                loginPassword: mergedAccount.password,
-                username: mergedAccount.username,
-                password: mergedAccount.password
+                loginUsername: mergedAccount.username
               });
             } catch (e) {
               console.warn('Note on updateOsimMember sync:', e);
@@ -1649,7 +1628,7 @@ export const OsimPage: React.FC = () => {
               await syncUserFromCPanel(mergedAccount, selectedOsimAccount);
             } catch (e) {}
           }
-          alert(`Akun & kata sandi untuk ${osimAccountForm.displayName} berhasil diperbarui dan disinkronkan ke Struktur Kabinet!\nKata sandi baru: "${passToSet}".`);
+          alert(`Akun untuk ${osimAccountForm.displayName} berhasil diperbarui dan disinkronkan ke Struktur Kabinet!`);
           setIsOsimAccountModalOpen(false);
         } else {
           alert(res.error || 'Gagal memperbarui akun OSIM.');
@@ -1667,7 +1646,7 @@ export const OsimPage: React.FC = () => {
       return;
     }
     setSelectedOsimAccount(u);
-    setQuickResetPasswordText(u.password || 'password');
+    setQuickResetPasswordText('');
     setShowQuickResetText(false);
     setIsOsimAccountResetModalOpen(true);
   };
@@ -1682,34 +1661,12 @@ export const OsimPage: React.FC = () => {
       setIsOsimAccountResetModalOpen(false);
       return;
     }
-    const passToSet = quickResetPasswordText.trim() || 'password';
-    const res = await resetUserPassword(u.uid, passToSet);
+    const res = await resetUserPassword(u.uid);
     if (res.success) {
-      // Synchronize with osimMembers in Struktur Kabinet
-      const linkedMember = osimMembers.find(m =>
-        m.id === u.uid ||
-        (m.loginUsername && u.username && m.loginUsername.toLowerCase() === u.username.toLowerCase()) ||
-        (m.studentNis && u.nip && m.studentNis === u.nip) ||
-        (m.fullName.toLowerCase().trim() === u.displayName.toLowerCase().replace(/\s*\(.*\)$/, '').trim())
-      );
-      if (linkedMember) {
-        try {
-          await updateOsimMember(linkedMember.id, {
-            loginPassword: passToSet,
-            password: passToSet
-          });
-        } catch (e) {}
-      }
-
-      if (syncUserFromCPanel) {
-        try {
-          await syncUserFromCPanel({ ...u, password: passToSet }, u);
-        } catch (e) {}
-      }
-      alert(`Kata sandi akun ${u.displayName} (@${u.username}) berhasil diganti menjadi "${passToSet}"!\nPassword lama otomatis tergantikan.`);
+      alert(`Instruksi reset kata sandi Firebase Authentication berhasil dikirimkan ke email ${u.displayName} (${u.email || '-'})!`);
       setIsOsimAccountResetModalOpen(false);
     } else {
-      alert(res.error || 'Gagal mereset kata sandi.');
+      alert(res.error || 'Gagal mengirimkan instruksi reset kata sandi.');
     }
   };
 
@@ -1911,8 +1868,7 @@ export const OsimPage: React.FC = () => {
             position: positionTitle as any,
             sekbid: trimmedName as OsimSekbid,
             status: 'Aktif',
-            loginUsername: existingMember.loginUsername || defaultUsername,
-            loginPassword: existingMember.loginPassword || defaultPassword
+            loginUsername: existingMember.loginUsername || defaultUsername
           });
         } else {
           // Tambahkan pengurus baru di osimMembers sebagai Ketua Sekbid
@@ -1928,8 +1884,7 @@ export const OsimPage: React.FC = () => {
             photoUrl: matchedStudent?.photoUrl || '',
             status: 'Aktif',
             period: activeAcademicYear,
-            loginUsername: defaultUsername,
-            loginPassword: defaultPassword
+            loginUsername: defaultUsername
           });
         }
 
@@ -1967,7 +1922,6 @@ export const OsimPage: React.FC = () => {
             displayName: trimmedCoord,
             username: defaultUsername,
             email: `${defaultUsername}@madrasah.sch.id`,
-            password: defaultPassword,
             role: 'anggota_osim',
             position: 'ketua_sekbid',
             osimRole: 'sekbid',

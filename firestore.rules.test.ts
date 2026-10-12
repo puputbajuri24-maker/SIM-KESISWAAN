@@ -55,6 +55,8 @@ class SecurityRulesSimulator {
         'waka_uid': { uid: 'waka_uid', email: 'waka@sekolah.sch.id', role: 'waka_kesiswaan' },
         'bk_uid': { uid: 'bk_uid', email: 'bk@sekolah.sch.id', role: 'guru_bk' },
         'guru_biasa_uid': { uid: 'guru_biasa_uid', email: 'guru@sekolah.sch.id', role: 'guru' },
+        'wali_kelas_uid': { uid: 'wali_kelas_uid', email: 'wali@sekolah.sch.id', role: 'wali_kelas' },
+        'guru_mapel_uid': { uid: 'guru_mapel_uid', email: 'mapel@sekolah.sch.id', role: 'guru_mapel' },
         'pembina_osim_uid': { uid: 'pembina_osim_uid', email: 'osim@sekolah.sch.id', role: 'pembina_osim' },
         'coach_pramuka_uid': { uid: 'coach_pramuka_uid', email: 'pramuka@sekolah.sch.id', role: 'coach_ekstrakurikuler' },
         'bendahara_osim_uid': { uid: 'bendahara_osim_uid', email: 'bendahara@madrasah.sch.id', role: 'anggota_osim', osimPosition: 'bendahara', isCashManager: true },
@@ -254,6 +256,17 @@ class SecurityRulesSimulator {
         if (method === 'delete') {
           const allowed = this.isSuperAdmin(auth) && docId !== 'user_super_admin' && docId !== auth.uid;
           return { allowed, reason: allowed ? 'Super Admin delete permitted' : 'Only super admin can delete non-self' };
+        }
+        return { allowed: false, reason: 'Default deny' };
+      }
+
+      case 'violations': {
+        if (method === 'get' || method === 'list') {
+          return { allowed: true, reason: 'Public/Staff read allowed for violations' };
+        }
+        if (method === 'create' || method === 'update' || method === 'delete') {
+          const allowed = this.isGuruBk(auth);
+          return { allowed, reason: allowed ? 'Guru BK, Waka, Admin permitted' : 'Restricted to Guru BK, Waka Kesiswaan, Super Admin' };
         }
         return { allowed: false, reason: 'Default deny' };
       }
@@ -789,12 +802,89 @@ runTest(24, 'Red Team: Serangan ID Poisoning dengan karakter berbahaya atau ukur
   assert(!resultHuge.allowed, 'Oversized document ID MUST be rejected by Denial-of-Wallet guard');
 });
 
+// 25. Wali Kelas & Guru Mapel membaca data pelanggaran -> ALLOWED
+runTest(25, 'Wali Kelas & Guru Mapel membaca pelanggaran siswa (read-only) -> ALLOWED', () => {
+  const resultWali = simulator.evaluate({
+    auth: { uid: 'wali_kelas_uid' },
+    collection: 'violations',
+    docId: 'viol_01',
+    method: 'get'
+  });
+  assert(resultWali.allowed, 'Wali kelas MUST be able to view violations');
+
+  const resultMapel = simulator.evaluate({
+    auth: { uid: 'guru_mapel_uid' },
+    collection: 'violations',
+    docId: 'viol_01',
+    method: 'get'
+  });
+  assert(resultMapel.allowed, 'Guru mapel MUST be able to view violations');
+});
+
+// 26. Wali Kelas & Guru Mapel / Guru biasa mencoba mencatat atau menghapus pelanggaran -> DENIED
+runTest(26, 'Wali Kelas & Guru Mapel mencoba mencatat/menghapus pelanggaran -> DENIED', () => {
+  const resultWaliCreate = simulator.evaluate({
+    auth: { uid: 'wali_kelas_uid' },
+    collection: 'violations',
+    docId: 'v_new_01',
+    method: 'create',
+    incomingData: { studentId: 's01', violationType: 'Terlambat', points: 5 }
+  });
+  assert(!resultWaliCreate.allowed, 'Wali kelas MUST NOT be permitted to record violations (read-only role)');
+
+  const resultMapelCreate = simulator.evaluate({
+    auth: { uid: 'guru_mapel_uid' },
+    collection: 'violations',
+    docId: 'v_new_02',
+    method: 'create',
+    incomingData: { studentId: 's01', violationType: 'Terlambat', points: 5 }
+  });
+  assert(!resultMapelCreate.allowed, 'Guru mapel MUST NOT be permitted to record violations (read-only role)');
+
+  const resultWaliDelete = simulator.evaluate({
+    auth: { uid: 'wali_kelas_uid' },
+    collection: 'violations',
+    docId: 'v_existing_01',
+    method: 'delete'
+  });
+  assert(!resultWaliDelete.allowed, 'Wali kelas MUST NOT be permitted to delete violations');
+});
+
+// 27. Super Admin, Waka Kesiswaan, dan Guru BK mencatat/mengelola pelanggaran -> ALLOWED
+runTest(27, 'Super Admin, Waka Kesiswaan, dan Guru BK mencatat & mengelola pelanggaran -> ALLOWED', () => {
+  const resultBk = simulator.evaluate({
+    auth: { uid: 'bk_uid' },
+    collection: 'violations',
+    docId: 'v_bk_01',
+    method: 'create',
+    incomingData: { studentId: 's01', violationType: 'Pelanggaran Kedisiplinan', points: 15 }
+  });
+  assert(resultBk.allowed, 'Guru BK MUST have full authority to record violations');
+
+  const resultWaka = simulator.evaluate({
+    auth: { uid: 'waka_uid' },
+    collection: 'violations',
+    docId: 'v_waka_01',
+    method: 'create',
+    incomingData: { studentId: 's01', violationType: 'Pelanggaran Berat', points: 30 }
+  });
+  assert(resultWaka.allowed, 'Waka Kesiswaan MUST have authority to record violations');
+
+  const resultSa = simulator.evaluate({
+    auth: { uid: 'super_admin_uid' },
+    collection: 'violations',
+    docId: 'v_sa_01',
+    method: 'delete'
+  });
+  assert(resultSa.allowed, 'Super Admin MUST have authority to manage/delete violations');
+});
+
 console.log('\n------------------------------------------------------');
-console.log(`TEST SUMMARY: ${passedCount} PASSED, ${failedCount} FAILED (TOTAL 24 TESTS)`);
+console.log(`TEST SUMMARY: ${passedCount} PASSED, ${failedCount} FAILED (TOTAL 27 TESTS)`);
 console.log('------------------------------------------------------\n');
 
 if (failedCount > 0) {
   process.exit(1);
 } else {
-  console.log('\x1b[32m✔ ALL 24 SECURITY INVARIANTS & RED TEAM TESTS VERIFIED SUCCESSFULLY!\x1b[0m\n');
+  console.log('\x1b[32m✔ ALL 27 SECURITY INVARIANTS & RED TEAM TESTS VERIFIED SUCCESSFULLY!\x1b[0m\n');
 }

@@ -418,28 +418,15 @@ export const OsimAccountModal: React.FC<OsimAccountModalProps> = ({
           </div>
 
           <div className="sm:col-span-2 pt-2 border-t border-zinc-800">
-            <label className="block text-xs font-semibold text-amber-400 mb-1">
-              {isAddingOsimAccount ? 'Kata Sandi Awal *' : 'Ganti Kata Sandi (Kosongkan jika tidak ingin merubah)'}
-            </label>
-            <div className="relative">
-              <input
-                type={showFormPassword ? 'text' : 'password'}
-                placeholder={isAddingOsimAccount ? 'Masukkan password awal' : 'Ketik kata sandi baru untuk merubah'}
-                value={osimAccountForm.password}
-                onChange={e => setOsimAccountForm({ ...osimAccountForm, password: e.target.value })}
-                className="w-full pl-3 pr-9 py-2 bg-zinc-900 border border-amber-500/40 rounded text-xs text-zinc-100 focus:outline-none focus:border-amber-500 font-mono"
-              />
-              <button
-                type="button"
-                onClick={() => setShowFormPassword(!showFormPassword)}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-200"
-              >
-                {showFormPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-              </button>
+            <div className="p-3 bg-zinc-900/80 border border-amber-500/30 rounded-lg space-y-1">
+              <span className="text-xs font-semibold text-amber-400 block flex items-center gap-1.5">
+                <Key className="w-3.5 h-3.5" />
+                Autentikasi Terpusat: Firebase Authentication
+              </span>
+              <p className="text-[11px] text-zinc-400 leading-relaxed">
+                Akun siswa OSIM ini masuk menggunakan Email resmi (<strong>{osimAccountForm.email || 'email@madrasah.sch.id'}</strong>) atau Username. Kata sandi dikelola secara aman oleh Firebase Authentication tanpa disimpan dalam bentuk teks.
+              </p>
             </div>
-            <p className="text-[11px] text-zinc-500 mt-1">
-              Kata sandi akan otomatis disinkronkan ke <strong>cPanel Admin</strong> dan <strong>Struktur Kabinet</strong>.
-            </p>
           </div>
         </div>
 
@@ -479,17 +466,13 @@ export const OsimQuickResetPasswordModal: React.FC<OsimQuickResetPasswordModalPr
   isOpen,
   onClose,
   selectedOsimAccount,
-  quickResetPasswordText,
-  setQuickResetPasswordText,
-  showQuickResetText,
-  setShowQuickResetText,
   onConfirmReset
 }) => {
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={`Ubah Kata Sandi: ${selectedOsimAccount?.displayName || ''}`}
+      title={`Reset Kata Sandi: ${selectedOsimAccount?.displayName || ''}`}
       maxWidth="max-w-md"
     >
       <form onSubmit={onConfirmReset} className="space-y-4 text-xs">
@@ -497,58 +480,15 @@ export const OsimQuickResetPasswordModal: React.FC<OsimQuickResetPasswordModalPr
           <Key className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
           <div>
             <p className="text-zinc-200 font-semibold text-xs">
-              Otorisasi Khusus Pembina OSIM
+              Pemulihan Kata Sandi Firebase Authentication
             </p>
             <p className="text-zinc-400 text-[11px] mt-0.5 leading-relaxed">
-              Anda sedang mengubah kata sandi login untuk siswa <strong>{selectedOsimAccount?.displayName}</strong> (@{selectedOsimAccount?.username}). Password lama otomatis digantikan dan tidak berlaku lagi.
+              Instruksi dan tautan pemulihan kata sandi resmi akan dikirimkan ke email akun siswa:
             </p>
+            <div className="mt-2 p-2 rounded bg-zinc-900 border border-zinc-800 font-mono text-emerald-400 font-bold">
+              {selectedOsimAccount?.email || 'Email belum diatur'}
+            </div>
           </div>
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium text-zinc-300 mb-1">
-            Kata Sandi Baru *
-          </label>
-          <div className="relative">
-            <input
-              type={showQuickResetText ? 'text' : 'password'}
-              required
-              value={quickResetPasswordText}
-              onChange={e => setQuickResetPasswordText(e.target.value)}
-              placeholder="Masukkan kata sandi baru"
-              className="w-full pl-3 pr-9 py-2 bg-zinc-900 border border-zinc-700 rounded text-xs text-zinc-100 focus:outline-none focus:border-amber-500 font-mono"
-            />
-            <button
-              type="button"
-              onClick={() => setShowQuickResetText(!showQuickResetText)}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-200"
-            >
-              {showQuickResetText ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-            </button>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          {selectedOsimAccount && (
-            <button
-              type="button"
-              onClick={() => {
-                const defaultP = getDefaultOsimPassword(selectedOsimAccount.osimDepartmentCode || selectedOsimAccount.osimRole || selectedOsimAccount.username);
-                setQuickResetPasswordText(defaultP);
-              }}
-              className="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-[11px] font-mono border border-amber-500/40 transition flex items-center gap-1"
-            >
-              <Key className="w-3 h-3 text-amber-400" />
-              <span>Set Standar Sekbid ({getDefaultOsimPassword(selectedOsimAccount.osimDepartmentCode || selectedOsimAccount.osimRole || selectedOsimAccount.username)})</span>
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => setQuickResetPasswordText(`osim${new Date().getFullYear()}`)}
-            className="px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[11px] font-mono border border-zinc-700 transition"
-          >
-            Set ke "osim{new Date().getFullYear()}"
-          </button>
         </div>
 
         <div className="flex items-center justify-end gap-2 pt-3 border-t border-zinc-800">
@@ -561,10 +501,11 @@ export const OsimQuickResetPasswordModal: React.FC<OsimQuickResetPasswordModalPr
           </button>
           <button
             type="submit"
-            className="px-4 py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
+            disabled={!selectedOsimAccount?.email}
+            className="px-4 py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-white text-xs font-semibold flex items-center gap-1.5 transition shadow-sm disabled:opacity-50"
           >
-            <Check className="w-3.5 h-3.5" />
-            Simpan Kata Sandi Baru
+            <Key className="w-3.5 h-3.5" />
+            Kirim Tautan Reset Kata Sandi
           </button>
         </div>
       </form>
