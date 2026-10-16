@@ -167,3 +167,68 @@ export function formatStudentCode(academicYear: string | undefined, indexUrut: n
   const pad = String(indexUrut).padStart(4, '0');
   return `SIS-${batch}-${pad}`;
 }
+
+/**
+ * Menghasilkan ID Dokumen Ekstrakurikuler yang rapi dan terstandarisasi (contoh: ekskul_pramuka, ekskul_paskibra)
+ * Menghindari penolakan regex pembersihan demo dan mencegah kode acak timestamp di database
+ */
+export function generateExtracurricularId(name: string, existingList?: Array<{ id: string }>): string {
+  const clean = (name || 'kegiatan')
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+    .replace(/[^a-z0-9_]/g, '')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .substring(0, 24);
+
+  const baseId = `ekskul_${clean || 'kegiatan'}`;
+  if (!existingList || existingList.length === 0) {
+    return baseId;
+  }
+
+  const existingIds = new Set(existingList.map(e => e.id));
+  if (!existingIds.has(baseId)) {
+    return baseId;
+  }
+
+  let counter = 2;
+  while (existingIds.has(`${baseId}_${counter}`)) {
+    counter++;
+  }
+  return `${baseId}_${counter}`;
+}
+
+/**
+ * Format ID Dokumen Pengurus OSIM Firestore standar: osim_01, osim_02, dst.
+ * Menghasilkan ID seragam, rapi, dan berurutan di Firestore.
+ */
+export function formatOsimDocId(indexUrut: number): string {
+  const pad = String(Math.max(1, indexUrut)).padStart(2, '0');
+  return `osim_${pad}`;
+}
+
+/**
+ * Menghitung ID Dokumen OSIM berikutnya yang belum terpakai berdasarkan daftar anggota OSIM yang ada.
+ * Mencegah ID acak timestamp, bentrok data, dan menjaga database Firestore tetap rapi.
+ */
+export function getNextOsimDocId(existingMembers: Array<{ id?: string }>): string {
+  const usedNumbers = new Set<number>();
+
+  if (Array.isArray(existingMembers)) {
+    existingMembers.forEach(m => {
+      if (m?.id) {
+        const match = m.id.match(/^osim_(\d+)/i) || m.id.match(/^osim_m_(\d+)/i);
+        if (match) {
+          const num = parseInt(match[1], 10);
+          if (num < 1000) usedNumbers.add(num);
+        }
+      }
+    });
+  }
+
+  let nextIndex = 1;
+  while (usedNumbers.has(nextIndex)) {
+    nextIndex++;
+  }
+  return formatOsimDocId(nextIndex);
+}

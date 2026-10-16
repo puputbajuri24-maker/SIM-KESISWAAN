@@ -182,19 +182,38 @@ export const calculateRecordCountsByClass = <T extends { studentClass?: string; 
   });
 
   records.forEach(r => {
-    let matched = findMatchingClass(r.studentClass, classes);
-    if (!matched && r.studentId && students) {
-      const student = students.find(s => s.id === r.studentId);
-      if (student) {
+    if (!r) return;
+    // Abaikan data yang telah dihapus atau dibatalkan agar statistik rombel 100% akurat
+    if ((r as any).isDeleted) return;
+    if ((r as any).status === 'Dibatalkan') return;
+
+    let matched: SchoolClass | undefined = undefined;
+
+    // Prioritize master Student object if studentId exists
+    if (students && students.length > 0) {
+      if (r.studentId) {
+        const student = students.find(s => s.id === r.studentId);
+        if (!student) {
+          // Siswa telah dihapus (kasus zombie seperti di Kelas 12-C) - jangan hitung!
+          return;
+        }
+        matched = resolveStudentClass(student, classes);
+      } else if ((r as any).studentName) {
+        const student = students.find(s => s.fullName.toLowerCase().trim() === (r as any).studentName.toLowerCase().trim());
+        if (!student) {
+          // Nama siswa tidak ada di master siswa aktif - jangan hitung!
+          return;
+        }
         matched = resolveStudentClass(student, classes);
       }
+    } else if (r.studentClass) {
+      // Fallback only if master students collection is not loaded
+      matched = findMatchingClass(r.studentClass, classes);
     }
 
     if (matched) {
       map[matched.id] = (map[matched.id] || 0) + 1;
       map[matched.name] = (map[matched.name] || 0) + 1;
-    } else if (r.studentClass) {
-      map[r.studentClass] = (map[r.studentClass] || 0) + 1;
     }
   });
 

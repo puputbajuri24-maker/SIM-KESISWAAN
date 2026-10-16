@@ -790,7 +790,8 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
               cashManagerTitle: osimRoleVal === 'bendahara' ? 'Bendahara OSIM' : undefined
             });
           } else {
-            const newUid = `user_osim_${Date.now()}`;
+            const cleanNis = cleanDigits(editingOsimMember.studentNis);
+            const newUid = cleanNis ? `user_osim_${cleanNis}` : `user_osim_${editingOsimMember.id}`;
             await addUser({
               uid: newUid,
               displayName: editingOsimMember.fullName,
@@ -847,13 +848,14 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
             ? (posLower.includes('ketua') && !posLower.includes('wakil') ? 'ketua' : posLower.includes('wakil') ? 'wakil' : posLower.includes('sekretaris') ? 'sekretaris' : posLower.includes('bendahara') ? 'bendahara' : 'sekbid')
             : 'sekbid';
 
-          const newUid = `user_osim_${Date.now()}`;
+          const cleanNis = cleanDigits(student.nis);
+          const newUid = cleanNis ? `user_osim_${cleanNis}` : `user_osim_${student.id}`;
           await addUser({
             uid: newUid,
             displayName: student.fullName,
             username: defaultUsername,
             email: `${defaultUsername}@madrasah.sch.id`,
-            role: 'pengurus_osim',
+            role: 'anggota_osim',
             osimRole: osimRoleVal,
             osimPosition: pos,
             osimDepartmentName: osimMemberForm.sekbid,

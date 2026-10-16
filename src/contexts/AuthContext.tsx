@@ -42,7 +42,10 @@ import {
   isOsimMemberUserMatch,
   normalizeName,
   cleanDigits,
-  canonicalizeAssignedEkskulIds
+  canonicalizeAssignedEkskulIds,
+  isRandomOrLegacyArtifactUid,
+  resolveTidyUidForUser,
+  isGenericPlaceholderEmail
 } from '../utils/syncUtils';
 import {
   extractSekbidNumber,
@@ -175,6 +178,38 @@ interface AuthContextType {
   changePassword: (currentPass: string, newPass: string) => Promise<{ success: boolean; error?: string }>;
   syncUsersFromTeachers: (teachersList: Teacher[], extracurricularsList?: Extracurricular[]) => Promise<number>;
   syncUsersFromOsim: (departmentsList: OsimDepartment[], membersList?: OsimMember[]) => Promise<number>;
+  migrateAllUsersToTidyUids: () => Promise<{ migratedCount: number; deletedArtifactsCount: number }>;
+  activateTeacherAccount: (params: {
+    teacherId?: string;
+    uid?: string;
+    email: string;
+    username?: string;
+    password?: string;
+    fullName: string;
+    nip?: string;
+    role: CanonicalUserRole | UserRole;
+    phone?: string;
+    extracurricularIds?: string[];
+    extracurricularNames?: string[];
+    counselorSpecialization?: string;
+    isCashManager?: boolean;
+    cashManagerTitle?: string;
+  }) => Promise<{ success: boolean; user?: UserProfile; error?: string }>;
+  activateOsimAccount: (params: {
+    memberId?: string;
+    uid?: string;
+    email: string;
+    username?: string;
+    password?: string;
+    fullName: string;
+    studentNis?: string;
+    className?: string;
+    position?: string;
+    sekbid?: string;
+    phone?: string;
+    isCashManager?: boolean;
+    cashManagerTitle?: string;
+  }) => Promise<{ success: boolean; user?: UserProfile; error?: string }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -191,7 +226,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const parsed = JSON.parse(saved) as UserProfile[];
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const validUsers = parsed.filter(u => u && u.uid && !isPurgedUser(u) && !isDeletedUid(u.uid));
+          const validUsers = parsed.filter(u =>
+            u && u.uid &&
+            !isPurgedUser(u) &&
+            !isDeletedUid(u.uid) &&
+            (!u.email || !isDeletedUid(u.email)) &&
+            (!u.email || !PURGED_DEMO_EMAILS.includes(u.email.toLowerCase().trim()))
+          );
           // Always ensure Super Admin is retained so admin is never locked out
           const hasAdmin = validUsers.some(u => u.uid === 'user_super_admin' || u.role === 'super_admin');
           const combined = hasAdmin ? validUsers : [DEFAULT_SUPER_ADMIN, ...validUsers];
@@ -204,7 +245,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
     // Only use DEMO_USERS on fresh, uninitialized install, always ensuring Super Admin is present
-    const baseUsers = DEMO_USERS.filter(u => !isDeletedUid(u.uid) && !isPurgedUser(u));
+    const baseUsers = DEMO_USERS.filter(u =>
+      !isDeletedUid(u.uid) &&
+      !isPurgedUser(u) &&
+      (!u.email || !isDeletedUid(u.email)) &&
+      (!u.email || !PURGED_DEMO_EMAILS.includes(u.email.toLowerCase().trim()))
+    );
     const withAdmin = baseUsers.some(u => u.uid === 'user_super_admin' || u.role === 'super_admin')
       ? baseUsers
       : [DEFAULT_SUPER_ADMIN, ...baseUsers];
@@ -218,37 +264,120 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       unsub = onSnapshot(collection(db, 'users'), (snap) => {
         if (!snap.empty) {
           const firestoreUsers: UserProfile[] = [];
+          const allDocIds = new Set(snap.docs.map(d => d.id));
+          const seenCanonicalEmails = new Map<string, string>(); // lowerEmail -> primary doc ID
+
           for (const d of snap.docs) {
             const data = d.data() as UserProfile;
             const uid = data.uid || d.id;
             const userWithId = { ...data, uid };
-            if (isPurgedUser(userWithId) || isDeletedUid(uid) || d.id === 'user_guru_01' || d.id === 'user_teacher_pitria_lawenusa') {
+            const lowerEmail = (data.email || '').toLowerCase().trim();
+
+            // 1. Cek pembersihan akun terlarang / dihapus (Purged / Deleted)
+            const isTargetPurged =
+              isPurgedUser(userWithId) ||
+              isDeletedUid(uid) ||
+              isDeletedUid(d.id) ||
+              (lowerEmail && isDeletedUid(lowerEmail)) ||
+              PURGED_DEMO_EMAILS.includes(lowerEmail) ||
+              lowerEmail === 'admin@sekolah.sch.id' ||
+              lowerEmail === 'pitria.lawenusa@madrasah.sch.id' ||
+              lowerEmail === 'pitria.lawenusa@sekolah.sch.id' ||
+              d.id === 'user_teacher_pitria_lawenusa' ||
+              d.id === 'teacher_pitria_lawenusa';
+
+            if (isTargetPurged) {
               if (auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
                 deleteDoc(d.ref).catch(() => {});
               }
-            } else {
-              firestoreUsers.push(userWithId);
+              continue;
             }
+
+            // 2. Pembersihan Otomatis Dokumen Kembar / Alias Write Lama:
+            // Kasus A: Dokumen d.id TIDAK berawalan 'user_', tetapi dokumen 'user_' + d.id juga ada di Firestore (misal 'waka_kesiswaan' kembar dengan 'user_waka_kesiswaan')
+            if (!d.id.startsWith('user_') && allDocIds.has(`user_${d.id}`)) {
+              if (auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
+                deleteDoc(d.ref).catch(() => {});
+              }
+              continue;
+            }
+
+            // Kasus B: Dokumen ber-ID acak / Firebase Auth UID (seperti CdAcdt... di screenshot)
+            if (isRandomOrLegacyArtifactUid(d.id)) {
+              const targetTidyUid = resolveTidyUidForUser(data);
+              // Jika dokumen ber-UID rapi sudah ada di Firestore, maka dokumen acak ini adalah duplikat murni:
+              if (allDocIds.has(targetTidyUid) && targetTidyUid !== d.id) {
+                if (auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
+                  deleteDoc(d.ref).catch(() => {});
+                }
+                continue;
+              } else if (targetTidyUid !== d.id) {
+                // Jika belum ada dokumen rapi, migrasikan ke targetTidyUid dan hapus dokumen acak
+                const tidyUser: UserProfile = {
+                  ...data,
+                  uid: targetTidyUid,
+                  authUid: d.id,
+                  updatedAt: new Date().toISOString()
+                };
+                firestoreUsers.push(tidyUser);
+                if (auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
+                  setDoc(doc(db, 'users', targetTidyUid), tidyUser, { merge: true })
+                    .then(() => deleteDoc(d.ref))
+                    .catch((e) => console.warn('Notifikasi migrasi UID dokumen user:', e));
+                }
+                if (lowerEmail && !isGenericPlaceholderEmail(lowerEmail)) {
+                  seenCanonicalEmails.set(lowerEmail, targetTidyUid);
+                }
+                continue;
+              }
+            }
+
+            // Kasus C: Dokumen kembar dengan email unik yang sama persis
+            if (lowerEmail && !isGenericPlaceholderEmail(lowerEmail)) {
+              if (seenCanonicalEmails.has(lowerEmail)) {
+                // Dokumen ini adalah kembaran duplikat dari primary doc
+                if (auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
+                  deleteDoc(d.ref).catch(() => {});
+                }
+                continue;
+              } else {
+                seenCanonicalEmails.set(lowerEmail, d.id);
+              }
+            }
+
+            // Kasus D: Duplikat akun Super Admin
+            const isSuperAdmin = lowerEmail === 'puputbajuri24@gmail.com' || (data.role === 'super_admin' && !data.username?.startsWith('demo'));
+            if (isSuperAdmin) {
+              if (d.id !== 'user_super_admin' && allDocIds.has('user_super_admin')) {
+                if (auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
+                  deleteDoc(d.ref).catch(() => {});
+                }
+                continue;
+              }
+            }
+
+            firestoreUsers.push(userWithId);
           }
 
-          if (firestoreUsers.length > 0) {
-            setAllUsers(prev => {
-              const candidateUsers = [
-                ...prev.filter(u => u && u.uid && !isPurgedUser(u) && !isDeletedUid(u.uid)),
-                ...firestoreUsers
-              ];
-              // Ensure Super Admin is always present
-              if (!candidateUsers.some(u => u.uid === 'user_super_admin' || u.role === 'super_admin')) {
-                candidateUsers.unshift(DEFAULT_SUPER_ADMIN);
-              }
-              const deduplicated = deduplicateUsersList(candidateUsers);
-              const sorted = sortUsersByHierarchy(deduplicated);
-              try {
-                localStorage.setItem(LOCAL_STORAGE_ALL_USERS_KEY, JSON.stringify(sorted));
-              } catch (e) {}
-              return sorted;
-            });
-          }
+          setAllUsers(() => {
+            const candidateUsers = firestoreUsers.filter(u =>
+              u && u.uid &&
+              !isPurgedUser(u) &&
+              !isDeletedUid(u.uid) &&
+              (!u.email || !isDeletedUid(u.email)) &&
+              (!u.email || !PURGED_DEMO_EMAILS.includes(u.email.toLowerCase().trim()))
+            );
+            // Ensure Super Admin is always present
+            if (!candidateUsers.some(u => u.uid === 'user_super_admin' || u.role === 'super_admin')) {
+              candidateUsers.unshift(DEFAULT_SUPER_ADMIN);
+            }
+            const deduplicated = deduplicateUsersList(candidateUsers);
+            const sorted = sortUsersByHierarchy(deduplicated);
+            try {
+              localStorage.setItem(LOCAL_STORAGE_ALL_USERS_KEY, JSON.stringify(sorted));
+            } catch (e) {}
+            return sorted;
+          });
         }
       }, (err) => {
         console.warn('Users collection listener notice:', err);
@@ -262,10 +391,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  // Authentication state: MUST default to null on new browser tab / opening the URL
-  // so that the Login Page is presented first, requiring manual username & password entry.
-  // Within the same active browser tab session, sessionStorage preserves the session across reloads.
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  // Authentication state: Preserves session across reloads within active browser session
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
+    try {
+      const saved = sessionStorage.getItem(SESSION_STORAGE_USER_KEY) || localStorage.getItem(LOCAL_STORAGE_USER_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.uid && !isDeletedUid(parsed.uid)) {
+          return normalizeUserProfile(parsed);
+        }
+      }
+    } catch {}
+    return null;
+  });
   const [bootstrapState, setBootstrapState] = useState<AuthBootstrapState>('AUTH_LOADING');
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -286,15 +424,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const isSimulatedFromAdmin = Boolean(adminImpersonator && adminImpersonator.role === 'super_admin');
 
+  // Sync active user to sessionStorage and localStorage without wiping on initial render
   useEffect(() => {
     if (currentUser) {
       try {
         sessionStorage.setItem(SESSION_STORAGE_USER_KEY, JSON.stringify(currentUser));
-      } catch {}
-    } else {
-      try {
-        sessionStorage.removeItem(SESSION_STORAGE_USER_KEY);
-        localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
+        localStorage.setItem(LOCAL_STORAGE_USER_KEY, JSON.stringify(currentUser));
       } catch {}
     }
   }, [currentUser]);
@@ -312,11 +447,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       if (!fbUser) {
+        // If Firebase Auth instance has no user yet, check if we have a valid logged in session user in storage
+        let existingSessionUser: UserProfile | null = null;
+        try {
+          const saved = sessionStorage.getItem(SESSION_STORAGE_USER_KEY) || localStorage.getItem(LOCAL_STORAGE_USER_KEY);
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            if (parsed && parsed.uid && !isDeletedUid(parsed.uid)) {
+              existingSessionUser = normalizeUserProfile(parsed);
+            }
+          }
+        } catch {}
+
+        if (existingSessionUser) {
+          setCurrentUser(existingSessionUser);
+          setBootstrapState('READY');
+          setBootstrapError(null);
+          setIsLoading(false);
+          if (!auth.currentUser) {
+            signInAnonymously(auth).catch(() => {});
+          }
+          return;
+        }
+
         setCurrentUser(null);
         setAdminImpersonator(null);
         setBootstrapState('READY');
         setBootstrapError(null);
         setIsLoading(false);
+        if (!auth.currentUser) {
+          signInAnonymously(auth).catch(() => {});
+        }
         return;
       }
 
@@ -342,11 +503,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             return;
           }
 
-          if (normalized.status === 'Nonaktif') {
+          const isSuperAdminAccount = normalized.role === 'super_admin' || normalized.uid === 'user_super_admin' || (normalized.email && normalized.email.toLowerCase() === 'puputbajuri24@gmail.com');
+          const isAccountActive = isSuperAdminAccount || (
+            normalized.status === 'Aktif' &&
+            normalized.isLoginActive !== false &&
+            normalized.loginStatus !== 'pending_activation' &&
+            normalized.accountStatus !== 'pending'
+          );
+
+          if (!isAccountActive) {
             await fbSignOut(auth);
             setCurrentUser(null);
             setBootstrapState('ERROR');
-            setBootstrapError('Akun Anda dinonaktifkan oleh Administrator Madrasah.');
+            setBootstrapError('Akun login Anda belum aktif atau dinonaktifkan oleh Administrator Madrasah. Hanya akun yang aktif di cPanel yang dapat masuk ke sistem.');
             return;
           }
 
@@ -354,34 +523,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setBootstrapState('READY');
           setBootstrapError(null);
         } else {
-          // If the authenticated user is the designated Super Admin (puputbajuri24@gmail.com or admin@sekolah.sch.id),
+          // If the authenticated user is the designated Super Admin (puputbajuri24@gmail.com),
           const cleanEmail = (fbUser.email || '').toLowerCase().trim();
           const isSuperAdminEmail =
             cleanEmail === 'puputbajuri24@gmail.com' ||
-            cleanEmail === 'admin@sekolah.sch.id' ||
             cleanEmail === 'admin@madrasah.sch.id' ||
-            cleanEmail === 'admin@man2sbt.sch.id' ||
-            cleanEmail.startsWith('admin@') ||
-            cleanEmail.startsWith('superadmin@');
+            cleanEmail === 'admin@man2sbt.sch.id';
 
           if (isSuperAdminEmail) {
             const superAdminProfile: UserProfile = {
-              uid: fbUser.uid,
+              ...DEFAULT_SUPER_ADMIN,
+              uid: 'user_super_admin',
               displayName: fbUser.displayName || DEFAULT_SUPER_ADMIN.displayName,
               email: cleanEmail,
-              username: 'admin',
-              role: 'super_admin',
-              phone: DEFAULT_SUPER_ADMIN.phone || '082298836027',
-              nip: DEFAULT_SUPER_ADMIN.nip || '198810052020121003',
+              authUid: fbUser.uid,
               status: 'Aktif',
+              isLoginActive: true,
+              loginStatus: 'active',
+              accountStatus: 'active',
               photoURL: fbUser.photoURL || undefined,
-              createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString()
             };
             try {
-              await setDoc(userDocRef, superAdminProfile, { merge: true });
+              // Menimpa dokumen asli Super Admin (Single Source of Truth)
+              await setDoc(doc(db, 'users', 'user_super_admin'), superAdminProfile, { merge: true });
+              if (fbUser.uid !== 'user_super_admin') {
+                deleteDoc(userDocRef).catch(() => {});
+              }
             } catch (createErr) {
-              console.warn('Super admin auto-provisioning write warning:', createErr);
+              console.warn('Super admin provisioning write warning:', createErr);
             }
             setCurrentUser(normalizeUserProfile(superAdminProfile));
             setBootstrapState('READY');
@@ -389,69 +559,75 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             return;
           }
 
-          // Also check if an existing profile exists with this email across pre-registered users (e.g. teachers or students)
-          const matchedByEmail = allUsers.find(u => u.email && u.email.toLowerCase().trim() === cleanEmail);
-          if (matchedByEmail) {
-            const migratedProfile: UserProfile = {
-              ...matchedByEmail,
-              uid: fbUser.uid,
-              displayName: matchedByEmail.displayName || fbUser.displayName || cleanEmail,
+          // Check if an existing profile exists with this email or authUid in cPanel users
+          let matchedProfile: UserProfile | undefined = allUsers.find(u =>
+            (u.email && u.email.toLowerCase().trim() === cleanEmail) ||
+            (u.authUid && u.authUid === fbUser.uid)
+          );
+
+          if (!matchedProfile) {
+            try {
+              const uSnap = await getDocs(collection(db, 'users'));
+              for (const d of uSnap.docs) {
+                const u = { ...d.data(), uid: d.id } as UserProfile;
+                if ((u.email && u.email.toLowerCase().trim() === cleanEmail) || u.authUid === fbUser.uid) {
+                  matchedProfile = u;
+                  break;
+                }
+              }
+            } catch (uErr) {
+              console.warn('Firestore lookup in onAuthStateChanged note:', uErr);
+            }
+          }
+
+          if (matchedProfile) {
+            const isSuperAcc = matchedProfile.role === 'super_admin' || matchedProfile.uid === 'user_super_admin';
+            const isProfileActive = isSuperAcc || (
+              matchedProfile.status === 'Aktif' &&
+              matchedProfile.isLoginActive !== false &&
+              matchedProfile.loginStatus !== 'pending_activation' &&
+              matchedProfile.accountStatus !== 'pending'
+            );
+
+            if (!isProfileActive) {
+              await fbSignOut(auth);
+              setCurrentUser(null);
+              setBootstrapState('ERROR');
+              setBootstrapError('Akun login Anda belum aktif atau dinonaktifkan oleh Administrator. Hanya akun yang aktif di cPanel yang diizinkan masuk.');
+              return;
+            }
+
+            const canonicalUid = matchedProfile.uid;
+            const updatedProfile: UserProfile = {
+              ...matchedProfile,
+              uid: canonicalUid,
+              displayName: matchedProfile.displayName || fbUser.displayName || cleanEmail,
               email: cleanEmail,
+              authUid: fbUser.uid,
               updatedAt: new Date().toISOString()
             };
             try {
-              await setDoc(userDocRef, migratedProfile, { merge: true });
+              // Menimpa dokumen asli yang sah di Firestore, BUKAN membuat dokumen ID baru
+              await setDoc(doc(db, 'users', canonicalUid), updatedProfile, { merge: true });
+              if (fbUser.uid !== canonicalUid) {
+                deleteDoc(userDocRef).catch(() => {});
+              }
             } catch (createErr) {
-              console.warn('User profile auto-migration write warning:', createErr);
+              console.warn('User profile update write warning:', createErr);
             }
-            setCurrentUser(normalizeUserProfile(migratedProfile));
+            setCurrentUser(normalizeUserProfile(updatedProfile));
             setBootstrapState('READY');
             setBootstrapError(null);
             return;
           }
 
-          // Fallback: Check if teacher profile exists in Firestore teachers collection
-          try {
-            const tSnap = await getDocs(collection(db, 'teachers'));
-            for (const d of tSnap.docs) {
-              const t = d.data() as Teacher;
-              if (t.email && t.email.toLowerCase().trim() === cleanEmail) {
-                const isBk = (t.role || '').toLowerCase().includes('bk') || (t.subject || '').toLowerCase().includes('bk');
-                const isWali = (t.role || '').toLowerCase().includes('wali') || Boolean(t.isWaliKelas);
-                const isPembina = Array.isArray(t.assignedExtracurriculars) && t.assignedExtracurriculars.length > 0;
-                const assignedRole: UserRole = isBk ? 'guru_bk' : (isWali ? 'wali_kelas' : (isPembina ? 'coach_ekstrakurikuler' : 'guru'));
-                const teacherProfile: UserProfile = {
-                  uid: fbUser.uid,
-                  displayName: t.fullName,
-                  email: cleanEmail,
-                  nip: t.nip,
-                  role: assignedRole,
-                  phone: t.phone || '',
-                  assignedExtracurricularIds: t.assignedExtracurriculars || [],
-                  extracurricularIds: t.assignedExtracurriculars || [],
-                  status: t.isActive !== false ? 'Aktif' : 'Nonaktif',
-                  createdAt: new Date().toISOString(),
-                  updatedAt: new Date().toISOString()
-                };
-                try {
-                  await setDoc(userDocRef, teacherProfile, { merge: true });
-                } catch (createErr) {
-                  console.warn('Teacher profile auto-migration write warning:', createErr);
-                }
-                setCurrentUser(normalizeUserProfile(teacherProfile));
-                setBootstrapState('READY');
-                setBootstrapError(null);
-                return;
-              }
-            }
-          } catch (tErr) {
-            console.warn('Teacher lookup onAuthStateChanged note:', tErr);
-          }
-
+          // TIDAK ADA AUTO-CREATION DARI TEACHERS!
+          // Sesuai aturan sistem: ID hanya dibuat jika admin yang input data guru dan admin yang membuat akses untuk akun login di cPanel.
+          await fbSignOut(auth);
           setCurrentUser(null);
           setBootstrapState('PROFILE_UNREGISTERED');
           setBootstrapError(
-            `Akun Firebase (${fbUser.email || fbUser.uid}) terautentikasi, namun belum memiliki dokumen profil kesiswaan di users/${fbUser.uid}. Hubungi Administrator / Proktor SIM-KESISWAAN untuk mendaftarkan akun ini.`
+            `Akun (${fbUser.email || fbUser.uid}) belum diaktifkan oleh Administrator di cPanel SIM-KESISWAAN. Hanya akun yang telah dibuatkan akses dan diaktifkan di cPanel yang dapat masuk.`
           );
         }
       } catch (err: any) {
@@ -590,8 +766,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (cleanId.includes('@')) {
       targetEmail = cleanId;
       matchedUser = allUsers.find(u => u.email && u.email.toLowerCase().trim() === cleanId);
+      if (!matchedUser) {
+        try {
+          const snap = await getDocs(collection(db, 'users'));
+          for (const d of snap.docs) {
+            const u = { ...d.data(), uid: d.id } as UserProfile;
+            if (u.email && u.email.toLowerCase().trim() === cleanId) {
+              matchedUser = u;
+              break;
+            }
+          }
+        } catch (e) {
+          console.warn('Firestore user lookup by email note:', e);
+        }
+      }
     } else {
-      // 1. Resolve registered email from memory allUsers or Firestore users
+      // 1. Cari identitas terdaftar di allUsers memori atau koleksi users Firestore
       const normalizedId = cleanId.startsWith('@') ? cleanId.substring(1) : cleanId;
       const cleanDigitsId = cleanId.replace(/[^0-9a-zA-Z]/g, '');
 
@@ -600,7 +790,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (!u.email) return false;
         if (u.username && (u.username.toLowerCase() === cleanId || u.username.toLowerCase() === normalizedId)) return true;
         const uNipDigits = (u.nip || '').replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
-        if (uNipDigits && (uNipDigits === cleanDigitsId || (cleanDigitsId.length >= 10 && uNipDigits.startsWith(cleanDigitsId.substring(0, 10))))) return true;
+        if (uNipDigits && (uNipDigits === cleanDigitsId || (cleanDigitsId.length >= 6 && uNipDigits.startsWith(cleanDigitsId.substring(0, 6))))) return true;
         if (u.studentNis && (u.studentNis.toLowerCase() === cleanId || u.studentNis.toLowerCase() === cleanDigitsId)) return true;
         if (u.displayName && u.displayName.toLowerCase() === cleanId) return true;
         if (cleanId === 'admin' && u.role === 'super_admin') return true;
@@ -620,7 +810,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 break;
               }
               const uNipDigits = (u.nip || '').replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
-              if (uNipDigits && (uNipDigits === cleanDigitsId || (cleanDigitsId.length >= 10 && uNipDigits.startsWith(cleanDigitsId.substring(0, 10))))) {
+              if (uNipDigits && (uNipDigits === cleanDigitsId || (cleanDigitsId.length >= 6 && uNipDigits.startsWith(cleanDigitsId.substring(0, 6))))) {
                 matchedUser = u;
                 break;
               }
@@ -639,45 +829,78 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // If still not found, check Firestore teachers collection
-      if (!matchedUser) {
-        try {
-          const teacherSnap = await getDocs(collection(db, 'teachers'));
-          if (!teacherSnap.empty) {
-            for (const d of teacherSnap.docs) {
-              const t = d.data() as Teacher;
-              if (!t.email) continue;
-              const tNipDigits = (t.nip || '').replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
-              if (
-                (tNipDigits && (tNipDigits === cleanDigitsId || (cleanDigitsId.length >= 10 && tNipDigits.startsWith(cleanDigitsId.substring(0, 10))))) ||
-                (t.fullName && t.fullName.toLowerCase() === cleanId)
-              ) {
-                targetEmail = t.email.trim().toLowerCase();
-                break;
-              }
-            }
-          }
-        } catch (e) {
-          console.warn('Firestore teacher lookup error:', e);
-        }
-      }
-
       if (matchedUser && matchedUser.email) {
         targetEmail = matchedUser.email.trim().toLowerCase();
       }
 
       // Explicit Super Admin alias fallback
       if (!targetEmail && (cleanId === 'admin' || cleanId === 'superadmin' || cleanId === 'super_admin')) {
-        targetEmail = 'admin@sekolah.sch.id';
+        targetEmail = DEFAULT_SUPER_ADMIN.email || 'puputbajuri24@gmail.com';
       }
+    }
+
+    // STRICT CHECK 1: Identitas pengguna wajib terdaftar di cPanel
+    const isSuperAdminAlias = cleanId === 'admin' || cleanId === 'superadmin' || cleanId === 'super_admin' || targetEmail === 'puputbajuri24@gmail.com';
+    if (!matchedUser && !isSuperAdminAlias) {
+      setIsLoading(false);
+      recordSystemAuditLog('LOGIN_FAILED', 'Keamanan Sistem', `Percobaan login ditolak: Identitas "${identifier}" tidak terdaftar di cPanel.`);
+      return {
+        success: false,
+        error: 'Identitas pengguna (Email/Username/NIP/NIS) belum terdaftar dalam sistem SIM-KESISWAAN. Akun login hanya dapat dibuat oleh Administrator melalui menu cPanel.'
+      };
+    }
+
+    if (!targetEmail) {
+      targetEmail = matchedUser?.email ? matchedUser.email.trim().toLowerCase() : (isSuperAdminAlias ? (DEFAULT_SUPER_ADMIN.email || 'puputbajuri24@gmail.com') : null);
     }
 
     if (!targetEmail) {
       setIsLoading(false);
-      recordSystemAuditLog('LOGIN_FAILED', 'Keamanan Sistem', `Percobaan login gagal: Identitas ${identifier} belum terdaftar.`);
+      recordSystemAuditLog('LOGIN_FAILED', 'Keamanan Sistem', `Percobaan login gagal: Identitas ${identifier} belum memiliki email terdaftar.`);
       return {
         success: false,
-        error: 'Identitas pengguna (NIP/NIS/Username) belum terdaftar dalam sistem SIM-KESISWAAN. Hubungi Administrator.'
+        error: 'Identitas pengguna belum terdaftar dengan email valid dalam sistem SIM-KESISWAAN. Hubungi Administrator.'
+      };
+    }
+
+    // STRICT CHECK 2: Hanya akun yang aktif di cPanel yang bisa login, selain itu ditolak!
+    const isSuperAdminAccount = matchedUser?.role === 'super_admin' || matchedUser?.uid === 'user_super_admin' || targetEmail === 'puputbajuri24@gmail.com';
+    const isAccountActiveInCPanel =
+      isSuperAdminAccount || (
+        matchedUser &&
+        matchedUser.status === 'Aktif' &&
+        matchedUser.isLoginActive !== false &&
+        matchedUser.loginStatus !== 'pending_activation' &&
+        matchedUser.accountStatus !== 'pending'
+      );
+
+    if (!isAccountActiveInCPanel) {
+      setIsLoading(false);
+      await fbSignOut(auth).catch(() => {});
+      recordSystemAuditLog(
+        'LOGIN_FAILED_BLOCKED',
+        'Keamanan Sistem',
+        `Percobaan login ditolak: Akun ${matchedUser?.displayName || identifier} (${targetEmail}) belum aktif di cPanel.`,
+        matchedUser
+      );
+      return {
+        success: false,
+        error: 'Akun login Anda belum aktif atau dinonaktifkan oleh Administrator Madrasah. Sesuai kebijakan madrasah, hanya akun yang aktif di cPanel yang diizinkan masuk ke sistem.'
+      };
+    }
+
+    // STRICT CHECK 3: Password check against latest data in cPanel (data lama ditimpa data terbaru)
+    if (matchedUser && matchedUser.password && matchedUser.password.trim() && matchedUser.password.trim() !== cleanPass) {
+      setIsLoading(false);
+      recordSystemAuditLog(
+        'LOGIN_FAILED_PASSWORD',
+        'Keamanan Sistem',
+        `Percobaan login gagal: Password salah untuk akun ${matchedUser.displayName} (${matchedUser.email})`,
+        matchedUser
+      );
+      return {
+        success: false,
+        error: 'Kata sandi yang Anda masukkan salah. Gunakan kata sandi terbaru yang telah diatur oleh Administrator di cPanel.'
       };
     }
 
@@ -704,6 +927,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const candidateOldPasswords = [
             matchedUser.previousPassword,
             'guru12345',
+            'osim12345',
             'password',
             'password123',
             '123456',
@@ -749,92 +973,82 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           throw fbErr;
         }
       }
-      const userDocRef = doc(db, 'users', res.user.uid);
-      let userDoc = await getDoc(userDocRef);
+
+      // Resolusi UID rapi terstandar (Single Source of Truth, tidak pernah membuat ID acak)
+      const cleanUserEmail = (res.user.email || targetEmail || '').toLowerCase().trim();
+      const isSuperAdminEmail =
+        cleanUserEmail === 'puputbajuri24@gmail.com' ||
+        cleanUserEmail === 'admin@madrasah.sch.id' ||
+        cleanUserEmail === 'admin@man2sbt.sch.id';
+
+      const canonicalUid = isSuperAdminEmail
+        ? 'user_super_admin'
+        : (matchedUser?.uid || (res.user.uid.includes('_') ? res.user.uid : resolveTidyUidForUser(matchedUser || {})));
+
+      const canonicalDocRef = doc(db, 'users', canonicalUid);
+      let userDoc = await getDoc(canonicalDocRef);
 
       if (!userDoc.exists()) {
-        const cleanUserEmail = (res.user.email || targetEmail || '').toLowerCase().trim();
-        const isSuperAdminEmail =
-          cleanUserEmail === 'puputbajuri24@gmail.com' ||
-          cleanUserEmail === 'admin@sekolah.sch.id' ||
-          cleanUserEmail === 'admin@madrasah.sch.id' ||
-          cleanUserEmail === 'admin@man2sbt.sch.id' ||
-          cleanUserEmail.startsWith('admin@') ||
-          cleanUserEmail.startsWith('superadmin@');
-
         if (isSuperAdminEmail) {
           const superAdminProfile: UserProfile = {
-            uid: res.user.uid,
+            ...DEFAULT_SUPER_ADMIN,
+            uid: 'user_super_admin',
             displayName: res.user.displayName || DEFAULT_SUPER_ADMIN.displayName,
             email: cleanUserEmail,
-            username: 'admin',
-            role: 'super_admin',
-            phone: DEFAULT_SUPER_ADMIN.phone || '082298836027',
-            nip: DEFAULT_SUPER_ADMIN.nip || '198810052020121003',
+            authUid: res.user.uid,
             status: 'Aktif',
+            isLoginActive: true,
+            loginStatus: 'active',
+            accountStatus: 'active',
             photoURL: res.user.photoURL || undefined,
-            createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
           };
           try {
-            await setDoc(userDocRef, superAdminProfile, { merge: true });
-            userDoc = await getDoc(userDocRef);
+            await setDoc(doc(db, 'users', 'user_super_admin'), superAdminProfile, { merge: true });
+            userDoc = await getDoc(doc(db, 'users', 'user_super_admin'));
+            if (res.user.uid !== 'user_super_admin') {
+              deleteDoc(doc(db, 'users', res.user.uid)).catch(() => {});
+            }
           } catch (createErr) {
-            console.warn('Super admin auto-provisioning write warning:', createErr);
+            console.warn('Super admin provisioning write warning:', createErr);
           }
-        } else {
-          // Check if profile exists in memory or teachers
-          const matched = matchedUser || allUsers.find(u => u.email && u.email.toLowerCase().trim() === cleanUserEmail);
-          if (matched) {
-            const migratedProfile: UserProfile = {
-              ...matched,
-              uid: res.user.uid,
-              displayName: matched.displayName || res.user.displayName || cleanUserEmail,
-              email: cleanUserEmail,
+        } else if (matchedUser) {
+          const updatedProfile: UserProfile = {
+            ...matchedUser,
+            uid: canonicalUid,
+            displayName: matchedUser.displayName || res.user.displayName || cleanUserEmail,
+            email: cleanUserEmail,
+            authUid: res.user.uid,
+            status: 'Aktif',
+            isLoginActive: true,
+            loginStatus: 'active',
+            accountStatus: 'active',
+            updatedAt: new Date().toISOString()
+          };
+          try {
+            await setDoc(canonicalDocRef, updatedProfile, { merge: true });
+            userDoc = await getDoc(canonicalDocRef);
+            if (res.user.uid !== canonicalUid) {
+              deleteDoc(doc(db, 'users', res.user.uid)).catch(() => {});
+            }
+          } catch (createErr) {
+            console.warn('User profile sync write warning:', createErr);
+          }
+        }
+      } else {
+        // Dokumen rapi sudah ada: perbarui authUid & lastLogin tanpa merusak UID rapi
+        if (res?.user?.uid) {
+          try {
+            await setDoc(canonicalDocRef, {
+              authUid: res.user.uid,
+              lastLogin: new Date().toISOString(),
               updatedAt: new Date().toISOString()
-            };
-            try {
-              await setDoc(userDocRef, migratedProfile, { merge: true });
-              userDoc = await getDoc(userDocRef);
-            } catch (createErr) {
-              console.warn('User profile auto-migration write warning:', createErr);
+            }, { merge: true });
+            if (res.user.uid !== canonicalUid) {
+              deleteDoc(doc(db, 'users', res.user.uid)).catch(() => {});
             }
-          } else {
-            // Check teachers collection
-            try {
-              const tSnap = await getDocs(collection(db, 'teachers'));
-              for (const d of tSnap.docs) {
-                const t = d.data() as Teacher;
-                if (t.email && t.email.toLowerCase().trim() === cleanUserEmail) {
-                  const isBk = (t.role || '').toLowerCase().includes('bk') || (t.subject || '').toLowerCase().includes('bk');
-                  const isWali = (t.role || '').toLowerCase().includes('wali') || Boolean(t.isWaliKelas);
-                  const isPembina = Array.isArray(t.assignedExtracurriculars) && t.assignedExtracurriculars.length > 0;
-                  const assignedRole: UserRole = isBk ? 'guru_bk' : (isWali ? 'wali_kelas' : (isPembina ? 'coach_ekstrakurikuler' : 'guru'));
-                  const teacherProfile: UserProfile = {
-                    uid: res.user.uid,
-                    displayName: t.fullName,
-                    email: cleanUserEmail,
-                    nip: t.nip,
-                    role: assignedRole,
-                    phone: t.phone || '',
-                    assignedExtracurricularIds: t.assignedExtracurriculars || [],
-                    extracurricularIds: t.assignedExtracurriculars || [],
-                    status: t.isActive !== false ? 'Aktif' : 'Nonaktif',
-                    createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString()
-                  };
-                  try {
-                    await setDoc(userDocRef, teacherProfile, { merge: true });
-                    userDoc = await getDoc(userDocRef);
-                  } catch (teacherWriteErr) {
-                    console.warn('Teacher profile auto-migration write note:', teacherWriteErr);
-                  }
-                  break;
-                }
-              }
-            } catch (tErr) {
-              console.warn('Teacher lookup on login note:', tErr);
-            }
+          } catch (updateErr) {
+            console.warn('AuthUid sync note:', updateErr);
           }
         }
       }
@@ -843,7 +1057,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await fbSignOut(auth);
         setCurrentUser(null);
         setBootstrapState('PROFILE_UNREGISTERED');
-        const unregMsg = `Akun Firebase (${res.user.email}) berhasil diverifikasi, namun dokumen profil pengguna (users/${res.user.uid}) belum dibuat di Firestore SIM-KESISWAAN. Hubungi Administrator / Proktor Madrasah.`;
+        const unregMsg = `Akun Anda belum memiliki dokumen profil aktif di SIM-KESISWAAN. Hubungi Administrator untuk mengaktifkan akun di menu cPanel.`;
         setBootstrapError(unregMsg);
         setIsLoading(false);
         return { success: false, error: unregMsg };
@@ -852,7 +1066,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const rawProfile = userDoc.data() as UserProfile;
       const normalizedUser = normalizeUserProfile({
         ...rawProfile,
-        uid: res.user.uid,
+        uid: canonicalUid,
         email: rawProfile.email || res.user.email || targetEmail
       });
 
@@ -889,7 +1103,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (cleanPass) {
         syncPayload.password = cleanPass;
       }
-      setDoc(userDocRef, syncPayload, { merge: true }).catch(() => {});
+      setDoc(canonicalDocRef, syncPayload, { merge: true }).catch(() => {});
 
       recordSystemAuditLog(
         'LOGIN_SUCCESS',
@@ -977,27 +1191,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // cPanel User Provisioning methods (Solusi A: Terkelola Langsung dari App & Sinkronisasi Firebase Auth)
   const addUser = async (user: UserProfile): Promise<{ success: boolean; error?: string }> => {
     try {
-      const exists = allUsers.some(u => 
-        (u.email && u.email.toLowerCase() === user.email.toLowerCase()) || 
-        (u.nip && user.nip && u.nip.replace(/\s+/g, '') === user.nip.replace(/\s+/g, ''))
-      );
-      if (exists) {
-        return { success: false, error: 'Akun dengan Email atau NIP tersebut sudah terdaftar di sistem.' };
-      }
+      const cleanNewNip = cleanDigits(user.nip);
+      const cleanNewEmail = user.email ? user.email.trim().toLowerCase() : '';
 
       if (!user.email || user.email.trim() === '') {
         return { success: false, error: 'Email akun wajib diisi untuk pendaftaran login.' };
       }
 
+      // Cek apakah sudah ada akun dengan email yang sama (DEDUPLICATION & REPLACE)
+      // "jika terdapat email yang sama maka jangan buat id baru, cukup di timpa/replace dengan data yang terbaru"
+      const existingUserByEmail = allUsers.find(u => cleanNewEmail && u.email && u.email.trim().toLowerCase() === cleanNewEmail);
+      
+      let assignedUid = user.uid && user.uid.trim() !== '' ? user.uid.trim() : (user.username ? `user_${user.username}` : `user_guru_${cleanDigits(user.nip || '') || '01'}`);
+      if (existingUserByEmail) {
+        // Gunakan UID yang sudah ada agar tidak terjadi penumpukan ID berbeda untuk email yang sama
+        assignedUid = existingUserByEmail.uid;
+      }
+
       const initialPassword = (user.password || 'password').trim();
-      let assignedUid = user.uid && user.uid.trim() !== '' ? user.uid.trim() : `user_${Date.now()}`;
+      let firebaseAuthUid: string | undefined = existingUserByEmail?.authUid;
 
       // Synchronize creation with Firebase Authentication using Secondary Auth instance
       try {
         const secAuth = getSecondaryAuth();
         const cred = await createUserWithEmailAndPassword(secAuth, user.email.trim(), initialPassword);
         if (cred?.user?.uid) {
-          assignedUid = cred.user.uid;
+          firebaseAuthUid = cred.user.uid;
         }
         await fbSignOut(secAuth);
       } catch (authErr: any) {
@@ -1010,7 +1229,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 const cred = await signInWithEmailAndPassword(secAuth, user.email.trim(), testP);
                 if (cred.user) {
                   await updatePassword(cred.user, initialPassword);
-                  assignedUid = cred.user.uid;
+                  firebaseAuthUid = cred.user.uid;
                   break;
                 }
               } catch {}
@@ -1037,6 +1256,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
 
       removeDeletedUid(newUser.uid);
+      if (newUser.uid.startsWith('user_')) {
+        removeDeletedUid(newUser.uid.replace(/^user_/, ''));
+      }
+      if (newUser.email) {
+        removeDeletedUid(newUser.email.trim().toLowerCase());
+      }
+      if (newUser.nip) {
+        const cleanNip = cleanDigits(newUser.nip);
+        if (cleanNip.length >= 6) {
+          removeDeletedUid(cleanNip);
+          removeDeletedUid(`user_${cleanNip}`);
+        }
+      }
 
       setAllUsers(prev => {
         const next = deduplicateUsersList([...prev, newUser]);
@@ -1046,8 +1278,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       try {
         await setDoc(doc(db, 'users', newUser.uid), newUser, { merge: true });
-        if (newUser.uid.startsWith('user_')) {
-          setDoc(doc(db, 'users', newUser.uid.replace(/^user_/, '')), newUser, { merge: true }).catch(() => {});
+        const potentialAliasUid = newUser.uid.startsWith('user_') ? newUser.uid.replace(/^user_/, '') : `user_${newUser.uid}`;
+        if (potentialAliasUid && potentialAliasUid !== newUser.uid) {
+          deleteDoc(doc(db, 'users', potentialAliasUid)).catch(() => {});
         }
       } catch (e) {
         console.warn('Firestore addUser sync note:', e);
@@ -1058,6 +1291,348 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return { success: true };
     } catch (e: any) {
       return { success: false, error: e?.message || 'Gagal menambahkan akun baru.' };
+    }
+  };
+
+  // Aktivasi Akun Guru & Pembina melalui cPanel (Solusi Satu Pintu & Anti Penumpukan Email)
+  const activateTeacherAccount = async (params: {
+    teacherId?: string;
+    uid?: string;
+    email: string;
+    username?: string;
+    password?: string;
+    fullName: string;
+    nip?: string;
+    role: CanonicalUserRole | UserRole;
+    phone?: string;
+    extracurricularIds?: string[];
+    extracurricularNames?: string[];
+    counselorSpecialization?: string;
+    isCashManager?: boolean;
+    cashManagerTitle?: string;
+  }): Promise<{ success: boolean; user?: UserProfile; error?: string }> => {
+    try {
+      const cleanEmail = (params.email || '').trim().toLowerCase();
+      if (!cleanEmail || !cleanEmail.includes('@')) {
+        return { success: false, error: 'Email akun wajib diisi dan valid untuk aktivasi login.' };
+      }
+
+      const cleanPass = (params.password || 'guru12345').trim();
+      const cleanNip = cleanDigits(params.nip);
+      const canonicalRole = normalizeUserRole(params.role) || (params.role as CanonicalUserRole) || 'guru';
+
+      // 1. CARI PENGGUNA YANG SUDAH ADA DENGAN EMAIL SAMA (DEDUPLICATION & REPLACE)
+      // "dan jika terdapat email yang sama maka jangan buat id baru, cukup di timpa/replace dengan data yang terbaru"
+      const existingUserByEmail = allUsers.find(u => u.email && u.email.trim().toLowerCase() === cleanEmail);
+      const existingUserByUid = params.uid ? allUsers.find(u => u.uid === params.uid) : undefined;
+      const existingUserByTeacherId = params.teacherId ? allUsers.find(u => u.uid === `user_${params.teacherId}` || u.uid === params.teacherId) : undefined;
+      const existingRecord = existingUserByEmail || existingUserByUid || existingUserByTeacherId;
+
+      // Standarisasi UID rapi: user_guru_xx / user_<teacherId>
+      const canonicalTeacherUid = params.teacherId
+        ? (params.teacherId.startsWith('user_') ? params.teacherId : `user_${params.teacherId}`)
+        : (cleanNip.length >= 4 ? `user_guru_${cleanNip}` : 'user_guru_01');
+
+      const isExistingLegacy = existingRecord ? isRandomOrLegacyArtifactUid(existingRecord.uid) : false;
+      const targetUid = (existingRecord && !isExistingLegacy)
+        ? existingRecord.uid
+        : (params.uid && !isRandomOrLegacyArtifactUid(params.uid) ? params.uid : canonicalTeacherUid);
+
+      let resolvedUsername = (params.username || existingRecord?.username || '').trim();
+      if (!resolvedUsername) {
+        resolvedUsername = cleanNip && cleanNip.length >= 4 ? `guru_${cleanNip}` : cleanEmail.split('@')[0];
+      }
+
+      // 2. FIREBASE AUTHENTICATION (SECONDARY AUTH TANPA LOGOUT SUPER ADMIN)
+      let fbAuthUid: string | undefined = existingRecord?.authUid;
+      try {
+        const secAuth = getSecondaryAuth();
+        try {
+          const cred = await createUserWithEmailAndPassword(secAuth, cleanEmail, cleanPass);
+          if (cred?.user?.uid) {
+            fbAuthUid = cred.user.uid;
+          }
+        } catch (authErr: any) {
+          if (authErr?.code === 'auth/email-already-in-use') {
+            const testPasswords = Array.from(new Set([cleanPass, existingRecord?.password, 'guru12345'].filter((p): p is string => Boolean(p && p.trim()))));
+            for (const testP of testPasswords) {
+              try {
+                const cred = await signInWithEmailAndPassword(secAuth, cleanEmail, testP);
+                if (cred.user) {
+                  if (testP !== cleanPass) {
+                    await updatePassword(cred.user, cleanPass);
+                  }
+                  fbAuthUid = cred.user.uid;
+                  break;
+                }
+              } catch {}
+            }
+          } else {
+            console.warn('Firebase Auth note during activation:', authErr?.message || authErr);
+          }
+        } finally {
+          await fbSignOut(secAuth).catch(() => {});
+        }
+      } catch (authWrapErr) {
+        console.warn('Secondary auth activation note:', authWrapErr);
+      }
+
+      // 3. SUSUN PROFILE LENGKAP YANG SUDAH AKTIF
+      const nowIso = new Date().toISOString();
+      const updatedUser: UserProfile = {
+        ...(existingRecord || {}),
+        uid: targetUid,
+        authUid: fbAuthUid || existingRecord?.authUid,
+        displayName: params.fullName.trim(),
+        nip: params.nip?.trim() || existingRecord?.nip,
+        email: cleanEmail,
+        username: resolvedUsername,
+        password: cleanPass,
+        role: canonicalRole,
+        phone: params.phone?.trim() || existingRecord?.phone,
+        status: 'Aktif',
+        isLoginActive: true,
+        loginStatus: 'active',
+        accountStatus: 'active',
+        loginActivatedAt: nowIso,
+        extracurricularIds: params.extracurricularIds || existingRecord?.extracurricularIds,
+        assignedExtracurricularIds: params.extracurricularIds || existingRecord?.assignedExtracurricularIds,
+        extracurricularNames: params.extracurricularNames || existingRecord?.extracurricularNames,
+        extracurricularName: params.extracurricularNames?.join(', ') || existingRecord?.extracurricularName,
+        counselorSpecialization: canonicalRole === 'guru_bk' ? (params.counselorSpecialization || existingRecord?.counselorSpecialization || 'Bimbingan Konseling Siswa & Karir') : undefined,
+        isCashManager: params.isCashManager !== undefined ? params.isCashManager : existingRecord?.isCashManager,
+        cashManagerTitle: params.isCashManager ? (params.cashManagerTitle || existingRecord?.cashManagerTitle || 'Bendahara Kesiswaan') : undefined,
+        updatedAt: nowIso
+      };
+
+      // 4. UPDATE STATE LOKAL ALLUSERS (DEDUPLIKASI KETAT BERDASARKAN EMAIL & UID)
+      setAllUsers(prev => {
+        const withoutTarget = prev.filter(u => u.uid !== targetUid && (!u.email || u.email.trim().toLowerCase() !== cleanEmail));
+        const next = deduplicateUsersList([...withoutTarget, updatedUser]);
+        try { localStorage.setItem(LOCAL_STORAGE_ALL_USERS_KEY, JSON.stringify(next)); } catch {}
+        return next;
+      });
+
+      // 5. SIMPAN KE FIRESTORE USERS & UPDATE STATUS DI TEACHERS
+      try {
+        await setDoc(doc(db, 'users', targetUid), updatedUser, { merge: true });
+
+        // Hapus duplikat ID lama jika UID berbeda dari targetUid
+        if (existingRecord && existingRecord.uid !== targetUid) {
+          deleteDoc(doc(db, 'users', existingRecord.uid)).catch(() => {});
+        }
+        if (params.teacherId) {
+          const teacherDocUid = `user_${params.teacherId}`;
+          if (teacherDocUid !== targetUid) {
+            deleteDoc(doc(db, 'users', teacherDocUid)).catch(() => {});
+          }
+          // Update status akun login di koleksi teachers
+          await setDoc(doc(db, 'teachers', params.teacherId), {
+            isLoginActive: true,
+            accountStatus: 'active',
+            userUid: targetUid,
+            updatedAt: nowIso
+          }, { merge: true });
+        }
+      } catch (firestoreErr) {
+        console.warn('Firestore write on activateTeacherAccount note:', firestoreErr);
+      }
+
+      recordSystemAuditLog(
+        'ACTIVATE_USER',
+        'Manajemen Akun',
+        `Administrator mengaktifkan akun login: ${updatedUser.displayName} (${updatedUser.email}) [${updatedUser.role.toUpperCase()}]`,
+        currentUser
+      );
+
+      return { success: true, user: updatedUser };
+    } catch (err: any) {
+      console.error('Error activating teacher account:', err);
+      return { success: false, error: err?.message || 'Gagal mengaktifkan akun login.' };
+    }
+  };
+
+  // Aktivasi Akun Pengurus OSIM melalui cPanel (Solusi Satu Pintu & Anti Penumpukan Email)
+  const activateOsimAccount = async (params: {
+    memberId?: string;
+    uid?: string;
+    email: string;
+    username?: string;
+    password?: string;
+    fullName: string;
+    studentNis?: string;
+    className?: string;
+    position?: string;
+    sekbid?: string;
+    phone?: string;
+    isCashManager?: boolean;
+    cashManagerTitle?: string;
+  }): Promise<{ success: boolean; user?: UserProfile; error?: string }> => {
+    try {
+      const cleanEmail = (params.email || '').trim().toLowerCase();
+      if (!cleanEmail || !cleanEmail.includes('@')) {
+        return { success: false, error: 'Email akun wajib diisi dan valid untuk aktivasi login pengurus OSIM.' };
+      }
+
+      const cleanPass = (params.password || 'osim12345').trim();
+      const cleanNis = cleanDigits(params.studentNis);
+      const posLower = (params.position || '').toLowerCase();
+      const isBph = params.sekbid?.includes('BPH') || posLower.includes('ketua umum') || posLower.includes('wakil ketua') || posLower.includes('sekretaris umum') || posLower.includes('bendahara umum');
+
+      const osimRoleVal: OsimRoleType =
+        posLower.includes('ketua') && !posLower.includes('wakil') && !posLower.includes('sekbid') ? 'ketua'
+        : posLower.includes('wakil') ? 'wakil'
+        : posLower.includes('sekretaris') ? 'sekretaris'
+        : posLower.includes('bendahara') ? 'bendahara'
+        : 'sekbid';
+
+      const canonicalPos: OsimPosition =
+        osimRoleVal === 'ketua' ? 'ketua_osim'
+        : osimRoleVal === 'wakil' ? 'wakil_ketua_osim'
+        : osimRoleVal === 'sekretaris' ? 'sekretaris'
+        : osimRoleVal === 'bendahara' ? 'bendahara'
+        : 'ketua_sekbid';
+
+      const sekbidNum = extractSekbidNumber(params.sekbid) || extractSekbidNumber(params.position);
+      const deptCode = isBph ? 'BPH' : (sekbidNum ? `SEKBID-${sekbidNum}` : 'SEKBID');
+
+      // 1. CARI PENGGUNA YANG SUDAH ADA DENGAN EMAIL SAMA (DEDUPLICATION & REPLACE)
+      // "dan jika terdapat email yang sama maka jangan buat id baru, cukup di timpa/replace dengan data yang terbaru"
+      const existingUserByEmail = allUsers.find(u => u.email && u.email.trim().toLowerCase() === cleanEmail);
+      const existingUserByUid = params.uid ? allUsers.find(u => u.uid === params.uid) : undefined;
+      const existingUserByNis = cleanNis.length >= 4 ? allUsers.find(u => cleanDigits(u.nip) === cleanNis) : undefined;
+      const existingUserByMemberId = params.memberId ? allUsers.find(u => u.uid === `user_osim_${params.memberId}` || u.uid === params.memberId) : undefined;
+
+      const existingRecord = existingUserByEmail || existingUserByUid || existingUserByNis || existingUserByMemberId;
+
+      // Standarisasi UID rapi OSIM:
+      const bphUidMap: Record<string, string> = {
+        ketua: 'user_osim_ketua',
+        wakil: 'user_osim_wakil',
+        sekretaris: 'user_osim_sekretaris',
+        bendahara: 'user_osim_bendahara'
+      };
+      const canonicalBphUid = isBph && bphUidMap[osimRoleVal] ? bphUidMap[osimRoleVal] : undefined;
+      const canonicalNeatUid = canonicalBphUid || (cleanNis.length >= 4 ? `user_osim_${cleanNis}` : (params.memberId ? (params.memberId.startsWith('user_') ? params.memberId : `user_${params.memberId}`) : `user_osim_01`));
+
+      const isExistingLegacy = existingRecord ? isRandomOrLegacyArtifactUid(existingRecord.uid) : false;
+      const targetUid = (existingRecord && !isExistingLegacy)
+        ? existingRecord.uid
+        : (params.uid && !isRandomOrLegacyArtifactUid(params.uid) ? params.uid : canonicalNeatUid);
+
+      let resolvedUsername = (params.username || existingRecord?.username || '').trim().toLowerCase();
+      if (!resolvedUsername) {
+        resolvedUsername = cleanNis && cleanNis.length >= 4 ? `osim_${cleanNis}` : cleanEmail.split('@')[0];
+      }
+
+      // 2. FIREBASE AUTHENTICATION (SECONDARY AUTH TANPA LOGOUT SUPER ADMIN)
+      let fbAuthUid: string | undefined = existingRecord?.authUid;
+      try {
+        const secAuth = getSecondaryAuth();
+        try {
+          const cred = await createUserWithEmailAndPassword(secAuth, cleanEmail, cleanPass);
+          if (cred?.user?.uid) {
+            fbAuthUid = cred.user.uid;
+          }
+        } catch (authErr: any) {
+          if (authErr?.code === 'auth/email-already-in-use') {
+            console.info(`Akun email ${cleanEmail} sudah ada di Firebase Authentication, merekonsiliasi kredensial tanpa membuat akun ganda.`);
+            const testPasswords = Array.from(new Set([cleanPass, existingRecord?.password, 'osim12345'].filter((p): p is string => Boolean(p && p.trim()))));
+            for (const testP of testPasswords) {
+              try {
+                const cred = await signInWithEmailAndPassword(secAuth, cleanEmail, testP);
+                if (cred.user) {
+                  if (testP !== cleanPass) {
+                    await updatePassword(cred.user, cleanPass);
+                  }
+                  fbAuthUid = cred.user.uid;
+                  break;
+                }
+              } catch {}
+            }
+          } else {
+            console.warn('Firebase Auth note during OSIM activation:', authErr?.message || authErr);
+          }
+        } finally {
+          await fbSignOut(secAuth).catch(() => {});
+        }
+      } catch (authWrapErr) {
+        console.warn('Secondary auth activation note for OSIM:', authWrapErr);
+      }
+
+      // 3. SUSUN PROFILE LENGKAP YANG SUDAH AKTIF
+      const nowIso = new Date().toISOString();
+      const updatedUser: UserProfile = {
+        ...(existingRecord || {}),
+        uid: targetUid,
+        authUid: fbAuthUid || existingRecord?.authUid,
+        displayName: params.fullName.trim(),
+        nip: cleanNis || existingRecord?.nip,
+        email: cleanEmail,
+        username: resolvedUsername,
+        password: cleanPass,
+        role: 'anggota_osim',
+        position: canonicalPos,
+        osimRole: osimRoleVal,
+        osimPosition: params.position || existingRecord?.osimPosition || 'Pengurus OSIM',
+        osimDepartmentCode: deptCode,
+        osimDepartmentName: params.sekbid || existingRecord?.osimDepartmentName || (isBph ? 'BPH (Badan Pengurus Harian)' : 'Seksi Bidang'),
+        phone: params.phone?.trim() || existingRecord?.phone,
+        status: 'Aktif',
+        isLoginActive: true,
+        loginStatus: 'active',
+        accountStatus: 'active',
+        loginActivatedAt: nowIso,
+        isCashManager: params.isCashManager !== undefined ? params.isCashManager : (posLower.includes('bendahara') || existingRecord?.isCashManager),
+        cashManagerTitle: (params.isCashManager || posLower.includes('bendahara')) ? (params.cashManagerTitle || 'Bendahara OSIM') : undefined,
+        updatedAt: nowIso
+      };
+
+      // 4. UPDATE STATE LOKAL ALLUSERS (DEDUPLIKASI KETAT BERDASARKAN EMAIL & UID)
+      setAllUsers(prev => {
+        const withoutTarget = prev.filter(u => u.uid !== targetUid && (!u.email || u.email.trim().toLowerCase() !== cleanEmail));
+        const next = deduplicateUsersList([...withoutTarget, updatedUser]);
+        try { localStorage.setItem(LOCAL_STORAGE_ALL_USERS_KEY, JSON.stringify(next)); } catch {}
+        return next;
+      });
+
+      // 5. SIMPAN KE FIRESTORE USERS & UPDATE STATUS DI OSIM_MEMBERS
+      try {
+        await setDoc(doc(db, 'users', targetUid), updatedUser, { merge: true });
+
+        // Hapus duplikat ID lama jika UID berbeda dari targetUid
+        if (existingRecord && existingRecord.uid !== targetUid) {
+          deleteDoc(doc(db, 'users', existingRecord.uid)).catch(() => {});
+        }
+        if (params.memberId) {
+          const oldMemberUid = `user_osim_${params.memberId}`;
+          if (oldMemberUid !== targetUid) {
+            deleteDoc(doc(db, 'users', oldMemberUid)).catch(() => {});
+          }
+          await setDoc(doc(db, 'osim_members', params.memberId), {
+            isLoginActive: true,
+            loginStatus: 'active',
+            accountStatus: 'active',
+            userUid: targetUid,
+            email: cleanEmail,
+            loginUsername: resolvedUsername,
+            updatedAt: nowIso
+          }, { merge: true });
+        }
+      } catch (firestoreErr) {
+        console.warn('Firestore write on activateOsimAccount note:', firestoreErr);
+      }
+
+      recordSystemAuditLog(
+        'ACTIVATE_USER',
+        'Manajemen Akun',
+        `Administrator mengaktifkan akun login OSIM: ${updatedUser.displayName} (${updatedUser.email}) [OSIM - ${updatedUser.osimPosition}]`,
+        currentUser
+      );
+
+      return { success: true, user: updatedUser };
+    } catch (e: any) {
+      return { success: false, error: e?.message || 'Gagal mengaktifkan akun login OSIM.' };
     }
   };
 
@@ -1104,13 +1679,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const secAuth = getSecondaryAuth();
             let syncSuccess = false;
 
-            const candidatePasswords = [
+            const candidatePasswords = Array.from(new Set([
               oldPassword,
               targetExistingUser?.previousPassword,
-              'password',
-              'password123',
-              '123456'
-            ].filter((p): p is string => Boolean(p && p.trim()));
+              newPassword
+            ].filter((p): p is string => Boolean(p && p.trim()))));
 
             for (const tryPass of candidatePasswords) {
               try {
@@ -1175,15 +1748,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // Write to Firestore and persist all updated user profile fields (Single Source of Truth)
+      // Write to Firestore and persist all updated user profile fields (Single Source of Truth, Overwrite Dokumen Asli)
       try {
         await setDoc(doc(db, 'users', uid), updatedWithTimestamp, { merge: true });
 
-        // Also update alias document IDs if any
-        if (uid.startsWith('user_')) {
-          setDoc(doc(db, 'users', uid.replace(/^user_/, '')), updatedWithTimestamp, { merge: true }).catch(() => {});
-        } else {
-          setDoc(doc(db, 'users', `user_${uid}`), updatedWithTimestamp, { merge: true }).catch(() => {});
+        // Pembersihan otomatis jika pernah terlanjur ada dokumen alias kembar di Firestore:
+        const potentialAliasUid = uid.startsWith('user_') ? uid.replace(/^user_/, '') : `user_${uid}`;
+        if (potentialAliasUid && potentialAliasUid !== uid) {
+          deleteDoc(doc(db, 'users', potentialAliasUid)).catch(() => {});
+        }
+        if (targetExistingUser?.authUid && targetExistingUser.authUid !== uid) {
+          deleteDoc(doc(db, 'users', targetExistingUser.authUid)).catch(() => {});
         }
       } catch (e) {
         console.warn('Firestore updateUser sync note:', e);
@@ -1208,6 +1783,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (uid.startsWith('user_')) {
         addDeletedUid(uid.replace(/^user_/, ''));
       }
+      if (targetUser?.email) {
+        addDeletedUid(targetUser.email.trim().toLowerCase());
+      }
+      if (targetUser?.nip) {
+        const cleanNip = cleanDigits(targetUser.nip);
+        if (cleanNip.length >= 6) {
+          addDeletedUid(cleanNip);
+          addDeletedUid(`user_${cleanNip}`);
+        }
+      }
 
       setAllUsers(prev => {
         const next = prev.filter(u => {
@@ -1226,6 +1811,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await deleteDoc(doc(db, 'users', uid));
         if (uid.startsWith('user_')) {
           deleteDoc(doc(db, 'users', uid.replace(/^user_/, ''))).catch(() => {});
+        }
+        if (targetUser?.authUid) {
+          deleteDoc(doc(db, 'users', targetUser.authUid)).catch(() => {});
         }
       } catch (e) {
         console.warn('Firestore deleteUser sync note:', e);
@@ -1254,11 +1842,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           updatePayload.previousPassword = prevPass;
         }
 
-        // 1. Direct App Reset: Update in Firestore
+        // 1. Direct App Reset: Update in Firestore (Single Source of Truth, Overwrite Dokumen Asli)
         try {
           await setDoc(doc(db, 'users', uid), updatePayload, { merge: true });
-          if (uid.startsWith('user_')) {
-            setDoc(doc(db, 'users', uid.replace(/^user_/, '')), updatePayload, { merge: true }).catch(() => {});
+
+          // Pembersihan otomatis dokumen kembar/alias jika pernah terlanjur ada di Firestore:
+          const potentialAliasUid = uid.startsWith('user_') ? uid.replace(/^user_/, '') : `user_${uid}`;
+          if (potentialAliasUid && potentialAliasUid !== uid) {
+            deleteDoc(doc(db, 'users', potentialAliasUid)).catch(() => {});
+          }
+          if (targetUser?.authUid && targetUser.authUid !== uid) {
+            deleteDoc(doc(db, 'users', targetUser.authUid)).catch(() => {});
           }
         } catch (e) {
           console.warn('Firestore resetUserPassword sync note:', e);
@@ -1276,13 +1870,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const secAuth = getSecondaryAuth();
           let syncSuccess = false;
 
-          const candidatePasswords = [
+          const candidatePasswords = Array.from(new Set([
             prevPass,
-            targetUser.previousPassword,
-            'password',
-            'password123',
-            '123456'
-          ].filter((p): p is string => Boolean(p && p.trim()));
+            targetUser.previousPassword
+          ].filter((p): p is string => Boolean(p && p.trim()))));
 
           for (const tryPass of candidatePasswords) {
             try {
@@ -1299,7 +1890,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           if (!syncSuccess) {
             try {
-              await createUserWithEmailAndPassword(secAuth, targetUser.email, cleanPass);
+              const newCred = await createUserWithEmailAndPassword(secAuth, targetUser.email, cleanPass);
+              if (newCred?.user?.uid) {
+                // Update authUid pada dokumen utama saja, jangan buat dokumen baru di users
+                setDoc(doc(db, 'users', uid), { authUid: newCred.user.uid }, { merge: true }).catch(() => {});
+                if (newCred.user.uid !== uid) {
+                  deleteDoc(doc(db, 'users', newCred.user.uid)).catch(() => {});
+                }
+              }
               syncSuccess = true;
             } catch (createErr) {}
           }
@@ -1393,17 +1991,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const rawRole = (t.role || '').toLowerCase();
         const rawSubject = (t.subject || '').toLowerCase();
         const rawName = (t.fullName || '').toLowerCase();
-        let role: CanonicalUserRole = 'coach_ekstrakurikuler';
+        let role: CanonicalUserRole = 'guru';
 
-        if (rawRole.includes('bk') || rawRole.includes('bimbingan') || rawRole.includes('konselor') || rawSubject.includes('bk') || rawSubject.includes('bimbingan')) {
-          role = 'guru_bk';
-        } else if (rawRole.includes('super') || rawRole.includes('admin') || rawRole.includes('proktor')) {
+        if (rawRole.includes('super') || rawRole.includes('admin') || rawRole.includes('proktor')) {
           role = 'super_admin';
         } else if (rawRole.includes('waka') || rawRole.includes('kesiswaan')) {
           role = 'waka_kesiswaan';
+        } else if (/\bbk\b/i.test(rawRole) || /\bbk\b/i.test(rawSubject) || rawRole.includes('konselor') || rawRole.includes('bimbingan') || rawSubject.includes('bimbingan') || rawSubject.includes('konseling')) {
+          role = 'guru_bk';
         } else if (rawRole.includes('osim') || rawRole.includes('osis')) {
           role = 'pembina_osim';
-        } else if (t.isPembina || (t.assignedExtracurriculars && t.assignedExtracurriculars.length > 0)) {
+        } else if (
+          (rawRole.includes('pembina') || rawRole.includes('ekskul') || t.isPembina) &&
+          Array.isArray(t.assignedExtracurriculars) &&
+          t.assignedExtracurriculars.length > 0
+        ) {
           role = 'coach_ekstrakurikuler';
         } else if (rawRole.includes('wali') || rawRole.includes('homeroom')) {
           role = 'wali_kelas';
@@ -1425,23 +2027,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           ? cleanNip 
           : email.split('@')[0];
 
-        // 3. Resolve extracurricular IDs and human-readable names (for Firestore readability)
-        let resolvedAssignedIds = canonicalizeAssignedEkskulIds(t.assignedExtracurriculars, extracurricularsList);
-        if (Array.isArray(extracurricularsList) && extracurricularsList.length > 0) {
-          const matchedEkskuls = extracurricularsList.filter(e =>
-            (e.coachId && (e.coachId === t.id || `user_${t.id}` === e.coachId || e.coachId === `user_${t.id.replace('user_', '')}`)) ||
-            (e.coachName && normalizeName(e.coachName) === normalizeName(t.fullName))
-          );
-          if (matchedEkskuls.length > 0) {
-            resolvedAssignedIds = Array.from(new Set([...resolvedAssignedIds, ...matchedEkskuls.map(e => e.id)]));
-          }
-        }
-
-        const assignedEkskulIds = canonicalizeAssignedEkskulIds(resolvedAssignedIds, extracurricularsList);
+        // 3. Modul Guru sebagai Data Pokok (Single Source of Truth):
+        // Pembinaan ekskul HANYA diambil dari tugas sah di data guru, STOP loose name matching!
+        const assignedEkskulIds = canonicalizeAssignedEkskulIds(t.assignedExtracurriculars, extracurricularsList);
         const assignedEkskulNames = assignedEkskulIds.map(id => {
           const match = (extracurricularsList || []).find(e => e.id === id);
           return match ? match.name : '';
-        }).filter(name => Boolean(name && !/^\d+$/.test(name.trim()) && !/^ekskul_\d+$/.test(name.trim())));
+        }).filter(name => Boolean(name && !/^\d+$/.test(name.trim()) && !/^ekskul_\d+$/i.test(name.trim())));
         const assignedEkskulNameStr = assignedEkskulNames.join(', ') || undefined;
 
         // 4. Find existing user with comprehensive matching
@@ -1464,7 +2056,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             password: userPassword,
             role: existing.role === 'super_admin' ? 'super_admin' : role,
             phone: t.phone || existing.phone,
-            status: t.isActive !== false ? 'Aktif' : 'Nonaktif',
+            status: existing.status || (t.isActive !== false ? 'Aktif' : 'Nonaktif'),
+            isLoginActive: existing.isLoginActive !== undefined ? existing.isLoginActive : (existing.status === 'Aktif'),
+            loginStatus: existing.loginStatus || (existing.status === 'Aktif' ? 'active' : 'pending_activation'),
+            accountStatus: existing.accountStatus || (existing.status === 'Aktif' ? 'active' : 'pending'),
             isCashManager: t.isCashManager !== undefined ? t.isCashManager : existing.isCashManager,
             cashManagerTitle: t.cashManagerTitle || existing.cashManagerTitle,
             extracurricularIds: assignedEkskulIds.length > 0 ? assignedEkskulIds : existing.extracurricularIds,
@@ -1488,6 +2083,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } else {
           const isSuperAdminUser = t.role?.toLowerCase().includes('super') || t.fullName?.toLowerCase().includes('puput');
           const finalUid = isSuperAdminUser ? 'user_super_admin' : (t.id.startsWith('user_') ? t.id : `user_${t.id}`);
+          const isAlreadyActive = t.isLoginActive === true || t.accountStatus === 'active';
           const newUser: UserProfile = {
             uid: finalUid,
             displayName: t.fullName,
@@ -1497,10 +2093,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             password: 'password',
             role: isSuperAdminUser ? 'super_admin' : role,
             phone: t.phone || undefined,
-            status: t.isActive !== false ? 'Aktif' : 'Nonaktif',
+            status: (isSuperAdminUser || isAlreadyActive) ? 'Aktif' : 'Nonaktif',
+            isLoginActive: isSuperAdminUser || isAlreadyActive,
+            loginStatus: (isSuperAdminUser || isAlreadyActive) ? 'active' : 'pending_activation',
+            accountStatus: (isSuperAdminUser || isAlreadyActive) ? 'active' : 'pending',
             isCashManager: t.isCashManager || false,
             cashManagerTitle: t.cashManagerTitle || undefined,
             extracurricularIds: assignedEkskulIds.length > 0 ? assignedEkskulIds : undefined,
+            assignedExtracurricularIds: assignedEkskulIds.length > 0 ? assignedEkskulIds : undefined,
             extracurricularNames: assignedEkskulNames.length > 0 ? assignedEkskulNames : undefined,
             extracurricularName: assignedEkskulNameStr || undefined,
             counselorSpecialization: role === 'guru_bk' ? (t.subject || 'Bimbingan Konseling Siswa & Karir') : undefined,
@@ -1513,13 +2113,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             firestorePromises.push(setDoc(doc(db, 'users', newUser.uid), newUser, { merge: true }));
           }
 
-          // Auto-provision credentials in Firebase Auth via Secondary Auth
-          try {
-            const secAuth = getSecondaryAuth();
-            createUserWithEmailAndPassword(secAuth, newUser.email, newUser.password || 'password')
-              .then(() => fbSignOut(secAuth))
-              .catch(() => fbSignOut(secAuth).catch(() => {}));
-          } catch {}
+          // Kredensial Firebase Auth HANYA dibuat otomatis untuk Super Admin di sini.
+          // Akun guru & pembina baru WAJIB diaktifkan oleh admin melalui cPanel agar tidak terjadi penumpukan email di Firebase Authentication!
+          if (isSuperAdminUser) {
+            try {
+              const secAuth = getSecondaryAuth();
+              createUserWithEmailAndPassword(secAuth, newUser.email, newUser.password || 'password')
+                .then(() => fbSignOut(secAuth))
+                .catch(() => fbSignOut(secAuth).catch(() => {}));
+            } catch {}
+          }
 
           count++;
         }
@@ -1562,21 +2165,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           // Inferred OSIM role
           const osimRoleVal: OsimRoleType =
-            pos.includes('ketua') && !pos.includes('wakil') && !pos.includes('sekbid') ? 'ketua'
-            : pos.includes('wakil') ? 'wakil'
-            : pos.includes('sekretaris') ? 'sekretaris'
-            : pos.includes('bendahara') ? 'bendahara'
+            pos.includes('ketua') && !pos.includes('wakil') && !pos.includes('sekbid') && !pos.includes('bidang') ? 'ketua'
+            : pos.includes('wakil') && !pos.includes('sekbid') && !pos.includes('bidang') ? 'wakil'
+            : pos.includes('sekretaris') && !pos.includes('sekbid') && !pos.includes('bidang') ? 'sekretaris'
+            : pos.includes('bendahara') && !pos.includes('sekbid') && !pos.includes('bidang') ? 'bendahara'
             : 'sekbid';
 
           const isBph = osimRoleVal !== 'sekbid' || sek.includes('bph') || isBphMember(m);
           const isSekbidKetua = !isBph && (pos.includes('ketua') || pos.includes('koordinator'));
-
-          // Kebijakan Kesiswaan & cPanel:
-          // Hanya pengurus BPH dan Ketua Sekbid yang memiliki akun login di cPanel Admin.
-          // Anggota Sekbid biasa (staf bidang) TIDAK dibuatkan akun login / role cPanel.
-          if (!isBph && !isSekbidKetua) {
-            continue;
-          }
 
           const matchedDept = departmentsList.find(d => 
             d.id === m.sekbid || 
@@ -1589,9 +2185,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const deptCode = isBph ? 'BPH' : (sekbidNum ? `SEKBID-${sekbidNum}` : (matchedDept?.code || 'SEKBID'));
           const deptName = isBph ? 'BPH (Badan Pengurus Harian)' : (matchedDept?.name || m.sekbid || 'Seksi Bidang');
 
-          // Username strictly follows student NIS or loginUsername or fallback
+          // Username strictly follows student NIS or loginUsername or clean personal fallback
           const cleanNis = cleanDigits(m.studentNis);
-          const fallbackUsername = isBph ? getDefaultOsimUsername(m) : (sekbidNum ? `osim.sekbid${sekbidNum}` : getDefaultOsimUsername(m));
+          const cleanName = (m.fullName || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 15);
+          const fallbackUsername = cleanNis
+            ? cleanNis
+            : (cleanName ? `osim.${cleanName}` : (isBph ? getDefaultOsimUsername(m) : (sekbidNum ? `osim.sekbid${sekbidNum}` : `osim.${m.id || Date.now()}`)));
           const username = cleanNis || (m.loginUsername || m.username || '').toLowerCase().trim() || fallbackUsername;
           const email = m.email || `${username}@madrasah.sch.id`;
 
@@ -1601,25 +2200,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             osimRoleVal === 'wakil' ? 'wakil_ketua_osim' :
             osimRoleVal === 'sekretaris' ? 'sekretaris' :
             osimRoleVal === 'bendahara' ? 'bendahara' :
-            'ketua_sekbid';
+            (isSekbidKetua ? 'ketua_sekbid' : 'anggota_sekbid' as any);
 
-          // Canonical OSIM user UID: always prefer user_osim_<nis> when NIS is available
-          const canonicalOsimUid = cleanNis ? `user_osim_${cleanNis}` : (m.id.startsWith('user_') ? m.id : `user_${m.id}`);
+          // Standarisasi UID rapi terstruktur (BPH: user_osim_ketua/wakil/sekretaris/bendahara, Sekbid: user_osim_<nis> atau user_<id>)
+          const bphUidMap: Record<string, string> = {
+            ketua: 'user_osim_ketua',
+            wakil: 'user_osim_wakil',
+            sekretaris: 'user_osim_sekretaris',
+            bendahara: 'user_osim_bendahara'
+          };
+          const canonicalBphUid = isBph && bphUidMap[osimRoleVal] ? bphUidMap[osimRoleVal] : undefined;
+          const canonicalOsimUid = canonicalBphUid || (cleanNis && cleanNis.length >= 4 ? `user_osim_${cleanNis}` : (m.id.startsWith('user_') ? m.id : `user_${m.id}`));
 
-          // Match existing user by ID, username, NIS, or member match
+          // Match existing user by ID, username, NIS, email, or member match
           const existingIdx = updatedUsers.findIndex(u =>
             u.uid === canonicalOsimUid ||
-            u.uid === m.id ||
-            u.uid === `user_${m.id}` ||
-            (cleanNis && cleanDigits(u.nip) === cleanNis) ||
-            (u.username && u.username.toLowerCase() === username.toLowerCase()) ||
+            (m.id && (u.uid === m.id || u.uid === `user_${m.id}`)) ||
+            (cleanNis && cleanNis.length >= 4 && cleanDigits(u.nip) === cleanNis) ||
+            (username && u.username && u.username.toLowerCase() === username.toLowerCase()) ||
+            (m.email && u.email && !isGenericPlaceholderEmail(m.email) && !isGenericPlaceholderEmail(u.email) && u.email.trim().toLowerCase() === m.email.trim().toLowerCase()) ||
             isOsimMemberUserMatch(u, m)
           );
 
           if (existingIdx >= 0) {
             const existing = updatedUsers[existingIdx];
-            const isUidMigrated = cleanNis && existing.uid !== canonicalOsimUid;
+            const isUidMigrated = (existing.uid !== canonicalOsimUid) && (Boolean(cleanNis) || isRandomOrLegacyArtifactUid(existing.uid) || Boolean(canonicalBphUid));
             const targetUid = isUidMigrated ? canonicalOsimUid : existing.uid;
+            const isNowActive = Boolean(m.isLoginActive || existing.isLoginActive || existing.loginStatus === 'active' || existing.accountStatus === 'active');
             const merged: UserProfile = {
               ...existing,
               uid: targetUid,
@@ -1628,6 +2235,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               phone: m.phone && m.phone !== '-' ? m.phone : existing.phone,
               username: existing.username || username,
               email: existing.email || email,
+              password: existing.password || 'osim12345',
+              authUid: existing.authUid,
               role: 'anggota_osim',
               position: canonicalOsimPos,
               osimRole: osimRoleVal,
@@ -1637,7 +2246,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               osimDepartmentName: deptName,
               isCashManager: osimRoleVal === 'bendahara',
               cashManagerTitle: osimRoleVal === 'bendahara' ? 'Bendahara OSIM' : undefined,
-              status: m.status === 'Demisioner' ? 'Nonaktif' : (existing.status || 'Aktif'),
+              status: m.status === 'Demisioner' ? 'Nonaktif' : (existing.status || (isNowActive ? 'Aktif' : 'Nonaktif')),
+              isLoginActive: isNowActive,
+              loginStatus: isNowActive ? 'active' : (existing.loginStatus || 'pending_activation'),
+              accountStatus: isNowActive ? 'active' : (existing.accountStatus || 'pending'),
               updatedAt: new Date().toISOString()
             };
             updatedUsers[existingIdx] = merged;
@@ -1649,6 +2261,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
             count++;
           } else {
+            const isNowActive = Boolean(m.isLoginActive === true || m.accountStatus === 'active');
             const newUser: UserProfile = {
               uid: canonicalOsimUid,
               displayName: m.fullName,
@@ -1665,7 +2278,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               osimDepartmentName: deptName,
               isCashManager: osimRoleVal === 'bendahara',
               cashManagerTitle: osimRoleVal === 'bendahara' ? 'Bendahara OSIM' : undefined,
-              status: m.status === 'Demisioner' ? 'Nonaktif' : 'Aktif',
+              status: m.status === 'Demisioner' ? 'Nonaktif' : (isNowActive ? 'Aktif' : 'Nonaktif'),
+              isLoginActive: isNowActive,
+              loginStatus: isNowActive ? 'active' : 'pending_activation',
+              accountStatus: isNowActive ? 'active' : 'pending',
               createdAt: new Date().toISOString()
             };
             updatedUsers.push(newUser);
@@ -1686,13 +2302,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const defaultUsername = sekbidNum ? `osim.sekbid${sekbidNum}` : `osim.${trimmedCoord.toLowerCase().split(' ')[0].replace(/[^a-z0-9]/g, '')}`;
 
         const existingAccIdx = updatedUsers.findIndex(u =>
-          u.displayName.toLowerCase().trim() === trimmedCoord.toLowerCase() ||
-          (u.osimDepartmentCode && u.osimDepartmentCode.toUpperCase() === deptCode.toUpperCase() && (u.role === 'pengurus_osim' || u.role === 'anggota_osim')) ||
+          (u.displayName && u.displayName.toLowerCase().trim() === trimmedCoord.toLowerCase()) ||
+          (d.id && u.osimDepartmentId === d.id && (u.role === 'pengurus_osim' || u.role === 'anggota_osim')) ||
           (u.username && u.username.toLowerCase() === defaultUsername.toLowerCase())
         );
 
         if (existingAccIdx >= 0) {
           const existing = updatedUsers[existingAccIdx];
+          const isNowActive = Boolean(existing.isLoginActive || existing.loginStatus === 'active' || existing.accountStatus === 'active');
           const merged: UserProfile = {
             ...existing,
             displayName: trimmedCoord,
@@ -1704,6 +2321,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             osimDepartmentCode: deptCode,
             osimDepartmentName: d.name,
             status: existing.status || 'Aktif',
+            isLoginActive: isNowActive,
+            loginStatus: isNowActive ? 'active' : (existing.loginStatus || 'pending_activation'),
+            accountStatus: isNowActive ? 'active' : (existing.accountStatus || 'pending'),
             updatedAt: new Date().toISOString()
           };
           updatedUsers[existingAccIdx] = merged;
@@ -1711,7 +2331,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             firestorePromises.push(setDoc(doc(db, 'users', merged.uid), merged, { merge: true }));
           }
         } else {
-          const newUid = `user_osim_${(deptCode || 'sekbid').toLowerCase().replace(/[^a-z0-9]/g, '_')}_${Date.now()}`;
+          const safeSlug = (d.id || d.code || (sekbidNum ? `sekbid_${sekbidNum}` : 'sekbid')).toLowerCase().replace(/[^a-z0-9]/g, '_');
+          const newUid = `user_osim_${safeSlug}`;
           const newAcc: UserProfile = {
             uid: newUid,
             displayName: trimmedCoord,
@@ -1725,6 +2346,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             osimDepartmentCode: deptCode,
             osimDepartmentName: d.name,
             status: 'Aktif',
+            isLoginActive: false,
+            loginStatus: 'pending_activation',
+            accountStatus: 'pending',
             createdAt: new Date().toISOString()
           };
           updatedUsers.push(newAcc);
@@ -1754,6 +2378,99 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return count;
   };
 
+  /**
+   * TAHAP 1: Migrasi massal dokumen Firestore users ber-ID acak ke ID rapi deskriptif
+   * (Misal menyalin dokumen CdAcdt... ke user_super_admin, lalu menghapus dokumen acak)
+   */
+  const migrateAllUsersToTidyUids = async (): Promise<{ migratedCount: number; deletedArtifactsCount: number }> => {
+    let migratedCount = 0;
+    let deletedArtifactsCount = 0;
+    try {
+      const snap = await getDocs(collection(db, 'users'));
+      const seenNeatUids = new Set<string>();
+      const seenTeacherNips = new Map<string, string>(); // cleanNip -> docId
+      const seenEmails = new Map<string, string>(); // cleanEmail -> docId
+      const docsToMigrate: Array<{ docRef: any; id: string; data: UserProfile }> = [];
+
+      // TAHAP 4: 1. Fase Pertama - Identifikasi dokumen rapi & hapus sampah/purged murni
+      for (const d of snap.docs) {
+        const data = d.data() as UserProfile;
+        const uid = data.uid || d.id;
+        const userWithId = { ...data, uid };
+
+        if (isPurgedUser(userWithId) || isDeletedUid(uid) || d.id === 'user_teacher_pitria_lawenusa') {
+          await deleteDoc(d.ref).catch(() => {});
+          deletedArtifactsCount++;
+          continue;
+        }
+
+        // Hapus dokumen kembar yang tidak berawalan 'user_' jika versi 'user_' sudah ada
+        if (!d.id.startsWith('user_') && snap.docs.some(other => other.id === `user_${d.id}`)) {
+          await deleteDoc(d.ref).catch(() => {});
+          deletedArtifactsCount++;
+          continue;
+        }
+
+        if (isRandomOrLegacyArtifactUid(d.id)) {
+          docsToMigrate.push({ docRef: d.ref, id: d.id, data });
+        } else {
+          seenNeatUids.add(d.id);
+          const cleanNip = data.nip ? cleanDigits(data.nip) : '';
+          if (cleanNip.length >= 6) {
+            seenTeacherNips.set(cleanNip, d.id);
+          }
+          if (data.email && !isGenericPlaceholderEmail(data.email)) {
+            seenEmails.set(data.email.trim().toLowerCase(), d.id);
+          }
+        }
+      }
+
+      // TAHAP 4: 2. Fase Kedua - Proses dokumen ber-UID acak dan eliminasi akun ganda
+      for (const item of docsToMigrate) {
+        const { docRef, id, data } = item;
+        const targetTidyUid = resolveTidyUidForUser(data);
+        const cleanNip = data.nip ? cleanDigits(data.nip) : '';
+        const cleanEmail = data.email && !isGenericPlaceholderEmail(data.email) ? data.email.trim().toLowerCase() : '';
+
+        // Cek apakah akun ini adalah duplikat dari dokumen ber-UID rapi yang sudah ada
+        const duplicateOfDocId =
+          seenNeatUids.has(targetTidyUid) ? targetTidyUid :
+          (cleanNip.length >= 6 && seenTeacherNips.has(cleanNip) ? seenTeacherNips.get(cleanNip) :
+          (cleanEmail && seenEmails.has(cleanEmail) ? seenEmails.get(cleanEmail) : null));
+
+        if (duplicateOfDocId) {
+          // Dokumen rapi sudah ada: satukan field penting ke dokumen utama dan hapus dokumen ber-UID acak ganda
+          await setDoc(doc(db, 'users', duplicateOfDocId), {
+            phone: data.phone || undefined,
+            authUid: id,
+            updatedAt: new Date().toISOString()
+          }, { merge: true }).catch(() => {});
+
+          await deleteDoc(docRef).catch(() => {});
+          deletedArtifactsCount++;
+        } else {
+          // Belum ada dokumen rapi: migrasikan ke targetTidyUid rapi dan hapus dokumen ber-UID acak
+          const tidyUser: UserProfile = {
+            ...data,
+            uid: targetTidyUid,
+            authUid: id,
+            updatedAt: new Date().toISOString()
+          };
+          await setDoc(doc(db, 'users', targetTidyUid), tidyUser, { merge: true });
+          await deleteDoc(docRef).catch(() => {});
+          seenNeatUids.add(targetTidyUid);
+          if (cleanNip.length >= 6) seenTeacherNips.set(cleanNip, targetTidyUid);
+          if (cleanEmail) seenEmails.set(cleanEmail, targetTidyUid);
+          migratedCount++;
+          deletedArtifactsCount++;
+        }
+      }
+    } catch (e) {
+      console.warn('Gagal migrasi massal UID user & pembersihan akun ganda:', e);
+    }
+    return { migratedCount, deletedArtifactsCount };
+  };
+
   // Canonical Role and Position Evaluation (Zero Dangerous Fallbacks)
   const canonicalRole: CanonicalUserRole | null = currentUser ? normalizeUserRole(currentUser.role) : null;
   const osimPosition: OsimPosition | undefined = currentUser ? normalizeOsimPosition(currentUser) : undefined;
@@ -1774,7 +2491,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const isSuperAdmin = Boolean(currentUser && canonicalRole === 'super_admin');
   const isWaka = Boolean(currentUser && canonicalRole === 'waka_kesiswaan');
   const isWakaOrAdmin = Boolean(currentUser && (isSuperAdmin || isWaka));
-  const isGuruBK = Boolean(currentUser && canonicalRole === 'guru_bk');
+  const isGuruBK = Boolean(
+    currentUser && (
+      canonicalRole === 'guru_bk' ||
+      role === 'guru_bk' ||
+      (currentUser.role && (currentUser.role.toLowerCase().includes('bk') || currentUser.role.toLowerCase().includes('konselor'))) ||
+      Boolean(currentUser.counselorSpecialization)
+    )
+  );
   const isPembinaOsim = Boolean(currentUser && canonicalRole === 'pembina_osim');
   const isPembinaEkskul = Boolean(
     currentUser && (canonicalRole === 'coach_ekstrakurikuler' || (canonicalRole as any) === 'pembina_ekstrakurikuler')
@@ -2007,7 +2731,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         resetUserPassword,
         changePassword,
         syncUsersFromTeachers,
-        syncUsersFromOsim
+        syncUsersFromOsim,
+        migrateAllUsersToTidyUids,
+        activateTeacherAccount,
+        activateOsimAccount
       }}
     >
       {children}

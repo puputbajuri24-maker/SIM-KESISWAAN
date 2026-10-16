@@ -262,8 +262,13 @@ export const INITIAL_EXTRACURRICULARS: Extracurricular[] = [];
 export const PURGED_DEMO_EKSKUL_IDS: string[] = [];
 
 export const isPurgedExtracurricular = (nameOrId: string = ''): boolean => {
-  if (!nameOrId) return false;
-  const lower = nameOrId.toLowerCase();
+  if (!nameOrId || typeof nameOrId !== 'string') return false;
+  const clean = nameOrId.trim();
+  const lower = clean.toLowerCase();
+  // Hanya basmi kode demo warisan statis (1-2 digit) seperti "1", "2", "ekskul_1", "ekskul_2", "ekskul_demo", "e1", "e2"
+  if (/^\d{1,2}$/.test(clean) || /^ekskul_[1-9]$/i.test(clean) || /^e[1-9]$/i.test(clean) || clean === 'ekskul_demo') {
+    return true;
+  }
   return lower.includes('(demo)') || lower.includes('(dummy)') || lower.includes('contoh demo') || lower.includes('sample ekskul');
 };
 
@@ -353,14 +358,8 @@ export async function seedAllFirebaseData(): Promise<{ success: boolean; message
 }
 
 export const PURGED_DEMO_UIDS = [
-  'user_waka',
-  'user_guru_bk',
-  'user_pembina_osim',
-  'user_pembina_pramuka',
-  'user_pembina_basket',
-  'user_pembina_pmr',
-  'user_pembina_robotik',
-  'user_waka_puput',
+  'user_teacher_pitria_lawenusa',
+  'teacher_pitria_lawenusa',
   'user_bk_nur_asiyah',
   'user_bk_ahmad_rusdi',
   'user_bk_siti_aminah',
@@ -370,27 +369,6 @@ export const PURGED_DEMO_UIDS = [
   'user_pembina_pmr_fatimah',
   'user_pembina_pks_hasan',
   'user_pembina_futsal_ilham',
-  'role_active_guru_bk',
-  'role_active_pembina_osim',
-  'role_active_pembina_ekskul',
-  'role_active_waka_kesiswaan',
-  // Generic OSIM accounts (purged permanently in favor of real student NIS accounts)
-  'user_osim_dept_bph',
-  'user_osim_ketua',
-  'user_osim_wakil',
-  'user_osim_sekretaris',
-  'user_osim_bendahara',
-  'user_osim_dept_sekbid_1',
-  'user_osim_dept_sekbid_2',
-  'user_osim_dept_sekbid_3',
-  'user_osim_dept_sekbid_4',
-  'user_osim_dept_sekbid_5',
-  'user_osim_dept_sekbid_6',
-  'user_osim_dept_sekbid_7',
-  'user_osim_dept_sekbid_8',
-  // Stale duplicate teacher and OSIM account UIDs (Tahap 3 Permanent Guard)
-  'user_guru_01',
-  'user_teacher_pitria_lawenusa',
   'osim_1789532015097',
   'osim_20240152',
   'osim_20240194',
@@ -423,6 +401,9 @@ export const PURGED_DEMO_TEACHER_IDS = [
 ];
 
 export const PURGED_DEMO_EMAILS = [
+  'admin@sekolah.sch.id',
+  'pitria.lawenusa@madrasah.sch.id',
+  'pitria.lawenusa@sekolah.sch.id',
   'waka@sekolah.sch.id',
   'guru.bk@sekolah.sch.id',
   'pembina.osim@sekolah.sch.id',

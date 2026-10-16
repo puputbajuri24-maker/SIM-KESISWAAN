@@ -71,6 +71,7 @@ export interface UserAssignment {
 
 export interface UserProfile {
   uid: string;
+  authUid?: string; // UID acak Firebase Auth asli jika dimigrasikan ke doc ID rapi
   email: string;
   username?: string;
   password?: string;
@@ -106,6 +107,10 @@ export interface UserProfile {
     updatedAt?: string;
   };
   status?: 'Aktif' | 'Nonaktif';
+  isLoginActive?: boolean;
+  loginStatus?: 'pending_activation' | 'active' | 'suspended';
+  loginActivatedAt?: string;
+  accountStatus?: 'pending' | 'active' | 'inactive';
   lastLogin?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -269,6 +274,11 @@ export interface Teacher {
   deletedAt?: string;
   isCashManager?: boolean;
   cashManagerTitle?: string;
+  accountStatus?: 'pending' | 'active' | 'inactive';
+  isLoginActive?: boolean;
+  loginCreatedAt?: string;
+  loginActivatedAt?: string;
+  userUid?: string;
 }
 
 export type ExtracurricularCategory = 
@@ -910,7 +920,13 @@ export interface OsimMember {
   nis?: string;
   loginUsername?: string;
   username?: string;
+  isLoginActive?: boolean;
+  loginStatus?: 'pending_activation' | 'active' | 'suspended';
+  accountStatus?: 'pending' | 'active' | 'inactive';
+  loginActivatedAt?: string;
+  userUid?: string;
   createdAt?: string;
+  updatedAt?: string;
 }
 
 export type OsimProgramStatus =
@@ -989,24 +1005,63 @@ export interface OsimAspiration {
   createdAt?: string;
 }
 
-export type OsimMeetingType = 'Rapat Pleno Pengurus' | 'Rapat BPH' | 'Rapat Koordinasi Pembina' | 'Sidang Musyawarah Kerja (MUKER)' | 'Rapat Evaluasi Bulanan';
+export type OsimMeetingType =
+  | 'Rapat Pleno Pengurus'
+  | 'Rapat BPH'
+  | 'Rapat Koordinasi Pembina'
+  | 'Sidang Musyawarah Kerja (MUKER)'
+  | 'Rapat Evaluasi Bulanan'
+  | 'Rapat Koordinasi Sekbid'
+  | 'Rapat Luar Biasa';
+
+export type OsimMeetingStatus =
+  | 'Draft'
+  | 'Diajukan'
+  | 'Disahkan Pembina'
+  | 'Revisi';
+
+export interface OsimMeetingAttendee {
+  memberId?: string;
+  name: string;
+  roleOrPosition: string;
+  presentStatus: 'Hadir' | 'Izin' | 'Sakit' | 'Alpa';
+}
+
+export interface OsimMeetingActionItem {
+  id: string;
+  task: string;
+  assignee: string;
+  deadline?: string;
+  status: 'Belum Selesai' | 'Dalam Proses' | 'Selesai';
+}
 
 export interface OsimMeeting {
   id: string;
   title: string;
+  meetingNumber?: string; // e.g. "01/BA-NOTULEN/OSIM/2026"
   type: OsimMeetingType;
   date: string;
   startTime: string;
   endTime: string;
   location: string;
   leader: string;
+  leaderPosition?: string;
   secretary: string;
+  secretaryUid?: string;
   attendeesCount: number;
+  attendees?: OsimMeetingAttendee[];
   agenda: string;
   decisionNotes: string;
+  actionItems?: OsimMeetingActionItem[];
+  status?: OsimMeetingStatus;
   wakaNotes?: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  documentationUrls?: string[];
   academicYear: string;
   createdAt?: string;
+  updatedAt?: string;
+  isDeleted?: boolean;
 }
 
 // ==========================================

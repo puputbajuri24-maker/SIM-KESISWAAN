@@ -28,6 +28,7 @@ import { ExportActions } from '../components/common/ExportActions';
 import { ClassGridFilter } from '../components/common/ClassGridFilter';
 import { calculateRecordCountsByClass, isStudentInClass } from '../utils/classResolver';
 import { canManageViolations } from '../permissions';
+import { normalizeName } from '../utils/syncUtils';
 
 interface ViolationsPageProps {
   onReferToCounseling?: (violation: Violation) => void;
@@ -35,7 +36,13 @@ interface ViolationsPageProps {
 
 export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounseling }) => {
   const { isWakaOrAdmin, isGuruBK, currentUser } = useAuth();
-  const canManage = isWakaOrAdmin || isGuruBK || canManageViolations(currentUser);
+  const canManage = Boolean(
+    isWakaOrAdmin ||
+    isGuruBK ||
+    canManageViolations(currentUser) ||
+    (currentUser?.role && ['super_admin', 'admin', 'waka_kesiswaan', 'waka', 'admin_kesiswaan', 'guru_bk', 'bk'].includes(currentUser.role)) ||
+    (currentUser?.role && (currentUser.role.toLowerCase().includes('bk') || currentUser.role.toLowerCase().includes('konselor')))
+  );
   const { toast } = useToast();
   const [isSavingViolation, setIsSavingViolation] = useState(false);
   const {
@@ -59,18 +66,35 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
   const [autoReferToCounseling, setAutoReferToCounseling] = useState<boolean>(false);
 
+  // Active non-deleted & non-cancelled violations belonging to active students
+  // Menyaring kasus zombie (siswa yang sudah dihapus seperti Nabila & Abdul Asri)
+  const activeStudentIds = useMemo(() => new Set((students || []).map(s => s.id)), [students]);
+  const activeStudentNames = useMemo(() => new Set((students || []).map(s => normalizeName(s.fullName)).filter(Boolean)), [students]);
+
+  const activeViolations = useMemo(() => {
+    return violations.filter(v => {
+      if (v.isDeleted || v.status === 'Dibatalkan') return false;
+      if (students && students.length > 0) {
+        const hasId = v.studentId && activeStudentIds.has(v.studentId);
+        const hasName = v.studentName && activeStudentNames.has(normalizeName(v.studentName));
+        return hasId || hasName;
+      }
+      return true;
+    });
+  }, [violations, students, activeStudentIds, activeStudentNames]);
+
   // Helper for cumulative violation points
   const getStudentTotalPoints = (studentId: string) => {
-    return violations
-      .filter(v => v.studentId === studentId && !v.isDeleted)
+    return activeViolations
+      .filter(v => v.studentId === studentId)
       .reduce((sum, v) => sum + (Number(v.points) || 0), 0);
   };
 
   // Real-time Disciplinary Metrics according to SK B-380
   const disciplineStats = useMemo(() => {
     const studentPointsMap: Record<string, number> = {};
-    violations.forEach(v => {
-      if (!v.isDeleted && v.studentId) {
+    activeViolations.forEach(v => {
+      if (v.studentId) {
         studentPointsMap[v.studentId] = (studentPointsMap[v.studentId] || 0) + (Number(v.points) || 0);
       }
     });
@@ -92,7 +116,7 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
     const activeSanctionStudents = Object.values(studentPointsMap).filter(pts => pts >= 10).length;
 
     return {
-      totalRecords: violations.filter(v => !v.isDeleted).length,
+      totalRecords: activeViolations.length,
       activeSanctionStudents,
       stage1Count,
       stage2Count,
@@ -100,18 +124,28 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
       stage4Count,
       stage5Count
     };
-  }, [violations]);
+  }, [activeViolations]);
 
   const handleSyncPoints = async () => {
     if (!reconcileAllStudentPoints) return;
     setIsSyncingPoints(true);
     try {
       const res = await reconcileAllStudentPoints();
-      setSyncNotice(`Sinkronisasi selesai! ${res.updatedCount} poin siswa telah diselaraskan dengan riwayat.`);
+      let msg = `Sinkronisasi selesai! ${res.updatedCount} poin siswa telah diselaraskan dengan riwayat.`;
+      if (res.healedViolationsCount > 0) {
+        msg += ` ${res.healedViolationsCount} relasi profil/kelas siswa telah dipulihkan.`;
+      }
+      if (res.cleanedOrphansCount > 0) {
+        msg += ` (${res.cleanedOrphansCount} kasus anomali tanpa profil aktif terdeteksi).`;
+      }
+      setSyncNotice(msg);
+      toast.success(msg);
+      setTimeout(() => setSyncNotice(null), 6000);
+    } catch (e: any) {
+      const err = 'Gagal melakukan rekonsiliasi poin: ' + (e?.message || 'Kesalahan sistem');
+      setSyncNotice(err);
+      toast.error(err);
       setTimeout(() => setSyncNotice(null), 5000);
-    } catch (e) {
-      setSyncNotice('Gagal melakukan rekonsiliasi poin.');
-      setTimeout(() => setSyncNotice(null), 4000);
     } finally {
       setIsSyncingPoints(false);
     }
@@ -119,8 +153,8 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
 
   // Count violations per class
   const violationCountsByClassId = useMemo(() => {
-    return calculateRecordCountsByClass(violations, classes, students);
-  }, [violations, classes, students]);
+    return calculateRecordCountsByClass(activeViolations, classes, students);
+  }, [activeViolations, classes, students]);
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -142,9 +176,42 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
     status: 'Diproses'
   });
 
+  // Modal fast selection state
+  const [studentSearchQuery, setStudentSearchQuery] = useState('');
+  const [studentClassFilter, setStudentClassFilter] = useState('all');
+  const [ruleSearchQuery, setRuleSearchQuery] = useState('');
+
+  // Filtered students for quick grid picker
+  const displayedStudents = useMemo(() => {
+    return (students || []).filter(s => {
+      if (studentClassFilter !== 'all' && s.className !== studentClassFilter) {
+        return false;
+      }
+      if (!studentSearchQuery.trim()) return true;
+      const q = studentSearchQuery.toLowerCase().trim();
+      return (
+        (s.fullName && s.fullName.toLowerCase().includes(q)) ||
+        (s.nis && s.nis.toLowerCase().includes(q)) ||
+        (s.className && s.className.toLowerCase().includes(q))
+      );
+    });
+  }, [students, studentSearchQuery, studentClassFilter]);
+
+  // Filtered school rules for quick grid picker
+  const displayedRules = useMemo(() => {
+    if (!schoolRules) return [];
+    if (!ruleSearchQuery.trim()) return schoolRules.slice(0, 16);
+    const q = ruleSearchQuery.toLowerCase().trim();
+    return schoolRules.filter(r =>
+      (r.title && r.title.toLowerCase().includes(q)) ||
+      (r.articleNumber && r.articleNumber.toLowerCase().includes(q)) ||
+      (r.description && r.description.toLowerCase().includes(q)) ||
+      (r.consequence && r.consequence.toLowerCase().includes(q))
+    ).slice(0, 24);
+  }, [schoolRules, ruleSearchQuery]);
+
   const filteredViolations = useMemo(() => {
-    return violations.filter(v => {
-      if (v.isDeleted) return false;
+    return activeViolations.filter(v => {
       if (selectedClass !== 'all') {
         const student = students.find(s => s.id === v.studentId);
         const match = isStudentInClass(v, selectedClass, classes) || (student && isStudentInClass(student, selectedClass, classes));
@@ -160,7 +227,7 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
       }
       return true;
     });
-  }, [violations, selectedClass, selectedCategory, selectedStatus, stageFilter, classes, students]);
+  }, [activeViolations, selectedClass, selectedCategory, selectedStatus, stageFilter, classes, students]);
 
   const handleOpenAdd = () => {
     if (!canManage) {
@@ -169,6 +236,9 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
     }
     const defaultStudent = students[0];
     setSelectedViolation(null);
+    setStudentSearchQuery('');
+    setStudentClassFilter('all');
+    setRuleSearchQuery('');
     setFormData({
       studentId: defaultStudent?.id || '',
       studentName: defaultStudent?.fullName || '',
@@ -193,6 +263,9 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
       return;
     }
     setSelectedViolation(v);
+    setStudentSearchQuery('');
+    setStudentClassFilter('all');
+    setRuleSearchQuery('');
     setFormData(v);
     setIsFormOpen(true);
   };
@@ -272,14 +345,15 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
         onReferToCounseling(violationForReferral);
         return;
       }
+
+      setIsFormOpen(false);
+      setSelectedViolation(null);
+      setAutoReferToCounseling(false);
     } catch (err: any) {
       console.error('Error saving violation:', err);
       toast.error('Gagal mencatat pelanggaran: ' + (err?.message || 'Terjadi kesalahan sistem'));
     } finally {
       setIsSavingViolation(false);
-      setIsFormOpen(false);
-      setSelectedViolation(null);
-      setAutoReferToCounseling(false);
     }
   };
 
@@ -573,7 +647,7 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
         selectedClassId={selectedClass}
         onSelectClass={setSelectedClass}
         countsByClassId={violationCountsByClassId}
-        totalCount={violations.length}
+        totalCount={activeViolations.length}
         label="Filter Pelanggaran Berdasarkan Rombel Kelas"
         itemUnit="Kasus"
         colorScheme="rose"
@@ -686,71 +760,155 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
         }
       >
         <form onSubmit={handleSave} className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Pilih Siswa *
-            </label>
-            <select
-              value={formData.studentId}
-              onChange={e => {
-                const s = students.find(st => st.id === e.target.value);
-                setFormData({
-                  ...formData,
-                  studentId: e.target.value,
-                  studentName: s?.fullName || '',
-                  studentNis: s?.nis || '',
-                  studentClass: s?.className || ''
-                });
-              }}
-              className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-semibold"
-            >
-              {students.map(s => (
-                <option key={s.id} value={s.id}>
-                  {s.fullName} (NIS: {s.nis} • {s.className})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Quick Select from Official School Rules */}
-          {schoolRules && schoolRules.length > 0 && (
-            <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-xl">
-              <label className="block text-[11px] font-bold text-amber-900 dark:text-amber-300 mb-1 flex items-center justify-between">
-                <span>📖 Rujukan Pasal Buku Tata Tertib (Otomatisasi)</span>
-                <span className="text-[10px] text-amber-700 dark:text-amber-400 font-normal">Pilih untuk isi otomatis</span>
+          {/* Quick Select Student with Search and Responsive Grid */}
+          <div className="space-y-2 p-3 bg-slate-50 dark:bg-slate-850 rounded-xl border border-slate-200 dark:border-slate-800">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                <User className="w-4 h-4 text-rose-500" />
+                <span>Pilih Siswa Pelanggar *</span>
               </label>
+              {formData.studentName && (
+                <span className="text-[11px] font-semibold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/50 px-2 py-0.5 rounded-md border border-rose-200 dark:border-rose-800">
+                  Terpilih: {formData.studentName} ({formData.studentClass || '-'})
+                </span>
+              )}
+            </div>
+
+            {/* Student Search & Class Filter */}
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Cari nama atau NIS siswa..."
+                value={studentSearchQuery}
+                onChange={e => setStudentSearchQuery(e.target.value)}
+                className="flex-1 px-3 py-1.5 text-xs rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-rose-500"
+              />
               <select
-                onChange={e => {
-                  const rule = schoolRules.find(r => r.id === e.target.value);
-                  if (rule) {
-                    const catMap: Record<string, ViolationCategory> = {
-                      'Ringan': 'Ringan',
-                      'Sedang': 'Sedang',
-                      'Berat': 'Berat',
-                      'Sangat Berat': 'Sangat Berat',
-                      'Apresiasi': 'Ringan'
-                    };
-                    setFormData({
-                      ...formData,
-                      violationType: `[${rule.articleNumber}] ${rule.title}`,
-                      category: catMap[rule.severity] || 'Ringan',
-                      points: rule.points,
-                      description: rule.description,
-                      actionTaken: rule.consequence,
-                      officerName: rule.authorizedOfficer || (currentUser?.displayName || 'Guru Piket')
-                    });
-                  }
-                }}
-                defaultValue=""
-                className="w-full px-3 py-1.5 text-xs rounded-lg bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-800 text-slate-800 dark:text-slate-200 font-medium"
+                value={studentClassFilter}
+                onChange={e => setStudentClassFilter(e.target.value)}
+                className="px-2.5 py-1.5 text-xs rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-medium"
               >
-                <option value="">-- Pilih dari Daftar Pasal Tata Tertib Resmi ({schoolRules.length} Aturan) --</option>
-                {schoolRules.map(r => (
-                  <option key={r.id} value={r.id}>
-                    {r.code ? `[${r.code}] ` : ''}{r.articleNumber}: {r.title} ({r.points > 0 ? `+${r.points}` : r.points} Poin - {r.severity})
-                  </option>
+                <option value="all">Semua Kelas</option>
+                {classes.map(c => (
+                  <option key={c.id} value={c.name}>{c.name}</option>
                 ))}
               </select>
+            </div>
+
+            {/* Interactive Student Selection Cards / Grid */}
+            <div className="max-h-40 overflow-y-auto pr-1 grid grid-cols-1 sm:grid-cols-2 gap-1.5 border border-slate-200/80 dark:border-slate-800 rounded-lg p-1.5 bg-white dark:bg-slate-900/60">
+              {displayedStudents.length === 0 ? (
+                <div className="col-span-full py-4 text-center text-xs text-slate-600 dark:text-slate-400">
+                  Tidak ada siswa yang cocok dengan pencarian "{studentSearchQuery}".
+                </div>
+              ) : (
+                displayedStudents.map(s => {
+                  const isSelected = formData.studentId === s.id;
+                  return (
+                    <button
+                      type="button"
+                      key={s.id}
+                      onClick={() => {
+                        setFormData({
+                          ...formData,
+                          studentId: s.id,
+                          studentName: s.fullName,
+                          studentNis: s.nis,
+                          studentClass: s.className || ''
+                        });
+                      }}
+                      className={`text-left p-2 rounded-lg border text-xs transition-all flex items-center justify-between gap-1.5 ${
+                        isSelected
+                          ? 'border-rose-500 bg-rose-500/10 text-rose-900 dark:text-rose-200 font-bold shadow-sm ring-1 ring-rose-500'
+                          : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <div className="truncate min-w-0">
+                        <p className="truncate font-semibold">{s.fullName}</p>
+                        <p className="text-[10px] text-slate-600 dark:text-slate-400 font-mono">
+                          NIS: {s.nis || '-'} • <span className="font-semibold text-slate-700 dark:text-slate-300">{s.className || '-'}</span>
+                        </p>
+                      </div>
+                      {isSelected && (
+                        <CheckCircle2 className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+                      )}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          {/* Quick Select from Official School Rules with Grid and Search */}
+          {schoolRules && schoolRules.length > 0 && (
+            <div className="p-3 bg-amber-50/80 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-xl space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-bold text-amber-900 dark:text-amber-300 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Katalog Pasal Tata Tertib Resmi ({schoolRules.length} Aturan)</span>
+                </label>
+                <span className="text-[10px] text-amber-700 dark:text-amber-400 font-semibold">Klik kartu untuk auto-fill</span>
+              </div>
+
+              <input
+                type="text"
+                placeholder="Cari pasal, nama pelanggaran, atau sanksi..."
+                value={ruleSearchQuery}
+                onChange={e => setRuleSearchQuery(e.target.value)}
+                className="w-full px-3 py-1.5 text-xs rounded-lg bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-800/80 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
+              />
+
+              <div className="max-h-36 overflow-y-auto pr-1 grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                {displayedRules.map(r => {
+                  const catMap: Record<string, ViolationCategory> = {
+                    'Ringan': 'Ringan',
+                    'Sedang': 'Sedang',
+                    'Berat': 'Berat',
+                    'Sangat Berat': 'Sangat Berat',
+                    'Apresiasi': 'Ringan'
+                  };
+                  const isSelected = formData.violationType === `[${r.articleNumber}] ${r.title}`;
+
+                  return (
+                    <button
+                      type="button"
+                      key={r.id}
+                      onClick={() => {
+                        setFormData({
+                          ...formData,
+                          violationType: `[${r.articleNumber}] ${r.title}`,
+                          category: catMap[r.severity] || 'Ringan',
+                          points: r.points,
+                          description: r.description,
+                          actionTaken: r.consequence,
+                          officerName: r.authorizedOfficer || (currentUser?.displayName || 'Guru Piket')
+                        });
+                      }}
+                      className={`text-left p-2 rounded-lg border text-xs transition-all flex flex-col justify-between ${
+                        isSelected
+                          ? 'border-amber-500 bg-amber-500/15 text-amber-950 dark:text-amber-200 font-bold ring-1 ring-amber-500 shadow-sm'
+                          : 'border-amber-200/80 dark:border-amber-900/50 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 hover:border-amber-400 dark:hover:border-amber-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="font-mono text-[10px] font-bold text-amber-700 dark:text-amber-400">
+                          {r.articleNumber}
+                        </span>
+                        <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${
+                          r.severity === 'Berat' || r.severity === 'Sangat Berat'
+                            ? 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300'
+                            : r.severity === 'Sedang'
+                            ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300'
+                            : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-300'
+                        }`}>
+                          +{r.points} P • {r.severity}
+                        </span>
+                      </div>
+                      <p className="text-[11px] font-medium line-clamp-1 mt-0.5">{r.title}</p>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
 
@@ -782,10 +940,10 @@ export const ViolationsPage: React.FC<ViolationsPageProps> = ({ onReferToCounsel
                 }}
                 className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
               >
-                <option value="Ringan">Ringan</option>
-                <option value="Sedang">Sedang</option>
-                <option value="Berat">Berat</option>
-                <option value="Sangat Berat">Sangat Berat</option>
+                <option value="Ringan">Ringan (5-10 Poin)</option>
+                <option value="Sedang">Sedang (15-25 Poin)</option>
+                <option value="Berat">Berat (30-50 Poin)</option>
+                <option value="Sangat Berat">Sangat Berat (75-100 Poin)</option>
               </select>
             </div>
             <div>

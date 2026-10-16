@@ -293,17 +293,28 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
 
     setIsSavingEkskul(true);
     try {
+      const matchedCoach = teachers.find(t => 
+        (formData.coachId && t.id === formData.coachId) ||
+        (formData.coachName && t.fullName.trim().toLowerCase() === formData.coachName.trim().toLowerCase())
+      );
+      const finalCoachId = matchedCoach?.id || formData.coachId || (teachers[0]?.id || 'pembina_1');
+      const finalCoachName = matchedCoach?.fullName || formData.coachName || (teachers[0]?.fullName || 'Guru Pembina');
+
       if (selectedEkskul) {
-        await updateExtracurricular(selectedEkskul.id, formData);
+        await updateExtracurricular(selectedEkskul.id, {
+          ...formData,
+          coachId: finalCoachId,
+          coachName: finalCoachName
+        });
         toast.success(`Ekstrakurikuler "${formData.name}" berhasil diperbarui!`);
       } else {
         await addExtracurricular({
-          name: formData.name!,
+          name: formData.name.trim(),
           category: formData.category as ExtracurricularCategory,
           color: formData.color || getEkskulTheme(undefined, formData.name).id,
           description: formData.description || '',
-          coachId: formData.coachId || 'user_coach',
-          coachName: formData.coachName || 'Pembina Terpilih',
+          coachId: finalCoachId,
+          coachName: finalCoachName,
           assistantCoachName: formData.assistantCoachName || '',
           day: (formData.day as any) || 'Jumat',
           startTime: formData.startTime || '15:30',

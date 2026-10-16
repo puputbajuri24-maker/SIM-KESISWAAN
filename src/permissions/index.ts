@@ -91,7 +91,7 @@ export function normalizeUserRole(role: UserRole | string | undefined | null): C
   const r = role.toLowerCase().trim();
 
   if (r === 'super_admin' || r === 'admin') return 'super_admin';
-  if (r === 'waka' || r === 'waka_kesiswaan' || r === 'wakil_kepala') return 'waka_kesiswaan';
+  if (r === 'waka' || r === 'waka_kesiswaan' || r === 'wakil_kepala' || r === 'admin_kesiswaan') return 'waka_kesiswaan';
   if (r === 'guru_bk' || r === 'bk' || r === 'counselor') return 'guru_bk';
   if (r === 'pembina_osim') return 'pembina_osim';
   if (

@@ -67,11 +67,11 @@ export const OsimAkunPengurusTab: React.FC<OsimAkunPengurusTabProps> = ({
                   Pusat Manajemen Akun & Kata Sandi Login Pengurus OSIM
                 </h3>
                 <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                  HAK AKSES PEMBINA & ADMIN
+                  MANAJEMEN CPANEL
                 </span>
               </div>
               <p className="text-xs text-zinc-400 mt-1 max-w-3xl leading-relaxed">
-                Sesuai kebijakan madrasah: Siswa pengurus OSIM <strong>dilarang dan ditiadakan fitur ganti password mandiri</strong>. Pembina OSIM dan Admin App memegang kendali penuh atas akun dan kata sandi login anggota OSIM. Setiap perubahan kata sandi langsung aktif secara <em>real-time</em> dan password lama otomatis tidak berlaku lagi.
+                Prinsip Satu Pintu: Profil pengurus BPH dan Ketua Sekbid diinput melalui menu <strong>Struktur Kabinet OSIM</strong> dengan menyertakan email login. Status awal akun adalah <strong>Belum Aktif</strong>, dan pembuatan kredensial login serta aktivasi akun sepenuhnya dikelola secara terpusat oleh Administrator melalui <strong>Menu cPanel</strong>.
               </p>
             </div>
           </div>
@@ -355,13 +355,20 @@ export const OsimAkunPengurusTab: React.FC<OsimAkunPengurusTabProps> = ({
                       </td>
 
                       <td className="py-3 px-3">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                          (u.status || 'Aktif') === 'Aktif'
-                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                            : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                        }`}>
-                          {u.status || 'Aktif'}
-                        </span>
+                        {u.isLoginActive === false || u.loginStatus === 'pending_activation' ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 whitespace-nowrap">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                            Belum Aktif (Perlu Aktivasi di cPanel)
+                          </span>
+                        ) : (
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                            (u.status || 'Aktif') === 'Aktif'
+                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                              : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                          }`}>
+                            {u.status || 'Aktif'}
+                          </span>
+                        )}
                       </td>
 
                       <td className="py-3 px-3 text-right">

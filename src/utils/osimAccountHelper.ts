@@ -39,11 +39,22 @@ export const isBphMember = (member: { position?: string; sekbid?: string }): boo
   if (sekbidNum !== null) return false;
   const pos = (member.position || '').toLowerCase();
   const sek = (member.sekbid || '').toLowerCase();
+  
+  // If explicitly declared in BPH
   if (sek.includes('bph') || sek.includes('badan pengurus harian')) return true;
-  if (pos.includes('ketua') && !pos.includes('sekbid') && !pos.includes('bidang')) return true;
+  if (pos.includes('bph') || pos.includes('badan pengurus harian')) return true;
+
+  // If contains Sekbid or Bidang keyword, it is NOT BPH
+  if (pos.includes('sekbid') || pos.includes('bidang') || sek.includes('sekbid') || sek.includes('bidang')) {
+    return false;
+  }
+
+  // Core BPH positions: Ketua, Wakil Ketua, Sekretaris, Bendahara
+  if (pos.includes('ketua') && !pos.includes('wakil')) return true;
   if (pos.includes('wakil')) return true;
-  if (pos.includes('sekretaris') && !pos.includes('sekbid') && !pos.includes('bidang')) return true;
-  if (pos.includes('bendahara') && !pos.includes('sekbid') && !pos.includes('bidang')) return true;
+  if (pos.includes('sekretaris')) return true;
+  if (pos.includes('bendahara')) return true;
+
   return false;
 };
 
@@ -232,29 +243,53 @@ export interface UserSlipCredentials {
  * Guarantees identity consistency between single slip and batch printing.
  */
 export const getUserSlipCredentials = (
-  u: UserProfile,
+  u: UserProfile | Partial<UserProfile> | null | undefined,
   osimMembers?: OsimMember[]
 ): UserSlipCredentials => {
+  if (!u) {
+    return {
+      displayName: '-',
+      role: 'user',
+      roleLabel: 'PENGGUNA',
+      loginUsername: '-',
+      rawUsername: '-',
+      email: '-',
+      password: 'Dikelola oleh Firebase Auth',
+      passwordNotice: 'Dikelola secara aman oleh Firebase Authentication',
+      nipOrNis: '-',
+      studentClass: '-',
+      position: '-',
+      department: '-'
+    };
+  }
+
   const rawUsername = (u.username ? u.username.replace(/^@/, '') : (u.email ? u.email.split('@')[0] : '')).trim();
 
   // Find linked OSIM member if applicable
-  const linkedMem = (u.role === 'pengurus_osim' && osimMembers && osimMembers.length > 0)
-    ? osimMembers.find(m =>
-        m.id === u.uid ||
-        (m.loginUsername && rawUsername && m.loginUsername.toLowerCase() === rawUsername.toLowerCase()) ||
-        (m.username && rawUsername && m.username.toLowerCase() === rawUsername.toLowerCase()) ||
-        (m.studentNis && u.nip && m.studentNis === u.nip) ||
-        (m.fullName && u.displayName && m.fullName.toLowerCase().trim() === u.displayName.toLowerCase().replace(/\s*\(.*\)$/, '').trim())
+  const linkedMem = (u.role === 'pengurus_osim' && Boolean(osimMembers && osimMembers.length > 0))
+    ? osimMembers!.find(m =>
+        Boolean(
+          m && (
+            m.id === u.uid ||
+            (m.loginUsername && rawUsername && m.loginUsername.toLowerCase() === rawUsername.toLowerCase()) ||
+            (m.username && rawUsername && m.username.toLowerCase() === rawUsername.toLowerCase()) ||
+            (m.studentNis && u.nip && m.studentNis === u.nip) ||
+            (m.fullName && u.displayName && m.fullName.toLowerCase().trim() === u.displayName.toLowerCase().replace(/\s*\(.*\)$/, '').trim())
+          )
+        )
       )
     : undefined;
 
+  const roleStr = String(u.role || 'user');
+  const roleLabel = roleStr ? roleStr.toUpperCase().replace(/_/g, ' ') : 'PENGGUNA';
+
   return {
-    displayName: u.displayName,
-    role: u.role,
-    roleLabel: u.role.toUpperCase().replace(/_/g, ' '),
-    loginUsername: `@${rawUsername}`,
-    rawUsername,
-    email: u.email,
+    displayName: u.displayName || u.username || 'Tanpa Nama',
+    role: roleStr,
+    roleLabel,
+    loginUsername: rawUsername ? `@${rawUsername}` : (u.email || '-'),
+    rawUsername: rawUsername || '-',
+    email: u.email || '-',
     password: 'Dikelola oleh Firebase Auth',
     passwordNotice: 'Dikelola secara aman oleh Firebase Authentication',
     nipOrNis: u.nip || linkedMem?.studentNis || '-',

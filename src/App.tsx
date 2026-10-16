@@ -191,7 +191,7 @@ const VALID_TABS: NavTab[] = [
 
 const getInitialTab = (): NavTab => {
   try {
-    // 1. Check URL hash first (e.g. #students, #profile, #osim)
+    // 1. Check URL hash first (e.g. #teachers, #cpanel, #students)
     const rawHash = window.location.hash.replace('#', '').trim();
     const cleanHash = rawHash.split('?')[0].split('&')[0].trim() as NavTab;
     if (cleanHash && VALID_TABS.includes(cleanHash)) {
@@ -242,21 +242,24 @@ const MainContent: React.FC = () => {
     const handleHashChange = () => {
       const hash = window.location.hash.replace('#', '').trim() as NavTab;
       if (hash && VALID_TABS.includes(hash) && hash !== activeTab) {
-        setActiveTabState(hash);
-        try {
-          localStorage.setItem('simkesiswaan_active_tab', hash);
-        } catch (e) {}
+        if (!currentUser || canAccessTab(hash)) {
+          setActiveTabState(hash);
+          try {
+            localStorage.setItem('simkesiswaan_active_tab', hash);
+          } catch (e) {}
+        }
       }
     };
 
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
-  }, [activeTab]);
+  }, [activeTab, currentUser, canAccessTab]);
 
-  // Ensure current active tab is saved in URL hash on mount, and fallback if unauthorized
+  // Ensure current active tab is saved in URL hash on mount / user change, and fallback if unauthorized
   useEffect(() => {
-    if (currentUser) {
-      if (!canAccessTab(activeTab)) {
+    if (currentUser && bootstrapState === 'READY') {
+      const currentTabAuthorized = canAccessTab(activeTab);
+      if (!currentTabAuthorized) {
         if (activeTab !== 'dashboard') {
           setActiveTab('dashboard');
         }
@@ -269,18 +272,18 @@ const MainContent: React.FC = () => {
         }
       } catch (e) {}
     }
-  }, [currentUser, activeTab, canAccessTab]);
+  }, [currentUser, activeTab, canAccessTab, bootstrapState]);
 
-  // Clean URL hash if visiting without an active session
+  // Clean URL hash ONLY if user explicitly has NO session AND bootstrap has fully confirmed (READY state)
   useEffect(() => {
-    if (!currentUser) {
+    if (bootstrapState === 'READY' && !currentUser) {
       if (window.location.hash) {
         try {
           window.history.replaceState(null, '', window.location.pathname + window.location.search);
         } catch (e) {}
       }
     }
-  }, [currentUser]);
+  }, [currentUser, bootstrapState]);
 
   // FASE 1: Verifikasi Bootstrap State Sebelum Memuat Antarmuka Pengguna
   if (bootstrapState === 'AUTH_LOADING' || bootstrapState === 'PROFILE_LOADING' || bootstrapState === 'DATA_LOADING') {

@@ -23,11 +23,13 @@ import {
   Trash2,
   LogIn,
   Copy,
-  Tent
+  Tent,
+  CheckCircle2
 } from 'lucide-react';
 import { Teacher, UserProfile, Extracurricular } from '../../../types';
 
 export interface CPanelUserTabProps {
+  handleOpenActivateModal?: (userOrTeacher: UserProfile | Teacher) => void;
   unregisteredTeachers: Teacher[];
   handleSyncFromTeachers: () => void;
   isSyncingAll: boolean;
@@ -81,6 +83,7 @@ export interface CPanelUserTabProps {
 }
 
 export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
+  handleOpenActivateModal,
   unregisteredTeachers,
   handleSyncFromTeachers,
   isSyncingAll,
@@ -138,16 +141,14 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
     const seenNames = new Set<string>();
 
     const addEkskul = (id: string, rawName?: string, category?: string) => {
-      // 1 Pembina hanya boleh memiliki maksimal 1 unit ekstrakurikuler binaan utama
-      if (list.length >= 1) return;
       if (!rawName && !id) return;
 
       const candidateName = (rawName || '').trim();
       const candidateId = (id || '').trim();
 
-      // Tolak semua string yang berupa angka murni (/^\d+$/) atau ID timestamp/serial
-      if (/^\d+$/.test(candidateName) || /^\d+$/.test(candidateId)) return;
-      if (/^ekskul_\d+$/.test(candidateName.toLowerCase()) || /^ekskul_\d+$/.test(candidateId.toLowerCase())) return;
+      // Tolak string yang berupa kode demo warisan statis
+      if (/^\d{1,2}$/.test(candidateName) || /^\d{1,2}$/.test(candidateId)) return;
+      if (/^ekskul_[1-9]$/.test(candidateName.toLowerCase()) || /^ekskul_[1-9]$/.test(candidateId.toLowerCase())) return;
 
       const norm = candidateName.toLowerCase();
       const normId = candidateId.toLowerCase();
@@ -166,13 +167,13 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
       }
 
       // Validasi ketat: Wajib memiliki padanan nama resmi di master data ekstrakurikuler
-      const ekMatch = extracurriculars.find(e => 
-        (candidateId && e.id.toLowerCase() === normId) ||
-        (candidateName && e.name.toLowerCase() === norm) ||
-        (candidateId && e.name.toLowerCase() === normId) ||
-        (candidateName && e.id.toLowerCase() === norm) ||
-        (candidateId.startsWith('ekskul_') && e.id.toLowerCase() === candidateId.toLowerCase()) ||
-        (e.id.replace(/^ekskul_/, '').toLowerCase() === norm.replace(/^ekskul_/, ''))
+      const ekMatch = (extracurriculars || []).find(e => 
+        (candidateId && e.id && typeof e.id === 'string' && e.id.toLowerCase() === normId) ||
+        (candidateName && e.name && typeof e.name === 'string' && e.name.toLowerCase() === norm) ||
+        (candidateId && e.name && typeof e.name === 'string' && e.name.toLowerCase() === normId) ||
+        (candidateName && e.id && typeof e.id === 'string' && e.id.toLowerCase() === norm) ||
+        (candidateId.startsWith('ekskul_') && e.id && typeof e.id === 'string' && e.id.toLowerCase() === candidateId.toLowerCase()) ||
+        (e.id && typeof e.id === 'string' && e.id.replace(/^ekskul_/, '').toLowerCase() === norm.replace(/^ekskul_/, ''))
       );
 
       // Tolak jika tidak ditemukan padanan nama resmi di master data
@@ -199,7 +200,6 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
       for (const eid of u.extracurricularIds) {
         if (!eid || /^\d+$/.test(eid.trim())) continue;
         addEkskul(eid);
-        if (list.length >= 1) break;
       }
     }
 
@@ -208,18 +208,16 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
       for (const name of u.extracurricularNames) {
         if (!name || /^\d+$/.test(name.trim())) continue;
         addEkskul('', name);
-        if (list.length >= 1) break;
       }
     }
 
     // Prioritas 3: extracurricularName string tunggal
-    if (list.length === 0 && u.extracurricularName && !u.extracurricularName.startsWith('ekskul_') && !/^\d+$/.test(u.extracurricularName.trim())) {
+    if (list.length === 0 && u.extracurricularName && typeof u.extracurricularName === 'string' && !u.extracurricularName.startsWith('ekskul_') && !/^\d+$/.test(u.extracurricularName.trim())) {
       const parts = u.extracurricularName.split(',');
       for (const p of parts) {
         const trimmed = p.trim();
         if (!trimmed || /^\d+$/.test(trimmed)) continue;
         addEkskul('', trimmed);
-        if (list.length >= 1) break;
       }
     }
 
@@ -731,8 +729,9 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
               ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-900/40'
               : 'bg-[#18181b] hover:bg-[#222226] text-indigo-300 border border-indigo-500/20'
           }`}
+          title="Badan Pengurus Harian: Ketua Umum, Wakil Ketua, Sekretaris, Bendahara"
         >
-          <span>6. Anggota BPH OSIM</span>
+          <span>6. BPH OSIM</span>
           <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${rolePillFilter === 'bph_osim' ? 'bg-indigo-800 text-indigo-100' : 'bg-indigo-950/60 text-indigo-300'}`}>
             {roleCounts.bph_osim}
           </span>
@@ -745,8 +744,9 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
               ? 'bg-cyan-600 text-white shadow-sm shadow-cyan-900/40'
               : 'bg-[#18181b] hover:bg-[#222226] text-cyan-300 border border-cyan-500/20'
           }`}
+          title="Seksi Bidang sesuai kebijakan sekolah dan struktur bidang di aplikasi"
         >
-          <span>7. Sekbid 1-8</span>
+          <span>7. Seksi Bidang (Sekbid)</span>
           <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${rolePillFilter === 'sekbid_osim' ? 'bg-cyan-800 text-cyan-100' : 'bg-cyan-950/60 text-cyan-300'}`}>
             {roleCounts.sekbid_osim}
           </span>
@@ -963,9 +963,11 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
 
                     {/* Status Badge */}
                     <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold shrink-0 ${
-                      u.status === 'Nonaktif' ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                      (u.isLoginActive === false || u.loginStatus === 'pending_activation')
+                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 animate-pulse'
+                        : u.status === 'Nonaktif' ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
                     }`}>
-                      {u.status || 'Aktif'}
+                      {(u.isLoginActive === false || u.loginStatus === 'pending_activation') ? 'Belum Aktif (Perlu Aktivasi)' : (u.status || 'Aktif')}
                     </span>
                   </div>
 
@@ -1026,7 +1028,7 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
                   <div className="bg-[#121215] p-2 rounded-lg border border-[#222226] text-[11px] font-mono flex items-center justify-between">
                     <div className="truncate pr-2">
                       <span className="text-zinc-500 text-[10px]">USER:</span>{' '}
-                      <span className="text-zinc-200 font-bold">@{u.username || u.email.split('@')[0]}</span>
+                      <span className="text-zinc-200 font-bold">@{u.username || (u.email && u.email.includes('@') ? u.email.split('@')[0] : u.uid || 'user')}</span>
                       <span className="mx-1 text-zinc-600">|</span>
                       <span className="text-zinc-500 text-[10px]">AUTH:</span>{' '}
                       <span className="text-emerald-400 font-bold">Firebase Auth</span>
@@ -1047,32 +1049,46 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
                 {/* Card Footer: Action Toolbar */}
                 <div className="pt-2 border-t border-[#222226] flex items-center justify-between">
                   <div className="flex items-center space-x-1">
-                    <button
-                      type="button"
-                      onClick={() => handleOpenDetailModal(u)}
-                      title="Detail Akun"
-                      className="p-1 rounded-md bg-[#222226] hover:bg-[#2b2b30] text-zinc-300 hover:text-white transition-colors"
-                    >
-                      <Eye className="w-3.5 h-3.5 text-blue-400" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handlePrintAccountSlip(u)}
-                      title="Cetak Slip Login"
-                      className="p-1 rounded-md bg-[#222226] hover:bg-[#2b2b30] text-zinc-300 hover:text-white transition-colors"
-                    >
-                      <Printer className="w-3.5 h-3.5 text-emerald-400" />
-                    </button>
-                    {loginWithUser && (
+                    {(u.isLoginActive === false || u.loginStatus === 'pending_activation') ? (
                       <button
                         type="button"
-                        onClick={() => loginWithUser(u)}
-                        title={`Uji Sesi Akun: ${u.displayName} (${u.role})`}
-                        className="p-1 rounded-md bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 border border-emerald-500/40 transition-colors flex items-center gap-1 px-1.5"
+                        onClick={() => handleOpenActivateModal ? handleOpenActivateModal(u) : handleOpenEditModal(u)}
+                        title={`Aktifkan Akun Login ${u.displayName} di Firebase Auth`}
+                        className="px-2 py-1 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] flex items-center gap-1 shadow-sm transition-all"
                       >
-                        <LogIn className="w-3.5 h-3.5 text-emerald-300" />
-                        <span className="text-[10px] font-bold">Uji</span>
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Aktifkan Akun</span>
                       </button>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenDetailModal(u)}
+                          title="Detail Akun"
+                          className="p-1 rounded-md bg-[#222226] hover:bg-[#2b2b30] text-zinc-300 hover:text-white transition-colors"
+                        >
+                          <Eye className="w-3.5 h-3.5 text-blue-400" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handlePrintAccountSlip(u)}
+                          title="Cetak Slip Login"
+                          className="p-1 rounded-md bg-[#222226] hover:bg-[#2b2b30] text-zinc-300 hover:text-white transition-colors"
+                        >
+                          <Printer className="w-3.5 h-3.5 text-emerald-400" />
+                        </button>
+                        {loginWithUser && (
+                          <button
+                            type="button"
+                            onClick={() => loginWithUser(u)}
+                            title={`Uji Sesi Akun: ${u.displayName} (${u.role})`}
+                            className="p-1 rounded-md bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 border border-emerald-500/40 transition-colors flex items-center gap-1 px-1.5"
+                          >
+                            <LogIn className="w-3.5 h-3.5 text-emerald-300" />
+                            <span className="text-[10px] font-bold">Uji</span>
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
 
@@ -1162,7 +1178,7 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
                               {u.email}
                             </div>
                             <div className="text-[10px] text-zinc-400 font-mono mt-0.5">
-                              @{u.username || u.email.split('@')[0]}
+                              @{u.username || (u.email && u.email.includes('@') ? u.email.split('@')[0] : u.uid || 'user')}
                             </div>
                           </div>
                         </div>
@@ -1196,10 +1212,21 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
 
                       <td className="py-3 px-4 text-[11px]">
                         <div className="flex items-center space-x-1.5 mb-1">
-                          <span className={`w-1.5 h-1.5 rounded-full ${u.status === 'Nonaktif' ? 'bg-red-500' : 'bg-emerald-500'}`} />
-                          <span className={u.status === 'Nonaktif' ? 'text-red-400 font-bold' : 'text-zinc-200 font-medium'}>
-                            {u.status || 'Aktif'}
-                          </span>
+                          {(u.isLoginActive === false || u.loginStatus === 'pending_activation') ? (
+                            <>
+                              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                              <span className="text-amber-400 font-bold px-1.5 py-0.5 rounded bg-amber-500/10 border border-amber-500/30 text-[10px]">
+                                Belum Aktif (Perlu Aktivasi)
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <span className={`w-1.5 h-1.5 rounded-full ${u.status === 'Nonaktif' ? 'bg-red-500' : 'bg-emerald-500'}`} />
+                              <span className={u.status === 'Nonaktif' ? 'text-red-400 font-bold' : 'text-zinc-200 font-medium'}>
+                                {u.status || 'Aktif'}
+                              </span>
+                            </>
+                          )}
                         </div>
                         {u.role === 'pembina_osim' && (
                           <div className="text-[10px] text-amber-300 font-semibold flex items-center gap-1 mb-0.5">
@@ -1261,6 +1288,16 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
 
                       <td className="py-3 px-4 text-right">
                         <div className="flex items-center justify-end space-x-1">
+                          {(u.isLoginActive === false || u.loginStatus === 'pending_activation') && (
+                            <button
+                              onClick={() => handleOpenActivateModal ? handleOpenActivateModal(u) : handleOpenEditModal(u)}
+                              title="Aktifkan Akun Login Guru/Pembina"
+                              className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold flex items-center gap-1 transition-colors shadow-sm mr-1"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Aktifkan Akun</span>
+                            </button>
+                          )}
                           <button
                             onClick={() => handleOpenDetailModal(u)}
                             title="Lihat Detail Akun"

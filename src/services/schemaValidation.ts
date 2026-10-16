@@ -45,23 +45,41 @@ export type ValidatedCashAccount = z.infer<typeof cashAccountSchema>;
 
 // 2. Student Disciplinary Infraction Schema
 export const studentViolationSchema = z.object({
+  id: z.string().max(128).optional(),
   studentId: z.string().min(1, 'Siswa pelanggar wajib dipilih').max(128),
   studentName: z.string().max(128).optional(),
   studentCode: z.string().max(64).optional(),
   studentNis: z.string().max(64).optional(),
   studentClass: z.string().max(64).optional(),
   violationType: z.string().min(3, 'Deskripsi pelanggaran minimal 3 karakter').max(256),
-  category: z.enum(['Ringan', 'Sedang', 'Berat'], {
-    message: 'Kategori harus Ringan, Sedang, atau Berat'
+  category: z.enum(['Ringan', 'Sedang', 'Berat', 'Sangat Berat'], {
+    message: 'Kategori harus Ringan, Sedang, Berat, atau Sangat Berat'
   }),
   points: z.number().int('Poin harus bilangan bulat').min(1, 'Poin minimal 1').max(100, 'Poin maksimal 100'),
-  actionTaken: z.string().max(1024).optional(),
-  sanction: z.string().max(1024).optional(),
+  actionTaken: z.string().max(2048).optional(),
+  sanction: z.string().max(2048).optional(),
+  description: z.string().max(4096).optional(),
   reporterName: z.string().max(128).optional(),
   reporterRole: z.string().max(128).optional(),
+  officerName: z.string().max(128).optional(),
+  academicYear: z.string().max(64).optional(),
+  followUpNotes: z.string().max(4096).optional(),
+  isDeleted: z.boolean().optional(),
+  deletedAt: z.string().max(64).optional(),
+  createdAt: z.string().max(64).optional(),
   date: z.string().min(4, 'Tanggal pelanggaran wajib diisi').max(32),
-  status: z.enum(['Baru', 'Ditindak', 'Selesai', 'Dirujuk ke BK', 'Dibatalkan']).default('Baru')
-});
+  status: z.enum([
+    'Baru',
+    'Tercatat',
+    'Diproses',
+    'Dalam Proses',
+    'Dalam Pembinaan',
+    'Ditindak',
+    'Selesai',
+    'Dirujuk ke BK',
+    'Dibatalkan'
+  ]).default('Diproses')
+}).passthrough();
 
 export type ValidatedStudentViolation = z.infer<typeof studentViolationSchema>;
 

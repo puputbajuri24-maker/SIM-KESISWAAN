@@ -109,6 +109,7 @@ import {
   getDefaultOsimUsername,
   getDefaultOsimPasswordForMember
 } from '../utils/osimAccountHelper';
+import { getNextOsimDocId } from '../utils/idGenerator';
 
 export const OsimPage: React.FC = () => {
   const {
@@ -1276,33 +1277,20 @@ export const OsimPage: React.FC = () => {
 
       const defaultClassFallback = classes && classes.length > 0 ? classes[0].name : '10-A';
 
+      const memberId = selectedMember?.id || getNextOsimDocId(osimMembers);
       const memberToSave: OsimMember = {
         ...memberForm,
+        id: memberId,
         className: memberForm.className || defaultClassFallback,
-        loginUsername: isRoleHolder ? effectiveUsername : undefined,
-        username: isRoleHolder ? effectiveUsername : undefined
+        loginUsername: effectiveUsername || undefined,
+        username: effectiveUsername || undefined
       } as OsimMember;
 
       let savedMemberId = selectedMember?.id;
       if (selectedMember) {
         await updateOsimMember(selectedMember.id, memberToSave);
       } else {
-        await addOsimMember({
-          fullName: memberForm.fullName!,
-          studentNis: memberForm.studentNis || '',
-          className: memberForm.className || defaultClassFallback,
-          position: memberForm.position as any,
-          sekbid: memberForm.sekbid as OsimSekbid,
-          phone: memberForm.phone || '-',
-          email: memberForm.email || '',
-          photoUrl: memberForm.photoUrl || '',
-          status: (memberForm.status as any) || 'Aktif',
-          vision: memberForm.vision || '',
-          flagshipProgram: memberForm.flagshipProgram || '',
-          period: memberForm.period || activeAcademicYear,
-          loginUsername: isRoleHolder ? effectiveUsername : undefined,
-          username: isRoleHolder ? effectiveUsername : undefined
-        });
+        await addOsimMember(memberToSave);
       }
 
       // 1. Sinkronisasi Koordinator Bidang di Header Departemen OSIM
@@ -1318,92 +1306,24 @@ export const OsimPage: React.FC = () => {
         }
       }
 
-      // 2. Sinkronisasi Akun Login ke cPanel Admin:
-      // Hanya Pemegang Peran Resmi (BPH & Ketua Sekbid) yang dibuatkan akun di cPanel.
-      // Anggota Sekbid biasa TIDAK diberikan role / akun di cPanel.
-      if (canManageOsimAccounts) {
-        const existingAccount = findLinkedOsimAccount(memberForm, osimAccounts);
-
-        if (isRoleHolder) {
-          const osimRoleVal: 'ketua' | 'wakil' | 'sekretaris' | 'bendahara' | 'sekbid' =
-            posLower.includes('ketua') && !posLower.includes('wakil') && !posLower.includes('sekbid') ? 'ketua'
-            : posLower.includes('wakil') ? 'wakil'
-            : posLower.includes('sekretaris') ? 'sekretaris'
-            : posLower.includes('bendahara') ? 'bendahara'
-            : 'sekbid';
-
-          const sekbidNum = extractSekbidNumber(memberForm.sekbid) || extractSekbidNumber(memberForm.position);
-          const deptCode = sekbidNum ? `SEKBID-${sekbidNum}` : (isBph ? 'BPH' : 'SEKBID');
-          const finalUsername = effectiveUsername || (sekbidNum ? `osim.sekbid${sekbidNum}` : `osim.${Date.now()}`);
-
-          const isSamePerson = existingAccount && (
-            existingAccount.username.toLowerCase() === finalUsername.toLowerCase() ||
-            existingAccount.displayName.toLowerCase().trim() === (memberForm.fullName || '').toLowerCase().trim() ||
-            existingAccount.uid === selectedMember?.id ||
-            existingAccount.username.startsWith('osim.')
-          );
-
-          if (existingAccount && isSamePerson) {
-            const updatedUserObj: UserProfile = {
-              ...existingAccount,
-              displayName: memberForm.fullName || existingAccount.displayName,
-              username: finalUsername,
-              role: 'anggota_osim',
-              position: isBph ? (osimRoleVal === 'ketua' ? 'ketua_osim' : osimRoleVal === 'wakil' ? 'wakil_ketua_osim' : osimRoleVal === 'bendahara' ? 'bendahara_osim' : 'sekretaris_osim') : 'ketua_sekbid',
-              status: memberForm.status === 'Nonaktif' || memberForm.status === 'Demisioner' ? 'Nonaktif' : 'Aktif',
-              osimRole: osimRoleVal,
-              osimPosition: memberForm.position,
-              osimDepartmentName: memberForm.sekbid,
-              osimDepartmentCode: deptCode,
-              isCashManager: posLower.includes('bendahara'),
-              cashManagerTitle: posLower.includes('bendahara') ? 'Bendahara OSIM' : undefined
-            };
-            await updateUser(existingAccount.uid, updatedUserObj);
-            if (syncUserFromCPanel) {
-              try {
-                await syncUserFromCPanel(updatedUserObj, existingAccount);
-              } catch (e) {}
-            }
-          } else {
-            const newUid = `user_osim_${memberForm.studentNis ? memberForm.studentNis.replace(/[^a-zA-Z0-9]/g, '') : (savedMemberId || Date.now())}`;
-            const newUserObj: UserProfile = {
-              uid: newUid,
-              displayName: memberForm.fullName!,
-              username: finalUsername,
-              email: memberForm.email || `${finalUsername}@madrasah.sch.id`,
-              role: 'anggota_osim',
-              position: isBph ? (osimRoleVal === 'ketua' ? 'ketua_osim' : osimRoleVal === 'wakil' ? 'wakil_ketua_osim' : osimRoleVal === 'bendahara' ? 'bendahara_osim' : 'sekretaris_osim') : 'ketua_sekbid',
-              osimRole: osimRoleVal,
-              osimPosition: memberForm.position,
-              osimDepartmentName: memberForm.sekbid,
-              osimDepartmentCode: deptCode,
-              status: memberForm.status === 'Nonaktif' || memberForm.status === 'Demisioner' ? 'Nonaktif' : 'Aktif',
-              isCashManager: posLower.includes('bendahara'),
-              cashManagerTitle: posLower.includes('bendahara') ? 'Bendahara OSIM' : undefined,
-              createdAt: new Date().toISOString()
-            };
-            await addUser(newUserObj);
-            if (syncUserFromCPanel) {
-              try {
-                await syncUserFromCPanel(newUserObj);
-              } catch (e) {}
-            }
-          }
-        } else {
-          // Anggota Sekbid biasa: Jangan buat akun di cPanel.
-          // Jika sebelumnya memiliki akun login (misalnya mantan ketua sekbid), bersihkan dari cPanel
-          if (existingAccount && (existingAccount.uid === selectedMember?.id || (existingAccount.nip && existingAccount.nip === memberForm.studentNis))) {
-            try {
-              await deleteUser(existingAccount.uid);
-              if (syncDeleteUserFromCPanel) {
-                await syncDeleteUserFromCPanel(existingAccount.uid, existingAccount);
-              }
-            } catch (e) {}
-          }
+      // 2. Sinkronisasi Profil Pengurus OSIM ke cPanel Admin (Prinsip Satu Pintu):
+      // Seluruh pengurus OSIM (BPH dan Sekbid) didaftarkan profilnya ke cPanel untuk diaktifkan oleh Admin.
+      // Akun login TIDAK langsung aktif di sini, melainkan berstatus Belum Aktif dan diaktifkan di cPanel.
+      if (syncUsersFromOsim) {
+        try {
+          const updatedMembersList = selectedMember
+            ? osimMembers.map(m => m.id === selectedMember.id ? memberToSave : m)
+            : [...osimMembers, memberToSave];
+          await syncUsersFromOsim(osimDepartments, updatedMembersList);
+        } catch (e) {
+          console.warn('Note on syncUsersFromOsim:', e);
         }
       }
-    } catch (err) {
+
+      alert(`Profil pengurus OSIM "${memberToSave.fullName}" berhasil disimpan!\nStatus akun login: Belum Aktif (Aktivasi dan manajemen akun login sepenuhnya dikelola oleh Admin di menu cPanel).`);
+    } catch (err: any) {
       console.error('Error saving member:', err);
+      alert('Gagal menyimpan pengurus OSIM: ' + (err?.message || 'Terjadi kesalahan sistem'));
     } finally {
       setIsMemberModalOpen(false);
       setSelectedMember(null);

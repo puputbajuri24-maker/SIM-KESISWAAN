@@ -57,12 +57,13 @@ import {
   ChevronRight,
   SlidersHorizontal,
   Info,
-  BookOpen
+  BookOpen,
+  Loader2
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSchool } from '../contexts/SchoolContext';
 import { AnnouncementManagementPanel } from '../components/announcements/AnnouncementManagementPanel';
-import { UserProfile, UserRole, CanonicalUserRole, SchoolSetting, Teacher, Student, SchoolClass } from '../types';
+import { UserProfile, UserRole, CanonicalUserRole, SchoolSetting, Teacher, Student, SchoolClass, OsimMember } from '../types';
 import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { AuditLogsPanel } from '../components/cpanel/AuditLogsPanel';
@@ -78,12 +79,13 @@ import {
 import { getDefaultOsimPassword } from '../services/seedData';
 import { getUserSlipCredentials } from '../utils/osimAccountHelper';
 import { getEkskulTheme } from '../utils/ekskulColors';
-import { getUserHierarchyClassification, sortUsersByHierarchy, canonicalizeAssignedEkskulIds, cleanDigits } from '../utils/syncUtils';
+import { getUserHierarchyClassification, sortUsersByHierarchy, canonicalizeAssignedEkskulIds, cleanDigits, isTeacherUserMatch, isOsimMemberUserMatch } from '../utils/syncUtils';
 import { canResetUserPassword } from '../utils/rbacRules';
 import { normalizeUserRole } from '../permissions';
+import { getNextTeacherDocId } from '../utils/idGenerator';
 
 export const CPanelPage: React.FC = () => {
-  const { allUsers, currentUser, isSuperAdmin, addUser, updateUser, deleteUser, resetUserPassword, syncUsersFromTeachers, syncUsersFromOsim, loginWithUser, loginWithDemoRole } = useAuth();
+  const { allUsers, currentUser, isSuperAdmin, addUser, updateUser, deleteUser, resetUserPassword, syncUsersFromTeachers, syncUsersFromOsim, loginWithUser, loginWithDemoRole, migrateAllUsersToTidyUids, activateTeacherAccount, activateOsimAccount } = useAuth();
   const {
     schoolSetting,
     updateSchoolSetting,
@@ -99,6 +101,7 @@ export const CPanelPage: React.FC = () => {
     importFullDatabaseJSON,
     students,
     teachers,
+    addTeacher,
     classes,
     auditLogs,
     syncUserFromCPanel,
@@ -125,12 +128,17 @@ export const CPanelPage: React.FC = () => {
   const [userViewMode, setUserViewMode] = useState<'table' | 'cards'>('table');
   const [rolePillFilter, setRolePillFilter] = useState<string>('all');
 
-  // Source Mode for Add User Modal: Database Dewan Guru vs Database Siswa vs Input Manual
-  const [accountSourceType, setAccountSourceType] = useState<'teacher' | 'student' | 'manual'>('teacher');
+  // Source Mode for Add User Modal: Database Dewan Guru vs Pengurus OSIM vs Database Siswa vs Input Manual
+  const [accountSourceType, setAccountSourceType] = useState<'teacher' | 'osim' | 'student' | 'manual'>('teacher');
   const [selectedTeacherForAccount, setSelectedTeacherForAccount] = useState<Teacher | null>(null);
   const [addTeacherSearchTerm, setAddTeacherSearchTerm] = useState('');
   const [teacherFilterCategory, setTeacherFilterCategory] = useState<'all' | 'unregistered' | 'bk' | 'pembina'>('all');
   const [isChangingTeacherForAccount, setIsChangingTeacherForAccount] = useState(false);
+
+  // OSIM Member selection for OSIM account activation in Add User Modal
+  const [selectedOsimMemberForAccount, setSelectedOsimMemberForAccount] = useState<OsimMember | null>(null);
+  const [addOsimMemberSearchTerm, setAddOsimMemberSearchTerm] = useState('');
+  const [isChangingOsimMemberForAccount, setIsChangingOsimMemberForAccount] = useState(false);
 
   // Student selection for OSIM account creation in Add User Modal
   const [selectedStudentForAccount, setSelectedStudentForAccount] = useState<Student | null>(null);
@@ -188,12 +196,12 @@ export const CPanelPage: React.FC = () => {
     // 1. Ekstrakurikuler ID match
     if (u.extracurricularIds && u.extracurricularIds.length > 0) {
       for (const eid of u.extracurricularIds) {
-        if (!eid || /^\d+$/.test(eid.trim())) continue;
+        if (!eid || typeof eid !== 'string' || /^\d+$/.test(eid.trim())) continue;
         const normEid = eid.trim().toLowerCase();
         const found = extracurriculars.find(e => 
-          e.id.toLowerCase() === normEid || 
-          e.name.toLowerCase() === normEid ||
-          (normEid.startsWith('ekskul_') && e.id.toLowerCase() === normEid)
+          (e.id && typeof e.id === 'string' && e.id.toLowerCase() === normEid) || 
+          (e.name && typeof e.name === 'string' && e.name.toLowerCase() === normEid) ||
+          (normEid.startsWith('ekskul_') && e.id && typeof e.id === 'string' && e.id.toLowerCase() === normEid)
         );
         if (found && found.name && !/^\d+$/.test(found.name)) {
           return found.name;
@@ -204,9 +212,12 @@ export const CPanelPage: React.FC = () => {
     // 2. Ekstrakurikuler Names match
     if (u.extracurricularNames && u.extracurricularNames.length > 0) {
       for (const n of u.extracurricularNames) {
-        if (!n || /^\d+$/.test(n.trim())) continue;
+        if (!n || typeof n !== 'string' || /^\d+$/.test(n.trim())) continue;
         const normName = n.trim().toLowerCase();
-        const found = extracurriculars.find(e => e.name.toLowerCase() === normName || e.id.toLowerCase() === normName);
+        const found = extracurriculars.find(e => 
+          (e.name && typeof e.name === 'string' && e.name.toLowerCase() === normName) || 
+          (e.id && typeof e.id === 'string' && e.id.toLowerCase() === normName)
+        );
         if (found && found.name && !/^\d+$/.test(found.name)) {
           return found.name;
         }
@@ -214,13 +225,16 @@ export const CPanelPage: React.FC = () => {
     }
 
     // 3. String name fallback
-    if (u.extracurricularName && !u.extracurricularName.startsWith('ekskul_') && !/^\d+$/.test(u.extracurricularName.trim())) {
+    if (u.extracurricularName && typeof u.extracurricularName === 'string' && !u.extracurricularName.startsWith('ekskul_') && !/^\d+$/.test(u.extracurricularName.trim())) {
       const parts = u.extracurricularName.split(',');
       for (const p of parts) {
         const clean = p.trim();
         if (!clean || /^\d+$/.test(clean)) continue;
         const norm = clean.toLowerCase();
-        const found = extracurriculars.find(e => e.name.toLowerCase() === norm || e.id.toLowerCase() === norm);
+        const found = extracurriculars.find(e => 
+          (e.name && typeof e.name === 'string' && e.name.toLowerCase() === norm) || 
+          (e.id && typeof e.id === 'string' && e.id.toLowerCase() === norm)
+        );
         if (found && found.name && !/^\d+$/.test(found.name)) {
           return found.name;
         }
@@ -313,6 +327,9 @@ export const CPanelPage: React.FC = () => {
   const [isImportingJSON, setIsImportingJSON] = useState(false);
   const [isSyncingAll, setIsSyncingAll] = useState(false);
   const [isSavingSchool, setIsSavingSchool] = useState(false);
+  const [isSubmittingAddUser, setIsSubmittingAddUser] = useState(false);
+  const [isSubmittingEditUser, setIsSubmittingEditUser] = useState(false);
+  const [isSubmittingResetPassword, setIsSubmittingResetPassword] = useState(false);
   const jsonFileInputRef = React.useRef<HTMLInputElement>(null);
 
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
@@ -381,12 +398,13 @@ export const CPanelPage: React.FC = () => {
   const unregisteredTeachers = teachers.filter(t => {
     const cleanNip = t.nip ? t.nip.replace(/\s+/g, '').replace(/[^0-9]/g, '') : '';
     const cleanEmail = t.email ? t.email.toLowerCase().trim() : '';
+    const teacherName = (t.fullName || '').toLowerCase().trim();
     return !allUsers.some(u => 
       u.uid === t.id ||
       u.uid === `user_${t.id}` ||
       (cleanNip && u.nip && u.nip.replace(/\s+/g, '').replace(/[^0-9]/g, '') === cleanNip) ||
-      (cleanEmail && u.email && u.email.toLowerCase() === cleanEmail) ||
-      u.displayName.toLowerCase().trim() === t.fullName.toLowerCase().trim()
+      (cleanEmail && u.email && u.email.toLowerCase().trim() === cleanEmail) ||
+      (teacherName && u.displayName && u.displayName.toLowerCase().trim() === teacherName)
     );
   });
 
@@ -394,15 +412,17 @@ export const CPanelPage: React.FC = () => {
   const unregisteredOsimCount = useMemo(() => {
     let count = 0;
     for (const d of osimDepartments) {
-      if (d.code === 'BPH' || d.name.startsWith('BPH')) continue;
+      if (d.code === 'BPH' || (d.name && d.name.startsWith('BPH'))) continue;
       const code = (d.code || '').toLowerCase();
+      const deptName = (d.name || '').toLowerCase();
+      const coordName = (d.coordinatorName || '').toLowerCase().trim();
       const hasAcc = allUsers.some(u => 
-        u.role === 'pengurus_osim' && 
+        (u.role === 'pengurus_osim' || u.role === 'anggota_osim') && 
         (
-          (u.osimDepartmentCode && u.osimDepartmentCode.toLowerCase() === code) ||
-          (u.username && u.username.toLowerCase() === code) ||
-          (u.osimDepartmentName && u.osimDepartmentName.toLowerCase() === d.name.toLowerCase()) ||
-          (d.coordinatorName && u.displayName.toLowerCase().trim() === d.coordinatorName.toLowerCase().trim())
+          (code && u.osimDepartmentCode && u.osimDepartmentCode.toLowerCase() === code) ||
+          (code && u.username && u.username.toLowerCase() === code) ||
+          (deptName && u.osimDepartmentName && u.osimDepartmentName.toLowerCase() === deptName) ||
+          (coordName && u.displayName && u.displayName.toLowerCase().trim() === coordName)
         )
       );
       if (!hasAcc) count++;
@@ -415,9 +435,10 @@ export const CPanelPage: React.FC = () => {
   };
 
   const handleCopyCredentials = (u: UserProfile) => {
-    const text = `INFORMASI AKUN RESMI SIM KESISWAAN\nNama: ${u.displayName}\nPeran: ${u.role.toUpperCase()}\nNIP/NIS: ${u.nip || '-'}\nEmail: ${u.email}\nAutentikasi: Firebase Authentication\nURL: ${window.location.origin}`;
+    const roleStr = String(u.role || 'user');
+    const text = `INFORMASI AKUN RESMI SIM KESISWAAN\nNama: ${u.displayName || u.username || '-'}\nPeran: ${roleStr.toUpperCase()}\nNIP/NIS: ${u.nip || '-'}\nEmail: ${u.email || '-'}\nAutentikasi: Firebase Authentication\nURL: ${window.location.origin}`;
     navigator.clipboard.writeText(text);
-    showToast(`Informasi akun ${u.displayName} berhasil disalin ke clipboard!`);
+    showToast(`Informasi akun ${u.displayName || u.username || 'Pengguna'} berhasil disalin ke clipboard!`);
   };
 
   const handleSyncFromTeachers = async () => {
@@ -444,11 +465,24 @@ export const CPanelPage: React.FC = () => {
     }
   };
 
+  const handleMigrateTidyUids = async () => {
+    setIsSyncingAll(true);
+    try {
+      const res = await migrateAllUsersToTidyUids();
+      showToast(`Tahap 4 Selesai: ${res.migratedCount} akun dimigrasikan ke UID rapi, ${res.deletedArtifactsCount} akun ganda/artefak acak dibersihkan dari Firestore!`);
+    } catch (e: any) {
+      showToast('Gagal merapikan ID akun: ' + e?.message, 'error');
+    } finally {
+      setIsSyncingAll(false);
+    }
+  };
+
   const handleSyncAllModules = async () => {
     setIsSyncingAll(true);
     try {
+      await migrateAllUsersToTidyUids();
       await syncAllCPanelUsers(allUsers);
-      showToast('Seluruh data akun cPanel berhasil disinkronkan ke Dewan Guru, Ekstrakurikuler, dan modul Kesiswaan!');
+      showToast('Seluruh data akun cPanel berhasil dirapikan dan disinkronkan ke Dewan Guru, Ekstrakurikuler, dan modul Kesiswaan!');
     } catch (e: any) {
       showToast('Gagal sinkronisasi: ' + e?.message, 'error');
     } finally {
@@ -486,18 +520,22 @@ export const CPanelPage: React.FC = () => {
     const list = teachers || [];
     return list.filter(t => {
       // Check if already registered
-      const isAlreadyRegistered = allUsers.some(u =>
-        (u.nip && t.nip && u.nip.trim() === t.nip.trim()) ||
-        (u.displayName.toLowerCase().trim() === t.fullName.toLowerCase().trim())
-      );
+      const isAlreadyRegistered = allUsers.some(u => {
+        if (u.nip && t.nip && u.nip.trim() && t.nip.trim() && u.nip.trim() === t.nip.trim()) return true;
+        if (u.displayName && t.fullName && u.displayName.toLowerCase().trim() === t.fullName.toLowerCase().trim()) return true;
+        return false;
+      });
       if (teacherFilterCategory === 'unregistered' && isAlreadyRegistered) return false;
-      if (teacherFilterCategory === 'bk' && !t.role?.toLowerCase().includes('bk') && !t.subject?.toLowerCase().includes('bk') && !t.fullName.toLowerCase().includes('bk')) return false;
+      const tRole = (t.role || '').toLowerCase();
+      const tSub = (t.subject || '').toLowerCase();
+      const tName = (t.fullName || '').toLowerCase();
+      if (teacherFilterCategory === 'bk' && !tRole.includes('bk') && !tSub.includes('bk') && !tName.includes('bk')) return false;
       if (teacherFilterCategory === 'pembina' && !t.isPembina && (!t.assignedExtracurriculars || t.assignedExtracurriculars.length === 0)) return false;
 
       if (!teacherSearchTerm) return true;
       const q = teacherSearchTerm.toLowerCase();
       return (
-        t.fullName.toLowerCase().includes(q) ||
+        (t.fullName && t.fullName.toLowerCase().includes(q)) ||
         (t.nip && t.nip.includes(q)) ||
         (t.email && t.email.toLowerCase().includes(q)) ||
         (t.subject && t.subject.toLowerCase().includes(q)) ||
@@ -568,11 +606,17 @@ export const CPanelPage: React.FC = () => {
       matchedEkskulIds = canonicalizeAssignedEkskulIds([teacher.extracurricularName], extracurriculars);
     }
 
-    const cleanUsername = teacher.email ? teacher.email.split('@')[0] : (teacher.nip ? `guru_${teacher.nip}` : teacher.fullName.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 15));
-    const cleanEmail = teacher.email || (teacher.nip ? `${teacher.nip}@kemenag.go.id` : `${cleanUsername}@sekolah.sch.id`);
+    const tName = teacher.fullName || '';
+    const cleanDigitsNip = cleanDigits(teacher.nip);
+    const cleanUsername = (cleanDigitsNip && cleanDigitsNip.length >= 4)
+      ? `guru_${cleanDigitsNip}`
+      : (teacher.email && teacher.email.includes('@')
+        ? teacher.email.split('@')[0]
+        : (teacher.code ? teacher.code.toLowerCase().replace(/[^a-z0-9]/g, '') : `guru_${teacher.id.replace(/^guru_/, '')}`));
+    const cleanEmail = teacher.email || (cleanDigitsNip && cleanDigitsNip.length >= 4 ? `guru.${cleanDigitsNip}@madrasah.sch.id` : `${cleanUsername}@madrasah.sch.id`);
 
     setFormData({
-      displayName: teacher.fullName,
+      displayName: tName,
       nip: teacher.nip || '',
       email: cleanEmail,
       username: cleanUsername,
@@ -580,8 +624,8 @@ export const CPanelPage: React.FC = () => {
       phone: teacher.phone || '',
       counselorSpecialization: role === 'guru_bk' ? 'Bimbingan Konseling Siswa & Karir' : '',
       extracurricularIds: matchedEkskulIds,
-      extracurricularNames: matchedEkskulIds.map(id => extracurriculars.find(e => e.id === id || e.name.toLowerCase() === id.toLowerCase())?.name || id).filter(Boolean),
-      extracurricularName: matchedEkskulIds.map(id => extracurriculars.find(e => e.id === id || e.name.toLowerCase() === id.toLowerCase())?.name || id).filter(Boolean).join(', '),
+      extracurricularNames: matchedEkskulIds.map(id => extracurriculars.find(e => (e.id && e.id === id) || (e.name && typeof e.name === 'string' && typeof id === 'string' && e.name.toLowerCase() === id.toLowerCase()))?.name || id).filter(Boolean),
+      extracurricularName: matchedEkskulIds.map(id => extracurriculars.find(e => (e.id && e.id === id) || (e.name && typeof e.name === 'string' && typeof id === 'string' && e.name.toLowerCase() === id.toLowerCase()))?.name || id).filter(Boolean).join(', '),
       status: 'Aktif',
       isCashManager: !!teacher.isCashManager,
       cashManagerTitle: teacher.cashManagerTitle || (teacher.isCashManager ? 'Bendahara Kesiswaan' : '')
@@ -610,6 +654,27 @@ export const CPanelPage: React.FC = () => {
     });
   };
 
+  const handleSelectOsimMemberForAccount = (m: OsimMember) => {
+    setSelectedOsimMemberForAccount(m);
+    setIsChangingOsimMemberForAccount(false);
+    const cleanNis = cleanDigits(m.studentNis);
+    const autoUsername = cleanNis && cleanNis.length >= 4 ? `osim_${cleanNis}` : (m.email ? m.email.split('@')[0] : `osim_${m.id}`);
+    setFormData({
+      displayName: m.fullName,
+      nip: m.studentNis || '',
+      email: m.email || '',
+      username: autoUsername,
+      password: 'osim12345',
+      role: 'anggota_osim',
+      phone: m.phone && m.phone !== '-' ? m.phone : '',
+      counselorSpecialization: undefined,
+      extracurricularIds: [],
+      status: 'Aktif',
+      isCashManager: (m.position || '').toLowerCase().includes('bendahara'),
+      cashManagerTitle: (m.position || '').toLowerCase().includes('bendahara') ? 'Bendahara OSIM' : undefined
+    });
+  };
+
   const handleApplyRolePreset = (presetRole: UserRole) => {
     setFormData(prev => ({
       ...prev,
@@ -619,34 +684,192 @@ export const CPanelPage: React.FC = () => {
     }));
   };
 
-  const handleOpenAddModal = () => {
-    setAccountSourceType('teacher');
-    setSelectedTeacherForAdd(null);
-    setIsChangingTeacherSelection(false);
-    setSelectedStudentForAdd(null);
-    setIsChangingStudentSelection(false);
-    setTeacherSearchTerm('');
-    setTeacherFilterCategory('all');
-    setStudentSearchTerm('');
-    setStudentClassFilter('all');
-    setEkskulSearchInModal('');
-    setFormData({
-      displayName: '',
-      nip: '',
-      email: '',
-      username: '',
-      password: 'guru12345',
-      role: 'pembina_ekskul',
-      phone: '',
-      counselorSpecialization: 'Bimbingan Konseling Siswa & Karir',
-      extracurricularIds: [],
-      status: 'Aktif',
-      isCashManager: false,
-      cashManagerTitle: 'Bendahara Kesiswaan'
+  // Daftar guru yang baru diinput di Menu Guru & Pembina dan belum diaktifkan akun loginnya
+  const pendingTeachers = useMemo(() => {
+    return teachers.filter(t => {
+      if (t.isLoginActive === true || t.accountStatus === 'active') return false;
+      const matched = allUsers.find(u =>
+        u.uid === t.id ||
+        u.uid === `user_${t.id}` ||
+        (t.email && u.email && u.email.trim().toLowerCase() === t.email.trim().toLowerCase()) ||
+        isTeacherUserMatch(u, t)
+      );
+      if (matched && matched.isLoginActive !== false && matched.loginStatus !== 'pending_activation' && matched.status === 'Aktif') {
+        return false;
+      }
+      return true;
     });
+  }, [teachers, allUsers]);
+
+  // Daftar pengurus OSIM (BPH & Sekbid) yang belum diaktifkan akun loginnya
+  const pendingOsimMembers = useMemo(() => {
+    return osimMembers.filter(m => {
+      if (m.isLoginActive === true || m.accountStatus === 'active') return false;
+      const cleanNis = cleanDigits(m.studentNis);
+      const matched = allUsers.find(u =>
+        u.uid === m.id ||
+        u.uid === `user_${m.id}` ||
+        u.uid === `user_osim_${cleanNis}` ||
+        (m.email && u.email && u.email.trim().toLowerCase() === m.email.trim().toLowerCase()) ||
+        (cleanNis && cleanDigits(u.nip) === cleanNis) ||
+        isOsimMemberUserMatch(u, m)
+      );
+      if (matched && matched.isLoginActive !== false && matched.loginStatus !== 'pending_activation' && matched.status === 'Aktif') {
+        return false;
+      }
+      return true;
+    });
+  }, [osimMembers, allUsers]);
+
+  const filteredOsimMembersForAdd = useMemo(() => {
+    let list = pendingOsimMembers.length > 0 ? pendingOsimMembers : osimMembers;
+    if (addOsimMemberSearchTerm.trim()) {
+      const q = addOsimMemberSearchTerm.toLowerCase();
+      list = list.filter(m =>
+        (m.fullName && m.fullName.toLowerCase().includes(q)) ||
+        (m.studentNis && m.studentNis.includes(q)) ||
+        (m.position && m.position.toLowerCase().includes(q)) ||
+        (m.sekbid && m.sekbid.toLowerCase().includes(q)) ||
+        (m.email && m.email.toLowerCase().includes(q))
+      );
+    }
+    return list;
+  }, [pendingOsimMembers, osimMembers, addOsimMemberSearchTerm]);
+
+  const handleOpenActivateModal = (target?: UserProfile | Teacher | OsimMember) => {
     setShowPasswordInModal(false);
+
+    if (target) {
+      // 1. Target adalah Profil Pengurus OSIM dari Menu OSIM
+      if ('studentNis' in target && !('displayName' in target)) {
+        const m = target as OsimMember;
+        setAccountSourceType('osim');
+        handleSelectOsimMemberForAccount(m);
+      }
+      // 2. Target adalah Profil Guru dari Menu Guru & Pembina
+      else if ('fullName' in target && !('displayName' in target)) {
+        const t = target as Teacher;
+        setAccountSourceType('teacher');
+        setSelectedTeacherForAccount(t);
+        setIsChangingTeacherForAccount(false);
+        const cleanNip = cleanDigits(t.nip);
+        const autoUsername = cleanNip && cleanNip.length >= 4 ? `guru_${cleanNip}` : (t.email ? t.email.split('@')[0] : `guru_${t.id}`);
+        setFormData({
+          displayName: t.fullName,
+          nip: t.nip && t.nip !== '-' ? t.nip : '',
+          email: t.email || '',
+          username: autoUsername,
+          password: 'guru12345',
+          role: normalizeUserRole(t.role) || 'guru',
+          phone: t.phone || '',
+          counselorSpecialization: t.role.toLowerCase().includes('bk') ? (t.subject || 'Bimbingan Konseling Siswa & Karir') : undefined,
+          extracurricularIds: t.assignedExtracurriculars || [],
+          status: 'Aktif',
+          isCashManager: !!t.isCashManager,
+          cashManagerTitle: t.cashManagerTitle || 'Bendahara Kesiswaan'
+        });
+      }
+      // 3. Target adalah UserProfile yang sudah ada (Pengurus OSIM)
+      else if ('displayName' in target && (target.role === 'anggota_osim' || target.role === 'pengurus_osim')) {
+        const u = target as UserProfile;
+        setAccountSourceType('osim');
+        const matchedOsim = osimMembers.find(m =>
+          (u.nip && cleanDigits(m.studentNis) === cleanDigits(u.nip)) ||
+          (u.email && m.email && m.email.trim().toLowerCase() === u.email.trim().toLowerCase()) ||
+          m.fullName.toLowerCase() === u.displayName.toLowerCase() ||
+          m.id === u.uid ||
+          (m as any).userUid === u.uid
+        );
+        if (matchedOsim) {
+          setSelectedOsimMemberForAccount(matchedOsim);
+          setIsChangingOsimMemberForAccount(false);
+        } else {
+          setSelectedOsimMemberForAccount(null);
+        }
+        setFormData({
+          displayName: u.displayName || '',
+          nip: u.nip || '',
+          email: u.email || '',
+          username: u.username || (u.email ? u.email.split('@')[0] : ''),
+          password: u.password && u.password !== 'password' ? u.password : 'osim12345',
+          role: 'anggota_osim',
+          phone: u.phone || '',
+          counselorSpecialization: undefined,
+          extracurricularIds: [],
+          status: 'Aktif',
+          isCashManager: !!u.isCashManager,
+          cashManagerTitle: u.cashManagerTitle || 'Bendahara OSIM'
+        });
+      }
+      // 4. Target adalah UserProfile yang sudah ada (Guru / Petugas)
+      else {
+        const u = target as UserProfile;
+        setAccountSourceType('teacher');
+        const matchedT = teachers.find(t => isTeacherUserMatch(u, t));
+        if (matchedT) {
+          setSelectedTeacherForAccount(matchedT);
+        }
+        setIsChangingTeacherForAccount(false);
+        setFormData({
+          displayName: u.displayName || '',
+          nip: u.nip || '',
+          email: u.email || '',
+          username: u.username || (u.email ? u.email.split('@')[0] : ''),
+          password: u.password && u.password !== 'password' ? u.password : 'guru12345',
+          role: u.role || 'guru',
+          phone: u.phone || '',
+          counselorSpecialization: u.counselorSpecialization || 'Bimbingan Konseling Siswa & Karir',
+          extracurricularIds: u.extracurricularIds || [],
+          status: 'Aktif',
+          isCashManager: !!u.isCashManager,
+          cashManagerTitle: u.cashManagerTitle || 'Bendahara Kesiswaan'
+        });
+      }
+    } else {
+      setAccountSourceType('teacher');
+      const firstPending = pendingTeachers[0];
+      if (firstPending) {
+        setSelectedTeacherForAccount(firstPending);
+        setIsChangingTeacherForAccount(false);
+        const cleanNip = cleanDigits(firstPending.nip);
+        const autoUsername = cleanNip && cleanNip.length >= 4 ? `guru_${cleanNip}` : (firstPending.email ? firstPending.email.split('@')[0] : `guru_${firstPending.id}`);
+        setFormData({
+          displayName: firstPending.fullName,
+          nip: firstPending.nip && firstPending.nip !== '-' ? firstPending.nip : '',
+          email: firstPending.email || '',
+          username: autoUsername,
+          password: 'guru12345',
+          role: normalizeUserRole(firstPending.role) || 'guru',
+          phone: firstPending.phone || '',
+          counselorSpecialization: firstPending.role.toLowerCase().includes('bk') ? (firstPending.subject || 'Bimbingan Konseling Siswa & Karir') : undefined,
+          extracurricularIds: firstPending.assignedExtracurriculars || [],
+          status: 'Aktif',
+          isCashManager: !!firstPending.isCashManager,
+          cashManagerTitle: firstPending.cashManagerTitle || 'Bendahara Kesiswaan'
+        });
+      } else {
+        setSelectedTeacherForAccount(null);
+        setIsChangingTeacherForAccount(true);
+        setFormData({
+          displayName: '',
+          nip: '',
+          email: '',
+          username: '',
+          password: 'guru12345',
+          role: 'guru',
+          phone: '',
+          counselorSpecialization: 'Bimbingan Konseling Siswa & Karir',
+          extracurricularIds: [],
+          status: 'Aktif',
+          isCashManager: false,
+          cashManagerTitle: 'Bendahara Kesiswaan'
+        });
+      }
+    }
     setIsAddModalOpen(true);
   };
+
+  const handleOpenAddModal = handleOpenActivateModal;
 
   const handleOpenEditModal = (u: UserProfile) => {
     setSelectedUserForAction(u);
@@ -694,10 +917,71 @@ export const CPanelPage: React.FC = () => {
       return;
     }
 
+    if (accountSourceType === 'student' && !selectedStudentForAccount) {
+      showToast('Harap pilih salah satu Siswa dari Grid Database Siswa di bawah.', 'error');
+      return;
+    }
+
+    if (accountSourceType === 'osim' && !selectedOsimMemberForAccount && pendingOsimMembers.length > 0 && !formData.displayName.trim()) {
+      showToast('Harap pilih salah satu Pengurus OSIM dari daftar di bawah.', 'error');
+      return;
+    }
+
     const cleanNip = cleanDigits(formData.nip);
-    const cleanUsername = formData.username.trim() || formData.email.split('@')[0].trim().toLowerCase();
-    const resolvedUid = formData.uid?.trim() || `user_${cleanNip || cleanUsername || Date.now()}`;
     const canonicalRole = normalizeUserRole(formData.role) || formData.role;
+
+    // Pembakuan Format UID Rapi dan Permanen (Bebas dari string acak / Date.now)
+    let resolvedUid = '';
+    let cleanUsername = formData.username.trim();
+
+    if (accountSourceType === 'teacher') {
+      if (!selectedTeacherForAccount) {
+        showToast('Harap pilih salah satu Guru dari Grid Database Guru di bawah.', 'error');
+        return;
+      }
+      resolvedUid = selectedTeacherForAccount.id.startsWith('user_')
+        ? selectedTeacherForAccount.id
+        : `user_${selectedTeacherForAccount.id}`;
+      if (!cleanUsername) {
+        cleanUsername = cleanNip && cleanNip.length >= 4
+          ? `guru_${cleanNip}`
+          : (selectedTeacherForAccount.code ? selectedTeacherForAccount.code.toLowerCase().replace(/[^a-z0-9]/g, '') : `guru_${selectedTeacherForAccount.id.replace(/^guru_/, '')}`);
+      }
+    } else if (accountSourceType === 'osim') {
+      const cleanOsimNis = cleanNip || (selectedOsimMemberForAccount ? cleanDigits(selectedOsimMemberForAccount.studentNis) : '');
+      const osimRefId = selectedOsimMemberForAccount ? selectedOsimMemberForAccount.id : '';
+      resolvedUid = cleanOsimNis && cleanOsimNis.length >= 4
+        ? `user_osim_${cleanOsimNis}`
+        : (osimRefId ? `user_osim_${osimRefId}` : `user_${formData.email.split('@')[0]}`);
+      if (!cleanUsername) {
+        cleanUsername = cleanOsimNis && cleanOsimNis.length >= 4 ? `osim_${cleanOsimNis}` : formData.email.split('@')[0];
+      }
+    } else if (accountSourceType === 'student' && selectedStudentForAccount) {
+      resolvedUid = selectedStudentForAccount.id.startsWith('user_')
+        ? selectedStudentForAccount.id
+        : `user_${selectedStudentForAccount.id}`;
+      if (!cleanUsername) {
+        cleanUsername = selectedStudentForAccount.nis ? `siswa_${selectedStudentForAccount.nis}` : `user_${selectedStudentForAccount.id}`;
+      }
+    } else {
+      // Akun Petugas Sistem (Super Admin / Admin Kesiswaan / Waka Kesiswaan)
+      if (canonicalRole === 'super_admin') {
+        resolvedUid = 'user_super_admin';
+        if (!cleanUsername) cleanUsername = 'superadmin';
+      } else if (canonicalRole === 'admin_kesiswaan' || (canonicalRole as string) === 'admin') {
+        resolvedUid = 'user_admin_kesiswaan';
+        if (!cleanUsername) cleanUsername = 'adminkesiswaan';
+      } else if (canonicalRole === 'waka_kesiswaan') {
+        resolvedUid = 'user_waka_kesiswaan';
+        if (!cleanUsername) cleanUsername = 'wakakesiswaan';
+      } else {
+        // Fallback akun sistem rapi
+        const safeBase = formData.displayName.toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 15);
+        resolvedUid = `user_${canonicalRole}_${safeBase}`;
+        if (!cleanUsername) cleanUsername = safeBase;
+      }
+    }
+
     const selectedEkskuls = (canonicalRole === 'coach_ekstrakurikuler' || (formData.extracurricularIds && formData.extracurricularIds.length > 0))
       ? (formData.extracurricularIds || []).filter(id => id && !/^\d+$/.test(id.trim()))
       : [];
@@ -705,8 +989,8 @@ export const CPanelPage: React.FC = () => {
     const hasEkskulAssignment = selectedEkskuls.length > 0;
     const resolvedEkskulNames = hasEkskulAssignment
       ? selectedEkskuls
-          .map(id => extracurriculars.find(e => e.id === id || e.name.toLowerCase() === id.toLowerCase())?.name)
-          .filter((name): name is string => Boolean(name && !/^\d+$/.test(name.trim()) && !/^ekskul_\d+$/.test(name.trim())))
+          .map(id => extracurriculars.find(e => (e.id && e.id === id) || (e.name && typeof e.name === 'string' && typeof id === 'string' && e.name.toLowerCase() === id.toLowerCase()))?.name)
+          .filter((name): name is string => Boolean(name && !/^\d{1,2}$/.test(name.trim()) && !/^ekskul_[1-9]$/.test(name.trim())))
       : undefined;
 
     const newUser: UserProfile = {
@@ -728,14 +1012,92 @@ export const CPanelPage: React.FC = () => {
       cashManagerTitle: formData.isCashManager ? (formData.cashManagerTitle.trim() || 'Bendahara') : undefined
     };
 
-    const res = await addUser(newUser);
-    if (res.success) {
-      // Cross-Module Real-time Sync
-      await syncUserFromCPanel(newUser);
-      showToast(`Akun ${newUser.displayName} (${newUser.role}) berhasil ditambahkan dan data otomatis sinkron ke seluruh menu!`);
-      setIsAddModalOpen(false);
-    } else {
-      showToast(res.error || 'Gagal menambahkan akun.', 'error');
+    setIsSubmittingAddUser(true);
+    try {
+      if (accountSourceType === 'teacher' && selectedTeacherForAccount) {
+        const res = await activateTeacherAccount({
+          teacherId: selectedTeacherForAccount.id,
+          email: formData.email.trim(),
+          username: cleanUsername,
+          password: (formData.password || 'guru12345').trim(),
+          fullName: formData.displayName.trim(),
+          nip: formData.nip.trim() || undefined,
+          role: canonicalRole,
+          phone: formData.phone.trim() || undefined,
+          extracurricularIds: selectedEkskuls,
+          extracurricularNames: resolvedEkskulNames,
+          counselorSpecialization: canonicalRole === 'guru_bk' ? formData.counselorSpecialization : undefined,
+          isCashManager: formData.isCashManager,
+          cashManagerTitle: formData.isCashManager ? (formData.cashManagerTitle.trim() || 'Bendahara') : undefined
+        });
+
+        if (res.success && res.user) {
+          const activatedUser = res.user;
+          setIsAddModalOpen(false);
+          showToast(`Akun login untuk "${activatedUser.displayName}" berhasil diaktifkan dan terhubung ke Firebase Authentication!`);
+          handlePrintAccountSlip(activatedUser);
+          syncUserFromCPanel(activatedUser).catch(err => console.warn('Background sync note:', err));
+        } else {
+          showToast(res.error || 'Gagal mengaktifkan akun login.', 'error');
+        }
+        return;
+      }
+
+      if (accountSourceType === 'osim' || accountSourceType === 'student' || canonicalRole === 'anggota_osim' || canonicalRole === 'pengurus_osim') {
+        const cleanStudentNis = formData.nip.trim() || selectedOsimMemberForAccount?.studentNis || selectedStudentForAccount?.nis || '';
+        const matchedOsimMember = selectedOsimMemberForAccount || osimMembers.find(m =>
+          (cleanStudentNis && cleanDigits(m.studentNis) === cleanDigits(cleanStudentNis)) ||
+          (selectedStudentForAccount && selectedStudentForAccount.nis && cleanDigits(m.studentNis) === cleanDigits(selectedStudentForAccount.nis)) ||
+          (m.fullName.toLowerCase().trim() === formData.displayName.toLowerCase().trim())
+        );
+
+        const targetMemberId = selectedOsimMemberForAccount?.id || matchedOsimMember?.id;
+        const targetUserUid = cleanStudentNis && cleanStudentNis.length >= 4
+          ? `user_osim_${cleanStudentNis}`
+          : (targetMemberId ? `user_osim_${targetMemberId}` : (resolvedUid || undefined));
+
+        const res = await activateOsimAccount({
+          memberId: targetMemberId,
+          uid: targetUserUid,
+          email: formData.email.trim(),
+          username: cleanUsername,
+          password: (formData.password || 'osim12345').trim(),
+          fullName: formData.displayName.trim(),
+          studentNis: cleanStudentNis,
+          className: selectedOsimMemberForAccount?.className || selectedStudentForAccount?.className || matchedOsimMember?.className,
+          position: selectedOsimMemberForAccount?.position || matchedOsimMember?.position || 'Pengurus OSIM',
+          sekbid: selectedOsimMemberForAccount?.sekbid || matchedOsimMember?.sekbid,
+          phone: formData.phone.trim() || undefined,
+          isCashManager: formData.isCashManager,
+          cashManagerTitle: formData.isCashManager ? (formData.cashManagerTitle.trim() || 'Bendahara OSIM') : undefined
+        });
+
+        if (res.success && res.user) {
+          const activatedUser = res.user;
+          setIsAddModalOpen(false);
+          showToast(`Akun login OSIM untuk "${activatedUser.displayName}" berhasil diaktifkan dan terhubung ke Firebase Authentication!`);
+          handlePrintAccountSlip(activatedUser);
+          syncUserFromCPanel(activatedUser).catch(err => console.warn('Background sync note:', err));
+        } else {
+          showToast(res.error || 'Gagal mengaktifkan akun login OSIM.', 'error');
+        }
+        return;
+      }
+
+      const res = await addUser(newUser);
+      if (res.success) {
+        setIsAddModalOpen(false);
+        showToast(`Akun ${newUser.displayName} (${newUser.role}) berhasil disimpan dan data otomatis sinkron ke seluruh menu!`);
+        handlePrintAccountSlip(newUser);
+        syncUserFromCPanel(newUser).catch(err => console.warn('Background sync note:', err));
+      } else {
+        showToast(res.error || 'Gagal menambahkan akun.', 'error');
+      }
+    } catch (err: any) {
+      console.error('Error in handleSaveAddUser:', err);
+      showToast(err?.message || 'Terjadi kesalahan sistem saat menyimpan akun.', 'error');
+    } finally {
+      setIsSubmittingAddUser(false);
     }
   };
 
@@ -748,8 +1110,8 @@ export const CPanelPage: React.FC = () => {
     const hasEkskulAssignment = selectedEkskuls.length > 0;
     const resolvedEkskulNames = hasEkskulAssignment
       ? selectedEkskuls
-          .map(id => extracurriculars.find(e => e.id === id || e.name.toLowerCase() === id.toLowerCase())?.name)
-          .filter((name): name is string => Boolean(name && !/^\d+$/.test(name.trim()) && !/^ekskul_\d+$/.test(name.trim())))
+          .map(id => extracurriculars.find(e => (e.id && e.id === id) || (e.name && typeof e.name === 'string' && typeof id === 'string' && e.name.toLowerCase() === id.toLowerCase()))?.name)
+          .filter((name): name is string => Boolean(name && !/^\d{1,2}$/.test(name.trim()) && !/^ekskul_[1-9]$/.test(name.trim())))
       : undefined;
 
     const updatedData: Partial<UserProfile> = {
@@ -773,16 +1135,23 @@ export const CPanelPage: React.FC = () => {
       updatedData.password = formData.password.trim();
     }
 
-    const res = await updateUser(selectedUserForAction.uid, updatedData);
+    setIsSubmittingEditUser(true);
+    try {
+      const res = await updateUser(selectedUserForAction.uid, updatedData);
 
-    if (res.success) {
-      const mergedUser: UserProfile = { ...selectedUserForAction, ...updatedData };
-      // Cross-Module Real-time Sync
-      await syncUserFromCPanel(mergedUser, selectedUserForAction);
-      showToast(`Perubahan data akun ${formData.displayName} berhasil disimpan & disinkronkan ke seluruh menu terkait!`);
-      setIsEditModalOpen(false);
-    } else {
-      showToast(res.error || 'Gagal memperbarui akun.', 'error');
+      if (res.success) {
+        const mergedUser: UserProfile = { ...selectedUserForAction, ...updatedData };
+        setIsEditModalOpen(false);
+        showToast(`Perubahan data akun ${formData.displayName} berhasil disimpan & disinkronkan ke seluruh menu terkait!`);
+        syncUserFromCPanel(mergedUser, selectedUserForAction).catch(err => console.warn('Background sync note:', err));
+      } else {
+        showToast(res.error || 'Gagal memperbarui akun.', 'error');
+      }
+    } catch (err: any) {
+      console.error('Error in handleSaveEditUser:', err);
+      showToast(err?.message || 'Terjadi kesalahan sistem saat memperbarui akun.', 'error');
+    } finally {
+      setIsSubmittingEditUser(false);
     }
   };
 
@@ -829,22 +1198,29 @@ export const CPanelPage: React.FC = () => {
       return;
     }
     const newPass = customResetPassword.trim();
-    if (newPass) {
-      const res = await resetUserPassword(u.uid, newPass);
-      if (res.success) {
-        showToast(`Kata sandi akun ${u.displayName} berhasil diubah menjadi "${newPass}" dan disinkronkan ke Firebase Auth & profil!`);
-        setIsResetModalOpen(false);
+    setIsSubmittingResetPassword(true);
+    try {
+      if (newPass) {
+        const res = await resetUserPassword(u.uid, newPass);
+        if (res.success) {
+          showToast(`Kata sandi akun ${u.displayName} berhasil diubah menjadi "${newPass}" dan disinkronkan ke Firebase Auth & profil!`);
+          setIsResetModalOpen(false);
+        } else {
+          showToast(res.error || 'Gagal mengubah kata sandi.', 'error');
+        }
       } else {
-        showToast(res.error || 'Gagal mengubah kata sandi.', 'error');
+        const res = await resetUserPassword(u.uid);
+        if (res.success) {
+          showToast(`Instruksi pemulihan kata sandi Firebase Auth berhasil dikirimkan ke email ${u.displayName} (${u.email || '-'})!`);
+          setIsResetModalOpen(false);
+        } else {
+          showToast(res.error || 'Gagal mengirim instruksi reset kata sandi Firebase Auth.', 'error');
+        }
       }
-    } else {
-      const res = await resetUserPassword(u.uid);
-      if (res.success) {
-        showToast(`Instruksi pemulihan kata sandi Firebase Auth berhasil dikirimkan ke email ${u.displayName} (${u.email || '-'})!`);
-        setIsResetModalOpen(false);
-      } else {
-        showToast(res.error || 'Gagal mengirim instruksi reset kata sandi Firebase Auth.', 'error');
-      }
+    } catch (err: any) {
+      showToast(err?.message || 'Terjadi kesalahan saat mereset kata sandi.', 'error');
+    } finally {
+      setIsSubmittingResetPassword(false);
     }
   };
 
@@ -1254,18 +1630,19 @@ export const CPanelPage: React.FC = () => {
       if (!searchTerm) return true;
       const q = searchTerm.toLowerCase();
       return (
-        u.displayName.toLowerCase().includes(q) ||
-        u.email.toLowerCase().includes(q) ||
-        (u.nip && u.nip.includes(q)) ||
-        (u.username && u.username.toLowerCase().includes(q)) ||
-        (u.phone && u.phone.includes(q)) ||
-        (u.osimPosition && u.osimPosition.toLowerCase().includes(q)) ||
-        (u.osimDepartmentName && u.osimDepartmentName.toLowerCase().includes(q)) ||
-        (u.extracurricularName && u.extracurricularName.toLowerCase().includes(q)) ||
-        (u.extracurricularNames && u.extracurricularNames.some(en => en.toLowerCase().includes(q))) ||
-        (u.extracurricularIds && u.extracurricularIds.some(eid => {
-          const ek = extracurriculars.find(e => e.id === eid || e.name.toLowerCase() === eid.toLowerCase());
-          return ek && ek.name.toLowerCase().includes(q);
+        (u.displayName && typeof u.displayName === 'string' && u.displayName.toLowerCase().includes(q)) ||
+        (u.email && typeof u.email === 'string' && u.email.toLowerCase().includes(q)) ||
+        (u.nip && typeof u.nip === 'string' && u.nip.includes(q)) ||
+        (u.username && typeof u.username === 'string' && u.username.toLowerCase().includes(q)) ||
+        (u.phone && typeof u.phone === 'string' && u.phone.includes(q)) ||
+        (u.osimPosition && typeof u.osimPosition === 'string' && u.osimPosition.toLowerCase().includes(q)) ||
+        (u.osimDepartmentName && typeof u.osimDepartmentName === 'string' && u.osimDepartmentName.toLowerCase().includes(q)) ||
+        (u.extracurricularName && typeof u.extracurricularName === 'string' && u.extracurricularName.toLowerCase().includes(q)) ||
+        (Array.isArray(u.extracurricularNames) && u.extracurricularNames.some(en => typeof en === 'string' && en.toLowerCase().includes(q))) ||
+        (Array.isArray(u.extracurricularIds) && u.extracurricularIds.some(eid => {
+          if (!eid || typeof eid !== 'string') return false;
+          const ek = extracurriculars.find(e => (e.id && e.id === eid) || (e.name && typeof e.name === 'string' && e.name.toLowerCase() === eid.toLowerCase()));
+          return !!(ek && ek.name && typeof ek.name === 'string' && ek.name.toLowerCase().includes(q));
         }))
       );
     });
@@ -1355,6 +1732,15 @@ export const CPanelPage: React.FC = () => {
             <span>{isSyncingAll ? 'Menyinkronkan...' : 'Sinkronkan Semua Modul'}</span>
           </button>
           <button
+            onClick={handleMigrateTidyUids}
+            disabled={isSyncingAll}
+            className="px-3 py-2 rounded-lg bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-xs font-bold text-amber-300 flex items-center space-x-2 transition-colors disabled:opacity-50"
+            title="Rapikan ID dokumen acak (seperti CdAcdt...) di Firestore Console menjadi ID rapi (user_super_admin, user_guru_xx, dll.)"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            <span>Rapikan ID Firestore</span>
+          </button>
+          <button
             onClick={() => handleOpenPrintModal('all')}
             className="px-3 py-2 rounded-lg bg-[#222226] hover:bg-[#2b2b30] border border-[#37373f] text-xs font-semibold text-zinc-100 flex items-center space-x-2 transition-colors"
           >
@@ -1362,11 +1748,17 @@ export const CPanelPage: React.FC = () => {
             <span>Cetak Semua Slip Akun</span>
           </button>
           <button
-            onClick={handleOpenAddModal}
+            onClick={() => handleOpenActivateModal()}
             className="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white flex items-center space-x-2 transition-colors shadow-lg shadow-emerald-950/40"
+            title="Aktivasi Akun Login Guru & Pembina (Hubungkan ke Firebase Authentication)"
           >
-            <Plus className="w-4 h-4" />
-            <span>Tambah Akun Baru</span>
+            <Key className="w-4 h-4 text-emerald-200" />
+            <span>Aktivasi Akun Login</span>
+            {pendingTeachers.length > 0 && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-400 text-zinc-950 shadow-sm animate-pulse">
+                {pendingTeachers.length} Belum Aktif
+              </span>
+            )}
           </button>
         </div>
       </div>
@@ -1536,6 +1928,7 @@ export const CPanelPage: React.FC = () => {
       {/* TAB 1: USERS MANAGEMENT */}
       {activeSubTab === 'users' && (
         <CPanelUserTab
+          handleOpenActivateModal={handleOpenActivateModal}
           unregisteredTeachers={unregisteredTeachers}
           handleSyncFromTeachers={handleSyncFromTeachers}
           isSyncingAll={isSyncingAll}
@@ -1864,16 +2257,16 @@ export const CPanelPage: React.FC = () => {
       {/* TAB 5: AUDIT LOGS & ACTIVITY MONITOR */}
       {activeSubTab === 'logs' && <CPanelLogsTab />}
 
-      {/* MODAL: ADD USER (EXACT PATTERN OF OSIM & PEMBINA EKSTRA) */}
+      {/* MODAL: ADD / ACTIVATE USER (SATU PINTU: INPUT GURU DI MENU GURU & PEMBINA, AKTIVASI DI CPANEL) */}
       <Modal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
-        title="Tambah Akun Pengguna Baru SIM Kesiswaan"
+        title="Aktivasi Akun Login Pengguna (CPanel SIM-KESISWAAN)"
         maxWidth="max-w-3xl"
       >
         <form onSubmit={handleSaveAddUser} className="space-y-4 text-xs">
-          {/* Source Picker Tabs: Guru, Siswa (OSIM), or Manual */}
-          <div className="bg-[#18181d] border border-[#27272a] rounded-xl p-1.5 flex items-center gap-1">
+          {/* Source Picker Tabs: Guru, Pengurus OSIM, Siswa Umum, or Manual */}
+          <div className="bg-[#18181d] border border-[#27272a] rounded-xl p-1.5 flex flex-wrap sm:flex-nowrap items-center gap-1">
             <button
               type="button"
               onClick={() => {
@@ -1887,7 +2280,22 @@ export const CPanelPage: React.FC = () => {
               }`}
             >
               <Users className="w-4 h-4" />
-              <span>1. Dari Dewan Guru ({teachers.length})</span>
+              <span>1. Guru & Pembina {pendingTeachers.length > 0 ? `(${pendingTeachers.length} Belum Aktif)` : `(${teachers.length})`}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAccountSourceType('osim');
+                handleApplyRolePreset('pengurus_osim');
+              }}
+              className={`flex-1 py-2 px-3 rounded-lg font-bold flex items-center justify-center gap-2 transition-all ${
+                accountSourceType === 'osim'
+                  ? 'bg-cyan-600 text-white shadow-xs'
+                  : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#202026]'
+              }`}
+            >
+              <Award className="w-4 h-4" />
+              <span>2. Pengurus OSIM {pendingOsimMembers.length > 0 ? `(${pendingOsimMembers.length} Belum Aktif)` : `(${osimMembers.length})`}</span>
             </button>
             <button
               type="button"
@@ -1897,41 +2305,85 @@ export const CPanelPage: React.FC = () => {
               }}
               className={`flex-1 py-2 px-3 rounded-lg font-bold flex items-center justify-center gap-2 transition-all ${
                 accountSourceType === 'student'
-                  ? 'bg-cyan-600 text-white shadow-xs'
+                  ? 'bg-indigo-600 text-white shadow-xs'
                   : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#202026]'
               }`}
             >
               <GraduationCap className="w-4 h-4" />
-              <span>2. Dari Siswa / OSIM ({students.length})</span>
+              <span>3. Siswa Umum ({students.length})</span>
             </button>
             <button
               type="button"
-              onClick={() => setAccountSourceType('manual')}
+              onClick={() => {
+                setAccountSourceType('manual');
+                handleApplyRolePreset('super_admin');
+              }}
               className={`flex-1 py-2 px-3 rounded-lg font-bold flex items-center justify-center gap-2 transition-all ${
                 accountSourceType === 'manual'
                   ? 'bg-amber-600 text-white shadow-xs'
                   : 'text-zinc-400 hover:text-zinc-200 hover:bg-[#202026]'
               }`}
             >
-              <Plus className="w-4 h-4" />
-              <span>3. Entri Manual / Baru</span>
+              <Shield className="w-4 h-4" />
+              <span>4. Akun Sistem</span>
             </button>
           </div>
 
-          {/* GRID SELECTION FOR TEACHERS */}
+          {accountSourceType === 'manual' && (
+            <div className="p-3 bg-amber-950/30 border border-amber-800/50 rounded-xl text-amber-200 text-xs">
+              <span className="font-bold">Prinsip Arsitektur 1-Arah:</span> Tab ini khusus untuk akun administratif sistem (Super Admin / Admin Kesiswaan / Waka Kesiswaan). Untuk seluruh akun Guru, BK, Wali Kelas, dan Pembina Ekskul, profil diinput melalui menu <strong className="text-emerald-300">Guru & Pembina</strong>, dan CPanel bertugas mengaktifkan akun loginnya.
+            </div>
+          )}
+
+          {/* GRID SELECTION FOR TEACHERS OR DIRECT NEW TEACHER INPUT */}
           {accountSourceType === 'teacher' && (
             <div className="bg-[#141417] border border-[#27272a] rounded-xl p-3.5 space-y-3">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
                   <Users className="w-4 h-4" />
-                  Pilih Guru dari Database Sekolah (Grid Selection) *
+                  Pilih Guru untuk Diaktifkan Akun Loginnya (Satu Pintu: Menu Guru & Pembina)
                 </label>
-                <span className="text-[10px] text-zinc-400 font-mono">
-                  {selectedTeacherForAccount ? '1 Guru Terpilih' : `${filteredTeachersForAdd.length} Guru Tersedia`}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-zinc-400 font-mono">
+                    {selectedTeacherForAccount ? '1 Guru Terpilih' : `${filteredTeachersForAdd.length} Guru Tersedia`}
+                  </span>
+                </div>
               </div>
 
-              {selectedTeacherForAccount && !isChangingTeacherForAccount ? (
+              {pendingTeachers.length > 0 && !selectedTeacherForAccount && (
+                <div className="p-3 bg-amber-500/15 border border-amber-500/40 rounded-xl flex items-center justify-between gap-2 shadow-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                    <span className="text-xs font-bold text-amber-300">
+                      Terdapat {pendingTeachers.length} data guru yang baru diinput di Menu Guru & Pembina dan menunggu aktivasi akun login.
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-zinc-400 font-medium">Pilih guru di bawah</span>
+                </div>
+              )}
+
+              {teachers.length === 0 ? (
+                <div className="p-4 bg-emerald-950/20 border border-emerald-600/40 rounded-xl space-y-2 text-center">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-300 flex items-center justify-center mx-auto">
+                    <Users className="w-5 h-5" />
+                  </div>
+                  <h5 className="text-xs font-bold text-emerald-300">Belum Ada Data di Master Guru & Pembina</h5>
+                  <p className="text-[11px] text-zinc-300 max-w-md mx-auto leading-relaxed">
+                    Sesuai prinsip <strong>Satu Pintu & Satu Arah</strong>, data pokok guru diinput melalui menu <strong>Guru & Pembina</strong>. Setelah guru didaftarkan di sana, namanya akan langsung tersinkronisasi otomatis ke CPanel ini untuk dibuatkan akun login.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddModalOpen(false);
+                      window.location.hash = '#teachers';
+                    }}
+                    className="mt-1 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition inline-flex items-center gap-2 shadow-md"
+                  >
+                    <Users className="w-4 h-4" />
+                    <span>Buka Menu Guru & Pembina</span>
+                  </button>
+                </div>
+              ) : selectedTeacherForAccount && !isChangingTeacherForAccount ? (
                 /* Card Guru Terpilih */
                 <div className="bg-emerald-950/30 border border-emerald-500/50 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
@@ -1988,31 +2440,230 @@ export const CPanelPage: React.FC = () => {
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-52 overflow-y-auto p-1 bg-[#101013] rounded-xl border border-[#222226]">
-                    {filteredTeachersForAdd.map(t => {
-                      const isSelected = selectedTeacherForAccount?.id === t.id;
-                      const initials = getTeacherInitials(t.fullName || t.name || '');
-                      return (
+                    {filteredTeachersForAdd.length === 0 ? (
+                      <div className="col-span-full p-4 text-center text-zinc-400 space-y-2">
+                        <Users className="w-7 h-7 mx-auto text-zinc-600" />
+                        <p className="text-xs text-zinc-400">Tidak ada guru yang cocok dengan pencarian.</p>
                         <button
-                          key={t.id}
                           type="button"
-                          onClick={() => handleSelectTeacherForAccount(t)}
-                          className={`p-2.5 rounded-lg text-left transition flex items-start gap-2.5 border ${
-                            isSelected
-                              ? 'bg-emerald-950/40 border-emerald-500 text-white ring-1 ring-emerald-500'
-                              : 'bg-[#18181c] hover:bg-[#202026] border-[#292930] text-zinc-200'
-                          }`}
+                          onClick={() => {
+                            setIsAddModalOpen(false);
+                            window.location.hash = '#teachers';
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition inline-flex items-center gap-1.5"
                         >
-                          <div className="w-8 h-8 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-200 font-bold font-mono text-xs flex items-center justify-center shrink-0">
-                            {initials}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <h5 className="font-bold text-xs truncate text-white">{t.fullName || t.name}</h5>
-                            <p className="text-[10px] text-zinc-400 font-mono truncate">NIP: {t.nip || '-'}</p>
-                            <span className="text-[9px] text-emerald-400 font-medium">Klik untuk pilih</span>
-                          </div>
+                          <Users className="w-3.5 h-3.5" />
+                          <span>Input Guru Baru di Menu Guru & Pembina</span>
                         </button>
-                      );
-                    })}
+                      </div>
+                    ) : (
+                      filteredTeachersForAdd.map(t => {
+                        const isSelected = selectedTeacherForAccount?.id === t.id;
+                        const initials = getTeacherInitials(t.fullName || t.name || '');
+                        const existingUser = allUsers.find(u =>
+                          (u.nip && t.nip && u.nip !== '-' && t.nip !== '-' && cleanDigits(u.nip) === cleanDigits(t.nip) && cleanDigits(u.nip).length >= 4) ||
+                          (u.displayName && t.fullName && u.displayName.toLowerCase().trim() === t.fullName.toLowerCase().trim()) ||
+                          u.uid === `user_${t.id}` ||
+                          u.uid === t.id
+                        );
+                        return (
+                          <button
+                            key={t.id}
+                            type="button"
+                            onClick={() => handleSelectTeacherForAccount(t)}
+                            className={`p-2.5 rounded-lg text-left transition flex items-start gap-2.5 border ${
+                              isSelected
+                                ? 'bg-emerald-950/40 border-emerald-500 text-white ring-1 ring-emerald-500'
+                                : 'bg-[#18181c] hover:bg-[#202026] border-[#292930] text-zinc-200'
+                            }`}
+                          >
+                            <div className="w-8 h-8 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-200 font-bold font-mono text-xs flex items-center justify-center shrink-0">
+                              {initials}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <h5 className="font-bold text-xs truncate text-white">{t.fullName || t.name}</h5>
+                              <p className="text-[10px] text-zinc-400 font-mono truncate">NIP: {t.nip || '-'}</p>
+                              {existingUser ? (
+                                <span className="text-[9px] text-emerald-400 font-semibold flex items-center gap-1 mt-0.5">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                  <span>Sudah Ada Akun (@{existingUser.username || existingUser.email.split('@')[0]})</span>
+                                </span>
+                              ) : (
+                                <span className="text-[9px] text-cyan-400 font-medium mt-0.5 block">
+                                  + Klik untuk buatkan akun
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* GRID SELECTION FOR OSIM MEMBERS (SATU PINTU: MENU PENGURUS & PROKER OSIM) */}
+          {accountSourceType === 'osim' && (
+            <div className="bg-[#141417] border border-[#27272a] rounded-xl p-3.5 space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-cyan-400 flex items-center gap-1.5">
+                  <Award className="w-4 h-4" />
+                  Pilih Pengurus OSIM untuk Diaktifkan Akun Loginnya (Satu Pintu: Menu OSIM)
+                </label>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-zinc-400 font-mono">
+                    {selectedOsimMemberForAccount ? '1 Pengurus Terpilih' : `${filteredOsimMembersForAdd.length} Pengurus Tersedia`}
+                  </span>
+                </div>
+              </div>
+
+              {pendingOsimMembers.length > 0 && !selectedOsimMemberForAccount && (
+                <div className="p-3 bg-cyan-500/15 border border-cyan-500/40 rounded-xl flex items-center justify-between gap-2 shadow-xs">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                    <span className="text-xs font-bold text-cyan-300">
+                      Terdapat {pendingOsimMembers.length} data pengurus OSIM (BPH & Ketua Sekbid) yang baru diinput di Menu OSIM dan menunggu aktivasi akun login.
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-zinc-400 font-medium">Pilih pengurus di bawah</span>
+                </div>
+              )}
+
+              {osimMembers.length === 0 ? (
+                <div className="p-4 bg-cyan-950/20 border border-cyan-600/40 rounded-xl space-y-2 text-center">
+                  <div className="w-10 h-10 rounded-xl bg-cyan-500/20 text-cyan-300 flex items-center justify-center mx-auto">
+                    <Award className="w-5 h-5" />
+                  </div>
+                  <h5 className="text-xs font-bold text-cyan-300">Belum Ada Data di Pengurus & Proker OSIM</h5>
+                  <p className="text-[11px] text-zinc-300 max-w-md mx-auto leading-relaxed">
+                    Sesuai prinsip <strong>Satu Pintu & Satu Arah</strong>, profil pengurus OSIM (BPH & Ketua Sekbid) diinput melalui menu <strong>Pengurus & Proker OSIM</strong>. Data otomatis tersinkronisasi ke CPanel ini untuk diaktifkan akun loginnya.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddModalOpen(false);
+                      window.location.hash = '#osim';
+                    }}
+                    className="mt-1 px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition inline-flex items-center gap-2 shadow-md"
+                  >
+                    <Award className="w-4 h-4" />
+                    <span>Buka Menu Pengurus & Proker OSIM</span>
+                  </button>
+                </div>
+              ) : selectedOsimMemberForAccount && !isChangingOsimMemberForAccount ? (
+                /* Card Pengurus OSIM Terpilih */
+                <div className="bg-cyan-950/30 border border-cyan-500/50 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-cyan-600 to-blue-800 text-white font-black text-sm font-mono flex items-center justify-center shrink-0 border border-cyan-400/40 shadow-xs">
+                      {selectedOsimMemberForAccount.fullName.charAt(0)}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 flex items-center gap-1">
+                          <Check className="w-3 h-3 text-cyan-400" />
+                          Pengurus OSIM Terpilih
+                        </span>
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono text-zinc-300 bg-zinc-800 border border-zinc-700">
+                          {selectedOsimMemberForAccount.position}
+                        </span>
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-mono text-cyan-300 bg-cyan-950/60 border border-cyan-800/60">
+                          {selectedOsimMemberForAccount.sekbid}
+                        </span>
+                      </div>
+                      <h4 className="font-bold text-sm text-white mt-1 truncate">{selectedOsimMemberForAccount.fullName}</h4>
+                      <p className="text-[11px] text-zinc-400 font-mono mt-0.5">
+                        NIS: {selectedOsimMemberForAccount.studentNis || '-'} • Email: {selectedOsimMemberForAccount.email || '-'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsChangingOsimMemberForAccount(true)}
+                    className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-cyan-300 text-xs font-semibold flex items-center gap-1.5 border border-zinc-700 shrink-0 transition"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-cyan-400" />
+                    Ganti Pengurus Lain
+                  </button>
+                </div>
+              ) : (
+                /* Search and OSIM Member Cards Grid */
+                <div className="space-y-2.5">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+                    <input
+                      type="text"
+                      placeholder="Cari nama pengurus OSIM, jabatan, sekbid, atau email..."
+                      value={addOsimMemberSearchTerm}
+                      onChange={e => setAddOsimMemberSearchTerm(e.target.value)}
+                      className="w-full pl-8 pr-8 py-1.5 bg-[#1c1c20] border border-[#323238] rounded-lg text-xs text-white placeholder-zinc-400 focus:outline-none focus:border-cyan-500"
+                    />
+                    {addOsimMemberSearchTerm && (
+                      <button
+                        type="button"
+                        onClick={() => setAddOsimMemberSearchTerm('')}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 max-h-52 overflow-y-auto p-1 bg-[#101013] rounded-xl border border-[#222226]">
+                    {filteredOsimMembersForAdd.length === 0 ? (
+                      <div className="col-span-full p-4 text-center text-zinc-400 space-y-2">
+                        <Award className="w-7 h-7 mx-auto text-zinc-600" />
+                        <p className="text-xs text-zinc-400">Tidak ada pengurus OSIM yang cocok dengan pencarian.</p>
+                      </div>
+                    ) : (
+                      filteredOsimMembersForAdd.map(m => {
+                        const isSelected = selectedOsimMemberForAccount?.id === m.id;
+                        const cleanNis = cleanDigits(m.studentNis);
+                        const existingUser = allUsers.find(u =>
+                          u.uid === m.id ||
+                          u.uid === `user_osim_${cleanNis}` ||
+                          (m.email && u.email && u.email.trim().toLowerCase() === m.email.trim().toLowerCase()) ||
+                          (cleanNis && cleanDigits(u.nip) === cleanNis) ||
+                          isOsimMemberUserMatch(u, m)
+                        );
+                        const isAlreadyActive = (existingUser && existingUser.isLoginActive !== false && existingUser.loginStatus !== 'pending_activation') || m.isLoginActive === true || m.accountStatus === 'active';
+
+                        return (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => handleSelectOsimMemberForAccount(m)}
+                            className={`p-2.5 rounded-lg text-left transition flex items-start gap-2.5 border ${
+                              isSelected
+                                ? 'bg-cyan-950/40 border-cyan-500 text-white ring-1 ring-cyan-500'
+                                : 'bg-[#18181c] hover:bg-[#202026] border-[#292930] text-zinc-200'
+                            }`}
+                          >
+                            <div className="w-8 h-8 rounded-lg bg-zinc-800 border border-zinc-700 text-cyan-300 font-bold font-mono text-xs flex items-center justify-center shrink-0">
+                              {m.fullName.charAt(0)}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <h5 className="font-bold text-xs truncate text-white">{m.fullName}</h5>
+                              <p className="text-[10px] text-cyan-400 font-medium truncate">{m.position} • {m.sekbid}</p>
+                              <p className="text-[9px] text-zinc-400 font-mono truncate">Email: {m.email || '-'}</p>
+                              {isAlreadyActive ? (
+                                <span className="text-[9px] text-emerald-400 font-semibold flex items-center gap-1 mt-0.5">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                  <span>Akun Aktif</span>
+                                </span>
+                              ) : (
+                                <span className="text-[9px] text-amber-400 font-medium mt-0.5 flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                                  <span>+ Klik untuk aktifkan</span>
+                                </span>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })
+                    )}
                   </div>
                 </div>
               )}
@@ -2428,17 +3079,36 @@ export const CPanelPage: React.FC = () => {
           <div className="pt-3 flex items-center justify-end space-x-2 border-t border-[#27272a]">
             <button
               type="button"
+              disabled={isSubmittingAddUser}
               onClick={() => setIsAddModalOpen(false)}
-              className="px-3.5 py-2 rounded-lg bg-[#222226] text-zinc-300 hover:text-white font-medium"
+              className="px-3.5 py-2 rounded-lg bg-[#222226] text-zinc-300 hover:text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
               Batal
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition-colors shadow-lg shadow-emerald-950/40 flex items-center gap-1.5"
+              disabled={isSubmittingAddUser}
+              className={`px-5 py-2 rounded-lg font-bold transition-all duration-200 shadow-lg flex items-center gap-2 ${
+                isSubmittingAddUser
+                  ? 'bg-emerald-600/70 text-emerald-100 opacity-60 cursor-wait shadow-none'
+                  : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/40 active:scale-[0.98]'
+              }`}
             >
-              <Check className="w-4 h-4" />
-              <span>Simpan & Buat Akun</span>
+              {isSubmittingAddUser ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-white" />
+                  <span>
+                    {accountSourceType === 'teacher' || accountSourceType === 'osim' || accountSourceType === 'student'
+                      ? 'Mengaktifkan Akun...'
+                      : 'Menyimpan Akun...'}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Check className="w-4 h-4" />
+                  <span>{accountSourceType === 'teacher' || accountSourceType === 'osim' || accountSourceType === 'student' ? 'Konfirmasi & Aktifkan Akun Login' : 'Simpan & Buat Akun'}</span>
+                </>
+              )}
             </button>
           </div>
         </form>
@@ -2699,17 +3369,32 @@ export const CPanelPage: React.FC = () => {
           <div className="pt-3 flex items-center justify-end space-x-2 border-t border-[#27272a]">
             <button
               type="button"
+              disabled={isSubmittingEditUser}
               onClick={() => setIsEditModalOpen(false)}
-              className="px-3.5 py-2 rounded-lg bg-[#222226] text-zinc-300 hover:text-white font-medium"
+              className="px-3.5 py-2 rounded-lg bg-[#222226] text-zinc-300 hover:text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
               Batal
             </button>
             <button
               type="submit"
-              className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold transition-colors flex items-center gap-1.5"
+              disabled={isSubmittingEditUser}
+              className={`px-5 py-2 rounded-lg font-bold transition-all duration-200 shadow-lg flex items-center gap-2 ${
+                isSubmittingEditUser
+                  ? 'bg-blue-600/70 text-blue-100 opacity-60 cursor-wait shadow-none'
+                  : 'bg-blue-600 hover:bg-blue-500 text-white shadow-blue-950/40 active:scale-[0.98]'
+              }`}
             >
-              <Check className="w-4 h-4" />
-              <span>Simpan Perubahan</span>
+              {isSubmittingEditUser ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-white" />
+                  <span>Menyimpan Perubahan...</span>
+                </>
+              ) : (
+                <>
+                  <Check className="w-4 h-4" />
+                  <span>Simpan Perubahan</span>
+                </>
+              )}
             </button>
           </div>
         </form>
@@ -2821,13 +3506,15 @@ export const CPanelPage: React.FC = () => {
                 ? [selectedUserForPrint]
                 : printFilterRole === 'all'
                 ? allUsers
-                : allUsers.filter(u => u.role === printFilterRole)
-              ).slice(0, 6).map((u, pIdx) => {
+                : allUsers.filter(u => u && u.role === printFilterRole)
+              )
+              .filter(Boolean)
+              .slice(0, 6).map((u, pIdx) => {
                 const cred = getUserSlipCredentials(u, osimMembers);
-                const badge = getRoleBadge(u.role);
+                const badge = getRoleBadge(u);
                 return (
                   <div
-                    key={u.uid ? `slip-preview-${u.uid}-${pIdx}` : `slip-preview-idx-${pIdx}`}
+                    key={u?.uid ? `slip-preview-${u.uid}-${pIdx}` : `slip-preview-idx-${pIdx}`}
                     className="bg-white text-zinc-900 rounded-xl p-3.5 border-2 border-emerald-600 shadow-sm space-y-2"
                   >
                     <div className="border-b border-emerald-600 pb-1.5 flex items-center justify-between">
@@ -2978,8 +3665,8 @@ export const CPanelPage: React.FC = () => {
                   : (selectedUserForAction.extracurricularNames || (selectedUserForAction.extracurricularName ? selectedUserForAction.extracurricularName.split(',') : []));
 
                 rawItems.forEach((item, idx) => {
-                  if (!item) return;
-                  const ek = extracurriculars.find(e => e.id === item || e.name.toLowerCase() === item.toLowerCase());
+                  if (!item || typeof item !== 'string') return;
+                  const ek = extracurriculars.find(e => (e.id && e.id === item) || (e.name && typeof e.name === 'string' && e.name.toLowerCase() === item.toLowerCase()));
                   const ekName = ek?.name || 
                     selectedUserForAction.extracurricularNames?.[idx] || 
                     (selectedUserForAction.extracurricularName && !selectedUserForAction.extracurricularName.startsWith('ekskul_') ? selectedUserForAction.extracurricularName : null) ||
@@ -3042,7 +3729,7 @@ export const CPanelPage: React.FC = () => {
                   {selectedUserForAction.displayName}
                 </div>
                 <div className="text-zinc-400 font-mono text-[11px] flex items-center gap-2">
-                  <span>@{selectedUserForAction.username || selectedUserForAction.email.split('@')[0]}</span>
+                  <span>@{selectedUserForAction.username || (selectedUserForAction.email && selectedUserForAction.email.includes('@') ? selectedUserForAction.email.split('@')[0] : selectedUserForAction.uid || 'user')}</span>
                   <span>•</span>
                   <span className="text-amber-400 uppercase font-semibold">{selectedUserForAction.role}</span>
                 </div>
@@ -3121,11 +3808,25 @@ export const CPanelPage: React.FC = () => {
 
                 <button
                   type="button"
+                  disabled={isSubmittingResetPassword}
                   onClick={handleConfirmResetPassword}
-                  className="px-3.5 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-amber-950/40"
+                  className={`px-3.5 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-md transition-all duration-200 ${
+                    isSubmittingResetPassword
+                      ? 'bg-amber-600/70 text-amber-100 opacity-60 cursor-wait shadow-none'
+                      : 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-950/40 active:scale-[0.98]'
+                  }`}
                 >
-                  <Check className="w-3.5 h-3.5" />
-                  <span>Terapkan Sandi Baru</span>
+                  {isSubmittingResetPassword ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                      <span>Menyimpan Sandi...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-3.5 h-3.5" />
+                      <span>Terapkan Sandi Baru</span>
+                    </>
+                  )}
                 </button>
               </div>
 

@@ -32,8 +32,18 @@ export const PROTECTED_FUNCTIONAL_UIDS = new Set([
   'user_super_admin',
   'super_admin',
   'user_waka',
+  'user_waka_kesiswaan',
+  'waka_kesiswaan',
+  'user_admin_kesiswaan',
+  'admin_kesiswaan',
   'user_guru_bk',
+  'guru_bk',
   'user_pembina_osim',
+  'pembina_osim',
+  'user_pembina_ekskul',
+  'user_pembina',
+  'pembina_ekskul',
+  'pembina',
   'user_osim_dept_bph',
   'user_osim_ketua',
   'user_osim_wakil',
@@ -58,10 +68,16 @@ export const isProtectedFunctionalUid = (uid?: string): boolean => {
   if (!uid) return false;
   const clean = uid.toLowerCase().trim();
   if (PROTECTED_FUNCTIONAL_UIDS.has(clean)) return true;
+  if (/^guru_\d+$/i.test(clean) || /^user_guru_\d+$/i.test(clean)) return true;
+  if (/^user_guru_bk(_.*)?$/.test(clean) || /^guru_bk(_.*)?$/.test(clean)) return true;
+  if (/^user_pembina_/.test(clean) || /^pembina_/.test(clean)) return true;
   if (/^user_osim_dept_sekbid_\d+$/.test(clean)) return true;
   if (/^osim\.sekbid\d+$/.test(clean)) return true;
   if (/^user_osim_(ketua|wakil|sekretaris|bendahara|sekbid)$/.test(clean)) return true;
   if (/^user_osim_dept_/.test(clean)) return true;
+  if (/^user_osim_/i.test(clean)) return true;
+  if (/^osim_m_/i.test(clean)) return true;
+  if (/^osim\./i.test(clean)) return true;
   return false;
 };
 
@@ -75,10 +91,12 @@ export const getDeletedUids = (): Set<string> => {
     if (raw) {
       const arr = JSON.parse(raw);
       if (Array.isArray(arr)) {
-        // Filter out any protected functional UIDs and student NIS numbers (numeric <= 10 digits)
+        // Filter out any protected functional UIDs, OSIM members, and student NIS numbers (numeric <= 10 digits)
         const valid = arr.filter(id => {
           if (!id) return false;
           if (isProtectedFunctionalUid(id)) return false;
+          if (/^guru_\d+$/i.test(id) || /^user_guru_\d+$/i.test(id)) return false;
+          if (/^user_osim_/i.test(id) || /^osim_m_/i.test(id) || /^osim\./i.test(id)) return false;
           // Never tombstone student NIS numbers (pure digits <= 10 digits, e.g. 24251001)
           if (/^\d{4,10}$/.test(id)) return false;
           if (/^user_\d{4,10}$/.test(id)) return false;
@@ -96,13 +114,19 @@ export const getDeletedUids = (): Set<string> => {
 
 export const addDeletedUid = (uid: string) => {
   if (!uid || isProtectedFunctionalUid(uid)) return;
-  // Never tombstone student NIS numbers (pure numeric <= 10 digits) or empty / root prefixes
+  // Never tombstone sequence teacher IDs, OSIM members, or student NIS numbers
   const cleanTrimmed = uid.trim();
   if (
     !cleanTrimmed ||
     cleanTrimmed === '-' ||
     cleanTrimmed === 'user_' ||
     cleanTrimmed === 'guru_' ||
+    cleanTrimmed === 'osim_' ||
+    /^guru_\d+$/i.test(cleanTrimmed) ||
+    /^user_guru_\d+$/i.test(cleanTrimmed) ||
+    /^user_osim_/i.test(cleanTrimmed) ||
+    /^osim_m_/i.test(cleanTrimmed) ||
+    /^osim\./i.test(cleanTrimmed) ||
     /^\d{4,10}$/.test(cleanTrimmed) ||
     /^user_\d{4,10}$/.test(cleanTrimmed)
   ) return;
@@ -110,12 +134,17 @@ export const addDeletedUid = (uid: string) => {
   try {
     const set = getDeletedUids();
     set.add(uid);
+    set.add(cleanTrimmed.toLowerCase());
     // Also add related prefix variations if applicable
     if (uid.startsWith('user_')) {
       const clean = uid.replace(/^user_/, '');
-      if (!isProtectedFunctionalUid(clean) && clean !== 'guru_' && !/^\d{4,10}$/.test(clean)) {
+      if (!isProtectedFunctionalUid(clean) && clean !== 'guru_' && !/^guru_\d+$/i.test(clean) && !/^user_osim_/i.test(clean) && !/^osim_m_/i.test(clean) && !/^\d{4,10}$/.test(clean)) {
         set.add(clean);
+        set.add(clean.toLowerCase());
       }
+    } else {
+      set.add(`user_${uid}`);
+      set.add(`user_${cleanTrimmed.toLowerCase()}`);
     }
     localStorage.setItem(DELETED_UIDS_KEY, JSON.stringify(Array.from(set)));
   } catch (e) {}
@@ -123,18 +152,40 @@ export const addDeletedUid = (uid: string) => {
 
 export const removeDeletedUid = (uid: string) => {
   if (!uid) return;
+  const lower = uid.trim().toLowerCase();
   try {
     const set = getDeletedUids();
     set.delete(uid);
+    set.delete(lower);
     set.delete(`user_${uid}`);
+    set.delete(`user_${lower}`);
     set.delete(uid.replace(/^user_/, ''));
+    set.delete(lower.replace(/^user_/, ''));
     localStorage.setItem(DELETED_UIDS_KEY, JSON.stringify(Array.from(set)));
   } catch (e) {}
 };
 
-export const isDeletedUid = (_uid?: string): boolean => {
-  // Local storage tombstone must never dictate whether a Firestore document is valid.
-  // Firestore is the single source of truth.
+export const isDeletedUid = (uid?: string): boolean => {
+  if (!uid) return false;
+  const clean = uid.trim().toLowerCase();
+  if (clean === 'user_super_admin' || clean === 'super_admin' || clean === 'puputbajuri24@gmail.com') {
+    return false;
+  }
+  if (isProtectedFunctionalUid(clean)) {
+    return false;
+  }
+  if (/^guru_\d+$/i.test(clean) || /^user_guru_\d+$/i.test(clean)) {
+    return false;
+  }
+  if (/^user_osim_/i.test(clean) || /^osim_m_/i.test(clean) || /^osim\./i.test(clean)) {
+    return false;
+  }
+  try {
+    const set = getDeletedUids();
+    if (set.has(uid) || set.has(clean)) return true;
+    if (set.has(`user_${uid}`) || set.has(`user_${clean}`)) return true;
+    if (uid.startsWith('user_') && (set.has(uid.replace(/^user_/, '')) || set.has(clean.replace(/^user_/, '')))) return true;
+  } catch (e) {}
   return false;
 };
 
@@ -212,34 +263,28 @@ export const isStudentUserMatch = (u: UserProfile, s: Student): boolean => {
 export const isOsimMemberUserMatch = (u: UserProfile, m: OsimMember): boolean => {
   if (!u || !m) return false;
 
-  // 1. Direct ID match
+  // 1. Direct ID or userUid match
   if (u.uid === m.id || u.uid === `user_${m.id}`) return true;
+  if ((m as any).userUid && (u.uid === (m as any).userUid || (m as any).userUid === `user_${u.uid}`)) return true;
 
   // 2. Login username match
   if (u.username && m.loginUsername && u.username.toLowerCase() === m.loginUsername.toLowerCase()) return true;
   if (u.username && m.username && u.username.toLowerCase() === m.username.toLowerCase()) return true;
 
-  // 3. NIS match
+  // 3. NIS match and Canonical OSIM UID match (Strict pairwise equality only)
   const uNis = cleanDigits(u.nip);
   const mNis = cleanDigits(m.studentNis);
   if (uNis && mNis && uNis.length >= 4 && uNis === mNis) return true;
+  if (mNis && mNis.length >= 4 && (u.uid === `user_osim_${mNis}` || cleanDigits(u.username) === mNis)) return true;
+  if (uNis && uNis.length >= 4 && (m.id === `user_osim_${uNis}` || cleanDigits(m.loginUsername || m.username || '') === uNis)) return true;
 
-  // 4. Specific Position match for OSIM accounts (strict match, never match whole department)
-  if (u.role === 'pengurus_osim') {
-    const posU = (u.osimPosition || u.osimRole || '').toLowerCase().trim();
-    const posM = (m.position || '').toLowerCase().trim();
-    if (posU && posM && (posU === posM || (posU.includes('ketua umum') && posM.includes('ketua umum')) || (posU.includes('sekretaris umum') && posM.includes('sekretaris umum')) || (posU.includes('bendahara umum') && posM.includes('bendahara umum')))) {
-      // Also ensure names or NIS align or match when possible to prevent cross-person collision
-      const normU = normalizeName(u.displayName);
-      const normM = normalizeName(m.fullName);
-      if (!normU || !normM || normU === normM) return true;
-    }
-  }
+  // 4. Institutional or personal email match (must NOT be generic placeholder)
+  if (u.email && m.email && !isGenericPlaceholderEmail(u.email) && !isGenericPlaceholderEmail(m.email) && u.email.trim().toLowerCase() === m.email.trim().toLowerCase()) return true;
 
-  // 5. Normalized Name match
+  // 5. Normalized Name match - MUST match name exactly to prevent different students from colliding
   const normU = normalizeName(u.displayName);
   const normM = normalizeName(m.fullName);
-  if (normU && normM && normU.length >= 5 && normU === normM) return true;
+  if (normU && normM && normU.length >= 4 && normU === normM) return true;
 
   return false;
 };
@@ -257,6 +302,8 @@ export const isGenericPlaceholderEmail = (email?: string): boolean => {
     em.startsWith('admin@') ||
     em.startsWith('info@') ||
     em.startsWith('user@') ||
+    em.startsWith('osim@') ||
+    em.startsWith('siswa@') ||
     em.includes('placeholder') ||
     em.includes('example.com') ||
     em === 'guru@sekolah.sch.id' ||
@@ -267,9 +314,117 @@ export const isGenericPlaceholderEmail = (email?: string): boolean => {
 };
 
 /**
+ * Memeriksa apakah sebuah UID merupakan format standar rapi dan permanen
+ */
+export const isStandardTidyUid = (uid?: string): boolean => {
+  if (!uid || typeof uid !== 'string') return false;
+  return (
+    uid === 'user_super_admin' ||
+    uid === 'user_admin_kesiswaan' ||
+    uid === 'user_waka_kesiswaan' ||
+    uid === 'user_guru_bk' ||
+    uid === 'user_kepala_madrasah' ||
+    uid === 'user_staf_tata_usaha' ||
+    /^user_guru_[a-zA-Z0-9_\-]+$/i.test(uid) ||
+    /^user_siswa_\d+$/i.test(uid) ||
+    /^user_G\d+-[A-Z]+$/i.test(uid) ||
+    /^user_t_\d+$/i.test(uid) ||
+    /^user_osim_/i.test(uid)
+  );
+};
+
+/**
+ * Memeriksa apakah sebuah UID merupakan artefak acak (misal timestamp Date.now atau string acak Firebase)
+ */
+export const isRandomOrLegacyArtifactUid = (uid?: string): boolean => {
+  if (!uid || typeof uid !== 'string') return false;
+
+  // 0. Deteksi artefak timestamp acak (misal user_osim_m_1790..., osim_m_1790..., user_osim_1790...)
+  if (/^user_osim_m_\d{10,}/i.test(uid) || /^osim_m_\d{10,}/i.test(uid) || /^user_osim_\d{12,}/i.test(uid)) return true;
+  if (/^user_guru_\d{12,}/i.test(uid) || /^user_t_\d{12,}/i.test(uid)) return true;
+
+  // IMMUNITY: Akun resmi OSIM, Guru, dan Administrator Sistem ber-ID rapi
+  if (uid === 'user_super_admin' || uid === 'user_waka_kesiswaan' || uid === 'user_admin_kesiswaan') return false;
+  if (/^guru_\d+$/i.test(uid) || /^user_guru_\d+$/i.test(uid)) return false;
+  if (/^osim_\d+$/i.test(uid) || /^user_osim_\d+$/i.test(uid)) return false;
+  if (['user_osim_ketua', 'user_osim_wakil', 'user_osim_sekretaris', 'user_osim_bendahara'].includes(uid)) return false;
+  
+  // 1. Timestamp acak 12+ digit: user_1712839...
+  if (/^user_\d{12,}$/.test(uid)) return true;
+  // 2. String kombinasi huruf dan angka acak 20-35 karakter tanpa garis bawah/strip (bawaan Firebase Auth UID)
+  if (/^[a-zA-Z0-9]{20,35}$/.test(uid) && !uid.includes('_') && !uid.includes('-')) return true;
+  // 3. Artefak demo ganda usang
+  if (uid === 'user_teacher_pitria_lawenusa') return true;
+  return false;
+};
+
+/**
+ * Menyelesaikan UID rapi dan mudah dibaca manusia berdasarkan profil akun pengguna
+ */
+export const resolveTidyUidForUser = (user: Partial<UserProfile>): string => {
+  if (!user) return 'user_umum';
+  const role = (user.role || '').toLowerCase();
+  const username = (user.username || '').toLowerCase();
+
+  if (role === 'super_admin' || username === 'admin' || username === 'superadmin') {
+    return 'user_super_admin';
+  }
+  if (role === 'admin_kesiswaan' || role === 'admin') {
+    return 'user_admin_kesiswaan';
+  }
+  if (role === 'waka_kesiswaan') {
+    return 'user_waka_kesiswaan';
+  }
+  if (role === 'guru_bk') {
+    const cleanNip = user.nip ? cleanDigits(user.nip) : '';
+    return cleanNip && cleanNip.length >= 4 ? `user_guru_bk_${cleanNip}` : 'user_guru_bk';
+  }
+  if (role === 'pengurus_osim' || role === 'anggota_osim') {
+    const cleanNis = user.nip ? cleanDigits(user.nip) : (user.studentNis ? cleanDigits(user.studentNis) : '');
+    if (cleanNis && cleanNis.length >= 4) {
+      return `user_osim_${cleanNis}`;
+    }
+    const pos = (user.osimPosition || user.osimRole || '').toLowerCase();
+    if (pos.includes('ketua') && !pos.includes('wakil') && !pos.includes('sekbid')) return 'user_osim_ketua';
+    if (pos.includes('wakil')) return 'user_osim_wakil';
+    if (pos.includes('sekretaris')) return 'user_osim_sekretaris';
+    if (pos.includes('bendahara')) return 'user_osim_bendahara';
+
+    if (user.uid && /^user_osim_\d+$/i.test(user.uid)) {
+      return user.uid;
+    }
+    if (user.uid && /^osim_\d+$/i.test(user.uid)) {
+      return `user_${user.uid}`;
+    }
+    if (user.username && !user.username.includes('@')) {
+      const cleanU = user.username.replace(/[^a-zA-Z0-9_]/g, '');
+      if (cleanU && !cleanU.startsWith('osim_m_')) return `user_osim_${cleanU}`;
+    }
+    const safeName = (user.displayName || '').toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 15);
+    if (safeName && safeName !== 'pengurus' && safeName !== 'anggota') {
+      return `user_osim_${safeName}`;
+    }
+    return 'user_osim_01';
+  }
+  if (user.nip && cleanDigits(user.nip).length >= 4) {
+    return `user_guru_${cleanDigits(user.nip)}`;
+  }
+  if (user.uid && /^user_guru_\d+$/i.test(user.uid)) {
+    return user.uid;
+  }
+  if (user.uid && /^guru_\d+$/i.test(user.uid)) {
+    return `user_${user.uid}`;
+  }
+  if (user.username && !user.username.includes('@')) {
+    return `user_${user.username.replace(/[^a-zA-Z0-9_]/g, '')}`;
+  }
+  return 'user_guru';
+};
+
+/**
  * Deduplicate UserProfile array to guarantee strictly ONE record per person/role.
  * Resolves duplicate IDs such as 'user_osim_dept_bph' vs 'user_osim_ketua', or
- * 't_...' vs 'user_t_...'.
+ * 't_...' vs 'user_t_...'. Prioritizes neat standard UIDs over random artifacts.
  */
 export const deduplicateUsersList = (users: UserProfile[]): UserProfile[] => {
   const result: UserProfile[] = [];
@@ -300,19 +455,7 @@ export const deduplicateUsersList = (users: UserProfile[]): UserProfile[] => {
     const cleanNip = cleanDigits(u.nip);
     const normName = normalizeName(u.displayName);
 
-    // OSIM role key and BPH position key
-    let osimKey = '';
-    let bphKey: string | null = null;
-    if (u.role === 'pengurus_osim') {
-      const dCode = (u.osimDepartmentCode || u.osimDepartmentId || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-      const oRole = (u.osimRole || '').toLowerCase();
-      if (dCode || oRole) {
-        osimKey = `${dCode}_${oRole}`;
-      }
-      bphKey = getCanonicalBphPositionKey(u.osimPosition || u.osimRole, u.osimDepartmentName || u.osimDepartmentCode);
-    }
-
-    // Check if already matched
+    // Check if already matched (strictly matching unique identity: UID, distinct email, username, NIP/NIS, or identical full name)
     let duplicateIdx = -1;
 
     if (seenUids.has(u.uid)) {
@@ -323,29 +466,26 @@ export const deduplicateUsersList = (users: UserProfile[]): UserProfile[] => {
       duplicateIdx = result.findIndex(r => r.username && r.username.trim().toLowerCase() === username);
     } else if (cleanNip && cleanNip.length >= 4 && seenNips.has(cleanNip)) {
       duplicateIdx = result.findIndex(r => cleanDigits(r.nip) === cleanNip);
-    } else if (bphKey && seenOsimRoles.has(bphKey)) {
-      duplicateIdx = result.findIndex(r => {
-        if (r.role !== 'pengurus_osim') return false;
-        return getCanonicalBphPositionKey(r.osimPosition || r.osimRole, r.osimDepartmentName || r.osimDepartmentCode) === bphKey;
-      });
-    } else if (osimKey && seenOsimRoles.has(osimKey)) {
-      duplicateIdx = result.findIndex(r => {
-        if (r.role !== 'pengurus_osim') return false;
-        const rd = (r.osimDepartmentCode || r.osimDepartmentId || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-        const rr = (r.osimRole || '').toLowerCase();
-        return `${rd}_${rr}` === osimKey;
-      });
-    } else if (normName && normName.length >= 4 && (u.role === 'pengurus_osim' || normName.length >= 6) && seenNormNames.has(`${normName}_${u.role}`)) {
+    } else if (normName && normName.length >= 4 && seenNormNames.has(`${normName}_${u.role}`)) {
       duplicateIdx = result.findIndex(r => r.role === u.role && normalizeName(r.displayName) === normName);
     }
 
     if (duplicateIdx >= 0) {
-      // Merge best fields into existing
+      // Merge best fields into existing, PRIORITIZING standard tidy UID
       const existing = result[duplicateIdx];
+      const preferredUid = isStandardTidyUid(existing.uid)
+        ? existing.uid
+        : (isStandardTidyUid(u.uid) ? u.uid : (isRandomOrLegacyArtifactUid(existing.uid) ? u.uid : existing.uid));
+
+      const isLoginActive = Boolean(existing.isLoginActive || u.isLoginActive || existing.loginStatus === 'active' || u.loginStatus === 'active');
+
       const merged: UserProfile = {
         ...existing,
         ...u,
-        uid: existing.uid, // Keep primary existing UID
+        uid: preferredUid,
+        isLoginActive,
+        loginStatus: isLoginActive ? 'active' : (existing.loginStatus || u.loginStatus || 'pending_activation'),
+        accountStatus: isLoginActive ? 'active' : (existing.accountStatus || u.accountStatus || 'pending'),
         phone: existing.phone || u.phone,
         nip: existing.nip || u.nip,
         extracurricularIds: Array.from(new Set([...(existing.extracurricularIds || []), ...(u.extracurricularIds || [])])),
@@ -359,8 +499,6 @@ export const deduplicateUsersList = (users: UserProfile[]): UserProfile[] => {
       if (email && !isGenericEmail) seenEmails.add(email);
       if (username) seenUsernames.add(username);
       if (cleanNip && cleanNip.length >= 4) seenNips.add(cleanNip);
-      if (bphKey) seenOsimRoles.add(bphKey);
-      if (osimKey) seenOsimRoles.add(osimKey);
       if (normName && (normName.length >= 4)) seenNormNames.add(`${normName}_${u.role}`);
       result.push(u);
     }
@@ -386,13 +524,13 @@ export const canonicalizeAssignedEkskulIds = (
     const cleanItem = item.trim();
     if (!cleanItem) continue;
 
-    // Tolak string yang berupa angka murni (/^\d+$/)
-    if (/^\d+$/.test(cleanItem)) continue;
+    // Tolak string yang berupa angka murni (/^\d+$/) atau pola demo warisan statis (/^ekskul_[1-9]$/)
+    if (/^\d{1,2}$/.test(cleanItem) || /^ekskul_[1-9]$/i.test(cleanItem) || /^e[1-9]$/i.test(cleanItem)) continue;
 
     // 1. If an extracurricular list is provided, match against it
     if (allEkskuls && allEkskuls.length > 0) {
       const matchedById = allEkskuls.find(e => e.id.toLowerCase() === cleanItem.toLowerCase());
-      if (matchedById && !/^\d+$/.test(matchedById.name)) {
+      if (matchedById && !/^\d{1,2}$/.test(matchedById.name) && !/^ekskul_[1-9]$/i.test(matchedById.id)) {
         canonicalIds.push(matchedById.id);
         continue;
       }
@@ -414,15 +552,17 @@ export const canonicalizeAssignedEkskulIds = (
           ((cleanStripped.includes('talim') || cleanStripped.includes("ta'lim")) && (eLower.includes('talim') || eLower.includes("ta'lim")))
         );
       });
-      if (matchedByName && !/^\d+$/.test(matchedByName.name)) {
+      if (matchedByName && !/^\d{1,2}$/.test(matchedByName.name) && !/^ekskul_[1-9]$/i.test(matchedByName.id)) {
         canonicalIds.push(matchedByName.id);
         continue;
       }
     }
 
-    // 2. Direct ID check (valid ekskul document ID)
-    if (cleanItem.startsWith('ekskul_')) {
-      canonicalIds.push(cleanItem);
+    // 2. Direct ID check (valid ekskul document ID with alphabetic letters or timestamp)
+    if (cleanItem.startsWith('ekskul_') && !/^ekskul_[1-9]$/i.test(cleanItem)) {
+      if (!allEkskuls || allEkskuls.length === 0 || allEkskuls.some(e => e.id.toLowerCase() === cleanItem.toLowerCase())) {
+        canonicalIds.push(cleanItem);
+      }
       continue;
     }
 
@@ -696,10 +836,6 @@ export const deduplicateOsimMembersList = (members: OsimMember[], masterStudents
     else if (effectiveNormName && effectiveNormName.length >= 4 && seenNormNames.has(effectiveNormName)) {
       duplicateIdx = result.findIndex(r => normalizeName(r.fullName) === effectiveNormName);
     }
-    // 4. Enforce strict single-holder constraint for BPH positions (e.g. only 1 Wakil Ketua)
-    else if (bphKey && seenBphPositions.has(bphKey)) {
-      duplicateIdx = result.findIndex(r => getCanonicalBphPositionKey(r.position, r.sekbid) === bphKey);
-    }
 
     if (duplicateIdx >= 0) {
       // Merge best fields, prefer newer/more complete data with active student info
@@ -720,7 +856,6 @@ export const deduplicateOsimMembersList = (members: OsimMember[], masterStudents
       seenIds.add(m.id);
       if (effectiveCleanNis && effectiveCleanNis.length >= 4) seenNis.add(effectiveCleanNis);
       if (effectiveNormName && effectiveNormName.length >= 4) seenNormNames.add(effectiveNormName);
-      if (bphKey) seenBphPositions.add(bphKey);
       result.push(refreshedMember);
     }
   }
@@ -782,7 +917,7 @@ export const getUserHierarchyClassification = (u: UserProfile): UserHierarchyCla
     return { rank: 5, categoryLabel: 'Pembina / Coach Ekstrakurikuler', orderWeight: 500, subOrder: 1 };
   }
 
-  // 6 & 7. OSIM Student Accounts (BPH & Sekbid 1-8) (Canonical: anggota_osim, Legacy: pengurus_osim)
+  // 6 & 7. OSIM Student Accounts (BPH & Sekbid) (Canonical: anggota_osim, Legacy: pengurus_osim)
   if (u.role === 'anggota_osim' || u.role === 'pengurus_osim') {
     const pos = (u.osimPosition || u.position || '').toLowerCase();
     const role = (u.osimRole || '').toLowerCase();
@@ -790,35 +925,53 @@ export const getUserHierarchyClassification = (u: UserProfile): UserHierarchyCla
     const dCode = (u.osimDepartmentCode || '').toLowerCase();
     const usr = (u.username || '').toLowerCase();
 
-    // 6. Anggota BPH (Ketua, Wakil, Sekretaris, Bendahara)
-    const isKetua = pos.includes('ketua umum') || (!pos.includes('wakil') && !pos.includes('sekbid') && (pos.includes('ketua') || role === 'ketua'));
-    const isWakil = pos.includes('wakil') || role === 'wakil';
-    const isSekretaris = pos.includes('sekretaris') || role === 'sekretaris';
-    const isBendahara = pos.includes('bendahara') || role === 'bendahara' || u.isCashManager;
+    // Cek apakah posisi atau departemen merupakan Sekbid (Seksi Bidang)
+    const hasSekbidKeyword = pos.includes('sekbid') || pos.includes('bidang') || dName.includes('sekbid') || dName.includes('bidang') || dCode.startsWith('sekbid') || /^sekbid/i.test(dCode);
 
-    if (isKetua) {
+    // 6. Badan Pengurus Harian (BPH) OSIM:
+    // Terdiri dari: Ketua Umum, Wakil Ketua, Sekretaris, Bendahara, serta Anggota BPH
+    const isKetuaBph = !hasSekbidKeyword && (pos.includes('ketua umum') || (!pos.includes('wakil') && (pos.includes('ketua') || role === 'ketua')));
+    const isWakilBph = !hasSekbidKeyword && (pos.includes('wakil') || role === 'wakil');
+    const isSekretarisBph = !hasSekbidKeyword && (pos.includes('sekretaris') || role === 'sekretaris');
+    const isBendaharaBph = !hasSekbidKeyword && (pos.includes('bendahara') || role === 'bendahara' || u.isCashManager);
+    const isBphEntity = dCode === 'bph' || dName.includes('bph') || dName.includes('badan pengurus harian') || (!hasSekbidKeyword && (pos.includes('bph') || role === 'bph'));
+
+    if (isKetuaBph) {
       return { rank: 6, categoryLabel: 'BPH OSIM - Ketua Umum', orderWeight: 600, subOrder: 1 };
     }
-    if (isWakil) {
+    if (isWakilBph) {
       return { rank: 6, categoryLabel: 'BPH OSIM - Wakil Ketua', orderWeight: 600, subOrder: 2 };
     }
-    if (isSekretaris) {
+    if (isSekretarisBph) {
       return { rank: 6, categoryLabel: 'BPH OSIM - Sekretaris Umum', orderWeight: 600, subOrder: 3 };
     }
-    if (isBendahara) {
+    if (isBendaharaBph) {
       return { rank: 6, categoryLabel: 'BPH OSIM - Bendahara Umum', orderWeight: 600, subOrder: 4 };
     }
+    if (isBphEntity) {
+      return { rank: 6, categoryLabel: 'BPH OSIM - Pengurus Harian', orderWeight: 600, subOrder: 5 };
+    }
 
-    // 7. Seksi Bidang 1 s.d. 8
+    // 7. Seksi Bidang (Sekbid):
+    // Terdiri dari beberapa bidang sesuai kebijakan madrasah/sekolah atau yang sudah dibentuk di aplikasi
     const sekbidMatch = (dCode + ' ' + dName + ' ' + pos + ' ' + usr).match(/sekbid\s*[-_]?\s*(\d+)/i) ||
                          (dCode + ' ' + dName + ' ' + pos).match(/bidang\s*[-_]?\s*(\d+)/i);
-    const sekbidNum = sekbidMatch ? parseInt(sekbidMatch[1], 10) : 99;
+    const sekbidNum = sekbidMatch ? parseInt(sekbidMatch[1], 10) : null;
+
+    let cleanSekbidLabel = 'Seksi Bidang OSIM';
+    if (u.osimDepartmentName) {
+      cleanSekbidLabel = (u.osimDepartmentName.toLowerCase().startsWith('sekbid') || u.osimDepartmentName.toLowerCase().startsWith('seksi'))
+        ? u.osimDepartmentName
+        : `Sekbid: ${u.osimDepartmentName}`;
+    } else if (sekbidNum !== null) {
+      cleanSekbidLabel = `Seksi Bidang (Sekbid ${sekbidNum})`;
+    }
 
     return {
       rank: 7,
-      categoryLabel: sekbidNum <= 8 ? `Seksi Bidang (Sekbid ${sekbidNum})` : 'Seksi Bidang OSIM',
+      categoryLabel: cleanSekbidLabel,
       orderWeight: 700,
-      subOrder: sekbidNum
+      subOrder: sekbidNum !== null ? sekbidNum : 50
     };
   }
 

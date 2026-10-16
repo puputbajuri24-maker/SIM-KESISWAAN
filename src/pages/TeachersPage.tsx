@@ -92,14 +92,6 @@ export const TeachersPage: React.FC = () => {
 
   // Bulk Selection State
   const [selectedTeacherIds, setSelectedTeacherIds] = useState<Set<string>>(new Set());
-
-  // User Account & Reset Password Modal states (Fase 3: Cross-Module Sync)
-  const [isResetPasswordModalOpen, setIsResetPasswordModalOpen] = useState(false);
-  const [targetTeacherForReset, setTargetTeacherForReset] = useState<Teacher | null>(null);
-  const [targetUserForReset, setTargetUserForReset] = useState<UserProfile | null>(null);
-  const [customResetPassword, setCustomResetPassword] = useState('guru12345');
-  const [showResetPasswordText, setShowResetPasswordText] = useState(false);
-  const [isSubmittingPassword, setIsSubmittingPassword] = useState(false);
   const [isSyncingAccounts, setIsSyncingAccounts] = useState(false);
 
   // Role Pill Filter State ('all' | 'waka' | 'guru_bk' | 'pembina_osim' | 'pembina_ekskul' | 'wali_kelas' | 'dewan_guru')
@@ -283,7 +275,7 @@ export const TeachersPage: React.FC = () => {
     }
   };
 
-  // User Account Matching & Reset Password Handlers (Fase 3: Cross-Module Sync)
+  // User Account Matching Helper (Read-only check for status badge)
   const findMatchingUserForTeacher = (t: Teacher): UserProfile | undefined => {
     return (allUsers || []).find(u => 
       isTeacherUserMatch(u, t) ||
@@ -292,72 +284,6 @@ export const TeachersPage: React.FC = () => {
       (t.email && u.email && u.email.toLowerCase() === t.email.toLowerCase()) ||
       (t.nip && u.nip && t.nip !== '-' && u.nip.replace(/\s+/g, '') === t.nip.replace(/\s+/g, ''))
     );
-  };
-
-  const handlePromptResetTeacherPassword = (t: Teacher, e?: React.MouseEvent) => {
-    e?.stopPropagation();
-    const matchedUser = findMatchingUserForTeacher(t);
-    setTargetTeacherForReset(t);
-    setTargetUserForReset(matchedUser || null);
-
-    if (matchedUser) {
-      const check = canResetUserPassword(currentUser, matchedUser);
-      if (!check.allowed) {
-        toast.error(check.reason || 'Anda tidak memiliki wewenang untuk mereset kata sandi akun ini.');
-        return;
-      }
-    }
-    setCustomResetPassword('guru12345');
-    setShowResetPasswordText(false);
-    setIsResetPasswordModalOpen(true);
-  };
-
-  const handleConfirmResetTeacherPassword = async (useEmailResetLink = false) => {
-    if (!targetTeacherForReset) return;
-    setIsSubmittingPassword(true);
-    try {
-      let targetUser = targetUserForReset;
-      // If user profile is not linked yet, auto-sync this teacher first
-      if (!targetUser && syncUsersFromTeachers) {
-        await syncUsersFromTeachers([targetTeacherForReset], extracurriculars);
-        targetUser = findMatchingUserForTeacher(targetTeacherForReset) || null;
-      }
-
-      if (!targetUser) {
-        toast.error('Akun pengguna untuk guru ini belum dapat ditemukan di sistem.');
-        return;
-      }
-
-      const check = canResetUserPassword(currentUser, targetUser);
-      if (!check.allowed) {
-        toast.error(check.reason || 'Anda tidak memiliki wewenang untuk mereset kata sandi akun ini.');
-        setIsResetPasswordModalOpen(false);
-        return;
-      }
-
-      if (useEmailResetLink) {
-        const res = await resetUserPassword(targetUser.uid);
-        if (res.success) {
-          toast.success(`Instruksi pemulihan kata sandi Firebase Auth berhasil dikirim ke email ${targetTeacherForReset.fullName} (${targetUser.email || targetTeacherForReset.email || '-'})!`);
-          setIsResetPasswordModalOpen(false);
-        } else {
-          toast.error(res.error || 'Gagal mengirim instruksi reset kata sandi.');
-        }
-      } else {
-        const newPass = customResetPassword.trim() || 'guru12345';
-        const res = await resetUserPassword(targetUser.uid, newPass);
-        if (res.success) {
-          toast.success(`Kata sandi akun ${targetTeacherForReset.fullName} berhasil diubah menjadi "${newPass}" & tersinkronisasi ke Firebase Auth!`);
-          setIsResetPasswordModalOpen(false);
-        } else {
-          toast.error(res.error || 'Gagal memperbarui kata sandi.');
-        }
-      }
-    } catch (err: any) {
-      toast.error('Gagal memproses kata sandi: ' + (err?.message || 'Kesalahan sistem'));
-    } finally {
-      setIsSubmittingPassword(false);
-    }
   };
 
   const handleQuickSyncAllTeacherAccounts = async () => {
@@ -461,7 +387,7 @@ export const TeachersPage: React.FC = () => {
           isCashManager: formData.isCashManager,
           cashManagerTitle: formData.isCashManager ? (formData.cashManagerTitle || 'Bendahara Kesiswaan') : undefined
         });
-        toast.success(`Guru & Pembina baru "${formData.fullName}" berhasil ditambahkan!`);
+        toast.success(`Profil guru "${formData.fullName}" berhasil disimpan! Akun login berstatus belum aktif dan siap diaktifkan melalui menu CPanel.`);
       }
       setIsFormOpen(false);
       setSelectedTeacher(null);
@@ -723,6 +649,36 @@ export const TeachersPage: React.FC = () => {
       }
     },
     {
+      header: 'Akun Login (CPanel)',
+      cell: t => {
+        const matched = findMatchingUserForTeacher(t);
+        const isLoginActive = Boolean(
+          (t.isLoginActive === true || t.accountStatus === 'active') ||
+          (matched && matched.isLoginActive !== false && matched.loginStatus !== 'pending_activation' && matched.status === 'Aktif')
+        );
+
+        return isLoginActive ? (
+          <div className="flex flex-col gap-0.5">
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/60 text-[10px] font-bold w-fit">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span>Akun Login Aktif</span>
+            </span>
+            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono truncate max-w-[130px]" title={matched?.email || matched?.username || t.email}>
+              @{matched?.username || matched?.email?.split('@')[0] || t.email?.split('@')[0]}
+            </span>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-0.5">
+            <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 text-[10px] font-bold w-fit" title="Akun login belum diaktifkan. Klik menu CPanel untuk mengaktifkan akun guru ini.">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+              <span>Akun Belum Aktif</span>
+            </span>
+            <span className="text-[9px] text-amber-600 dark:text-amber-400 font-medium">Aktifkan di CPanel</span>
+          </div>
+        );
+      }
+    },
+    {
       header: 'Status',
       accessorKey: 'isActive',
       sortable: true,
@@ -748,13 +704,6 @@ export const TeachersPage: React.FC = () => {
           </button>
           {canCrudTeachers && (
             <>
-              <button
-                onClick={e => handlePromptResetTeacherPassword(t, e)}
-                className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 dark:bg-blue-950/60 dark:hover:bg-blue-900 dark:text-blue-400 transition-colors"
-                title="Kelola Akun Login & Reset Kata Sandi"
-              >
-                <Key className="w-4 h-4" />
-              </button>
               <button
                 onClick={e => handleOpenEdit(t, e)}
                 className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:hover:bg-amber-900 dark:text-amber-400 transition-colors"
@@ -1026,6 +975,32 @@ export const TeachersPage: React.FC = () => {
         </button>
       </div>
 
+      {teachers.length === 0 && (
+        <div className="p-6 rounded-2xl bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30 border border-emerald-200 dark:border-emerald-800/60 text-center space-y-3">
+          <div className="w-12 h-12 rounded-2xl bg-emerald-100 dark:bg-emerald-900/60 text-emerald-600 dark:text-emerald-300 flex items-center justify-center mx-auto shadow-sm">
+            <Users className="w-6 h-6" />
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-slate-800 dark:text-white">Database Dewan Guru & Pembina Belum Memiliki Data</h3>
+            <p className="text-xs text-slate-600 dark:text-slate-300 max-w-lg mx-auto mt-1">
+              Koleksi guru di Firestore saat ini kosong. Anda dapat menambahkan data guru baru atau mengimpor data master agar otomatis tersimpan permanen di Cloud Firestore.
+            </p>
+          </div>
+          {canCrudTeachers && (
+            <div className="flex items-center justify-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={handleOpenAdd}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/20 flex items-center gap-2 transition"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Tambah Guru Pertama</span>
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Table */}
       <DataTable
         id="teachers-table"
@@ -1050,19 +1025,19 @@ export const TeachersPage: React.FC = () => {
         ) : undefined}
       />
 
-      {/* Form Modal */}
+      {/* Form Modal: Master Data Guru & Pembina (Tampilan Identik Tangkapan Layar tanpa Username & Password) */}
       <Modal
         isOpen={isFormOpen}
         onClose={() => setIsFormOpen(false)}
-        title={selectedTeacher ? 'Edit Data Guru / Pembina' : 'Tambah Guru / Pembina Baru'}
-        subtitle="Data profil pembina dan penetapan unit ekstrakurikuler binaan"
-        maxWidth="md"
+        title={selectedTeacher ? 'EDIT DATA GURU & PEMBINA' : 'TAMBAH GURU & PEMBINA BARU'}
+        subtitle="Data Pokok Kepegawaian & Penugasan Kesiswaan (Tersinkronisasi Otomatis ke CPanel)"
+        maxWidth="2xl"
         footer={
-          <>
+          <div className="flex items-center justify-end gap-2.5 w-full">
             <button
               type="button"
               onClick={() => setIsFormOpen(false)}
-              className="px-4 py-2 text-xs font-semibold rounded-xl border border-slate-200 dark:border-slate-700"
+              className="px-4 py-2 text-xs font-semibold rounded-xl bg-amber-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-amber-100 transition"
             >
               Batal
             </button>
@@ -1070,7 +1045,7 @@ export const TeachersPage: React.FC = () => {
               type="button"
               disabled={isSavingTeacher}
               onClick={handleSave}
-              className={`px-5 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-md flex items-center gap-2 transition-all ${
+              className={`px-5 py-2.5 text-xs font-bold rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/30 flex items-center gap-2 transition-all hover:scale-105 ${
                 isSavingTeacher ? 'opacity-60 cursor-not-allowed' : ''
               }`}
             >
@@ -1080,114 +1055,169 @@ export const TeachersPage: React.FC = () => {
                   <span>Menyimpan...</span>
                 </>
               ) : (
-                <span>Simpan Data</span>
+                <>
+                  <Check className="w-4 h-4 stroke-[2.5]" />
+                  <span>{selectedTeacher ? 'Simpan Perubahan Guru' : 'Simpan & Daftarkan Guru'}</span>
+                </>
               )}
             </button>
-          </>
+          </div>
         }
       >
-        <form onSubmit={handleSave} className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Nama Lengkap & Gelar *
+        <form onSubmit={handleSave} className="space-y-4 py-1 text-xs">
+          {/* 1. Pilih Hak Akses / Peran Guru (Kartu Interaktif sesuai screenshot) */}
+          <div className="space-y-2">
+            <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
+              Pilih Hak Akses / Peran Akun *
             </label>
-            <input
-              type="text"
-              required
-              value={formData.fullName}
-              onChange={e => setFormData({ ...formData, fullName: e.target.value })}
-              placeholder="Contoh: Drs. Bambang Sutrisno, M.Pd"
-              className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
-            />
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {[
+                {
+                  role: 'Guru BK',
+                  title: 'Guru BK',
+                  subtitle: 'Bimbingan & Konseling',
+                  color: 'text-purple-600 dark:text-purple-400'
+                },
+                {
+                  role: 'Pembina OSIM',
+                  title: 'Pembina OSIM',
+                  subtitle: 'Organisasi Siswa',
+                  color: 'text-amber-600 dark:text-amber-400'
+                },
+                {
+                  role: 'Pembina Ekskul',
+                  title: 'Pembina Ekskul',
+                  subtitle: 'Ekstrakurikuler',
+                  color: 'text-emerald-600 dark:text-emerald-400'
+                },
+                {
+                  role: 'Wali Kelas',
+                  title: 'Wali Kelas',
+                  subtitle: 'Pengampu Rombel',
+                  color: 'text-cyan-600 dark:text-cyan-400'
+                },
+                {
+                  role: 'Waka Kesiswaan',
+                  title: 'Waka Kesiswaan',
+                  subtitle: 'Pimpinan Madrasah',
+                  color: 'text-blue-600 dark:text-blue-400'
+                },
+                {
+                  role: 'Guru Mata Pelajaran',
+                  title: 'Guru Mapel',
+                  subtitle: 'Dewan Guru',
+                  color: 'text-slate-700 dark:text-slate-300'
+                }
+              ].map(card => {
+                const isSelected = formData.role === card.role;
+                return (
+                  <button
+                    key={card.role}
+                    type="button"
+                    onClick={() => setFormData({ ...formData, role: card.role })}
+                    className={`p-2.5 rounded-xl text-left border transition-all ${
+                      isSelected
+                        ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 ring-2 ring-emerald-500/20 shadow-xs'
+                        : 'bg-white dark:bg-slate-800/80 border-slate-200 dark:border-slate-700/80 hover:border-slate-300 dark:hover:border-slate-600'
+                    }`}
+                  >
+                    <h5 className={`font-bold text-xs ${isSelected ? 'text-emerald-700 dark:text-emerald-400' : card.color}`}>
+                      {card.title}
+                    </h5>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      {card.subtitle}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* 2. Grid Biodata Guru (Nama & NIP) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                NIP / NUPTK
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Nama Lengkap & Gelar *
+              </label>
+              <input
+                type="text"
+                required
+                value={formData.fullName}
+                onChange={e => setFormData({ ...formData, fullName: e.target.value })}
+                placeholder="Contoh: Dra. Hj. Siti Marwiyah, M.Pd."
+                className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                NIP / NUPTK / NIK
               </label>
               <input
                 type="text"
                 value={formData.nip}
                 onChange={e => setFormData({ ...formData, nip: e.target.value })}
-                placeholder="19820415..."
-                className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                placeholder="NIP untuk guru atau NIS untuk siswa"
+                className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Jabatan / Peran Kesiswaan *
-              </label>
-              <select
-                value={formData.role}
-                onChange={e => setFormData({ ...formData, role: e.target.value })}
-                className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-semibold"
-              >
-                <option value="Pembina Ekskul">Pembina Ekskul</option>
-                <option value="Pembina OSIM">Pembina OSIM (Intrakurikuler)</option>
-                <option value="Guru BK">Guru BK / Konselor</option>
-                <option value="Wali Kelas">Wali Kelas</option>
-                <option value="Waka Kesiswaan">Waka Kesiswaan</option>
-                <option value="Staff Kesiswaan">Staff Kesiswaan</option>
-                <option value="Guru Piket">Guru Piket Ketertiban</option>
-                <option value="Guru Mata Pelajaran">Guru Mata Pelajaran</option>
-              </select>
             </div>
           </div>
 
+          {/* 3. Grid Kontak (Email & WhatsApp) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Mata Pelajaran / Bidang Keahlian
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Email Akun / Kontak *
               </label>
               <input
-                type="text"
-                value={formData.subject || ''}
-                onChange={e => setFormData({ ...formData, subject: e.target.value })}
-                placeholder="Contoh: Matematika / Pembina Pramuka"
-                className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                type="email"
+                required
+                value={formData.email}
+                onChange={e => setFormData({ ...formData, email: e.target.value })}
+                placeholder="pembina@madrasah.sch.id"
+                className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Nomor WhatsApp
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                No. WhatsApp / HP
               </label>
               <input
                 type="text"
                 value={formData.phone}
                 onChange={e => setFormData({ ...formData, phone: e.target.value })}
                 placeholder="08123456789"
-                className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </div>
           </div>
 
+          {/* 4. Mata Pelajaran / Bidang Keahlian */}
           <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Email
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              Mata Pelajaran / Bidang Keahlian
             </label>
             <input
-              type="email"
-              value={formData.email}
-              onChange={e => setFormData({ ...formData, email: e.target.value })}
-              placeholder="guru@sekolah.sch.id"
-              className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+              type="text"
+              value={formData.subject || ''}
+              onChange={e => setFormData({ ...formData, subject: e.target.value })}
+              placeholder="Contoh: Matematika / Pembina Pramuka / Bahasa Arab"
+              className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
           </div>
 
-          {/* Extracurricular Assignment Selector */}
-          <div className="p-3 rounded-xl bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 space-y-2">
+          {/* 5. Ekstrakurikuler Binaan Utama (Maks. 1 Unit Binaan) */}
+          <div className="p-3.5 rounded-xl bg-amber-50/40 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/40 space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-indigo-950 dark:text-indigo-200 flex items-center gap-1.5">
-                <Users className="w-3.5 h-3.5 text-indigo-600" />
-                Tugaskan Sebagai Pembina Ekstrakurikuler
+              <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                <Users className="w-3.5 h-3.5 text-amber-600" />
+                Ekstrakurikuler Binaan Utama *
               </label>
-              <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-semibold">
-                Otomatis Sinkron ke Manajemen Ekskul
+              <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                {formData.assignedExtracurriculars?.length ? `${formData.assignedExtracurriculars.length} Unit Dipilih` : 'Maks. Unit Binaan'}
               </span>
             </div>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              Pilih unit ekstrakurikuler yang dibina oleh guru ini. Data pelatih/pembina pada menu ekstrakurikuler akan otomatis diperbarui.
+            <p className="text-[10px] text-slate-500 dark:text-slate-400 italic">
+              Pilih unit ekstrakurikuler binaan utama untuk guru pembina ini.
             </p>
             <div className="flex flex-wrap gap-1.5 pt-1 max-h-36 overflow-y-auto">
               {extracurriculars.map(ekskul => {
@@ -1200,8 +1230,8 @@ export const TeachersPage: React.FC = () => {
                     onClick={() => handleToggleEkskul(ekskul.id)}
                     className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 border ${
                       isSelected
-                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
-                        : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:border-indigo-300'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                        : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:border-emerald-300'
                     }`}
                   >
                     <span>{ekskul.name}</span>
@@ -1212,28 +1242,20 @@ export const TeachersPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Cash Manager Assignment */}
-          <div className="p-3 rounded-xl bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 space-y-2.5">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-amber-950 dark:text-amber-200 flex items-center gap-1.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={!!formData.isCashManager}
-                  onChange={e => setFormData({ ...formData, isCashManager: e.target.checked })}
-                  className="rounded text-amber-600 focus:ring-amber-500 w-4 h-4"
-                />
-                <Wallet className="w-3.5 h-3.5 text-amber-600" />
-                <span>Pilih Sebagai Pengelola Uang Kas & Keuangan</span>
-              </label>
-              <span className="text-[10px] text-amber-700 dark:text-amber-400 font-semibold">
-                Otomatis Buka Menu Neraca Kas
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-600 dark:text-slate-400">
-              Jika diaktifkan, akun guru ini akan otomatis diberikan akses ke menu <strong>Neraca Kas & Keuangan</strong> untuk mencatat pemasukan & pengeluaran kas kesiswaan.
-            </p>
+          {/* 6. Checkbox Otoritas Pengelola Kas (Neraca Keuangan) */}
+          <div className="p-3 rounded-xl bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 space-y-2">
+            <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-800 dark:text-slate-200">
+              <input
+                type="checkbox"
+                checked={!!formData.isCashManager}
+                onChange={e => setFormData({ ...formData, isCashManager: e.target.checked })}
+                className="rounded text-amber-600 focus:ring-amber-500 w-4 h-4"
+              />
+              <Wallet className="w-3.5 h-3.5 text-amber-600" />
+              <span>Beri Hak Otoritas Pengelola Uang Kas (Neraca Keuangan)</span>
+            </label>
             {formData.isCashManager && (
-              <div className="pt-1">
+              <div className="pt-1.5 pl-6">
                 <label className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 block mb-1">
                   Jabatan / Label Amanah Kas:
                 </label>
@@ -1248,48 +1270,29 @@ export const TeachersPage: React.FC = () => {
             )}
           </div>
 
-          {/* Real-time Sync Target Indicators */}
-          <div className="p-3 rounded-xl bg-slate-100/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 space-y-1.5">
-            <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-800 dark:text-slate-200">
-              <Zap className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
-              <span>Pratinjau Sinkronisasi Otomatis Terhubung:</span>
-            </div>
-            <ul className="text-[11px] text-slate-600 dark:text-slate-400 space-y-1 pl-5 list-disc">
-              <li>
-                <strong>Manajemen Ekstrakurikuler:</strong>{' '}
-                {(formData.assignedExtracurriculars && formData.assignedExtracurriculars.length > 0)
-                  ? `Tersinkronisasi sebagai Pembina Utama di: ${canonicalizeAssignedEkskulIds(formData.assignedExtracurriculars, extracurriculars).map(id => getEkskulDisplayName(id)).join(', ')}`
-                  : 'Belum ada ekstrakurikuler binaan yang dipilih.'}
-              </li>
-              <li>
-                <strong>Manajemen Intrakurikuler (OSIM):</strong>{' '}
-                {formData.role?.toLowerCase().includes('osim')
-                  ? 'Tersinkronisasi sebagai Pembina Resmi OSIM & Penasihat Muker/Sidang Pleno.'
-                  : formData.role?.toLowerCase().includes('waka')
-                  ? 'Tersinkronisasi sebagai Waka Kesiswaan (Penanggung Jawab Intrakurikuler).'
-                  : formData.role?.toLowerCase().includes('wali')
-                  ? 'Tersinkronisasi pada kelas intrakurikuler dan absensi harian.'
-                  : formData.role?.toLowerCase().includes('bk')
-                  ? 'Tersinkronisasi pada Layanan Bimbingan Konseling & Home Visit.'
-                  : 'Tersinkronisasi pada dewan guru pembimbing umum.'}
-              </li>
-              <li>
-                <strong>cPanel Kesiswaan:</strong> Akun login otomatis dibuat/diperbarui dengan kredensial NIP/Email.
-              </li>
-            </ul>
-          </div>
-
-          <div className="flex items-center gap-2 pt-1">
+          {/* 7. Checkbox Pembina Aktif Mengajar */}
+          <div className="flex items-center gap-2 px-1">
             <input
               type="checkbox"
               id="isActiveTeacher"
               checked={formData.isActive}
               onChange={e => setFormData({ ...formData, isActive: e.target.checked })}
-              className="rounded text-indigo-600 focus:ring-indigo-500"
+              className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4"
             />
             <label htmlFor="isActiveTeacher" className="text-xs font-semibold text-slate-700 dark:text-slate-300 cursor-pointer">
               Status Pembina Aktif Mengajar
             </label>
+          </div>
+
+          {/* 8. Notice: Arsitektur Satu Pintu & Hak Manajemen Login CPanel */}
+          <div className="p-3 rounded-xl bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 text-[11px] text-blue-900 dark:text-blue-200 space-y-1">
+            <div className="flex items-center gap-1.5 font-bold">
+              <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
+              <span>Prinsip Satu Pintu (Master Data & Manajemen Akun Terpisah):</span>
+            </div>
+            <p className="text-slate-600 dark:text-slate-400 text-[10px] leading-relaxed">
+              Formulir ini murni mencatat <strong>Data Pokok Profil Guru</strong>. Setelah guru disimpan, namanya akan otomatis tersinkron ke <strong>Menu CPanel</strong> sehingga Administrator dapat membuatkan Akun Login (Username & Password).
+            </p>
           </div>
         </form>
       </Modal>
@@ -1701,15 +1704,19 @@ export const TeachersPage: React.FC = () => {
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-blue-950 dark:text-blue-200 flex items-center gap-1.5 text-xs">
                         <Key className="w-3.5 h-3.5 text-blue-600" />
-                        Kredensial & Akun Login (Firebase Auth & cPanel)
+                        Status Akun Login (Dikelola di CPanel)
                       </span>
-                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                        {matchedUser ? 'TERHUBUNG' : 'PROVISI OTOMATIS'}
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+                        matchedUser
+                          ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900 dark:text-emerald-200'
+                          : 'bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200'
+                      }`}>
+                        {matchedUser ? 'TERDAFTAR & AKTIF' : 'BELUM DIBUATKAN AKUN'}
                       </span>
                     </div>
                     <div className="grid grid-cols-2 gap-2 text-[11px]">
                       <div>
-                        <span className="text-slate-500 dark:text-slate-400 block">Username Login:</span>
+                        <span className="text-slate-500 dark:text-slate-400 block">Username:</span>
                         <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{loginUsername}</span>
                       </div>
                       <div>
@@ -1717,21 +1724,9 @@ export const TeachersPage: React.FC = () => {
                         <span className="font-mono text-slate-800 dark:text-slate-200 truncate block">{loginEmail}</span>
                       </div>
                     </div>
-                    {canCrudTeachers && (
-                      <div className="pt-1.5 flex items-center justify-end">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsDetailOpen(false);
-                            handlePromptResetTeacherPassword(selectedTeacher);
-                          }}
-                          className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center gap-1.5 transition-colors shadow-xs"
-                        >
-                          <Key className="w-3.5 h-3.5" />
-                          <span>Ubah / Reset Kata Sandi</span>
-                        </button>
-                      </div>
-                    )}
+                    <div className="pt-1 border-t border-blue-100 dark:border-blue-900/40 text-[10px] text-slate-500 dark:text-slate-400">
+                      ℹ️ <em>Hak manajemen akun, penentuan username, dan reset kata sandi dikelola secara terpusat oleh Super Admin melalui <strong>Menu CPanel</strong>.</em>
+                    </div>
                   </div>
                 );
               })()}
@@ -1773,122 +1768,6 @@ export const TeachersPage: React.FC = () => {
           </div>
         </Modal>
       )}
-
-      {/* Modal: Reset / Ubah Kata Sandi Akun Guru (Fase 3) */}
-      <Modal
-        isOpen={isResetPasswordModalOpen && Boolean(targetTeacherForReset)}
-        onClose={() => setIsResetPasswordModalOpen(false)}
-        title={`Kelola Kata Sandi: ${targetTeacherForReset?.fullName || ''}`}
-        subtitle={`NIP: ${targetTeacherForReset?.nip || '-'} • Peran: ${targetTeacherForReset?.role || ''}`}
-        maxWidth="md"
-        footer={
-          <div className="flex items-center justify-between w-full">
-            <button
-              type="button"
-              onClick={() => handleConfirmResetTeacherPassword(true)}
-              disabled={isSubmittingPassword}
-              className="px-3 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-50"
-              title="Kirim email berisi link reset kata sandi resmi Firebase Authentication"
-            >
-              Kirim Link Email
-            </button>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setIsResetPasswordModalOpen(false)}
-                disabled={isSubmittingPassword}
-                className="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-              >
-                Batal
-              </button>
-              <button
-                type="button"
-                onClick={() => handleConfirmResetTeacherPassword(false)}
-                disabled={isSubmittingPassword}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md flex items-center gap-1.5 transition-all disabled:opacity-50"
-              >
-                <Key className="w-3.5 h-3.5" />
-                <span>{isSubmittingPassword ? 'Menyimpan...' : 'Simpan & Sinkronkan Sandi'}</span>
-              </button>
-            </div>
-          </div>
-        }
-      >
-        <div className="space-y-4 text-xs">
-          {targetTeacherForReset && (
-            <div className="p-3 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl space-y-2">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h5 className="font-bold text-slate-800 dark:text-slate-200">{targetTeacherForReset.fullName}</h5>
-                  <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
-                    Email: {targetUserForReset?.email || targetTeacherForReset.email || '-'}
-                  </p>
-                </div>
-                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300">
-                  {targetTeacherForReset.role}
-                </span>
-              </div>
-              <div className="text-[11px] text-slate-600 dark:text-slate-400">
-                <strong>Username Login:</strong>{' '}
-                <span className="font-mono font-bold text-slate-900 dark:text-slate-100">
-                  {targetUserForReset?.username || (targetTeacherForReset.nip && targetTeacherForReset.nip !== '-' ? targetTeacherForReset.nip : targetTeacherForReset.email?.split('@')[0])}
-                </span>
-              </div>
-            </div>
-          )}
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="font-bold text-slate-700 dark:text-slate-300">
-                Kata Sandi Baru:
-              </label>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setCustomResetPassword('guru12345')}
-                  className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline font-semibold"
-                >
-                  Sandi 'guru12345'
-                </button>
-                <span className="text-slate-400">•</span>
-                <button
-                  type="button"
-                  onClick={() => setCustomResetPassword('guru' + Math.floor(1000 + Math.random() * 9000))}
-                  className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline font-semibold"
-                >
-                  Acak
-                </button>
-              </div>
-            </div>
-            <div className="relative">
-              <input
-                type={showResetPasswordText ? "text" : "password"}
-                value={customResetPassword}
-                onChange={e => setCustomResetPassword(e.target.value)}
-                placeholder="Masukkan kata sandi baru (minimal 6 karakter)"
-                className="w-full px-3 py-2 pr-10 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-mono text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-              <button
-                type="button"
-                onClick={() => setShowResetPasswordText(!showResetPasswordText)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-              >
-                {showResetPasswordText ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-          </div>
-
-          <div className="p-3 bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/40 rounded-xl space-y-1 text-[11px] text-slate-600 dark:text-slate-400">
-            <div className="flex items-center gap-1.5 font-bold text-blue-900 dark:text-blue-300">
-              <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
-              <span>Sinkronisasi Otomatis Firebase Auth & Firestore:</span>
-            </div>
-            <p>
-              Kata sandi yang disimpan di sini akan langsung diperbarui ke <strong>Firebase Authentication</strong> dan profil Firestore. Guru dapat langsung masuk ke aplikasi menggunakan kata sandi baru ini.
-            </p>
-          </div>
-        </div>
-      </Modal>
 
       {/* Delete Dialog */}
       <ConfirmDialog
