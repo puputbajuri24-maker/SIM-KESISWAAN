@@ -1,6 +1,7 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { useTheme, THEME_PALETTES, ThemeMode, ThemePalette, FontSize, FontContrast, FontFamily } from '../../contexts/ThemeContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { Sun, Moon, Monitor, Palette, Sparkles, Check, CheckCircle2, Type, Contrast, RotateCcw, X, Eye } from 'lucide-react';
 
 interface ThemeSelectorModalProps {
@@ -9,6 +10,9 @@ interface ThemeSelectorModalProps {
 }
 
 export const ThemeSelectorModal: React.FC<ThemeSelectorModalProps> = ({ isOpen, onClose }) => {
+  const { currentUser, isSuperAdmin } = useAuth();
+  const isAdmin = Boolean(isSuperAdmin || (currentUser && (currentUser.role === 'super_admin' || currentUser.role === 'admin_kesiswaan')));
+
   const {
     mode,
     resolvedMode,
@@ -25,7 +29,7 @@ export const ThemeSelectorModal: React.FC<ThemeSelectorModalProps> = ({ isOpen, 
     isCloudSynced
   } = useTheme();
 
-  if (!isOpen || typeof document === 'undefined') return null;
+  if (!isOpen || !isAdmin || typeof document === 'undefined') return null;
 
   return createPortal(
     <div className="fixed inset-0 z-[9999] overflow-y-auto font-sans">

@@ -79,7 +79,7 @@ import {
 import { getDefaultOsimPassword } from '../services/seedData';
 import { getUserSlipCredentials } from '../utils/osimAccountHelper';
 import { getEkskulTheme } from '../utils/ekskulColors';
-import { getUserHierarchyClassification, sortUsersByHierarchy, canonicalizeAssignedEkskulIds, cleanDigits, isTeacherUserMatch, isOsimMemberUserMatch } from '../utils/syncUtils';
+import { getUserHierarchyClassification, sortUsersByHierarchy, canonicalizeAssignedEkskulIds, cleanDigits, isTeacherUserMatch, isOsimMemberUserMatch, isPlaceholderNis, extractSekbidNumber } from '../utils/syncUtils';
 import { canResetUserPassword } from '../utils/rbacRules';
 import { normalizeUserRole } from '../permissions';
 import { getNextTeacherDocId } from '../utils/idGenerator';
@@ -436,9 +436,23 @@ export const CPanelPage: React.FC = () => {
 
   const handleCopyCredentials = (u: UserProfile) => {
     const roleStr = String(u.role || 'user');
-    const text = `INFORMASI AKUN RESMI SIM KESISWAAN\nNama: ${u.displayName || u.username || '-'}\nPeran: ${roleStr.toUpperCase()}\nNIP/NIS: ${u.nip || '-'}\nEmail: ${u.email || '-'}\nAutentikasi: Firebase Authentication\nURL: ${window.location.origin}`;
+    const isOsim = u.role === 'anggota_osim' || u.role === 'pengurus_osim' || Boolean(u.uid && u.uid.startsWith('user_osim_'));
+    const defaultPwd = isOsim ? (u.password || 'osim12345') : (u.password || 'Dikelola oleh Firebase Auth');
+    const jabatanStr = u.osimPosition || u.osimDepartmentName || roleStr.toUpperCase().replace(/_/g, ' ');
+
+    const text = `INFORMASI AKUN RESMI SIM KESISWAAN
+Nama Pengguna : ${u.displayName || u.username || '-'}
+Jabatan/Peran : ${jabatanStr}
+NIP / NIS     : ${u.nip || '-'}
+Username      : ${u.username || '-'}
+Password Awal : ${defaultPwd}
+Email Akun    : ${u.email || '-'}
+Alamat Sistem : ${window.location.origin}
+--------------------------------------------------
+*Penting: Pada akun pengurus OSIM, halaman profil hanya dapat memperbarui nomor WhatsApp. Nama, NIS, dan kata sandi dikelola secara terpusat oleh Administrator Kesiswaan.*`;
+
     navigator.clipboard.writeText(text);
-    showToast(`Informasi akun ${u.displayName || u.username || 'Pengguna'} berhasil disalin ke clipboard!`);
+    showToast(`Informasi akun login "${u.displayName || u.username}" berhasil disalin ke clipboard!`);
   };
 
   const handleSyncFromTeachers = async () => {
@@ -1046,15 +1060,28 @@ export const CPanelPage: React.FC = () => {
       if (accountSourceType === 'osim' || accountSourceType === 'student' || canonicalRole === 'anggota_osim' || canonicalRole === 'pengurus_osim') {
         const cleanStudentNis = formData.nip.trim() || selectedOsimMemberForAccount?.studentNis || selectedStudentForAccount?.nis || '';
         const matchedOsimMember = selectedOsimMemberForAccount || osimMembers.find(m =>
-          (cleanStudentNis && cleanDigits(m.studentNis) === cleanDigits(cleanStudentNis)) ||
-          (selectedStudentForAccount && selectedStudentForAccount.nis && cleanDigits(m.studentNis) === cleanDigits(selectedStudentForAccount.nis)) ||
+          (cleanStudentNis && !isPlaceholderNis(cleanStudentNis) && cleanDigits(m.studentNis) === cleanDigits(cleanStudentNis)) ||
+          (selectedStudentForAccount && selectedStudentForAccount.nis && !isPlaceholderNis(selectedStudentForAccount.nis) && cleanDigits(m.studentNis) === cleanDigits(selectedStudentForAccount.nis)) ||
           (m.fullName.toLowerCase().trim() === formData.displayName.toLowerCase().trim())
         );
 
+        const sekbidStr = selectedOsimMemberForAccount?.sekbid || matchedOsimMember?.sekbid || (formData as any).osimDepartmentName;
+        const sekbidNum = extractSekbidNumber(sekbidStr) || extractSekbidNumber(selectedOsimMemberForAccount?.position || matchedOsimMember?.position);
         const targetMemberId = selectedOsimMemberForAccount?.id || matchedOsimMember?.id;
-        const targetUserUid = cleanStudentNis && cleanStudentNis.length >= 4
-          ? `user_osim_${cleanStudentNis}`
-          : (targetMemberId ? `user_osim_${targetMemberId}` : (resolvedUid || undefined));
+        const posText = (selectedOsimMemberForAccount?.position || matchedOsimMember?.position || '').toLowerCase();
+        const bphRole = (sekbidStr === 'BPH' || (sekbidStr && sekbidStr.includes('BPH')) || !sekbidNum) ? (
+          posText.includes('wakil') ? 'user_osim_wakil'
+          : posText.includes('sekretaris') ? 'user_osim_sekretaris'
+          : posText.includes('bendahara') ? 'user_osim_bendahara'
+          : posText.includes('ketua') ? 'user_osim_ketua'
+          : undefined
+        ) : undefined;
+
+        const targetUserUid = bphRole
+          || (sekbidNum ? `user_osim_sekbid${sekbidNum}` : undefined)
+          || (cleanStudentNis && cleanStudentNis.length >= 4 && !isPlaceholderNis(cleanStudentNis)
+            ? `user_osim_${cleanStudentNis}`
+            : (targetMemberId ? `user_osim_${targetMemberId}` : (resolvedUid || undefined)));
 
         const res = await activateOsimAccount({
           memberId: targetMemberId,
@@ -1307,10 +1334,16 @@ export const CPanelPage: React.FC = () => {
               <span class="info-label">Username Login:</span>
               <span class="info-val" style="color: #047857; font-size: 12px;">${cred.loginUsername}</span>
             </div>
-            <div class="highlight">
-              <div style="font-size: 10px; color: #065f46; font-weight: bold;">METODE AUTENTIKASI:</div>
-              <div style="font-size: 11px; font-family: monospace; margin-top: 2px; color: #065f46; font-weight: bold;">
-                Firebase Authentication (Cloud Identity)
+            <div class="info-row">
+              <span class="info-label">Kata Sandi Awal:</span>
+              <span class="info-val" style="color: #b45309; font-size: 12px;">${cred.password || 'osim12345'}</span>
+            </div>
+            <div class="highlight" style="${(cred.role === 'anggota_osim' || cred.role === 'pengurus_osim') ? 'background: #fffbeb; border-color: #fde68a;' : ''}">
+              <div style="font-size: 10px; color: ${(cred.role === 'anggota_osim' || cred.role === 'pengurus_osim') ? '#92400e' : '#065f46'}; font-weight: bold;">
+                ${(cred.role === 'anggota_osim' || cred.role === 'pengurus_osim') ? 'KETENTUAN PENGURUS OSIM:' : 'METODE AUTENTIKASI:'}
+              </div>
+              <div style="font-size: 11px; font-family: monospace; margin-top: 2px; color: ${(cred.role === 'anggota_osim' || cred.role === 'pengurus_osim') ? '#78350f' : '#065f46'};">
+                ${(cred.role === 'anggota_osim' || cred.role === 'pengurus_osim') ? 'Halaman profil hanya dapat mengubah nomor WhatsApp. Nama, NIS & Password dikelola terpusat oleh Admin.' : 'Firebase Authentication (Cloud Identity)'}
               </div>
             </div>
             <div class="footer">

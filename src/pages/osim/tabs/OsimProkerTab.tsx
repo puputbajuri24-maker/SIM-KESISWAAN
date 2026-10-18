@@ -17,6 +17,7 @@ import {
   Target
 } from 'lucide-react';
 import { OsimWorkProgram, UserProfile } from '../../../types';
+import { extractSekbidNumber } from '../../../utils/osimAccountHelper';
 
 export interface OsimProkerTabProps {
   hasSupervisionVeto: boolean;
@@ -81,6 +82,20 @@ export const OsimProkerTab: React.FC<OsimProkerTabProps> = ({
   onOpenEditProker,
   onDeleteProker,
 }) => {
+  // Guard RBAC Sekbid: Pengurus Sekbid hanya berwenang mengelola proker bidangnya sendiri
+  const isUserAllowedForProker = (prokerSekbid?: string): boolean => {
+    if (hasSupervisionVeto || isOsimBph) return true;
+    const userSekbidNum = extractSekbidNumber(currentUser?.osimDepartmentCode) ||
+                          extractSekbidNumber(currentUser?.osimDepartmentName) ||
+                          extractSekbidNumber(currentUser?.osimPosition) ||
+                          extractSekbidNumber(currentUser?.username);
+    if (userSekbidNum !== null) {
+      const prokerSekbidNum = extractSekbidNumber(prokerSekbid);
+      return prokerSekbidNum === userSekbidNum;
+    }
+    return true;
+  };
+
   return (
     <div className="space-y-4" id="view-proker-osim">
       {/* Notification banner for Supervisi & Hak Veto (Pembina OSIM, Waka Kesiswaan & Admin App) */}
@@ -323,7 +338,7 @@ export const OsimProkerTab: React.FC<OsimProkerTabProps> = ({
               <div className="mt-3 pt-2 border-t border-zinc-800/40 flex items-center justify-between gap-1" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center gap-1.5 flex-wrap">
                   {/* Siswa Action: Ajukan ke Pembina if Draft or Revisi */}
-                  {(proker.status === 'Draft' || proker.status === 'Revisi') && canManageOsim && (
+                  {(proker.status === 'Draft' || proker.status === 'Revisi') && canManageOsim && isUserAllowedForProker(proker.sekbid) && (
                     <button
                       onClick={e => onAjukanKePembina(proker, e)}
                       className="flex items-center gap-1 px-2 py-0.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border border-amber-500/30 rounded text-[10px] font-semibold transition"
@@ -347,7 +362,7 @@ export const OsimProkerTab: React.FC<OsimProkerTabProps> = ({
                   )}
 
                   {/* Siswa Action: Pelaksanaan & Kirim LPJ */}
-                  {(proker.status === 'Disetujui' || proker.status === 'Berlangsung') && canManageOsim && (
+                  {(proker.status === 'Disetujui' || proker.status === 'Berlangsung') && canManageOsim && isUserAllowedForProker(proker.sekbid) && (
                     <button
                       onClick={e => onOpenLpjModal(proker, e)}
                       className="flex items-center gap-1 px-2 py-0.5 bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-400 border border-cyan-500/30 rounded text-[10px] font-semibold transition"
@@ -384,7 +399,7 @@ export const OsimProkerTab: React.FC<OsimProkerTabProps> = ({
                 </div>
 
                 <div className="flex items-center gap-1">
-                  {(hasSupervisionVeto || isOsimBph || ((proker.status === 'Draft' || proker.status === 'Revisi') && canManageOsim)) && (
+                  {(hasSupervisionVeto || isOsimBph || ((proker.status === 'Draft' || proker.status === 'Revisi') && canManageOsim && isUserAllowedForProker(proker.sekbid))) && (
                     <button
                       onClick={e => onOpenEditProker(proker, e)}
                       className="p-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-amber-400 transition"

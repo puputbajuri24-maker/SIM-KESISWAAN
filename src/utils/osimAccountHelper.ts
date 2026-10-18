@@ -118,6 +118,8 @@ export const findLinkedOsimAccount = (
         extractSekbidNumber(u.username);
       if (uSekbidNum === sekbidNum) return true;
 
+      if (u.uid === `user_osim_sekbid${sekbidNum}`) return true;
+      if (u.uid === `user_osim_sekbid_${sekbidNum}`) return true;
       if (u.osimDepartmentId === `dept_sekbid_${sekbidNum}`) return true;
       if (u.uid === `user_osim_dept_sekbid_${sekbidNum}`) return true;
       if (u.username?.toLowerCase() === `osim.sekbid${sekbidNum}` || u.username?.toLowerCase() === targetCodeSimple) return true;
@@ -265,8 +267,10 @@ export const getUserSlipCredentials = (
 
   const rawUsername = (u.username ? u.username.replace(/^@/, '') : (u.email ? u.email.split('@')[0] : '')).trim();
 
+  const isOsimUser = u.role === 'pengurus_osim' || u.role === 'anggota_osim' || Boolean(u.uid && u.uid.startsWith('user_osim_'));
+
   // Find linked OSIM member if applicable
-  const linkedMem = (u.role === 'pengurus_osim' && Boolean(osimMembers && osimMembers.length > 0))
+  const linkedMem = (isOsimUser && Boolean(osimMembers && osimMembers.length > 0))
     ? osimMembers!.find(m =>
         Boolean(
           m && (
@@ -281,7 +285,13 @@ export const getUserSlipCredentials = (
     : undefined;
 
   const roleStr = String(u.role || 'user');
-  const roleLabel = roleStr ? roleStr.toUpperCase().replace(/_/g, ' ') : 'PENGGUNA';
+  const roleLabel = isOsimUser
+    ? (u.osimPosition || u.osimDepartmentName || 'PENGURUS OSIM').toUpperCase()
+    : (roleStr ? roleStr.toUpperCase().replace(/_/g, ' ') : 'PENGGUNA');
+
+  const defaultPwd = isOsimUser
+    ? (u.password || getDefaultOsimPasswordForMember(linkedMem || (u as any)) || 'osim12345')
+    : (u.password || 'Dikelola oleh Firebase Auth');
 
   return {
     displayName: u.displayName || u.username || 'Tanpa Nama',
@@ -290,8 +300,10 @@ export const getUserSlipCredentials = (
     loginUsername: rawUsername ? `@${rawUsername}` : (u.email || '-'),
     rawUsername: rawUsername || '-',
     email: u.email || '-',
-    password: 'Dikelola oleh Firebase Auth',
-    passwordNotice: 'Dikelola secara aman oleh Firebase Authentication',
+    password: defaultPwd,
+    passwordNotice: isOsimUser
+      ? 'Kata sandi resmi akun OSIM (kelola terpusat oleh Admin/Pembina)'
+      : 'Dikelola secara aman oleh Firebase Authentication',
     nipOrNis: u.nip || linkedMem?.studentNis || '-',
     studentClass: linkedMem?.className || u.studentClass || '-',
     position: linkedMem?.position || u.osimPosition,

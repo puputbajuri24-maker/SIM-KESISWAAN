@@ -145,7 +145,19 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
   }), [allUsers]);
   const wakaUsers = useMemo(() => (allUsers || []).filter(u => u && normalizeUserRole(u.role) === 'waka_kesiswaan'), [allUsers]);
 
-  const { mode, resolvedMode, toggleMode, palette, currentPaletteInfo } = useTheme();
+  const { mode, resolvedMode, toggleMode, palette, currentPaletteInfo, setMode } = useTheme();
+
+  // Khusus Admin: Hanya Administrator yang berhak mengubah tema dan mode (dark/light)
+  const isAdmin = useMemo(() => {
+    return Boolean(isSuperAdmin || (currentUser && (currentUser.role === 'super_admin' || currentUser.role === 'admin_kesiswaan')));
+  }, [isSuperAdmin, currentUser]);
+
+  // Pastikan akun non-admin otomatis mengikuti standar instansi (mode terang resmi) tanpa opsi beralih
+  useEffect(() => {
+    if (currentUser && !isAdmin && mode === 'dark') {
+      setMode('light');
+    }
+  }, [currentUser, isAdmin, mode, setMode]);
 
   // Detect platform for keyboard shortcut display
   const isMac = useMemo(() => {
@@ -859,31 +871,35 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
 
           {/* Right: Live Telemetry, Status, Mode/Theme Toggle, Notification & Profile */}
           <div className="flex items-center space-x-2 sm:space-x-3 text-xs">
-            {/* Quick Dark/Light Mode Switcher */}
-            <button
-              onClick={toggleMode}
-              className="p-2 rounded-xl bg-slate-100/80 dark:bg-[#131b2e] border border-slate-200 dark:border-[#1e293b] text-slate-700 dark:text-slate-300 hover:border-blue-400 dark:hover:border-blue-500/50 hover:bg-slate-200/60 dark:hover:bg-[#1a253d] transition-all shadow-xs flex items-center gap-1.5"
-              title={`Mode Saat Ini: ${resolvedMode === 'dark' ? 'Mode Gelap' : 'Mode Terang'} (Klik untuk beralih)`}
-            >
-              {resolvedMode === 'dark' ? (
-                <Sun className="w-4 h-4 text-amber-400" />
-              ) : (
-                <Moon className="w-4 h-4 text-indigo-600" />
-              )}
-              <span className="hidden xl:inline text-[11px] font-semibold text-slate-700 dark:text-slate-300">
-                {resolvedMode === 'dark' ? 'Gelap' : 'Terang'}
-              </span>
-            </button>
+            {/* Quick Dark/Light Mode Switcher & Theme Palette Modal (Khusus Admin) */}
+            {isAdmin && (
+              <>
+                <button
+                  onClick={toggleMode}
+                  className="p-2 rounded-xl bg-slate-100/80 dark:bg-[#131b2e] border border-slate-200 dark:border-[#1e293b] text-slate-700 dark:text-slate-300 hover:border-blue-400 dark:hover:border-blue-500/50 hover:bg-slate-200/60 dark:hover:bg-[#1a253d] transition-all shadow-xs flex items-center gap-1.5"
+                  title={`Mode Saat Ini: ${resolvedMode === 'dark' ? 'Mode Gelap' : 'Mode Terang'} (Klik untuk beralih)`}
+                >
+                  {resolvedMode === 'dark' ? (
+                    <Sun className="w-4 h-4 text-amber-400" />
+                  ) : (
+                    <Moon className="w-4 h-4 text-indigo-600" />
+                  )}
+                  <span className="hidden xl:inline text-[11px] font-semibold text-slate-700 dark:text-slate-300">
+                    {resolvedMode === 'dark' ? 'Gelap' : 'Terang'}
+                  </span>
+                </button>
 
-            {/* Quick Theme Palette Modal Opener */}
-            <button
-              onClick={() => setIsThemeModalOpen(true)}
-              className="hidden sm:flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100/80 dark:bg-[#131b2e] border border-slate-200 dark:border-[#1e293b] hover:border-blue-400 dark:hover:border-blue-500/50 hover:bg-slate-200/60 dark:hover:bg-[#1a253d] transition-all text-xs font-semibold text-slate-700 dark:text-slate-300 shadow-xs"
-              title={`Tema Warna: ${currentPaletteInfo.name}`}
-            >
-              <Palette className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-              <span className="hidden md:inline font-bold capitalize text-slate-800 dark:text-slate-200">{palette}</span>
-            </button>
+                {/* Quick Theme Palette Modal Opener */}
+                <button
+                  onClick={() => setIsThemeModalOpen(true)}
+                  className="hidden sm:flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100/80 dark:bg-[#131b2e] border border-slate-200 dark:border-[#1e293b] hover:border-blue-400 dark:hover:border-blue-500/50 hover:bg-slate-200/60 dark:hover:bg-[#1a253d] transition-all text-xs font-semibold text-slate-700 dark:text-slate-300 shadow-xs"
+                  title={`Tema Warna: ${currentPaletteInfo.name}`}
+                >
+                  <Palette className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                  <span className="hidden md:inline font-bold capitalize text-slate-800 dark:text-slate-200">{palette}</span>
+                </button>
+              </>
+            )}
 
             {/* Live Clock Pill */}
             <button
@@ -1463,29 +1479,31 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
                   </button>
                 </div>
 
-                {/* Mobile Quick Theme Switcher */}
-                <div className="py-3 px-1 flex items-center justify-between border-b border-slate-200 dark:border-[#1e293b]">
-                  <span className="text-xs font-extrabold text-slate-800 dark:text-slate-300 tracking-wide">TEMA & MODE</span>
-                  <div className="flex items-center space-x-2">
-                    <button
-                      onClick={toggleMode}
-                      className="p-2 rounded-xl bg-slate-100 dark:bg-[#131b2e] border border-slate-300 dark:border-[#1e293b] text-amber-500 dark:text-amber-400 hover:bg-slate-200 dark:hover:bg-[#1a253d] transition-all shadow-xs"
-                      title="Ganti Mode Gelap / Terang"
-                    >
-                      {resolvedMode === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4 text-indigo-600" />}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setIsMobileMenuOpen(false);
-                        setIsThemeModalOpen(true);
-                      }}
-                      className="p-2 rounded-xl bg-slate-100 dark:bg-[#131b2e] border border-slate-300 dark:border-[#1e293b] text-blue-600 dark:text-blue-400 hover:bg-slate-200 dark:hover:bg-[#1a253d] transition-all shadow-xs"
-                      title="Buka Pusat Tema"
-                    >
-                      <Palette className="w-4 h-4" />
-                    </button>
+                {/* Mobile Quick Theme Switcher (Khusus Admin) */}
+                {isAdmin && (
+                  <div className="py-3 px-1 flex items-center justify-between border-b border-slate-200 dark:border-[#1e293b]">
+                    <span className="text-xs font-extrabold text-slate-800 dark:text-slate-300 tracking-wide">TEMA & MODE</span>
+                    <div className="flex items-center space-x-2">
+                      <button
+                        onClick={toggleMode}
+                        className="p-2 rounded-xl bg-slate-100 dark:bg-[#131b2e] border border-slate-300 dark:border-[#1e293b] text-amber-500 dark:text-amber-400 hover:bg-slate-200 dark:hover:bg-[#1a253d] transition-all shadow-xs"
+                        title="Ganti Mode Gelap / Terang"
+                      >
+                        {resolvedMode === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4 text-indigo-600" />}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setIsMobileMenuOpen(false);
+                          setIsThemeModalOpen(true);
+                        }}
+                        className="p-2 rounded-xl bg-slate-100 dark:bg-[#131b2e] border border-slate-300 dark:border-[#1e293b] text-blue-600 dark:text-blue-400 hover:bg-slate-200 dark:hover:bg-[#1a253d] transition-all shadow-xs"
+                        title="Buka Pusat Tema"
+                      >
+                        <Palette className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className="py-3 space-y-4">
                   {(visibleNavSections || []).map(sec => (
@@ -1568,10 +1586,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
         onClose={() => setIsTimezoneModalOpen(false)}
       />
 
-      <ThemeSelectorModal
-        isOpen={isThemeModalOpen}
-        onClose={() => setIsThemeModalOpen(false)}
-      />
+      {isAdmin && (
+        <ThemeSelectorModal
+          isOpen={isThemeModalOpen}
+          onClose={() => setIsThemeModalOpen(false)}
+        />
+      )}
 
       {isAnnouncementListOpen && (
         <AnnouncementListModal

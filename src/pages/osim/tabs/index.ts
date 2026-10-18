@@ -5,3 +5,4 @@ export * from './OsimSidangTab';
 export * from './OsimAspirasiTab';
 export * from './OsimMatriksTab';
 export * from './OsimRekapTahunanTab';
+export * from './OsimNotulenTab';

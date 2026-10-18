@@ -150,103 +150,9 @@ export const getDefaultOsimPassword = (codeOrRole: string): string => {
   return '';
 };
 
-export const generateDefaultOsimAccounts = (departments: OsimDepartment[] = DEFAULT_OSIM_DEPARTMENTS): UserProfile[] => {
-  // MODEL A: 4 Akun Fungsional Khusus Pengurus Inti OSIM (Badan Pengurus Harian / BPH)
-  const bphDept = departments.find(d => d.id === 'dept_bph' || d.code === 'BPH');
-  const bphId = bphDept?.id || 'dept_bph';
-  const bphCode = bphDept?.code || 'BPH';
-  const bphName = bphDept?.name || 'BPH (Badan Pengurus Harian)';
-
-  const bphAccounts: UserProfile[] = [
-    {
-      uid: 'user_osim_ketua',
-      email: 'osim.ketua@madrasah.sch.id',
-      username: 'osim.ketua',
-      displayName: 'Ketua OSIM',
-      role: 'anggota_osim',
-      position: 'ketua_osim',
-      osimRole: 'ketua',
-      osimPosition: 'Ketua Umum OSIM',
-      osimDepartmentId: bphId,
-      osimDepartmentCode: bphCode,
-      osimDepartmentName: bphName,
-      status: 'Aktif',
-      createdAt: '2026-07-15T08:00:00.000Z'
-    },
-    {
-      uid: 'user_osim_wakil',
-      email: 'osim.wakil@madrasah.sch.id',
-      username: 'osim.wakil',
-      displayName: 'Wakil Ketua OSIM',
-      role: 'anggota_osim',
-      position: 'wakil_ketua_osim',
-      osimRole: 'wakil',
-      osimPosition: 'Wakil Ketua 1',
-      osimDepartmentId: bphId,
-      osimDepartmentCode: bphCode,
-      osimDepartmentName: bphName,
-      status: 'Aktif',
-      createdAt: '2026-07-15T08:00:00.000Z'
-    },
-    {
-      uid: 'user_osim_sekretaris',
-      email: 'osim.sekretaris@madrasah.sch.id',
-      username: 'osim.sekretaris',
-      displayName: 'Sekretaris OSIM',
-      role: 'anggota_osim',
-      position: 'sekretaris_osim',
-      osimRole: 'sekretaris',
-      osimPosition: 'Sekretaris Umum',
-      osimDepartmentId: bphId,
-      osimDepartmentCode: bphCode,
-      osimDepartmentName: bphName,
-      status: 'Aktif',
-      createdAt: '2026-07-15T08:00:00.000Z'
-    },
-    {
-      uid: 'user_osim_bendahara',
-      email: 'osim.bendahara@madrasah.sch.id',
-      username: 'osim.bendahara',
-      displayName: 'Bendahara OSIM',
-      role: 'anggota_osim',
-      position: 'bendahara_osim',
-      osimRole: 'bendahara',
-      osimPosition: 'Bendahara Umum',
-      isCashManager: true,
-      cashManagerTitle: 'Bendahara OSIM',
-      cashFundScopes: ['kas_osim'],
-      osimDepartmentId: bphId,
-      osimDepartmentCode: bphCode,
-      osimDepartmentName: bphName,
-      status: 'Aktif',
-      createdAt: '2026-07-15T08:00:00.000Z'
-    }
-  ];
-
-  // Akun Fungsional Seksi Bidang (Sekbid 1 s.d. 8)
-  const sekbidDepts = departments.filter(d => d.id !== 'dept_bph' && d.code !== 'BPH');
-  const sekbidAccounts: UserProfile[] = sekbidDepts.map((dept, idx) => {
-    const cleanCode = (dept.code || `sekbid${idx + 1}`).toLowerCase().replace(/[^a-z0-9]/g, '');
-    const username = `osim.${cleanCode}`;
-
-    return {
-      uid: `user_osim_${dept.id}`,
-      email: `${username}@madrasah.sch.id`,
-      username,
-      displayName: `Pengurus OSIM - ${dept.name.split(':')[0].trim()}`,
-      role: 'anggota_osim',
-      position: 'ketua_sekbid',
-      osimRole: 'sekbid',
-      osimPosition: `Ketua ${dept.code}`,
-      osimDepartmentId: dept.id,
-      osimDepartmentCode: dept.code,
-      osimDepartmentName: dept.name,
-      status: 'Aktif',
-      createdAt: '2026-07-15T08:00:00.000Z'
-    };
-  });
-
-  return [...bphAccounts, ...sekbidAccounts];
+export const generateDefaultOsimAccounts = (_departments: OsimDepartment[] = DEFAULT_OSIM_DEPARTMENTS): UserProfile[] => {
+  // Empty: Dummy accounts permanently removed. Accounts are strictly populated from manual OSIM structure.
+  return [];
 };
 
 export const DEFAULT_OSIM_ACCOUNTS: UserProfile[] = [];
@@ -425,7 +331,6 @@ export const PURGED_DEMO_EMAILS = [
   'pembina.pmr@man2sbt.sch.id',
   'pembina.pks@man2sbt.sch.id',
   'pembina.futsal@man2sbt.sch.id',
-  // Generic OSIM account emails
   'osim.ketua@madrasah.sch.id',
   'osim.wakil@madrasah.sch.id',
   'osim.sekretaris@madrasah.sch.id',
@@ -437,7 +342,15 @@ export const PURGED_DEMO_EMAILS = [
   'osim.sekbid5@madrasah.sch.id',
   'osim.sekbid6@madrasah.sch.id',
   'osim.sekbid7@madrasah.sch.id',
-  'osim.sekbid8@madrasah.sch.id'
+  'osim.sekbid8@madrasah.sch.id',
+  'osim.ketuasekbid1@madrasah.sch.id',
+  'osim.ketuasekbid2@madrasah.sch.id',
+  'osim.ketuasekbid3@madrasah.sch.id',
+  'osim.ketuasekbid4@madrasah.sch.id',
+  'osim.ketuasekbid5@madrasah.sch.id',
+  'osim.ketuasekbid6@madrasah.sch.id',
+  'osim.ketuasekbid7@madrasah.sch.id',
+  'osim.ketuasekbid8@madrasah.sch.id'
 ];
 
 // =========================================================================

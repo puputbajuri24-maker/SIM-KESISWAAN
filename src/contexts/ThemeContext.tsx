@@ -244,7 +244,16 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       };
 
       // 1. Save to global theme config in Firestore if authenticated admin
-      if (auth.currentUser) {
+      let isAdminUser = false;
+      try {
+        const sessionUser = sessionStorage.getItem('sim_kesiswaan_session_user');
+        if (sessionUser) {
+          const parsed = JSON.parse(sessionUser);
+          isAdminUser = parsed?.role === 'super_admin' || parsed?.role === 'admin_kesiswaan';
+        }
+      } catch {}
+
+      if (auth.currentUser && isAdminUser) {
         setDoc(doc(db, 'settings', 'theme_config'), updatedPref, { merge: true }).catch((err) => {
           if (!isPermissionError(err)) {
             handleFirestoreError(err, OperationType.WRITE, 'settings/theme_config');

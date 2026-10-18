@@ -45,7 +45,8 @@ import {
   canonicalizeAssignedEkskulIds,
   isRandomOrLegacyArtifactUid,
   resolveTidyUidForUser,
-  isGenericPlaceholderEmail
+  isGenericPlaceholderEmail,
+  isPlaceholderNis
 } from '../utils/syncUtils';
 import {
   extractSekbidNumber,
@@ -97,22 +98,15 @@ export const recordSystemAuditLog = async (
 const isPurgedUser = (u: any): boolean => {
   if (!u) return true;
   if (PURGED_DEMO_UIDS.includes(u.uid)) return true;
-  if (u.email && PURGED_DEMO_EMAILS.includes(u.email.toLowerCase())) return true;
+  if (u.email && PURGED_DEMO_EMAILS.includes(u.email.toLowerCase().trim())) return true;
   if (isBlacklistedDemoName(u.displayName)) return true;
-  
-  // Also treat standalone generic osim accounts as purged (osim.ketua, osim.sekbid*, etc.)
+
+  // Akun resmi OSIM yang sah (bukan email dummy yang dipurge) diizinkan
+  const role = (u.role || '').toLowerCase();
+  const uid = (u.uid || '').toLowerCase();
   const username = (u.username || '').toLowerCase().trim();
-  if (
-    username === 'osim.ketua' ||
-    username === 'osim.wakil' ||
-    username === 'osim.sekretaris' ||
-    username === 'osim.bendahara' ||
-    /^osim\.sekbid\d+$/.test(username)
-  ) {
-    // If it has no student NIS or studentNis attached, it's a generic placeholder
-    if (!u.nip && !u.studentNis) {
-      return true;
-    }
+  if (role === 'anggota_osim' || role === 'pengurus_osim' || uid.startsWith('user_osim_') || username.startsWith('osim.')) {
+    return false;
   }
 
   return false;
@@ -342,6 +336,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 continue;
               } else {
                 seenCanonicalEmails.set(lowerEmail, d.id);
+              }
+            }
+
+            // Kasus E: Email anggota OSIM resmi adalah yang terdaftar di cPanel (data terbaru untuk orang yang sama)
+            // Hanya bersihkan jika ditemukan dokumen ganda usang untuk individu yang SAMA PERSIS (identitas nama & sekbid cocok)
+            const roleStr = (data.role || '').toLowerCase();
+            const isOsimAccount = roleStr === 'anggota_osim' || roleStr === 'pengurus_osim' || uid.startsWith('user_osim_') || (data.username && data.username.toLowerCase().startsWith('osim.'));
+            if (isOsimAccount && data.displayName) {
+              const normDataName = normalizeName(data.displayName);
+              const dataSekbid = extractSekbidNumber(data.osimDepartmentCode) || extractSekbidNumber(data.osimDepartmentName) || extractSekbidNumber(data.osimPosition);
+              const exactSamePersonInCpanel = allUsers.find(cu => {
+                if (cu.uid === d.id) return false;
+                const normCuName = normalizeName(cu.displayName);
+                const cuSekbid = extractSekbidNumber(cu.osimDepartmentCode) || extractSekbidNumber(cu.osimDepartmentName) || extractSekbidNumber(cu.osimPosition);
+                const isSamePerson = normCuName && normDataName && normCuName === normDataName && normCuName.length >= 4;
+                const isSameSekbid = dataSekbid !== null && cuSekbid !== null && dataSekbid === cuSekbid;
+                return isSamePerson && isSameSekbid;
+              });
+
+              if (exactSamePersonInCpanel && exactSamePersonInCpanel.email) {
+                const officialEmail = exactSamePersonInCpanel.email.trim().toLowerCase();
+                // Jika dokumen database lama ini memiliki email yang berbeda dari data terbaru cPanel, hapus dokumen duplikat lama
+                if (lowerEmail && lowerEmail !== officialEmail && d.id !== exactSamePersonInCpanel.uid) {
+                  if (auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
+                    deleteDoc(d.ref).catch(() => {});
+                  }
+                  continue;
+                }
               }
             }
 
@@ -1500,12 +1522,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // "dan jika terdapat email yang sama maka jangan buat id baru, cukup di timpa/replace dengan data yang terbaru"
       const existingUserByEmail = allUsers.find(u => u.email && u.email.trim().toLowerCase() === cleanEmail);
       const existingUserByUid = params.uid ? allUsers.find(u => u.uid === params.uid) : undefined;
-      const existingUserByNis = cleanNis.length >= 4 ? allUsers.find(u => cleanDigits(u.nip) === cleanNis) : undefined;
+      const existingUserByNis = cleanNis.length >= 4 && !isPlaceholderNis(cleanNis) ? allUsers.find(u => cleanDigits(u.nip) === cleanNis) : undefined;
       const existingUserByMemberId = params.memberId ? allUsers.find(u => u.uid === `user_osim_${params.memberId}` || u.uid === params.memberId) : undefined;
+      const existingUserByName = params.fullName ? allUsers.find(u => normalizeName(u.displayName) === normalizeName(params.fullName) && (u.role === 'anggota_osim' || u.role === 'pengurus_osim')) : undefined;
 
-      const existingRecord = existingUserByEmail || existingUserByUid || existingUserByNis || existingUserByMemberId;
+      const existingRecord = existingUserByUid || existingUserByEmail || existingUserByMemberId || existingUserByName || existingUserByNis;
 
-      // Standarisasi UID rapi OSIM:
+      // Standarisasi UID rapi OSIM resmi:
       const bphUidMap: Record<string, string> = {
         ketua: 'user_osim_ketua',
         wakil: 'user_osim_wakil',
@@ -1513,16 +1536,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         bendahara: 'user_osim_bendahara'
       };
       const canonicalBphUid = isBph && bphUidMap[osimRoleVal] ? bphUidMap[osimRoleVal] : undefined;
-      const canonicalNeatUid = canonicalBphUid || (cleanNis.length >= 4 ? `user_osim_${cleanNis}` : (params.memberId ? (params.memberId.startsWith('user_') ? params.memberId : `user_${params.memberId}`) : `user_osim_01`));
+      const canonicalSekbidUid = sekbidNum ? `user_osim_sekbid${sekbidNum}` : undefined;
+      const canonicalNeatUid = canonicalBphUid || canonicalSekbidUid || (cleanNis.length >= 4 && !isPlaceholderNis(cleanNis) ? `user_osim_${cleanNis}` : (params.memberId ? (params.memberId.startsWith('user_') ? params.memberId : `user_${params.memberId}`) : `user_osim_sekbid`));
 
-      const isExistingLegacy = existingRecord ? isRandomOrLegacyArtifactUid(existingRecord.uid) : false;
-      const targetUid = (existingRecord && !isExistingLegacy)
-        ? existingRecord.uid
-        : (params.uid && !isRandomOrLegacyArtifactUid(params.uid) ? params.uid : canonicalNeatUid);
+      // UID resmi BPH & Ketua Sekbid WAJIB mengikuti standar resmi tanpa underscore di depan angka
+      const targetUid = canonicalBphUid || canonicalSekbidUid || (params.uid && !isRandomOrLegacyArtifactUid(params.uid) ? params.uid : (existingRecord && !isRandomOrLegacyArtifactUid(existingRecord.uid) ? existingRecord.uid : canonicalNeatUid));
 
       let resolvedUsername = (params.username || existingRecord?.username || '').trim().toLowerCase();
       if (!resolvedUsername) {
-        resolvedUsername = cleanNis && cleanNis.length >= 4 ? `osim_${cleanNis}` : cleanEmail.split('@')[0];
+        resolvedUsername = cleanNis && cleanNis.length >= 4 && !isPlaceholderNis(cleanNis) ? `osim_${cleanNis}` : (sekbidNum ? `osim.sekbid${sekbidNum}` : cleanEmail.split('@')[0]);
       }
 
       // 2. FIREBASE AUTHENTICATION (SECONDARY AUTH TANPA LOGOUT SUPER ADMIN)
@@ -2163,15 +2185,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const pos = (m.position || '').toLowerCase();
           const sek = (m.sekbid || '').toLowerCase();
 
-          // Inferred OSIM role
-          const osimRoleVal: OsimRoleType =
-            pos.includes('ketua') && !pos.includes('wakil') && !pos.includes('sekbid') && !pos.includes('bidang') ? 'ketua'
-            : pos.includes('wakil') && !pos.includes('sekbid') && !pos.includes('bidang') ? 'wakil'
-            : pos.includes('sekretaris') && !pos.includes('sekbid') && !pos.includes('bidang') ? 'sekretaris'
-            : pos.includes('bendahara') && !pos.includes('sekbid') && !pos.includes('bidang') ? 'bendahara'
-            : 'sekbid';
+          const sekbidNum = extractSekbidNumber(m.sekbid) || extractSekbidNumber(m.position);
+          const hasSekbidContext = sekbidNum !== null || sek.includes('sekbid') || sek.includes('bidang') || pos.includes('sekbid') || pos.includes('bidang');
 
-          const isBph = osimRoleVal !== 'sekbid' || sek.includes('bph') || isBphMember(m);
+          // Inferred OSIM role: Check BPH only if NOT a Sekbid
+          let osimRoleVal: OsimRoleType = 'sekbid';
+          let isBph = false;
+
+          if (!hasSekbidContext && (sek.includes('bph') || isBphMember(m) || pos.includes('umum') || (!pos.includes('sekbid') && !pos.includes('bidang')))) {
+            if (pos.includes('ketua') && !pos.includes('wakil')) {
+              osimRoleVal = 'ketua';
+              isBph = true;
+            } else if (pos.includes('wakil')) {
+              osimRoleVal = 'wakil';
+              isBph = true;
+            } else if (pos.includes('sekretaris')) {
+              osimRoleVal = 'sekretaris';
+              isBph = true;
+            } else if (pos.includes('bendahara')) {
+              osimRoleVal = 'bendahara';
+              isBph = true;
+            }
+          }
+
           const isSekbidKetua = !isBph && (pos.includes('ketua') || pos.includes('koordinator'));
 
           const matchedDept = departmentsList.find(d => 
@@ -2180,7 +2216,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             (d.code && (m.sekbid || '').toLowerCase().includes(d.code.toLowerCase()))
           );
 
-          const sekbidNum = extractSekbidNumber(m.sekbid) || extractSekbidNumber(m.position);
           const deptId = isBph ? 'dept_bph' : (matchedDept?.id || (sekbidNum ? `dept_sekbid_${sekbidNum}` : 'dept_sekbid'));
           const deptCode = isBph ? 'BPH' : (sekbidNum ? `SEKBID-${sekbidNum}` : (matchedDept?.code || 'SEKBID'));
           const deptName = isBph ? 'BPH (Badan Pengurus Harian)' : (matchedDept?.name || m.sekbid || 'Seksi Bidang');
@@ -2202,7 +2237,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             osimRoleVal === 'bendahara' ? 'bendahara' :
             (isSekbidKetua ? 'ketua_sekbid' : 'anggota_sekbid' as any);
 
-          // Standarisasi UID rapi terstruktur (BPH: user_osim_ketua/wakil/sekretaris/bendahara, Sekbid: user_osim_<nis> atau user_<id>)
+          // Standarisasi UID rapi terstruktur (BPH: user_osim_ketua/wakil/sekretaris/bendahara, Sekbid: user_osim_sekbid1..8 atau user_osim_<nis>)
           const bphUidMap: Record<string, string> = {
             ketua: 'user_osim_ketua',
             wakil: 'user_osim_wakil',
@@ -2210,22 +2245,40 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             bendahara: 'user_osim_bendahara'
           };
           const canonicalBphUid = isBph && bphUidMap[osimRoleVal] ? bphUidMap[osimRoleVal] : undefined;
-          const canonicalOsimUid = canonicalBphUid || (cleanNis && cleanNis.length >= 4 ? `user_osim_${cleanNis}` : (m.id.startsWith('user_') ? m.id : `user_${m.id}`));
+          const canonicalSekbidUid = (isSekbidKetua && sekbidNum) ? `user_osim_sekbid${sekbidNum}` : undefined;
+          const canonicalOsimUid = canonicalBphUid || canonicalSekbidUid || (cleanNis && !isPlaceholderNis(cleanNis) ? `user_osim_${cleanNis}` : (sekbidNum ? `user_osim_sekbid${sekbidNum}` : (m.id.startsWith('user_') ? m.id : `user_${m.id}`)));
 
-          // Match existing user by ID, username, NIS, email, or member match
-          const existingIdx = updatedUsers.findIndex(u =>
-            u.uid === canonicalOsimUid ||
-            (m.id && (u.uid === m.id || u.uid === `user_${m.id}`)) ||
-            (cleanNis && cleanNis.length >= 4 && cleanDigits(u.nip) === cleanNis) ||
-            (username && u.username && u.username.toLowerCase() === username.toLowerCase()) ||
-            (m.email && u.email && !isGenericPlaceholderEmail(m.email) && !isGenericPlaceholderEmail(u.email) && u.email.trim().toLowerCase() === m.email.trim().toLowerCase()) ||
-            isOsimMemberUserMatch(u, m)
-          );
+          // Match existing user with strict Sekbid / BPH conflict prevention
+          const existingIdx = updatedUsers.findIndex(u => {
+            const uSekbid = extractSekbidNumber(u.osimDepartmentCode) || extractSekbidNumber(u.osimDepartmentName) || extractSekbidNumber(u.osimPosition);
+            // Guard: Jangan pernah mencocokkan jika dari Sekbid berbeda
+            if (sekbidNum !== null && uSekbid !== null && sekbidNum !== uSekbid) return false;
+            // Guard: Jangan pernah mencocokkan Sekbid dengan BPH
+            const uIsBph = u.osimDepartmentCode === 'BPH' || (u.osimDepartmentName && u.osimDepartmentName.includes('BPH')) || ['user_osim_ketua', 'user_osim_wakil', 'user_osim_sekretaris', 'user_osim_bendahara'].includes(u.uid);
+            if ((sekbidNum !== null && uIsBph) || (isBph && uSekbid !== null)) return false;
+
+            return (
+              u.uid === canonicalOsimUid ||
+              (canonicalSekbidUid && (u.uid === `user_osim_sekbid_${sekbidNum}` || u.uid === `user_osim_dept_sekbid_${sekbidNum}`)) ||
+              (m.id && (u.uid === m.id || u.uid === `user_${m.id}`)) ||
+              (cleanNis && !isPlaceholderNis(cleanNis) && cleanDigits(u.nip) === cleanNis) ||
+              (username && u.username && u.username.toLowerCase() === username.toLowerCase()) ||
+              (m.email && u.email && !isGenericPlaceholderEmail(m.email) && !isGenericPlaceholderEmail(u.email) && u.email.trim().toLowerCase() === m.email.trim().toLowerCase()) ||
+              isOsimMemberUserMatch(u, m)
+            );
+          });
+
+          // Email pengurus OSIM: Data manual yang diisi di menu Pengurus OSIM adalah yang TERBARU dan WAJIB menimpa data lama di cPanel!
+          const officialEmail = (m.email && m.email.trim())
+            ? m.email.trim()
+            : (existingIdx >= 0 && updatedUsers[existingIdx]?.email && !isGenericPlaceholderEmail(updatedUsers[existingIdx].email) && !PURGED_DEMO_EMAILS.includes(updatedUsers[existingIdx].email.toLowerCase().trim())
+              ? updatedUsers[existingIdx].email.trim()
+              : (cleanNis ? `${cleanNis}@madrasah.sch.id` : email));
 
           if (existingIdx >= 0) {
             const existing = updatedUsers[existingIdx];
-            const isUidMigrated = (existing.uid !== canonicalOsimUid) && (Boolean(cleanNis) || isRandomOrLegacyArtifactUid(existing.uid) || Boolean(canonicalBphUid));
-            const targetUid = isUidMigrated ? canonicalOsimUid : existing.uid;
+            const isUidMigrated = (existing.uid !== canonicalOsimUid) && (Boolean(cleanNis && !isPlaceholderNis(cleanNis)) || isRandomOrLegacyArtifactUid(existing.uid) || Boolean(canonicalBphUid) || Boolean(canonicalSekbidUid));
+            const targetUid = canonicalBphUid || canonicalSekbidUid || (isUidMigrated ? canonicalOsimUid : existing.uid);
             const isNowActive = Boolean(m.isLoginActive || existing.isLoginActive || existing.loginStatus === 'active' || existing.accountStatus === 'active');
             const merged: UserProfile = {
               ...existing,
@@ -2234,7 +2287,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               nip: m.studentNis || existing.nip,
               phone: m.phone && m.phone !== '-' ? m.phone : existing.phone,
               username: existing.username || username,
-              email: existing.email || email,
+              email: officialEmail,
               password: existing.password || 'osim12345',
               authUid: existing.authUid,
               role: 'anggota_osim',
@@ -2253,11 +2306,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               updatedAt: new Date().toISOString()
             };
             updatedUsers[existingIdx] = merged;
-            if (auth.currentUser) {
-              firestorePromises.push(setDoc(doc(db, 'users', merged.uid), merged, { merge: true }));
-              if (isUidMigrated && existing.uid) {
-                firestorePromises.push(deleteDoc(doc(db, 'users', existing.uid)));
-              }
+            firestorePromises.push(setDoc(doc(db, 'users', merged.uid), merged, { merge: true }));
+            if (existing.uid && existing.uid !== merged.uid) {
+              firestorePromises.push(deleteDoc(doc(db, 'users', existing.uid)));
+            }
+            if (sekbidNum) {
+              firestorePromises.push(deleteDoc(doc(db, 'users', `user_osim_sekbid_${sekbidNum}`)).catch(() => {}));
+              firestorePromises.push(deleteDoc(doc(db, 'users', `user_osim_dept_sekbid_${sekbidNum}`)).catch(() => {}));
             }
             count++;
           } else {
@@ -2266,7 +2321,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               uid: canonicalOsimUid,
               displayName: m.fullName,
               username,
-              email,
+              email: officialEmail,
               nip: m.studentNis,
               phone: m.phone && m.phone !== '-' ? m.phone : undefined,
               role: 'anggota_osim',
@@ -2285,77 +2340,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               createdAt: new Date().toISOString()
             };
             updatedUsers.push(newUser);
-            if (auth.currentUser) {
-              firestorePromises.push(setDoc(doc(db, 'users', newUser.uid), newUser, { merge: true }));
+            firestorePromises.push(setDoc(doc(db, 'users', newUser.uid), newUser, { merge: true }));
+            if (sekbidNum) {
+              firestorePromises.push(deleteDoc(doc(db, 'users', `user_osim_sekbid_${sekbidNum}`)).catch(() => {}));
+              firestorePromises.push(deleteDoc(doc(db, 'users', `user_osim_dept_sekbid_${sekbidNum}`)).catch(() => {}));
             }
             count++;
           }
         }
       }
 
-      // Ensure each department coordinator from departmentsList also has a synchronized user account
-      for (const d of departmentsList) {
-        if (!d || !d.coordinatorName || d.code === 'BPH' || d.name.startsWith('BPH')) continue;
-        const trimmedCoord = d.coordinatorName.trim();
-        const sekbidNum = extractSekbidNumber(d.code) || extractSekbidNumber(d.name);
-        const deptCode = d.code || (sekbidNum ? `SEKBID-${sekbidNum}` : 'SEKBID');
-        const defaultUsername = sekbidNum ? `osim.sekbid${sekbidNum}` : `osim.${trimmedCoord.toLowerCase().split(' ')[0].replace(/[^a-z0-9]/g, '')}`;
+      // Bersihkan dokumen usang dengan format UID lama bertanda underscore (user_osim_sekbid_1..8)
+      for (let s = 1; s <= 8; s++) {
+        const legacyUnderscoreUid = `user_osim_sekbid_${s}`;
+        const legacyDeptUid = `user_osim_dept_sekbid_${s}`;
+        const targetSekbidUid = `user_osim_sekbid${s}`;
+        
+        // Hapus akun lama dari Firestore jika duplikat
+        firestorePromises.push(deleteDoc(doc(db, 'users', legacyUnderscoreUid)).catch(() => {}));
+        firestorePromises.push(deleteDoc(doc(db, 'users', legacyDeptUid)).catch(() => {}));
 
-        const existingAccIdx = updatedUsers.findIndex(u =>
-          (u.displayName && u.displayName.toLowerCase().trim() === trimmedCoord.toLowerCase()) ||
-          (d.id && u.osimDepartmentId === d.id && (u.role === 'pengurus_osim' || u.role === 'anggota_osim')) ||
-          (u.username && u.username.toLowerCase() === defaultUsername.toLowerCase())
+        // Sinkronkan koordinator bidang dari master departemen jika ada
+        const matchedDept = departmentsList.find(d => extractSekbidNumber(d.code) === s || extractSekbidNumber(d.name) === s);
+        const trimmedCoord = (matchedDept?.coordinatorName || '').trim();
+        
+        // Jika akun sekbid sudah ada di updatedUsers (dari membersList), pastikan UID-nya user_osim_sekbid${s}
+        const sIdx = updatedUsers.findIndex(u =>
+          u.uid === targetSekbidUid ||
+          u.uid === legacyUnderscoreUid ||
+          u.uid === legacyDeptUid ||
+          (trimmedCoord && u.displayName && u.displayName.toLowerCase().trim() === trimmedCoord.toLowerCase())
         );
 
-        if (existingAccIdx >= 0) {
-          const existing = updatedUsers[existingAccIdx];
-          const isNowActive = Boolean(existing.isLoginActive || existing.loginStatus === 'active' || existing.accountStatus === 'active');
-          const merged: UserProfile = {
-            ...existing,
-            displayName: trimmedCoord,
-            role: 'anggota_osim',
-            position: 'ketua_sekbid',
-            osimRole: 'sekbid',
-            osimPosition: sekbidNum ? `Ketua Sekbid ${sekbidNum}` : 'Ketua Sekbid',
-            osimDepartmentId: d.id || existing.osimDepartmentId,
-            osimDepartmentCode: deptCode,
-            osimDepartmentName: d.name,
-            status: existing.status || 'Aktif',
-            isLoginActive: isNowActive,
-            loginStatus: isNowActive ? 'active' : (existing.loginStatus || 'pending_activation'),
-            accountStatus: isNowActive ? 'active' : (existing.accountStatus || 'pending'),
-            updatedAt: new Date().toISOString()
-          };
-          updatedUsers[existingAccIdx] = merged;
-          if (auth.currentUser) {
-            firestorePromises.push(setDoc(doc(db, 'users', merged.uid), merged, { merge: true }));
+        if (sIdx >= 0) {
+          const existing = updatedUsers[sIdx];
+          if (existing.uid !== targetSekbidUid) {
+            const migrated = { ...existing, uid: targetSekbidUid, updatedAt: new Date().toISOString() };
+            updatedUsers[sIdx] = migrated;
+            firestorePromises.push(setDoc(doc(db, 'users', targetSekbidUid), migrated, { merge: true }));
+            firestorePromises.push(deleteDoc(doc(db, 'users', existing.uid)).catch(() => {}));
           }
-        } else {
-          const safeSlug = (d.id || d.code || (sekbidNum ? `sekbid_${sekbidNum}` : 'sekbid')).toLowerCase().replace(/[^a-z0-9]/g, '_');
-          const newUid = `user_osim_${safeSlug}`;
-          const newAcc: UserProfile = {
-            uid: newUid,
-            displayName: trimmedCoord,
-            username: defaultUsername,
-            email: `${defaultUsername}@madrasah.sch.id`,
-            role: 'anggota_osim',
-            position: 'ketua_sekbid',
-            osimRole: 'sekbid',
-            osimPosition: sekbidNum ? `Ketua Sekbid ${sekbidNum}` : 'Ketua Sekbid',
-            osimDepartmentId: d.id,
-            osimDepartmentCode: deptCode,
-            osimDepartmentName: d.name,
-            status: 'Aktif',
-            isLoginActive: false,
-            loginStatus: 'pending_activation',
-            accountStatus: 'pending',
-            createdAt: new Date().toISOString()
-          };
-          updatedUsers.push(newAcc);
-          if (auth.currentUser) {
-            firestorePromises.push(setDoc(doc(db, 'users', newAcc.uid), newAcc, { merge: true }));
-          }
-          count++;
         }
       }
 

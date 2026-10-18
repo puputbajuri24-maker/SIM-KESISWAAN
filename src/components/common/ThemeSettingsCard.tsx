@@ -1,9 +1,14 @@
 import React, { useMemo } from 'react';
 import { useTheme, THEME_PALETTES, ThemeMode, ThemePalette, FontSize, FontContrast, FontFamily } from '../../contexts/ThemeContext';
 import { useSchool } from '../../contexts/SchoolContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { Sun, Moon, Monitor, Palette, Sparkles, Check, CheckCircle2, Type, Contrast, RotateCcw, Eye, ShieldCheck, Zap } from 'lucide-react';
 
 export const ThemeSettingsCard: React.FC = () => {
+  const { currentUser, isSuperAdmin } = useAuth();
+  const isAdmin = Boolean(isSuperAdmin || (currentUser && (currentUser.role === 'super_admin' || currentUser.role === 'admin_kesiswaan')));
+
+  if (!isAdmin) return null;
   const {
     mode,
     resolvedMode,

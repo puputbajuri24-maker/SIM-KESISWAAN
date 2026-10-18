@@ -98,6 +98,7 @@ import {
   OsimStrukturTab,
   OsimAkunPengurusTab,
   OsimSidangTab,
+  OsimNotulenTab,
   OsimAspirasiTab,
   OsimMatriksTab,
   OsimRekapTahunanTab
@@ -140,6 +141,14 @@ export const OsimPage: React.FC = () => {
   const canManageOsimAccounts = (isPembinaOsim || isWakaOrAdmin) && (canCrudMembers || canResetPasswords || isSupervisoryVetoAuthorized);
   const isOsimTeacher = isSupervisoryVetoAuthorized;
   const hasSupervisionVeto = isSupervisoryVetoAuthorized;
+
+  // Hak Akses Khusus Notulen Rapat bagi Sekretaris OSIM
+  const isSekretarisOsim = Boolean(
+    isOsimSekretaris ||
+    currentUser?.osimRole === 'sekretaris' ||
+    (currentUser?.position && currentUser.position.toLowerCase().includes('sekretaris')) ||
+    (currentUser?.osimPosition && currentUser.osimPosition.toLowerCase().includes('sekretaris'))
+  );
 
   // Kebijakan Khusus RBAC Kesiswaan:
   // Seluruh akun anggota OSIM (baik BPH maupun Sekbid) TIDAK memiliki akses untuk CRUD struktur kabinet
@@ -199,10 +208,17 @@ export const OsimPage: React.FC = () => {
     return initial + inTotal - outTotal;
   }, [osimCashAccount, cashTransactions]);
 
-  // Active view tab
+  // Active view tab (Mendukung Sub-Tab Notulen Rapat untuk Sekretaris OSIM)
   const [activeSubTab, setActiveSubTab] = useState<
-    'proker' | 'struktur' | 'sidang' | 'aspirasi' | 'matriks' | 'rekap_tahunan' | 'akun_pengurus'
-  >('proker');
+    'proker' | 'struktur' | 'sidang' | 'notulen' | 'aspirasi' | 'matriks' | 'rekap_tahunan' | 'akun_pengurus'
+  >(() => {
+    const isSec = Boolean(
+      currentUser?.osimRole === 'sekretaris' ||
+      (currentUser?.position && currentUser.position.toLowerCase().includes('sekretaris')) ||
+      (currentUser?.osimPosition && currentUser.osimPosition.toLowerCase().includes('sekretaris'))
+    );
+    return isSec ? 'notulen' : 'proker';
+  });
 
   // OSIM Accounts state for Pembina OSIM & Admin management
   const osimAccounts = useMemo(() => {
@@ -420,10 +436,10 @@ export const OsimPage: React.FC = () => {
   const [memberForm, setMemberForm] = useState<Partial<OsimMember>>({
     fullName: '',
     studentNis: '',
-    className: 'XI RPL 1',
+    className: '',
     position: 'Ketua Sekbid',
     sekbid: 'Sekbid 1: Keimanan, Ketaqwaan & Moderasi Beragama',
-    phone: '081234567890',
+    phone: '',
     email: '',
     status: 'Aktif',
     vision: '',
@@ -638,7 +654,18 @@ export const OsimPage: React.FC = () => {
   // Proker Handlers
   const handleOpenAddProker = () => {
     setSelectedProker(null);
-    const initialSekbid = (currentUser?.osimDepartmentName as OsimSekbid) || 'Sekbid 1: Keimanan, Ketaqwaan & Moderasi Beragama';
+    let initialSekbid: OsimSekbid = 'Sekbid 1: Keimanan, Ketaqwaan & Moderasi Beragama';
+    const userSekbidNum = extractSekbidNumber(currentUser?.osimDepartmentCode) ||
+                          extractSekbidNumber(currentUser?.osimDepartmentName) ||
+                          extractSekbidNumber(currentUser?.osimPosition) ||
+                          extractSekbidNumber(currentUser?.username);
+    if (userSekbidNum !== null) {
+      const match = sekbidList.find(s => extractSekbidNumber(s) === userSekbidNum);
+      if (match) initialSekbid = match;
+    } else if (currentUser?.osimDepartmentName && sekbidList.includes(currentUser.osimDepartmentName as OsimSekbid)) {
+      initialSekbid = currentUser.osimDepartmentName as OsimSekbid;
+    }
+
     setProkerForm({
       title: '',
       sekbid: initialSekbid,
@@ -663,6 +690,18 @@ export const OsimPage: React.FC = () => {
 
   const handleOpenEditProker = (p: OsimWorkProgram, e?: React.MouseEvent) => {
     e?.stopPropagation();
+    // Guard RBAC Sekbid: Pengurus Sekbid hanya berwenang mengedit proker bidangnya sendiri
+    if (!hasSupervisionVeto && !isOsimBph) {
+      const userSekbidNum = extractSekbidNumber(currentUser?.osimDepartmentCode) ||
+                            extractSekbidNumber(currentUser?.osimDepartmentName) ||
+                            extractSekbidNumber(currentUser?.osimPosition) ||
+                            extractSekbidNumber(currentUser?.username);
+      const prokerSekbidNum = extractSekbidNumber(p.sekbid);
+      if (userSekbidNum !== null && prokerSekbidNum !== null && userSekbidNum !== prokerSekbidNum) {
+        toast.error(`Pelanggaran Hak Akses RBAC: Anda hanya berwenang mengelola program kerja Sekbid ${userSekbidNum}.`);
+        return;
+      }
+    }
     setSelectedProker(p);
     setProkerForm(p);
     setIsProkerModalOpen(true);
@@ -678,6 +717,19 @@ export const OsimPage: React.FC = () => {
     if (!prokerForm.title || !prokerForm.sekbid) {
       toast.warning('Mohon lengkapi judul program kerja dan seksi bidang penanggung jawab.');
       return;
+    }
+
+    // Guard RBAC Sekbid: Validasi integritas penyimpanan
+    if (!hasSupervisionVeto && !isOsimBph) {
+      const userSekbidNum = extractSekbidNumber(currentUser?.osimDepartmentCode) ||
+                            extractSekbidNumber(currentUser?.osimDepartmentName) ||
+                            extractSekbidNumber(currentUser?.osimPosition) ||
+                            extractSekbidNumber(currentUser?.username);
+      const formSekbidNum = extractSekbidNumber(prokerForm.sekbid);
+      if (userSekbidNum !== null && formSekbidNum !== null && userSekbidNum !== formSekbidNum) {
+        toast.error(`Pelanggaran Hak Akses RBAC: Anda hanya berwenang mengajukan kegiatan untuk Sekbid ${userSekbidNum}.`);
+        return;
+      }
     }
 
     try {
@@ -1483,7 +1535,7 @@ export const OsimPage: React.FC = () => {
           try {
             await addOsimMember({
               fullName: newAcc.displayName,
-              studentNis: selectedStudentForAccount?.nis || '24251000',
+              studentNis: selectedStudentForAccount?.nis || '',
               className: selectedStudentForAccount?.className || 'XI',
               position: newAcc.osimPosition as any,
               sekbid: (newAcc.osimDepartmentName as any) || (isBph ? 'BPH (Badan Pengurus Harian)' : (sekbidNum ? `Sekbid ${sekbidNum}` : 'Sekbid 1: Keimanan, Ketaqwaan & Moderasi Beragama')),
@@ -1795,7 +1847,7 @@ export const OsimPage: React.FC = () => {
           const matchedStudent = students.find(s => s.fullName.toLowerCase().trim() === trimmedCoord.toLowerCase());
           await addOsimMember({
             fullName: trimmedCoord,
-            studentNis: matchedStudent?.nis || '24251000',
+            studentNis: matchedStudent?.nis || '',
             className: matchedStudent?.className || 'XI',
             position: positionTitle as any,
             sekbid: trimmedName as OsimSekbid,
@@ -1836,7 +1888,8 @@ export const OsimPage: React.FC = () => {
             } catch (e) {}
           }
         } else {
-          const newUid = `user_osim_${codeToSet.toLowerCase().replace(/[^a-z0-9]/g, '_')}_${Date.now()}`;
+          const neatSekbidUid = sekbidNum ? `user_osim_sekbid${sekbidNum}` : `user_osim_${codeToSet.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+          const newUid = neatSekbidUid;
           const newAcc: UserProfile = {
             uid: newUid,
             displayName: trimmedCoord,
@@ -2033,6 +2086,10 @@ export const OsimPage: React.FC = () => {
 
   const handleOpenAddMeeting = () => {
     setSelectedMeeting(null);
+    const defaultSec = (isSekretarisOsim && currentUser?.displayName)
+      ? currentUser.displayName
+      : (osimMembers.find(m => (m.position || '').toLowerCase().includes('sekretaris'))?.fullName || 'Sekretaris OSIM');
+    const defaultKetua = osimMembers.find(m => isBphMember(m) && (m.position || '').toLowerCase().includes('ketua') && !(m.position || '').toLowerCase().includes('wakil'))?.fullName || 'Ketua Umum OSIM';
     setMeetingForm({
       title: '',
       type: 'Rapat Pleno Pengurus',
@@ -2040,9 +2097,9 @@ export const OsimPage: React.FC = () => {
       startTime: '15:30',
       endTime: '17:00',
       location: 'Ruang Rapat OSIM & Kesiswaan',
-      leader: 'Ketua Umum OSIM',
-      secretary: 'Sekretaris Umum',
-      attendeesCount: 25,
+      leader: defaultKetua,
+      secretary: defaultSec,
+      attendeesCount: osimMembers.length > 0 ? osimMembers.length : 25,
       agenda: '',
       decisionNotes: '',
       wakaNotes: '',
@@ -2190,6 +2247,19 @@ export const OsimPage: React.FC = () => {
               filename={`Laporan_Program_Kerja_OSIM_${activeAcademicYear}`}
               title="Ekspor Proker"
             />
+            {isSekretarisOsim && (
+              <button
+                id="btn-quick-notulen-top"
+                onClick={() => {
+                  setActiveSubTab('notulen');
+                  handleOpenAddMeeting();
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded text-xs font-semibold tracking-wide transition shadow-xs"
+              >
+                <FileText className="w-4 h-4" />
+                Catat Notulen Rapat
+              </button>
+            )}
             {canManageOsim && (
               <button
                 id="btn-add-proker-top"
@@ -2287,6 +2357,24 @@ export const OsimPage: React.FC = () => {
           </button>
 
           <button
+            id="tab-osim-notulen"
+            onClick={() => setActiveSubTab('notulen')}
+            className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold border-b-2 transition whitespace-nowrap ${
+              activeSubTab === 'notulen'
+                ? 'border-sky-500 text-sky-400 bg-sky-500/10 rounded-t'
+                : 'border-transparent text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <FileText className="w-3.5 h-3.5 text-sky-400" />
+            <span>Notulen Rapat ({osimMeetings.length})</span>
+            {isSekretarisOsim && (
+              <span className="px-1.5 py-0.5 rounded text-[10px] bg-sky-500/20 text-sky-300 font-mono font-bold">
+                SEKRETARIS
+              </span>
+            )}
+          </button>
+
+          <button
             id="tab-osim-sidang"
             onClick={() => setActiveSubTab('sidang')}
             className={`flex items-center gap-2 px-3 py-2 text-xs font-semibold border-b-2 transition whitespace-nowrap ${
@@ -2296,7 +2384,7 @@ export const OsimPage: React.FC = () => {
             }`}
           >
             <Calendar className="w-3.5 h-3.5" />
-            Sidang Pleno & Notulensi ({osimMeetings.length})
+            Sidang Pleno & MUKER ({osimMeetings.length})
           </button>
 
           <button
@@ -2452,7 +2540,24 @@ export const OsimPage: React.FC = () => {
       )}
 
       {/* ========================================================== */}
-      {/* SUB-TAB 3: SIDANG PLENO, MUKER & NOTULENSI */}
+      {/* SUB-TAB: NOTULENSI RAPAT & BERITA ACARA (SEKRETARIS OSIM) */}
+      {/* ========================================================== */}
+      {activeSubTab === 'notulen' && (
+        <OsimNotulenTab
+          osimMeetings={osimMeetings}
+          isSekretarisOsim={isSekretarisOsim}
+          canManageOsim={canManageOsim || isSekretarisOsim}
+          currentUserName={currentUser?.displayName}
+          onOpenAddMeeting={handleOpenAddMeeting}
+          onOpenDetailMeeting={handleOpenDetailMeeting}
+          onOpenEditMeeting={handleOpenEditMeeting}
+          onDeleteMeeting={handleOpenDeleteMeeting}
+          onPrintMeeting={handleOpenPrintMeeting}
+        />
+      )}
+
+      {/* ========================================================== */}
+      {/* SUB-TAB 3: SIDANG PLENO & MUKER */}
       {/* ========================================================== */}
       {activeSubTab === 'sidang' && (
         <OsimSidangTab

@@ -70,14 +70,20 @@ export const ProfileSettingsPage: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const isOsimMember = Boolean(
+    currentUser?.role === 'anggota_osim' ||
+    currentUser?.role === 'pengurus_osim' ||
+    currentUser?.uid?.startsWith('user_osim_')
+  );
+
   // Initialize with current logged in user data
   useEffect(() => {
     if (currentUser) {
       setDisplayName(currentUser.displayName || '');
       setPhone(currentUser.phone || '');
       setNip(currentUser.nip || '');
-      // For Guru BK and Pembina, photo is omitted and replaced with 2-letter initials
-      if (isGuruBKOrPembinaRole(currentUser.role)) {
+      // For Guru BK, Pembina, and OSIM Members, photo is omitted and replaced with 2-letter initials
+      if (isGuruBKOrPembinaRole(currentUser.role) || currentUser.role === 'anggota_osim' || currentUser.role === 'pengurus_osim' || currentUser.uid?.startsWith('user_osim_')) {
         setPhotoURL('');
       } else {
         setPhotoURL(currentUser.photoURL || (currentUser as any).photoUrl || '');
@@ -95,6 +101,14 @@ export const ProfileSettingsPage: React.FC = () => {
 
   const getRoleBadgeInfo = (role?: UserRole) => {
     switch (role) {
+      case 'anggota_osim':
+      case 'pengurus_osim':
+        return {
+          label: 'PENGURUS / ANGGOTA OSIM',
+          color: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30',
+          icon: Crown,
+          desc: 'Pengurus Inti BPH & Seksi Bidang Organisasi Siswa Intra Madrasah'
+        };
       case 'pembina_osim':
         return {
           label: 'PEMBINA OSIM & INTRAKURIKULER',
@@ -238,11 +252,11 @@ export const ProfileSettingsPage: React.FC = () => {
     try {
       const oldUser = { ...currentUser };
       const updatedData = {
-        displayName: displayName.trim(),
+        displayName: isOsimMember ? (currentUser.displayName || displayName.trim()) : displayName.trim(),
         phone: phone.trim(),
-        nip: nip.trim(),
-        // For Guru BK and Pembina, photo upload is disabled and replaced with 2-letter initials
-        photoURL: isGuruBKOrPembina ? '' : (photoURL || undefined)
+        nip: isOsimMember ? (currentUser.nip || nip.trim()) : nip.trim(),
+        // For Guru BK, Pembina, and OSIM Members, photo upload is disabled and replaced with 2-letter initials
+        photoURL: (isGuruBKOrPembina || isOsimMember) ? '' : (photoURL || undefined)
       };
 
       // 1. Update user profile in AuthContext (persisted to localStorage & Firebase Auth / users collection)
@@ -267,15 +281,17 @@ export const ProfileSettingsPage: React.FC = () => {
       await logAction(
         'UPDATE_USER_PROFILE',
         'Pengaturan Profil',
-        `${currentUser.displayName} (${badgeInfo.label}) memperbarui profil: Nama="${displayName}", WA="${phone}", NIP="${nip}", ${
-          isGuruBKOrPembina ? `Inisial="${teacherInitials}"` : `Foto=${photoURL ? 'Diperbarui' : 'Dikosongkan'}`
+        `${currentUser.displayName} (${badgeInfo.label}) memperbarui profil: Nama="${updatedData.displayName}", WA="${phone}", NIP="${updatedData.nip}", ${
+          (isGuruBKOrPembina || isOsimMember) ? `Inisial="${teacherInitials}"` : `Foto=${photoURL ? 'Diperbarui' : 'Dikosongkan'}`
         }`
       );
 
       setSaveSuccessMsg(
-        isGuruBKOrPembina
-          ? `Profil berhasil diperbarui! Nama, nomor WhatsApp, NIP, serta inisial resmi (${teacherInitials}) telah otomatis tersinkronisasi ke sistem.`
-          : 'Profil Anda berhasil diperbarui! Perubahan nama, nomor WhatsApp, NIP/NUPTK, dan foto profil telah otomatis tersinkronisasi ke Administrator Super.'
+        isOsimMember
+          ? `Nomor HP/WhatsApp berhasil diperbarui! Nama, NIS, dan inisial resmi OSIM (${teacherInitials}) dikunci dan tetap tersinkronisasi.`
+          : isGuruBKOrPembina
+            ? `Profil berhasil diperbarui! Nama, nomor WhatsApp, NIP, serta inisial resmi (${teacherInitials}) telah otomatis tersinkronisasi ke sistem.`
+            : 'Profil Anda berhasil diperbarui! Perubahan nama, nomor WhatsApp, NIP/NUPTK, dan foto profil telah otomatis tersinkronisasi ke Administrator Super.'
       );
       
       // Auto-hide success message after 5 seconds
@@ -293,6 +309,11 @@ export const ProfileSettingsPage: React.FC = () => {
     e.preventDefault();
     setPasswordError(null);
     setPasswordSuccess(null);
+
+    if (isOsimMember) {
+      setPasswordError('Fitur ganti kata sandi ditiadakan untuk akun anggota OSIM. Pengelolaan kata sandi dikelola secara terpusat oleh Super Admin melalui cPanel.');
+      return;
+    }
 
     if (isPembinaEkstra) {
       setPasswordError('Akun Pembina Ekstrakurikuler dikelola secara terpusat. Penggantian kata sandi hanya dapat dilakukan melalui cPanel oleh Administrator Madrasah.');
@@ -407,15 +428,15 @@ export const ProfileSettingsPage: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
           {/* Left Column: Avatar Section (2-Letter Initials for Guru BK & Pembina, or Photo for Admin) */}
           <div className="md:col-span-5 bg-[#151518] border border-[#27272a] rounded-xl p-5 space-y-4 flex flex-col items-center text-center">
-            {isGuruBKOrPembina ? (
-              /* Guru BK / Pembina Profile: 2-Letter Initials Identity (No Photo Upload) */
+            {isGuruBKOrPembina || isOsimMember ? (
+              /* Guru BK / Pembina / OSIM Member Profile: 2-Letter Initials Identity (No Photo Upload) */
               <>
                 <div className="w-full flex items-center justify-between pb-3 border-b border-[#27272a]">
                   <span className="text-xs font-bold text-zinc-100 uppercase tracking-wider flex items-center space-x-1.5 font-mono">
-                    <Sparkles className="w-4 h-4 text-purple-400" />
-                    <span>Inisial Profil Guru</span>
+                    <Sparkles className={`w-4 h-4 ${isOsimMember ? 'text-cyan-400' : 'text-purple-400'}`} />
+                    <span>{isOsimMember ? 'Inisial Profil OSIM' : 'Inisial Profil Guru'}</span>
                   </span>
-                  <span className="px-2 py-0.5 rounded text-[9px] font-mono bg-purple-500/20 text-purple-300 border border-purple-500/40 font-bold">
+                  <span className={`px-2 py-0.5 rounded text-[9px] font-mono ${isOsimMember ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40' : 'bg-purple-500/20 text-purple-300 border border-purple-500/40'} font-bold`}>
                     2 HURUF INISIAL
                   </span>
                 </div>
@@ -423,13 +444,13 @@ export const ProfileSettingsPage: React.FC = () => {
                 {/* 2-Letter Initials Card */}
                 <div className="relative group my-2">
                   <div
-                    className={`w-36 h-36 rounded-2xl bg-gradient-to-br ${colorTheme.bgGradient} border-2 ${colorTheme.borderColor} flex flex-col items-center justify-center shadow-2xl relative select-none transition-transform group-hover:scale-105`}
+                    className={`w-36 h-36 rounded-2xl bg-gradient-to-br ${isOsimMember ? 'from-cyan-900/60 to-blue-900/60' : colorTheme.bgGradient} border-2 ${isOsimMember ? 'border-cyan-500/50' : colorTheme.borderColor} flex flex-col items-center justify-center shadow-2xl relative select-none transition-transform group-hover:scale-105`}
                   >
                     <span className="text-5xl font-black font-mono tracking-wider text-white drop-shadow-md">
                       {teacherInitials}
                     </span>
                     <span className="text-[10px] font-mono font-bold uppercase tracking-widest text-white/80 mt-1">
-                      Inisial Resmi
+                      {isOsimMember ? 'Inisial OSIM' : 'Inisial Resmi'}
                     </span>
                   </div>
                 </div>
@@ -437,16 +458,20 @@ export const ProfileSettingsPage: React.FC = () => {
                 {/* Institutional Note Replacing Drag & Drop Upload Zone */}
                 <div className="w-full p-4 rounded-xl border border-[#27272a] bg-[#141417] text-left space-y-2.5">
                   <div className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className={`w-2 h-2 rounded-full ${isOsimMember ? 'bg-cyan-400' : 'bg-emerald-400'} animate-pulse`} />
                     <span className="text-xs font-bold text-zinc-100 font-mono">
                       STANDAR KESERAGAMAN IDENTITAS
                     </span>
                   </div>
                   <p className="text-[11px] text-zinc-300 leading-relaxed">
-                    Untuk profil <strong>Guru BK</strong> dan <strong>Pembina</strong>, fitur upload foto profil ditiadakan dan digantikan otomatis dengan <strong>2 huruf inisial nama</strong> ({teacherInitials}).
+                    {isOsimMember ? (
+                      <>Untuk profil <strong>Anggota & Pengurus OSIM</strong>, foto profil menggunakan <strong>2 huruf inisial nama</strong> ({teacherInitials}). Fitur upload foto profil ditiadakan sesuai regulasi keseragaman sistem.</>
+                    ) : (
+                      <>Untuk profil <strong>Guru BK</strong> dan <strong>Pembina</strong>, fitur upload foto profil ditiadakan dan digantikan otomatis dengan <strong>2 huruf inisial nama</strong> ({teacherInitials}).</>
+                    )}
                   </p>
                   <div className="p-2.5 rounded-lg bg-[#1a1a1f] border border-[#2a2a30] flex items-center justify-between text-[11px] font-mono">
-                    <span className="text-zinc-400">Inisial Guru Terdaftar:</span>
+                    <span className="text-zinc-400">{isOsimMember ? 'Inisial OSIM Terdaftar:' : 'Inisial Guru Terdaftar:'}</span>
                     <span className="font-black text-white px-2.5 py-0.5 rounded bg-white/10 border border-white/20 text-xs">
                       {teacherInitials}
                     </span>
@@ -568,7 +593,9 @@ export const ProfileSettingsPage: React.FC = () => {
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold text-zinc-100 flex items-center justify-between">
                 <span>Nama Lengkap & Gelar *</span>
-                <span className="text-[10px] font-medium text-emerald-400 font-mono">Wajib Diisi</span>
+                <span className={`text-[10px] font-medium font-mono ${isOsimMember ? 'text-amber-400' : 'text-emerald-400'}`}>
+                  {isOsimMember ? 'Terkunci (Hanya Admin)' : 'Wajib Diisi'}
+                </span>
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-400">
@@ -577,22 +604,36 @@ export const ProfileSettingsPage: React.FC = () => {
                 <input
                   type="text"
                   required
+                  disabled={isOsimMember}
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
                   placeholder="Contoh: Dra. Hj. Siti Marwiyah, M.Pd."
-                  className="w-full pl-9 pr-3 py-2.5 rounded-lg bg-[#1c1c20] border border-[#323238] text-xs text-white placeholder-zinc-400 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 font-medium transition-colors"
+                  className={`w-full pl-9 pr-3 py-2.5 rounded-lg bg-[#1c1c20] border ${
+                    isOsimMember
+                      ? 'border-[#2c2c32] text-zinc-300 cursor-not-allowed opacity-80'
+                      : 'border-[#323238] text-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500'
+                  } font-medium transition-colors text-xs`}
                 />
               </div>
-              <p className="text-[11px] text-zinc-300">
-                Nama ini akan muncul pada seluruh laporan kegiatan, lembar presensi, SK pembina, dan catatan konseling.
-              </p>
+              {isOsimMember ? (
+                <p className="text-[11px] text-amber-400/90 font-medium flex items-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5 shrink-0" />
+                  <span>Nama profil anggota OSIM dikunci secara terpusat dan mutlak hanya dapat diedit oleh Super Admin melalui cPanel.</span>
+                </p>
+              ) : (
+                <p className="text-[11px] text-zinc-300">
+                  Nama ini akan muncul pada seluruh laporan kegiatan, lembar presensi, SK pembina, dan catatan konseling.
+                </p>
+              )}
             </div>
 
             {/* Field 2: Nomor WhatsApp */}
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold text-zinc-100 flex items-center justify-between">
                 <span>Nomor WhatsApp Aktif *</span>
-                <span className="text-[10px] font-medium text-zinc-300 font-mono">Untuk Komunikasi & Notifikasi</span>
+                <span className="text-[10px] font-medium text-emerald-400 font-mono">
+                  {isOsimMember ? 'Dapat Diedit Mandiri' : 'Untuk Komunikasi & Notifikasi'}
+                </span>
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-emerald-400">
@@ -607,16 +648,25 @@ export const ProfileSettingsPage: React.FC = () => {
                   className="w-full pl-9 pr-3 py-2.5 rounded-lg bg-[#1c1c20] border border-[#323238] text-xs text-white placeholder-zinc-400 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 font-mono transition-colors"
                 />
               </div>
-              <p className="text-[11px] text-zinc-300">
-                Nomor WhatsApp digunakan untuk koordinasi kegiatan kesiswaan, panggilan orang tua siswa, dan kontak darurat.
-              </p>
+              {isOsimMember ? (
+                <p className="text-[11px] text-emerald-400 font-medium flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                  <span>Nomor WhatsApp/HP adalah satu-satunya data profil yang dapat diperbarui secara mandiri oleh pengurus OSIM.</span>
+                </p>
+              ) : (
+                <p className="text-[11px] text-zinc-300">
+                  Nomor WhatsApp digunakan untuk koordinasi kegiatan kesiswaan, panggilan orang tua siswa, dan kontak darurat.
+                </p>
+              )}
             </div>
 
-            {/* Field 3: NIP / NUPTK */}
+            {/* Field 3: NIP / NIS */}
             <div className="space-y-1.5">
               <label className="block text-xs font-semibold text-zinc-100 flex items-center justify-between">
-                <span>NIP / NUPTK / NIK *</span>
-                <span className="text-[10px] font-medium text-zinc-300 font-mono">Identitas Resmi Guru/Pembina</span>
+                <span>{isOsimMember ? 'NIS Siswa OSIM *' : 'NIP / NUPTK / NIK *'}</span>
+                <span className={`text-[10px] font-medium font-mono ${isOsimMember ? 'text-amber-400' : 'text-zinc-300'}`}>
+                  {isOsimMember ? 'Terkunci (Hanya Admin)' : 'Identitas Resmi Guru/Pembina'}
+                </span>
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-400">
@@ -624,15 +674,27 @@ export const ProfileSettingsPage: React.FC = () => {
                 </div>
                 <input
                   type="text"
+                  disabled={isOsimMember}
                   value={nip}
                   onChange={(e) => setNip(e.target.value)}
-                  placeholder="Contoh: 19800101 200501 1 001 atau NUPTK"
-                  className="w-full pl-9 pr-3 py-2.5 rounded-lg bg-[#1c1c20] border border-[#323238] text-xs text-white placeholder-zinc-400 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 font-mono transition-colors"
+                  placeholder={isOsimMember ? 'NIS Siswa' : 'Contoh: 19800101 200501 1 001 atau NUPTK'}
+                  className={`w-full pl-9 pr-3 py-2.5 rounded-lg bg-[#1c1c20] border ${
+                    isOsimMember
+                      ? 'border-[#2c2c32] text-zinc-300 cursor-not-allowed opacity-80'
+                      : 'border-[#323238] text-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500'
+                  } font-mono transition-colors text-xs`}
                 />
               </div>
-              <p className="text-[11px] text-zinc-300">
-                NIP/NUPTK dapat digunakan sebagai identifier kredensial untuk masuk (login) ke aplikasi SIM Kesiswaan.
-              </p>
+              {isOsimMember ? (
+                <p className="text-[11px] text-amber-400/90 font-medium flex items-center gap-1.5">
+                  <Lock className="w-3.5 h-3.5 shrink-0" />
+                  <span>NIS siswa anggota OSIM dikunci dan mutlak hanya dapat diedit oleh Super Admin melalui cPanel.</span>
+                </p>
+              ) : (
+                <p className="text-[11px] text-zinc-300">
+                  NIP/NUPTK dapat digunakan sebagai identifier kredensial untuk masuk (login) ke aplikasi SIM Kesiswaan.
+                </p>
+              )}
             </div>
 
             {/* Additional Context Info (Read-only metadata) */}
@@ -703,7 +765,7 @@ export const ProfileSettingsPage: React.FC = () => {
       </form>
 
       {/* Account Security & Password Change Card */}
-      {currentUser?.role === 'pengurus_osim' ? (
+      {isOsimMember ? (
         <div className="bg-[#151518] border border-amber-500/30 rounded-xl overflow-hidden p-6 shadow-sm">
           <div className="flex items-start space-x-4">
             <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">

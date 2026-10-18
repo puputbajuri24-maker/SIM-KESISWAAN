@@ -54,6 +54,14 @@ export const PROTECTED_FUNCTIONAL_UIDS = new Set([
   'osim.sekretaris',
   'osim.bendahara',
   'dept_bph',
+  'user_osim_sekbid1',
+  'user_osim_sekbid2',
+  'user_osim_sekbid3',
+  'user_osim_sekbid4',
+  'user_osim_sekbid5',
+  'user_osim_sekbid6',
+  'user_osim_sekbid7',
+  'user_osim_sekbid8',
   'user_osim_dept_sekbid_1',
   'user_osim_dept_sekbid_2',
   'user_osim_dept_sekbid_3',
@@ -258,10 +266,54 @@ export const isStudentUserMatch = (u: UserProfile, s: Student): boolean => {
 };
 
 /**
+ * Memeriksa apakah NIS merupakan nilai default placeholder atau tidak valid untuk deduplikasi.
+ */
+export const isPlaceholderNis = (nis?: string): boolean => {
+  if (!nis) return true;
+  const d = cleanDigits(nis);
+  if (!d || d.length < 4) return true;
+  if (
+    d === '24251000' ||
+    d === '123456' ||
+    d === '12345' ||
+    d === '000000' ||
+    d === '999999' ||
+    /^0+$/.test(d) ||
+    /^1+$/.test(d)
+  ) {
+    return true;
+  }
+  return false;
+};
+
+/**
+ * Ekstrak nomor sekbid (1 s.d. 8) dari string kode, nama, atau jabatan.
+ */
+export const extractSekbidNumber = (str?: string): number | null => {
+  if (!str) return null;
+  const match = str.match(/sekbid\s*[-_]?\s*(\d+)/i) || str.match(/bidang\s*[-_]?\s*(\d+)/i);
+  if (match) {
+    const num = parseInt(match[1], 10);
+    if (!isNaN(num) && num >= 1 && num <= 8) return num;
+  }
+  return null;
+};
+
+/**
  * Check if a UserProfile and OsimMember represent the exact same individual or position.
  */
 export const isOsimMemberUserMatch = (u: UserProfile, m: OsimMember): boolean => {
   if (!u || !m) return false;
+
+  // Guard: Jangan pernah mencocokkan jika berasal dari Sekbid yang berbeda
+  const uSekbid = extractSekbidNumber(u.osimDepartmentCode) || extractSekbidNumber(u.osimDepartmentName) || extractSekbidNumber(u.osimPosition);
+  const mSekbid = extractSekbidNumber(m.sekbid) || extractSekbidNumber(m.position);
+  if (uSekbid !== null && mSekbid !== null && uSekbid !== mSekbid) return false;
+
+  const uIsBph = u.osimDepartmentCode === 'BPH' || (u.osimDepartmentName && u.osimDepartmentName.includes('BPH')) || ['ketua', 'wakil', 'sekretaris', 'bendahara'].includes(u.osimRole || '') || ['user_osim_ketua', 'user_osim_wakil', 'user_osim_sekretaris', 'user_osim_bendahara'].includes(u.uid);
+  const mPos = (m.position || '').toLowerCase();
+  const mIsBph = Boolean((m.sekbid && m.sekbid.includes('BPH')) || (!mSekbid && (mPos.includes('umum') || mPos.includes('ketua') || mPos.includes('wakil') || mPos.includes('sekretaris') || mPos.includes('bendahara'))));
+  if ((uSekbid !== null && mIsBph) || (uIsBph && mSekbid !== null)) return false;
 
   // 1. Direct ID or userUid match
   if (u.uid === m.id || u.uid === `user_${m.id}`) return true;
@@ -271,12 +323,12 @@ export const isOsimMemberUserMatch = (u: UserProfile, m: OsimMember): boolean =>
   if (u.username && m.loginUsername && u.username.toLowerCase() === m.loginUsername.toLowerCase()) return true;
   if (u.username && m.username && u.username.toLowerCase() === m.username.toLowerCase()) return true;
 
-  // 3. NIS match and Canonical OSIM UID match (Strict pairwise equality only)
+  // 3. NIS match and Canonical OSIM UID match (Strict pairwise equality only for genuine, non-placeholder NIS)
   const uNis = cleanDigits(u.nip);
   const mNis = cleanDigits(m.studentNis);
-  if (uNis && mNis && uNis.length >= 4 && uNis === mNis) return true;
-  if (mNis && mNis.length >= 4 && (u.uid === `user_osim_${mNis}` || cleanDigits(u.username) === mNis)) return true;
-  if (uNis && uNis.length >= 4 && (m.id === `user_osim_${uNis}` || cleanDigits(m.loginUsername || m.username || '') === uNis)) return true;
+  if (uNis && mNis && !isPlaceholderNis(uNis) && !isPlaceholderNis(mNis) && uNis === mNis) return true;
+  if (mNis && !isPlaceholderNis(mNis) && (u.uid === `user_osim_${mNis}` || cleanDigits(u.username) === mNis)) return true;
+  if (uNis && !isPlaceholderNis(uNis) && (m.id === `user_osim_${uNis}` || cleanDigits(m.loginUsername || m.username || '') === uNis)) return true;
 
   // 4. Institutional or personal email match (must NOT be generic placeholder)
   if (u.email && m.email && !isGenericPlaceholderEmail(u.email) && !isGenericPlaceholderEmail(m.email) && u.email.trim().toLowerCase() === m.email.trim().toLowerCase()) return true;
@@ -348,6 +400,7 @@ export const isRandomOrLegacyArtifactUid = (uid?: string): boolean => {
   if (/^guru_\d+$/i.test(uid) || /^user_guru_\d+$/i.test(uid)) return false;
   if (/^osim_\d+$/i.test(uid) || /^user_osim_\d+$/i.test(uid)) return false;
   if (['user_osim_ketua', 'user_osim_wakil', 'user_osim_sekretaris', 'user_osim_bendahara'].includes(uid)) return false;
+  if (/^user_osim_sekbid_?\d+$/i.test(uid) || /^user_osim_dept_/i.test(uid)) return false;
   
   // 1. Timestamp acak 12+ digit: user_1712839...
   if (/^user_\d{12,}$/.test(uid)) return true;
@@ -380,31 +433,55 @@ export const resolveTidyUidForUser = (user: Partial<UserProfile>): string => {
     return cleanNip && cleanNip.length >= 4 ? `user_guru_bk_${cleanNip}` : 'user_guru_bk';
   }
   if (role === 'pengurus_osim' || role === 'anggota_osim') {
+    const pos = (user.osimPosition || user.position || '').toLowerCase();
+    const roleVal = (user.osimRole || '').toLowerCase();
+    const dName = (user.osimDepartmentName || '').toLowerCase();
+    const dCode = (user.osimDepartmentCode || '').toLowerCase();
+    const usr = (user.username || '').toLowerCase();
+
+    // 1. Check BPH first (Ketua Umum, Wakil Ketua, Sekretaris Umum, Bendahara Umum)
+    const isBph = dCode === 'bph' || dName.includes('bph') || (!dCode.includes('sekbid') && !pos.includes('sekbid') && (roleVal === 'ketua' || roleVal === 'wakil' || roleVal === 'sekretaris' || roleVal === 'bendahara'));
+    if (isBph) {
+      if (roleVal === 'ketua' || (pos.includes('ketua') && !pos.includes('wakil'))) return 'user_osim_ketua';
+      if (roleVal === 'wakil' || pos.includes('wakil')) return 'user_osim_wakil';
+      if (roleVal === 'sekretaris' || pos.includes('sekretaris')) return 'user_osim_sekretaris';
+      if (roleVal === 'bendahara' || pos.includes('bendahara') || user.isCashManager) return 'user_osim_bendahara';
+    }
+
+    // 2. Check Sekbid 1 s.d. 8 (Standard UID: user_osim_sekbid1 s.d. user_osim_sekbid8)
+    const sekbidMatch = (dCode + ' ' + dName + ' ' + pos + ' ' + usr).match(/sekbid\s*[-_]?\s*(\d+)/i) ||
+                        (dCode + ' ' + dName + ' ' + pos).match(/bidang\s*[-_]?\s*(\d+)/i);
+    if (sekbidMatch) {
+      return `user_osim_sekbid${sekbidMatch[1]}`;
+    }
+
+    // 3. Genuine non-placeholder NIS
     const cleanNis = user.nip ? cleanDigits(user.nip) : (user.studentNis ? cleanDigits(user.studentNis) : '');
-    if (cleanNis && cleanNis.length >= 4) {
+    if (cleanNis && !isPlaceholderNis(cleanNis)) {
       return `user_osim_${cleanNis}`;
     }
-    const pos = (user.osimPosition || user.osimRole || '').toLowerCase();
-    if (pos.includes('ketua') && !pos.includes('wakil') && !pos.includes('sekbid')) return 'user_osim_ketua';
-    if (pos.includes('wakil')) return 'user_osim_wakil';
-    if (pos.includes('sekretaris')) return 'user_osim_sekretaris';
-    if (pos.includes('bendahara')) return 'user_osim_bendahara';
 
-    if (user.uid && /^user_osim_\d+$/i.test(user.uid)) {
+    if (user.uid) {
+      const legacySekbidMatch = user.uid.match(/^user_osim_(?:dept_)?sekbid_?(\d+)$/i);
+      if (legacySekbidMatch) {
+        return `user_osim_sekbid${legacySekbidMatch[1]}`;
+      }
+    }
+    if (user.uid && /^user_osim_\d+$/i.test(user.uid) && !user.uid.includes('24251000')) {
       return user.uid;
     }
     if (user.uid && /^osim_\d+$/i.test(user.uid)) {
       return `user_${user.uid}`;
     }
     if (user.username && !user.username.includes('@')) {
-      const cleanU = user.username.replace(/[^a-zA-Z0-9_]/g, '');
+      const cleanU = user.username.replace(/[^a-zA-Z0-9_]/g, '_');
       if (cleanU && !cleanU.startsWith('osim_m_')) return `user_osim_${cleanU}`;
     }
     const safeName = (user.displayName || '').toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 15);
     if (safeName && safeName !== 'pengurus' && safeName !== 'anggota') {
       return `user_osim_${safeName}`;
     }
-    return 'user_osim_01';
+    return user.uid || 'user_osim_member';
   }
   if (user.nip && cleanDigits(user.nip).length >= 4) {
     return `user_guru_${cleanDigits(user.nip)}`;
@@ -464,10 +541,30 @@ export const deduplicateUsersList = (users: UserProfile[]): UserProfile[] => {
       duplicateIdx = result.findIndex(r => r.email && r.email.trim().toLowerCase() === email);
     } else if (username && seenUsernames.has(username)) {
       duplicateIdx = result.findIndex(r => r.username && r.username.trim().toLowerCase() === username);
-    } else if (cleanNip && cleanNip.length >= 4 && seenNips.has(cleanNip)) {
+    } else if (cleanNip && !isPlaceholderNis(cleanNip) && cleanNip.length >= 4 && seenNips.has(cleanNip)) {
       duplicateIdx = result.findIndex(r => cleanDigits(r.nip) === cleanNip);
     } else if (normName && normName.length >= 4 && seenNormNames.has(`${normName}_${u.role}`)) {
       duplicateIdx = result.findIndex(r => r.role === u.role && normalizeName(r.displayName) === normName);
+    }
+
+    if (duplicateIdx >= 0) {
+      const existing = result[duplicateIdx];
+      // GUARD: Jangan pernah menggabungkan dua pengurus OSIM dari Sekbid yang berbeda atau Sekbid dengan BPH
+      const uIsOsim = u.role === 'anggota_osim' || u.role === 'pengurus_osim';
+      const exIsOsim = existing.role === 'anggota_osim' || existing.role === 'pengurus_osim';
+      const uSekbid = extractSekbidNumber(u.osimDepartmentCode) || extractSekbidNumber(u.osimDepartmentName) || extractSekbidNumber(u.osimPosition);
+      const exSekbid = extractSekbidNumber(existing.osimDepartmentCode) || extractSekbidNumber(existing.osimDepartmentName) || extractSekbidNumber(existing.osimPosition);
+
+      const uIsBph = u.osimDepartmentCode === 'BPH' || (u.osimDepartmentName && u.osimDepartmentName.includes('BPH')) || ['ketua', 'wakil', 'sekretaris', 'bendahara'].includes(u.osimRole || '') || ['user_osim_ketua', 'user_osim_wakil', 'user_osim_sekretaris', 'user_osim_bendahara'].includes(u.uid);
+      const exIsBph = existing.osimDepartmentCode === 'BPH' || (existing.osimDepartmentName && existing.osimDepartmentName.includes('BPH')) || ['ketua', 'wakil', 'sekretaris', 'bendahara'].includes(existing.osimRole || '') || ['user_osim_ketua', 'user_osim_wakil', 'user_osim_sekretaris', 'user_osim_bendahara'].includes(existing.uid);
+
+      if (uIsOsim && exIsOsim) {
+        if (uSekbid !== null && exSekbid !== null && uSekbid !== exSekbid) {
+          duplicateIdx = -1;
+        } else if ((uSekbid !== null && exIsBph) || (exSekbid !== null && uIsBph)) {
+          duplicateIdx = -1;
+        }
+      }
     }
 
     if (duplicateIdx >= 0) {
@@ -498,7 +595,7 @@ export const deduplicateUsersList = (users: UserProfile[]): UserProfile[] => {
       seenUids.add(u.uid);
       if (email && !isGenericEmail) seenEmails.add(email);
       if (username) seenUsernames.add(username);
-      if (cleanNip && cleanNip.length >= 4) seenNips.add(cleanNip);
+      if (cleanNip && !isPlaceholderNis(cleanNip) && cleanNip.length >= 4) seenNips.add(cleanNip);
       if (normName && (normName.length >= 4)) seenNormNames.add(`${normName}_${u.role}`);
       result.push(u);
     }
@@ -828,13 +925,23 @@ export const deduplicateOsimMembersList = (members: OsimMember[], masterStudents
     if (seenIds.has(m.id)) {
       duplicateIdx = result.findIndex(r => r.id === m.id);
     }
-    // 2. Match by Student NIS
-    else if (effectiveCleanNis && effectiveCleanNis.length >= 4 && seenNis.has(effectiveCleanNis)) {
+    // 2. Match by Student NIS (Genuine non-placeholder only)
+    else if (effectiveCleanNis && !isPlaceholderNis(effectiveCleanNis) && effectiveCleanNis.length >= 4 && seenNis.has(effectiveCleanNis)) {
       duplicateIdx = result.findIndex(r => cleanDigits(r.studentNis) === effectiveCleanNis);
     }
     // 3. Match by Normalized Student Name
     else if (effectiveNormName && effectiveNormName.length >= 4 && seenNormNames.has(effectiveNormName)) {
       duplicateIdx = result.findIndex(r => normalizeName(r.fullName) === effectiveNormName);
+    }
+
+    if (duplicateIdx >= 0) {
+      const existing = result[duplicateIdx];
+      // GUARD: Jika kedua anggota dari Sekbid berbeda dan nama tidak identik, jangan digabungkan
+      const mSekbid = extractSekbidNumber(m.sekbid) || extractSekbidNumber(m.position);
+      const exSekbid = extractSekbidNumber(existing.sekbid) || extractSekbidNumber(existing.position);
+      if (mSekbid !== null && exSekbid !== null && mSekbid !== exSekbid && effectiveNormName !== normalizeName(existing.fullName)) {
+        duplicateIdx = -1;
+      }
     }
 
     if (duplicateIdx >= 0) {
@@ -854,7 +961,7 @@ export const deduplicateOsimMembersList = (members: OsimMember[], masterStudents
       result[duplicateIdx] = merged;
     } else {
       seenIds.add(m.id);
-      if (effectiveCleanNis && effectiveCleanNis.length >= 4) seenNis.add(effectiveCleanNis);
+      if (effectiveCleanNis && !isPlaceholderNis(effectiveCleanNis) && effectiveCleanNis.length >= 4) seenNis.add(effectiveCleanNis);
       if (effectiveNormName && effectiveNormName.length >= 4) seenNormNames.add(effectiveNormName);
       result.push(refreshedMember);
     }

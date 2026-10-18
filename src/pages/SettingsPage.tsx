@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Settings,
   Building,
@@ -80,6 +80,9 @@ const RIGHT_LOGO_PRESETS = [
 
 export const SettingsPage: React.FC = () => {
   const { currentUser, switchRole, userRole, isSuperAdmin, isWaka, isPembinaOsim, isPembinaEkskul } = useAuth();
+  const isAdmin = useMemo(() => {
+    return Boolean(isSuperAdmin || (currentUser && (currentUser.role === 'super_admin' || currentUser.role === 'admin_kesiswaan')));
+  }, [isSuperAdmin, currentUser]);
   const { toast } = useToast();
   const {
     schoolInfo,
@@ -571,8 +574,8 @@ export const SettingsPage: React.FC = () => {
       {/* 2. Zona Waktu & Sinkronisasi Waktu Aplikasi */}
       <TimezoneSettingsCard />
 
-      {/* 3. Pengaturan Tampilan, Mode & Tema Warna */}
-      <ThemeSettingsCard />
+      {/* 3. Pengaturan Tampilan, Mode & Tema Warna (Khusus Administrator) */}
+      {isAdmin && <ThemeSettingsCard />}
 
       {/* 4. Form Identitas Sekolah & Logo Kop Surat */}
       <form onSubmit={handleSaveSchoolInfo} className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 p-6 shadow-sm space-y-6">

@@ -125,7 +125,8 @@ import {
   getCanonicalBphPositionKey,
   cleanDigits,
   normalizeName,
-  sortTeachersByHierarchy
+  sortTeachersByHierarchy,
+  isPlaceholderNis
 } from '../utils/syncUtils';
 
 interface SchoolContextType {
@@ -261,6 +262,7 @@ interface SchoolContextType {
   addAchievement: (data: Omit<StudentAchievement, 'id' | 'createdAt'>) => Promise<void>;
   updateAchievement: (id: string, data: Partial<StudentAchievement>) => Promise<void>;
   deleteAchievement: (id: string, arg2?: any, arg3?: any) => Promise<void>;
+  syncStudentAchievementPoints: (targetStudentId: string, currentAchievementsList?: StudentAchievement[]) => Promise<number>;
 
   // Permissions
   addPermission: (data: Omit<StudentPermission, 'id' | 'createdAt'>) => Promise<void>;
@@ -478,7 +480,18 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [homeVisits, setHomeVisits] = useState<HomeVisitRecord[]>(INITIAL_HOME_VISITS);
   const [parentCallLetters, setParentCallLetters] = useState<ParentCallLetter[]>(INITIAL_PARENT_CALL_LETTERS);
   const [careerGuidances, setCareerGuidances] = useState<CareerGuidanceRecord[]>(INITIAL_CAREER_GUIDANCES);
-  const [achievements, setAchievements] = useState<StudentAchievement[]>(INITIAL_ACHIEVEMENTS);
+  const [achievements, setAchievements] = useState<StudentAchievement[]>(() => {
+    try {
+      const saved = localStorage.getItem('sim_achievements');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (e) {}
+    return INITIAL_ACHIEVEMENTS;
+  });
   const [permissions, setPermissions] = useState<StudentPermission[]>(INITIAL_PERMISSIONS);
   const [needsRequests, setNeedsRequests] = useState<NeedsRequest[]>(INITIAL_NEEDS_REQUESTS);
   const [osimMembers, setOsimMembers] = useState<OsimMember[]>(() => (INITIAL_OSIM_MEMBERS || []).filter((o: any) => o.id !== 'om1' && !o.isDeleted));
@@ -488,8 +501,27 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [osimDepartments, setOsimDepartments] = useState<OsimDepartment[]>(INITIAL_OSIM_DEPARTMENTS);
   const [cashAccounts, setCashAccounts] = useState<CashAccount[]>(INITIAL_CASH_ACCOUNTS);
   const [cashTransactions, setCashTransactions] = useState<CashTransaction[]>(INITIAL_CASH_TRANSACTIONS);
-  const [schoolRules, setSchoolRules] = useState<SchoolRuleArticle[]>(INITIAL_SCHOOL_RULES);
-  const [handbookMeta, setHandbookMeta] = useState<SchoolHandbookMeta>(INITIAL_HANDBOOK_META);
+  const [schoolRules, setSchoolRules] = useState<SchoolRuleArticle[]>(() => {
+    try {
+      const saved = localStorage.getItem('sim_school_rules');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch (e) {}
+    return INITIAL_SCHOOL_RULES;
+  });
+  const [handbookMeta, setHandbookMeta] = useState<SchoolHandbookMeta>(() => {
+    try {
+      const saved = localStorage.getItem('sim_handbook_meta');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {}
+    return INITIAL_HANDBOOK_META;
+  });
   const [announcements, setAnnouncements] = useState<Announcement[]>(INITIAL_ANNOUNCEMENTS);
   const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>(INITIAL_AUDIT_LOGS);
@@ -953,14 +985,39 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             localStorage.setItem('sim_violations', JSON.stringify(loadedViol));
           } catch (e) {}
 
-          // Achievements Sync
-          const achSnap = await getDocs(collection(db, 'achievements'));
-          const loadedAch: StudentAchievement[] = [];
-          achSnap.forEach(doc => loadedAch.push({ id: doc.id, ...doc.data() } as StudentAchievement));
-          setAchievements(loadedAch);
+          // Achievements Sync (Resilient merge)
           try {
-            localStorage.setItem('sim_achievements', JSON.stringify(loadedAch));
-          } catch (e) {}
+            const achSnap = await getDocs(collection(db, 'achievements'));
+            const loadedAch: StudentAchievement[] = [];
+            achSnap.forEach(doc => loadedAch.push({ id: doc.id, ...doc.data() } as StudentAchievement));
+
+            const achMap = new Map<string, StudentAchievement>();
+            loadedAch.forEach(a => achMap.set(a.id, a));
+
+            // Preserve local additions that haven't synced to Firestore yet
+            try {
+              const cachedRaw = localStorage.getItem('sim_achievements');
+              if (cachedRaw) {
+                const cachedAchs: StudentAchievement[] = JSON.parse(cachedRaw);
+                if (Array.isArray(cachedAchs)) {
+                  cachedAchs.forEach(ca => {
+                    if (ca && ca.id && !achMap.has(ca.id)) {
+                      achMap.set(ca.id, ca);
+                      setDoc(doc(db, 'achievements', ca.id), ca).catch(() => {});
+                    }
+                  });
+                }
+              }
+            } catch (e) {}
+
+            const finalAchs = Array.from(achMap.values());
+            setAchievements(finalAchs);
+            try {
+              localStorage.setItem('sim_achievements', JSON.stringify(finalAchs));
+            } catch (e) {}
+          } catch (achErr) {
+            console.warn('[SchoolContext] Gagal sync achievements dari Firestore:', achErr);
+          }
 
           // BK Collections Sync (Strictly Restricted to Guru BK and Waka/Admin with active Firebase Auth session)
           const isBkOrAdminUser = currentUser && ['super_admin', 'admin', 'waka_kesiswaan', 'waka', 'admin_kesiswaan', 'guru_bk', 'bk'].includes(currentUser.role);
@@ -1127,39 +1184,68 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             } catch (cashErr) {}
           }
 
-          // School Rules Sync
-          const rulesSnap = await getDocs(collection(db, 'school_rules'));
-          if (!rulesSnap.empty) {
+          // School Rules Sync (Resilient two-way merge & anti-wipe)
+          try {
+            const rulesSnap = await getDocs(collection(db, 'school_rules'));
             const loadedRules: SchoolRuleArticle[] = [];
             rulesSnap.forEach(doc => loadedRules.push({ id: doc.id, ...doc.data() } as SchoolRuleArticle));
-            if (loadedRules.some(r => r.code?.startsWith('KH-'))) {
-              setSchoolRules(loadedRules);
+
+            if (loadedRules.length > 0) {
+              const mergedMap = new Map<string, SchoolRuleArticle>();
+              // Base rules
+              INITIAL_SCHOOL_RULES.forEach(r => mergedMap.set(r.id, r));
+              // Overlay with Firestore rules (includes admin edits and custom rules)
+              loadedRules.forEach(r => mergedMap.set(r.id, r));
+
+              // Preserve any locally cached custom rules that have not reached Firestore yet
               try {
-                localStorage.setItem('sim_school_rules', JSON.stringify(loadedRules));
+                const cachedRaw = localStorage.getItem('sim_school_rules');
+                if (cachedRaw) {
+                  const cachedRules: SchoolRuleArticle[] = JSON.parse(cachedRaw);
+                  if (Array.isArray(cachedRules)) {
+                    cachedRules.forEach(cr => {
+                      if (cr && cr.id && !mergedMap.has(cr.id)) {
+                        mergedMap.set(cr.id, cr);
+                        setDoc(doc(db, 'school_rules', cr.id), cr).catch(() => {});
+                      }
+                    });
+                  }
+                }
+              } catch (e) {}
+
+              const finalRules = Array.from(mergedMap.values());
+              setSchoolRules(finalRules);
+              try {
+                localStorage.setItem('sim_school_rules', JSON.stringify(finalRules));
               } catch (e) {}
             } else {
-              // Non-destructive update: seed official Decree B-380 rules
-              if (auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
-                for (const r of INITIAL_SCHOOL_RULES) {
-                  setDoc(doc(db, 'school_rules', r.id), r).catch(() => {});
-                }
-              }
-              setSchoolRules(INITIAL_SCHOOL_RULES);
+              // Firestore is completely empty. Seed official rules and preserve any local custom additions.
+              let localCustom: SchoolRuleArticle[] = [];
               try {
-                localStorage.setItem('sim_school_rules', JSON.stringify(INITIAL_SCHOOL_RULES));
+                const cachedRaw = localStorage.getItem('sim_school_rules');
+                if (cachedRaw) {
+                  const parsed = JSON.parse(cachedRaw);
+                  if (Array.isArray(parsed)) localCustom = parsed;
+                }
               } catch (e) {}
-            }
-          } else {
-            // Seed official Decree B-380 rules
-            if (auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
-              for (const r of INITIAL_SCHOOL_RULES) {
+
+              const mergedMap = new Map<string, SchoolRuleArticle>();
+              INITIAL_SCHOOL_RULES.forEach(r => mergedMap.set(r.id, r));
+              localCustom.forEach(r => mergedMap.set(r.id, r));
+              const finalRules = Array.from(mergedMap.values());
+
+              setSchoolRules(finalRules);
+              try {
+                localStorage.setItem('sim_school_rules', JSON.stringify(finalRules));
+              } catch (e) {}
+
+              // Seed Firestore so rules persist permanently
+              for (const r of finalRules) {
                 setDoc(doc(db, 'school_rules', r.id), r).catch(() => {});
               }
             }
-            setSchoolRules(INITIAL_SCHOOL_RULES);
-            try {
-              localStorage.setItem('sim_school_rules', JSON.stringify(INITIAL_SCHOOL_RULES));
-            } catch (e) {}
+          } catch (ruleErr) {
+            console.warn('[SchoolContext] Gagal sync aturan dari Firestore, menggunakan cache lokal:', ruleErr);
           }
 
           // Handbook Meta Sync
@@ -1487,14 +1573,25 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // 9. Real-time Achievements Listener (Public)
     try {
       const unsub = onSnapshot(collection(db, 'achievements'), (snapshot) => {
-        const loaded: Achievement[] = [];
+        const loaded: StudentAchievement[] = [];
         snapshot.forEach(docSnap => {
-          loaded.push({ id: docSnap.id, ...docSnap.data() } as Achievement);
+          loaded.push({ id: docSnap.id, ...docSnap.data() } as StudentAchievement);
         });
-        setAchievements(loaded);
-        try {
-          localStorage.setItem('sim_achievements', JSON.stringify(loaded));
-        } catch (e) {}
+        setAchievements(prevAchs => {
+          const achMap = new Map<string, StudentAchievement>();
+          loaded.forEach(a => achMap.set(a.id, a));
+          // Preserve local additions that haven't synced to Firestore yet
+          prevAchs.forEach(pa => {
+            if (pa && pa.id && !achMap.has(pa.id)) {
+              achMap.set(pa.id, pa);
+            }
+          });
+          const finalAchs = Array.from(achMap.values());
+          try {
+            localStorage.setItem('sim_achievements', JSON.stringify(finalAchs));
+          } catch (e) {}
+          return finalAchs;
+        });
       }, (err) => {
         if (isPermissionError(err)) {
           console.warn('[Firestore] Izin baca ditolak untuk achievements:', err);
@@ -1825,6 +1922,33 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           console.warn('[Firestore] Izin baca ditolak untuk osim_programs:', err);
         } else {
           handleFirestoreError(err, OperationType.GET, 'osim_programs');
+        }
+      });
+      unsubscribers.push(unsub);
+    } catch (e) {}
+
+    // School Rules Listener
+    try {
+      const unsub = onSnapshot(collection(db, 'school_rules'), (snapshot) => {
+        if (!snapshot.empty) {
+          const loaded: SchoolRuleArticle[] = [];
+          snapshot.forEach(docSnap => {
+            loaded.push({ id: docSnap.id, ...docSnap.data() } as SchoolRuleArticle);
+          });
+          const mergedMap = new Map<string, SchoolRuleArticle>();
+          INITIAL_SCHOOL_RULES.forEach(r => mergedMap.set(r.id, r));
+          loaded.forEach(r => mergedMap.set(r.id, r));
+          const finalRules = Array.from(mergedMap.values());
+          setSchoolRules(finalRules);
+          try {
+            localStorage.setItem('sim_school_rules', JSON.stringify(finalRules));
+          } catch (e) {}
+        }
+      }, (err) => {
+        if (isPermissionError(err)) {
+          console.warn('[Firestore] Izin baca ditolak untuk school_rules:', err);
+        } else {
+          handleFirestoreError(err, OperationType.GET, 'school_rules');
         }
       });
       unsubscribers.push(unsub);
@@ -4036,21 +4160,26 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         const normUserName = normalizeName(user.displayName);
 
         const idx = prev.findIndex(m => {
+          const memberSekbidNum = extractSekbidNumber(m.sekbid) || extractSekbidNumber(m.position);
+          // Guard: Jangan pernah mencocokkan jika berasal dari Sekbid yang berbeda
+          if (userSekbidNum !== null && memberSekbidNum !== null && userSekbidNum !== memberSekbidNum) return false;
+          // Guard: Jangan pernah mencocokkan Sekbid dengan BPH
+          if ((userSekbidNum !== null && isBphMember(m)) || (isUserBph && memberSekbidNum !== null)) return false;
+
           // 0. Use dedicated relational isOsimMemberUserMatch
           if (isOsimMemberUserMatch(user, m)) return true;
           // 1. Direct ID / userUid match
           if (m.id === user.uid || (m as any).userUid === user.uid) return true;
           // 2. Exact email match
           if (cleanUserEmail && m.email && m.email.trim().toLowerCase() === cleanUserEmail) return true;
-          // 3. NIS match
-          if (cleanUserNis && cleanUserNis.length >= 4 && m.studentNis && cleanDigits(m.studentNis) === cleanUserNis) return true;
+          // 3. NIS match (Hanya jika NIS valid dan bukan placeholder '24251000')
+          if (cleanUserNis && !isPlaceholderNis(cleanUserNis) && cleanUserNis.length >= 4 && m.studentNis && cleanDigits(m.studentNis) === cleanUserNis) return true;
           // 4. Exact full name match
-          if (normUserName && normUserName.length >= 3 && normalizeName(m.fullName) === normUserName) return true;
+          if (normUserName && normUserName.length >= 4 && normalizeName(m.fullName) === normUserName) return true;
           if (user.username && (m.loginUsername === user.username || m.username === user.username)) return true;
 
           // 5. Fallback Sekbid matching (only if username or department code explicitly matches this sekbid)
           if (userSekbidNum !== null && (user.username?.includes(`sekbid${userSekbidNum}`) || user.osimDepartmentCode?.includes(`${userSekbidNum}`))) {
-            const memberSekbidNum = extractSekbidNumber(m.sekbid) || extractSekbidNumber(m.position);
             if (memberSekbidNum === userSekbidNum) return true;
           }
 
@@ -4074,7 +4203,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             }
           }
 
-          if (oldUser?.displayName && m.fullName.toLowerCase().trim() === oldUser.displayName.toLowerCase().trim()) return true;
+          if (oldUser?.displayName && m.fullName.toLowerCase().trim() === oldUser.displayName.toLowerCase().trim() && (userSekbidNum === null || memberSekbidNum === userSekbidNum)) return true;
           return false;
         });
 
@@ -4105,15 +4234,22 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           } catch (e) {}
           return updated;
         } else {
-          // If member does not exist in osimMembers yet, create it so Pembina can view and manage it
+          // Hanya buat anggota baru jika BUKAN nama dummy generik dan BUKAN UID yang sudah dihapus
+          const isGenericPlaceholder = /^(ketua|wakil|sekretaris|bendahara|koordinator|pengurus|anggota)\s*(umum|osim|sekbid|\d)*$/i.test(cleanName) ||
+            cleanName === 'Ketua Umum OSIM' || cleanName.startsWith('Ketua Sekbid');
+          if (isGenericPlaceholder || isDeletedUid(user.uid) || isDeletedUid(`user_${user.uid}`)) {
+            return prev;
+          }
+
           const sekbidVal = isUserBph
             ? 'BPH (Badan Pengurus Harian)'
             : (normalizeSekbidName(user.osimDepartmentName) || (userSekbidNum ? `Sekbid ${userSekbidNum}` : 'Sekbid 1: Keimanan, Ketaqwaan & Moderasi Beragama'));
+          const defaultClass = classes && classes.length > 0 ? classes[0].name : '';
           const newMember: OsimMember = {
             id: user.uid,
             fullName: cleanName,
-            studentNis: user.nip || '24251000',
-            className: user.studentClass || 'XI MIPA 1',
+            studentNis: user.nip || '',
+            className: user.studentClass || defaultClass,
             position: (user.osimPosition as any) || (isUserBph ? 'Pengurus BPH' : `Ketua ${user.osimDepartmentCode || 'Sekbid'}`),
             sekbid: sekbidVal,
             phone: user.phone || '-',
@@ -6019,45 +6155,116 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     } catch (e) {}
   };
 
-  // Achievements
+  // Achievements (Penghargaan / Prestasi Siswa)
+  const syncStudentAchievementPoints = async (targetStudentId: string, currentAchievementsList?: StudentAchievement[]) => {
+    if (!targetStudentId) return 0;
+    const list = currentAchievementsList || achievements;
+    const activeStudentAchs = list.filter(a => a.studentId === targetStudentId);
+    const calculatedPoints = activeStudentAchs.reduce((sum, a) => sum + (Number(a.pointsAwarded) || 0), 0);
+
+    // Update state in memory & localStorage
+    setStudents(prev => {
+      const updated = prev.map(s => s.id === targetStudentId ? { ...s, achievementPoints: calculatedPoints } : s);
+      try {
+        localStorage.setItem('sim_students', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+
+    // Persist to Firestore
+    try {
+      await updateDoc(doc(db, 'students', targetStudentId), { achievementPoints: calculatedPoints });
+    } catch (e) {
+      try {
+        await setDoc(doc(db, 'students', targetStudentId), { achievementPoints: calculatedPoints }, { merge: true });
+      } catch (innerErr) {}
+    }
+
+    return calculatedPoints;
+  };
+
   const addAchievement = async (data: Omit<StudentAchievement, 'id' | 'createdAt'>) => {
     const newAch: StudentAchievement = {
-      id: `ach_${Date.now()}`,
+      id: `ach_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
       ...data,
+      pointsAwarded: Number(data.pointsAwarded) || 0,
       createdAt: new Date().toISOString().split('T')[0]
     };
-    setAchievements(prev => [newAch, ...prev]);
-    // add achievement points
-    setStudents(prev => prev.map(s => {
-      if (s.id === data.studentId) {
-        return { ...s, achievementPoints: (s.achievementPoints || 0) + (data.pointsAwarded || 0) };
-      }
-      return s;
-    }));
+    const updatedAchievements = [newAch, ...achievements];
+    setAchievements(updatedAchievements);
     try {
-      if (auth.currentUser) {
-        setDoc(doc(db, 'achievements', newAch.id), newAch).catch(() => {});
-      }
+      localStorage.setItem('sim_achievements', JSON.stringify(updatedAchievements));
     } catch (e) {}
-    logAction('RECORD_ACHIEVEMENT', 'Prestasi Siswa', `Mencatat prestasi: ${data.title} oleh ${data.studentName}`);
+
+    // Atomically recalculate and sync student achievement points
+    if (data.studentId) {
+      await syncStudentAchievementPoints(data.studentId, updatedAchievements);
+    }
+
+    try {
+      await setDoc(doc(db, 'achievements', newAch.id), newAch);
+    } catch (e) {
+      console.warn('[SchoolContext] Gagal simpan achievement ke Firebase Firestore:', e);
+    }
+    logAction('RECORD_ACHIEVEMENT', 'Prestasi Siswa', `Mencatat prestasi: ${data.title} oleh ${data.studentName} (+${newAch.pointsAwarded} poin)`);
   };
 
   const updateAchievement = async (id: string, data: Partial<StudentAchievement>) => {
-    setAchievements(prev => prev.map(a => a.id === id ? { ...a, ...data } : a));
-    try {
-      if (auth.currentUser) {
-        updateDoc(doc(db, 'achievements', id), data).catch(() => {});
+    let targetStudentId = '';
+    const updatedAchievements = achievements.map(a => {
+      if (a.id === id) {
+        targetStudentId = data.studentId || a.studentId;
+        return {
+          ...a,
+          ...data,
+          pointsAwarded: data.pointsAwarded !== undefined ? Number(data.pointsAwarded) : a.pointsAwarded
+        };
       }
+      return a;
+    });
+    setAchievements(updatedAchievements);
+    try {
+      localStorage.setItem('sim_achievements', JSON.stringify(updatedAchievements));
     } catch (e) {}
+
+    if (targetStudentId) {
+      await syncStudentAchievementPoints(targetStudentId, updatedAchievements);
+    }
+
+    try {
+      await updateDoc(doc(db, 'achievements', id), data);
+    } catch (e) {
+      try {
+        const full = updatedAchievements.find(a => a.id === id);
+        if (full) {
+          await setDoc(doc(db, 'achievements', id), full);
+        }
+      } catch (innerErr) {
+        console.warn('[SchoolContext] Gagal update achievement di Firebase:', innerErr);
+      }
+    }
+    logAction('UPDATE_ACHIEVEMENT', 'Prestasi Siswa', `Memperbarui prestasi ID ${id}`);
   };
 
   const deleteAchievement = async (id: string, _arg2?: any, _arg3?: any) => {
-    setAchievements(prev => prev.filter(a => a.id !== id));
+    const target = achievements.find(a => a.id === id);
+    const targetStudentId = target?.studentId || _arg2;
+    const updatedAchievements = achievements.filter(a => a.id !== id);
+    setAchievements(updatedAchievements);
     try {
-      if (auth.currentUser) {
-        deleteDoc(doc(db, 'achievements', id)).catch(() => {});
-      }
+      localStorage.setItem('sim_achievements', JSON.stringify(updatedAchievements));
     } catch (e) {}
+
+    if (targetStudentId) {
+      await syncStudentAchievementPoints(targetStudentId, updatedAchievements);
+    }
+
+    try {
+      await deleteDoc(doc(db, 'achievements', id));
+    } catch (e) {
+      console.warn('[SchoolContext] Gagal hapus achievement dari Firebase:', e);
+    }
+    logAction('DELETE_ACHIEVEMENT', 'Prestasi Siswa', `Menghapus data prestasi: ${target?.title || id}`);
   };
 
   // Permissions
@@ -6952,12 +7159,18 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       updatedAt: new Date().toISOString(),
       updatedBy: currentUser?.displayName || 'Admin Kesiswaan'
     };
-    setSchoolRules(prev => [...prev, newRule]);
+    setSchoolRules(prev => {
+      const updated = [...prev, newRule];
+      try {
+        localStorage.setItem('sim_school_rules', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
     try {
-      if (auth.currentUser) {
-        setDoc(doc(db, 'school_rules', newRule.id), newRule).catch(() => {});
-      }
-    } catch (e) {}
+      await setDoc(doc(db, 'school_rules', newRule.id), newRule);
+    } catch (e) {
+      console.warn('[SchoolContext] Gagal simpan pasal ke Firebase Firestore:', e);
+    }
     logAction('ADD_SCHOOL_RULE', 'Buku Tata Tertib', `Menambahkan pasal tata tertib: ${newRule.articleNumber} - ${newRule.title}`);
   };
 
@@ -6967,23 +7180,42 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       updatedAt: new Date().toISOString(),
       updatedBy: currentUser?.displayName || 'Admin Kesiswaan'
     };
-    setSchoolRules(prev => prev.map(r => r.id === id ? { ...r, ...updatedData } : r));
+    setSchoolRules(prev => {
+      const updated = prev.map(r => r.id === id ? { ...r, ...updatedData } : r);
+      try {
+        localStorage.setItem('sim_school_rules', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
     try {
-      if (auth.currentUser) {
-        updateDoc(doc(db, 'school_rules', id), updatedData).catch(() => {});
+      await updateDoc(doc(db, 'school_rules', id), updatedData);
+    } catch (e) {
+      try {
+        const fullRule = schoolRules.find(r => r.id === id);
+        if (fullRule) {
+          await setDoc(doc(db, 'school_rules', id), { ...fullRule, ...updatedData });
+        }
+      } catch (innerErr) {
+        console.warn('[SchoolContext] Gagal update pasal ke Firebase:', innerErr);
       }
-    } catch (e) {}
+    }
     logAction('UPDATE_SCHOOL_RULE', 'Buku Tata Tertib', `Memperbarui aturan tata tertib: ${data.articleNumber || ''} ${data.title || id}`);
   };
 
   const deleteSchoolRule = async (id: string) => {
     const target = schoolRules.find(r => r.id === id);
-    setSchoolRules(prev => prev.filter(r => r.id !== id));
+    setSchoolRules(prev => {
+      const updated = prev.filter(r => r.id !== id);
+      try {
+        localStorage.setItem('sim_school_rules', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
     try {
-      if (auth.currentUser) {
-        deleteDoc(doc(db, 'school_rules', id)).catch(() => {});
-      }
-    } catch (e) {}
+      await deleteDoc(doc(db, 'school_rules', id));
+    } catch (e) {
+      console.warn('[SchoolContext] Gagal hapus pasal dari Firebase:', e);
+    }
     logAction('DELETE_SCHOOL_RULE', 'Buku Tata Tertib', `Menghapus pasal aturan: ${target?.articleNumber || ''} ${target?.title || id}`);
   };
 
@@ -6991,12 +7223,14 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     setSchoolRules(INITIAL_SCHOOL_RULES);
     setHandbookMeta(INITIAL_HANDBOOK_META);
     try {
-      if (auth.currentUser) {
-        for (const r of INITIAL_SCHOOL_RULES) {
-          setDoc(doc(db, 'school_rules', r.id), r).catch(() => {});
-        }
-        setDoc(doc(db, 'settings', 'handbook_meta'), INITIAL_HANDBOOK_META).catch(() => {});
+      localStorage.setItem('sim_school_rules', JSON.stringify(INITIAL_SCHOOL_RULES));
+      localStorage.setItem('sim_handbook_meta', JSON.stringify(INITIAL_HANDBOOK_META));
+    } catch (e) {}
+    try {
+      for (const r of INITIAL_SCHOOL_RULES) {
+        setDoc(doc(db, 'school_rules', r.id), r).catch(() => {});
       }
+      setDoc(doc(db, 'settings', 'handbook_meta'), INITIAL_HANDBOOK_META).catch(() => {});
     } catch (e) {}
     logAction('RESET_SCHOOL_RULES', 'Buku Tata Tertib', 'Mereset pasal aturan tata tertib ke standar baku nasional');
   };
@@ -7137,6 +7371,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         addAchievement,
         updateAchievement,
         deleteAchievement,
+        syncStudentAchievementPoints,
         addPermission,
         updatePermission,
         deletePermission,
