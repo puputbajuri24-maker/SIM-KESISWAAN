@@ -3,6 +3,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { auth, db } from '../services/firebase';
 import { handleFirestoreError, OperationType, isPermissionError } from '../services/firestoreErrors';
 import { doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { isStandardTidyUid, isRandomOrLegacyArtifactUid } from '../utils/syncUtils';
 
 export type ThemeMode = 'dark' | 'light' | 'system';
 export type ThemePalette = 'navy' | 'emerald' | 'indigo' | 'sunset' | 'slate';
@@ -261,7 +262,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         });
       }
 
-      // 2. Also save to user doc if logged in
+      // 2. Also save to user doc ONLY if logged in with a strictly standard tidy UID
       let uid: string | null = null;
       try {
         const sessionUser = sessionStorage.getItem('sim_kesiswaan_session_user');
@@ -270,10 +271,9 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           uid = parsed?.uid || null;
         }
       } catch {}
-      if (!uid && auth.currentUser) {
-        uid = auth.currentUser.uid;
-      }
-      if (uid && auth.currentUser) {
+
+      // CRITICAL: NEVER write raw auth.currentUser.uid if it is a random alphanumeric artifact!
+      if (uid && isStandardTidyUid(uid) && !isRandomOrLegacyArtifactUid(uid) && auth.currentUser) {
         setDoc(doc(db, 'users', uid), {
           themePreference: updatedPref
         }, { merge: true }).catch((err) => {

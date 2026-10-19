@@ -77,7 +77,7 @@ import {
   getInitialsColorTheme
 } from '../utils/initials';
 import { getDefaultOsimPassword } from '../services/seedData';
-import { getUserSlipCredentials } from '../utils/osimAccountHelper';
+import { getUserSlipCredentials, isEligibleOsimAccount, isBphMember, isKetuaSekbid, isAnggotaSekbid } from '../utils/osimAccountHelper';
 import { getEkskulTheme } from '../utils/ekskulColors';
 import { getUserHierarchyClassification, sortUsersByHierarchy, canonicalizeAssignedEkskulIds, cleanDigits, isTeacherUserMatch, isOsimMemberUserMatch, isPlaceholderNis, extractSekbidNumber } from '../utils/syncUtils';
 import { canResetUserPassword } from '../utils/rbacRules';
@@ -181,7 +181,7 @@ export const CPanelPage: React.FC = () => {
   );
   const pembinaOsimUsers = useMemo(() => allUsers.filter(u => u.role === 'pembina_osim'), [allUsers]);
   const osimPengurusUsers = useMemo(
-    () => allUsers.filter(u => u.role === 'anggota_osim' || u.role === 'pengurus_osim'),
+    () => allUsers.filter(u => (u.role === 'anggota_osim' || u.role === 'pengurus_osim') && !isAnggotaSekbid(u as any)),
     [allUsers]
   );
   const wakaUsers = useMemo(() => allUsers.filter(u => u.role === 'waka_kesiswaan' || (u.role as string) === 'waka'), [allUsers]);
@@ -669,6 +669,10 @@ Alamat Sistem : ${window.location.origin}
   };
 
   const handleSelectOsimMemberForAccount = (m: OsimMember) => {
+    if (!isEligibleOsimAccount(m)) {
+      showToast('Sesuai aturan sistem, akun login OSIM di cPanel hanya untuk BPH dan Ketua Sekbid. Anggota Sekbid tidak diperbolehkan memiliki akun login.', 'error');
+      return;
+    }
     setSelectedOsimMemberForAccount(m);
     setIsChangingOsimMemberForAccount(false);
     const cleanNis = cleanDigits(m.studentNis);
@@ -715,9 +719,14 @@ Alamat Sistem : ${window.location.origin}
     });
   }, [teachers, allUsers]);
 
-  // Daftar pengurus OSIM (BPH & Sekbid) yang belum diaktifkan akun loginnya
+  // Daftar pengurus OSIM resmi yang berhak memiliki akun login (HANYA BPH & Ketua Sekbid)
+  const eligibleOsimMembers = useMemo(() => {
+    return osimMembers.filter(m => isEligibleOsimAccount(m));
+  }, [osimMembers]);
+
+  // Daftar pengurus OSIM (BPH & Ketua Sekbid) yang belum diaktifkan akun loginnya
   const pendingOsimMembers = useMemo(() => {
-    return osimMembers.filter(m => {
+    return eligibleOsimMembers.filter(m => {
       if (m.isLoginActive === true || m.accountStatus === 'active') return false;
       const cleanNis = cleanDigits(m.studentNis);
       const matched = allUsers.find(u =>
@@ -733,10 +742,10 @@ Alamat Sistem : ${window.location.origin}
       }
       return true;
     });
-  }, [osimMembers, allUsers]);
+  }, [eligibleOsimMembers, allUsers]);
 
   const filteredOsimMembersForAdd = useMemo(() => {
-    let list = pendingOsimMembers.length > 0 ? pendingOsimMembers : osimMembers;
+    let list = pendingOsimMembers.length > 0 ? pendingOsimMembers : eligibleOsimMembers;
     if (addOsimMemberSearchTerm.trim()) {
       const q = addOsimMemberSearchTerm.toLowerCase();
       list = list.filter(m =>
@@ -748,7 +757,7 @@ Alamat Sistem : ${window.location.origin}
       );
     }
     return list;
-  }, [pendingOsimMembers, osimMembers, addOsimMemberSearchTerm]);
+  }, [pendingOsimMembers, eligibleOsimMembers, addOsimMemberSearchTerm]);
 
   const handleOpenActivateModal = (target?: UserProfile | Teacher | OsimMember) => {
     setShowPasswordInModal(false);
@@ -757,6 +766,10 @@ Alamat Sistem : ${window.location.origin}
       // 1. Target adalah Profil Pengurus OSIM dari Menu OSIM
       if ('studentNis' in target && !('displayName' in target)) {
         const m = target as OsimMember;
+        if (!isEligibleOsimAccount(m)) {
+          showToast('Sesuai aturan sistem, akun login OSIM di cPanel hanya diperuntukkan bagi BPH dan Ketua Sekbid. Anggota Sekbid tidak memiliki akun login.', 'error');
+          return;
+        }
         setAccountSourceType('osim');
         handleSelectOsimMemberForAccount(m);
       }
@@ -1065,23 +1078,37 @@ Alamat Sistem : ${window.location.origin}
           (m.fullName.toLowerCase().trim() === formData.displayName.toLowerCase().trim())
         );
 
-        const sekbidStr = selectedOsimMemberForAccount?.sekbid || matchedOsimMember?.sekbid || (formData as any).osimDepartmentName;
-        const sekbidNum = extractSekbidNumber(sekbidStr) || extractSekbidNumber(selectedOsimMemberForAccount?.position || matchedOsimMember?.position);
-        const targetMemberId = selectedOsimMemberForAccount?.id || matchedOsimMember?.id;
-        const posText = (selectedOsimMemberForAccount?.position || matchedOsimMember?.position || '').toLowerCase();
-        const bphRole = (sekbidStr === 'BPH' || (sekbidStr && sekbidStr.includes('BPH')) || !sekbidNum) ? (
+        const targetMember = selectedOsimMemberForAccount || matchedOsimMember;
+        if (targetMember && !isEligibleOsimAccount(targetMember)) {
+          showToast('Sesuai aturan sistem, akun login OSIM di cPanel hanya diperuntukkan bagi BPH dan Ketua Sekbid. Anggota Sekbid tidak memiliki akun login.', 'error');
+          return;
+        }
+
+        const sekbidStr = targetMember?.sekbid || (formData as any).osimDepartmentName;
+        const sekbidNum = extractSekbidNumber(sekbidStr) || extractSekbidNumber(targetMember?.position);
+        const targetMemberId = targetMember?.id;
+        const posText = (targetMember?.position || (formData as any).osimPosition || formData.displayName || '').toLowerCase();
+
+        const isBphTarget = (targetMember && isBphMember(targetMember)) || (sekbidStr === 'BPH' || (sekbidStr && sekbidStr.includes('BPH')) || (!sekbidNum && !posText.includes('sekbid')));
+        const isKetuaSekbidTarget = !isBphTarget && (posText.includes('ketua') || posText.includes('koordinator') || (targetMember as any)?.position === 'ketua_sekbid');
+
+        if (!isBphTarget && !isKetuaSekbidTarget) {
+          showToast('Hanya BPH dan Ketua Sekbid yang memiliki akun login di cPanel.', 'error');
+          return;
+        }
+
+        const bphRole = isBphTarget ? (
           posText.includes('wakil') ? 'user_osim_wakil'
           : posText.includes('sekretaris') ? 'user_osim_sekretaris'
           : posText.includes('bendahara') ? 'user_osim_bendahara'
-          : posText.includes('ketua') ? 'user_osim_ketua'
-          : undefined
+          : 'user_osim_ketua'
         ) : undefined;
 
-        const targetUserUid = bphRole
-          || (sekbidNum ? `user_osim_sekbid${sekbidNum}` : undefined)
-          || (cleanStudentNis && cleanStudentNis.length >= 4 && !isPlaceholderNis(cleanStudentNis)
-            ? `user_osim_${cleanStudentNis}`
-            : (targetMemberId ? `user_osim_${targetMemberId}` : (resolvedUid || undefined)));
+        const targetUserUid = bphRole || (sekbidNum ? `user_osim_sekbid${sekbidNum}` : undefined);
+        if (!targetUserUid) {
+          showToast('Gagal menentukan slot resmi jabatan OSIM (BPH atau Sekbid 1..8).', 'error');
+          return;
+        }
 
         const res = await activateOsimAccount({
           memberId: targetMemberId,
@@ -1609,6 +1636,11 @@ Alamat Sistem : ${window.location.origin}
 
   const filteredUsers = useMemo(() => {
     const rawFiltered = allUsers.filter(u => {
+      // Sesuai aturan: Anggota Sekbid biasa TIDAK ada di cPanel dan TIDAK punya akun login
+      if ((u.role === 'anggota_osim' || u.role === 'pengurus_osim') && isAnggotaSekbid(u as any)) {
+        return false;
+      }
+
       // Role Pill Filter
       if (rolePillFilter !== 'all') {
         if (rolePillFilter === 'cash_manager') {
@@ -1695,7 +1727,7 @@ Alamat Sistem : ${window.location.origin}
       ).length,
       bph_osim: allUsers.filter(u => getUserHierarchyClassification(u).rank === 6).length,
       sekbid_osim: allUsers.filter(u => getUserHierarchyClassification(u).rank === 7).length,
-      pengurus_osim: allUsers.filter(u => u.role === 'anggota_osim' || u.role === 'pengurus_osim').length,
+      pengurus_osim: allUsers.filter(u => (u.role === 'anggota_osim' || u.role === 'pengurus_osim') && !isAnggotaSekbid(u as any)).length,
       wali_kelas: allUsers.filter(u => u.role === 'wali_kelas' || (u.role as string) === 'homeroom_teacher').length,
       guru: allUsers.filter(u => u.role === 'guru' || (u.role as string) === 'teacher' || (u.role as string) === 'guru_mapel').length,
       cash_manager: allUsers.filter(u => u.isCashManager).length
@@ -2328,7 +2360,7 @@ Alamat Sistem : ${window.location.origin}
               }`}
             >
               <Award className="w-4 h-4" />
-              <span>2. Pengurus OSIM {pendingOsimMembers.length > 0 ? `(${pendingOsimMembers.length} Belum Aktif)` : `(${osimMembers.length})`}</span>
+              <span>2. Pengurus OSIM {pendingOsimMembers.length > 0 ? `(${pendingOsimMembers.length} Belum Aktif)` : `(${eligibleOsimMembers.length})`}</span>
             </button>
             <button
               type="button"
@@ -2564,7 +2596,7 @@ Alamat Sistem : ${window.location.origin}
                 </div>
               )}
 
-              {osimMembers.length === 0 ? (
+              {eligibleOsimMembers.length === 0 ? (
                 <div className="p-4 bg-cyan-950/20 border border-cyan-600/40 rounded-xl space-y-2 text-center">
                   <div className="w-10 h-10 rounded-xl bg-cyan-500/20 text-cyan-300 flex items-center justify-center mx-auto">
                     <Award className="w-5 h-5" />

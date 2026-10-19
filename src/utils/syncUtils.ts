@@ -1,4 +1,5 @@
 import { UserProfile, Teacher, Student, OsimMember } from '../types';
+import { isEligibleOsimAccount, isKetuaSekbid, isAnggotaSekbid } from './osimAccountHelper';
 
 /**
  * Normalizes Indonesian personal names by stripping common academic/honorific titles,
@@ -372,130 +373,147 @@ export const isStandardTidyUid = (uid?: string): boolean => {
   if (!uid || typeof uid !== 'string') return false;
   return (
     uid === 'user_super_admin' ||
+    uid === 'guru_super_admin' ||
     uid === 'user_admin_kesiswaan' ||
     uid === 'user_waka_kesiswaan' ||
     uid === 'user_guru_bk' ||
     uid === 'user_kepala_madrasah' ||
     uid === 'user_staf_tata_usaha' ||
-    /^user_guru_[a-zA-Z0-9_\-]+$/i.test(uid) ||
-    /^user_siswa_\d+$/i.test(uid) ||
-    /^user_G\d+-[A-Z]+$/i.test(uid) ||
-    /^user_t_\d+$/i.test(uid) ||
-    /^user_osim_/i.test(uid)
+    /^user_guru_\d{1,3}$/i.test(uid) ||
+    ['user_osim_ketua', 'user_osim_wakil', 'user_osim_sekretaris', 'user_osim_bendahara'].includes(uid) ||
+    /^user_osim_sekbid[1-8]$/i.test(uid)
   );
 };
 
 /**
- * Memeriksa apakah sebuah UID merupakan artefak acak (misal timestamp Date.now atau string acak Firebase)
+ * Memeriksa apakah sebuah UID merupakan artefak acak (misal timestamp Date.now, string acak Firebase Auth, atau ID campuran)
  */
 export const isRandomOrLegacyArtifactUid = (uid?: string): boolean => {
   if (!uid || typeof uid !== 'string') return false;
 
   // 0. Deteksi artefak timestamp acak (misal user_osim_m_1790..., osim_m_1790..., user_osim_1790...)
-  if (/^user_osim_m_\d{10,}/i.test(uid) || /^osim_m_\d{10,}/i.test(uid) || /^user_osim_\d{12,}/i.test(uid)) return true;
-  if (/^user_guru_\d{12,}/i.test(uid) || /^user_t_\d{12,}/i.test(uid)) return true;
+  if (/^user_osim_m_\d{10,}/i.test(uid) || /^osim_m_\d{10,}/i.test(uid) || /^user_osim_\d{10,}/i.test(uid)) return true;
+  if (/^user_guru_\d{10,}/i.test(uid) || /^user_t_\d{10,}/i.test(uid) || /^t_\d{10,}/i.test(uid)) return true;
 
   // IMMUNITY: Akun resmi OSIM, Guru, dan Administrator Sistem ber-ID rapi
-  if (uid === 'user_super_admin' || uid === 'user_waka_kesiswaan' || uid === 'user_admin_kesiswaan') return false;
-  if (/^guru_\d+$/i.test(uid) || /^user_guru_\d+$/i.test(uid)) return false;
-  if (/^osim_\d+$/i.test(uid) || /^user_osim_\d+$/i.test(uid)) return false;
+  if (['user_super_admin', 'guru_super_admin', 'user_waka_kesiswaan', 'user_admin_kesiswaan', 'user_guru_bk'].includes(uid)) return false;
+  if (/^user_guru_\d{1,3}$/i.test(uid)) return false; // user_guru_01 s.d user_guru_999 (angka murni)
   if (['user_osim_ketua', 'user_osim_wakil', 'user_osim_sekretaris', 'user_osim_bendahara'].includes(uid)) return false;
-  if (/^user_osim_sekbid_?\d+$/i.test(uid) || /^user_osim_dept_/i.test(uid)) return false;
+  if (/^user_osim_sekbid[1-8]$/i.test(uid)) return false;
   
-  // 1. Timestamp acak 12+ digit: user_1712839...
-  if (/^user_\d{12,}$/.test(uid)) return true;
+  // Format OSIM lama bertanda underscore / dept / nama yang harus dimigrasi: user_osim_sekbid_1..8, user_osim_dept_..., user_osim_2425...
+  if (/^user_osim_/i.test(uid)) return true;
+  if (/^osim_/i.test(uid)) return true;
+
+  // 1. Timestamp acak 10+ digit: user_1712839...
+  if (/^user_\d{10,}$/.test(uid)) return true;
   // 2. String kombinasi huruf dan angka acak 20-35 karakter tanpa garis bawah/strip (bawaan Firebase Auth UID)
   if (/^[a-zA-Z0-9]{20,35}$/.test(uid) && !uid.includes('_') && !uid.includes('-')) return true;
-  // 3. Artefak demo ganda usang
+  // 3. UID guru bertipe kombinasi huruf & angka selain user_guru_XX (misal user_t_..., user_guru_andri, user_guru123)
+  if (/^user_guru_/i.test(uid)) return true;
+  if (/^user_t_/i.test(uid)) return true;
+  // 4. Artefak demo ganda usang
   if (uid === 'user_teacher_pitria_lawenusa') return true;
   return false;
 };
 
 /**
  * Menyelesaikan UID rapi dan mudah dibaca manusia berdasarkan profil akun pengguna
+ * Menjamin mutlak:
+ * - OSIM: user_osim_ketua s.d. user_osim_sekbid8
+ * - Guru: user_super_admin / guru_super_admin dan user_guru_XX (angka murni)
  */
 export const resolveTidyUidForUser = (user: Partial<UserProfile>): string => {
-  if (!user) return 'user_umum';
+  if (!user) return 'user_guru_01';
   const role = (user.role || '').toLowerCase();
   const username = (user.username || '').toLowerCase();
+  const uid = user.uid || '';
 
-  if (role === 'super_admin' || username === 'admin' || username === 'superadmin') {
+  if (role === 'super_admin' || username === 'admin' || username === 'superadmin' || uid === 'user_super_admin' || uid === 'guru_super_admin') {
     return 'user_super_admin';
   }
-  if (role === 'admin_kesiswaan' || role === 'admin') {
+  if (role === 'admin_kesiswaan') {
     return 'user_admin_kesiswaan';
   }
   if (role === 'waka_kesiswaan') {
     return 'user_waka_kesiswaan';
   }
   if (role === 'guru_bk') {
-    const cleanNip = user.nip ? cleanDigits(user.nip) : '';
-    return cleanNip && cleanNip.length >= 4 ? `user_guru_bk_${cleanNip}` : 'user_guru_bk';
+    return 'user_guru_bk';
   }
-  if (role === 'pengurus_osim' || role === 'anggota_osim') {
+
+  // OSIM: Hanya 12 UID resmi:
+  // - BPH: user_osim_ketua, user_osim_wakil, user_osim_sekretaris, user_osim_bendahara
+  // - Sekbid: user_osim_sekbid1 s.d. user_osim_sekbid8
+  if (role === 'pengurus_osim' || role === 'anggota_osim' || uid.startsWith('user_osim_') || (user.username && user.username.startsWith('osim.'))) {
     const pos = (user.osimPosition || user.position || '').toLowerCase();
     const roleVal = (user.osimRole || '').toLowerCase();
     const dName = (user.osimDepartmentName || '').toLowerCase();
     const dCode = (user.osimDepartmentCode || '').toLowerCase();
     const usr = (user.username || '').toLowerCase();
 
-    // 1. Check BPH first (Ketua Umum, Wakil Ketua, Sekretaris Umum, Bendahara Umum)
+    // 1. Check BPH first
     const isBph = dCode === 'bph' || dName.includes('bph') || (!dCode.includes('sekbid') && !pos.includes('sekbid') && (roleVal === 'ketua' || roleVal === 'wakil' || roleVal === 'sekretaris' || roleVal === 'bendahara'));
-    if (isBph) {
-      if (roleVal === 'ketua' || (pos.includes('ketua') && !pos.includes('wakil'))) return 'user_osim_ketua';
-      if (roleVal === 'wakil' || pos.includes('wakil')) return 'user_osim_wakil';
-      if (roleVal === 'sekretaris' || pos.includes('sekretaris')) return 'user_osim_sekretaris';
-      if (roleVal === 'bendahara' || pos.includes('bendahara') || user.isCashManager) return 'user_osim_bendahara';
+    if (isBph || uid === 'user_osim_ketua' || uid === 'user_osim_wakil' || uid === 'user_osim_sekretaris' || uid === 'user_osim_bendahara') {
+      if (roleVal === 'ketua' || (pos.includes('ketua') && !pos.includes('wakil')) || uid === 'user_osim_ketua') return 'user_osim_ketua';
+      if (roleVal === 'wakil' || pos.includes('wakil') || uid === 'user_osim_wakil') return 'user_osim_wakil';
+      if (roleVal === 'sekretaris' || pos.includes('sekretaris') || uid === 'user_osim_sekretaris') return 'user_osim_sekretaris';
+      if (roleVal === 'bendahara' || pos.includes('bendahara') || user.isCashManager || uid === 'user_osim_bendahara') return 'user_osim_bendahara';
     }
 
-    // 2. Check Sekbid 1 s.d. 8 (Standard UID: user_osim_sekbid1 s.d. user_osim_sekbid8)
-    const sekbidMatch = (dCode + ' ' + dName + ' ' + pos + ' ' + usr).match(/sekbid\s*[-_]?\s*(\d+)/i) ||
-                        (dCode + ' ' + dName + ' ' + pos).match(/bidang\s*[-_]?\s*(\d+)/i);
-    if (sekbidMatch) {
+    // Guard: Anggota Sekbid biasa (bukan Ketua/Koordinator) TIDAK memiliki akun login cPanel dan TIDAK boleh menggunakan slot user_osim_sekbid[1-8]!
+    const isExplicitAnggota = isAnggotaSekbid(user as any) || (pos.includes('anggota') && !pos.includes('ketua') && !pos.includes('koordinator'));
+    if (isExplicitAnggota) {
+      return 'user_osim_ineligible_anggota';
+    }
+
+    // 2. Check Sekbid 1 s.d. 8 (HANYA untuk Ketua / Koordinator Sekbid)
+    const isKetuaOrKoordinator = pos.includes('ketua') || pos.includes('koordinator') || (user.position === 'ketua_sekbid');
+    const sekbidMatch = (dCode + ' ' + dName + ' ' + pos + ' ' + usr + ' ' + uid).match(/sekbid\s*[-_]?\s*([1-8])/i) ||
+                        (dCode + ' ' + dName + ' ' + pos).match(/bidang\s*[-_]?\s*([1-8])/i);
+    if (sekbidMatch && isKetuaOrKoordinator) {
       return `user_osim_sekbid${sekbidMatch[1]}`;
     }
 
-    // 3. Genuine non-placeholder NIS
-    const cleanNis = user.nip ? cleanDigits(user.nip) : (user.studentNis ? cleanDigits(user.studentNis) : '');
-    if (cleanNis && !isPlaceholderNis(cleanNis)) {
-      return `user_osim_${cleanNis}`;
+    if (/^user_osim_sekbid[1-8]$/i.test(uid)) {
+      return uid.toLowerCase();
+    }
+    const legacySekbidMatch = uid.match(/^user_osim_(?:dept_)?sekbid_?([1-8])$/i);
+    if (legacySekbidMatch) {
+      return `user_osim_sekbid${legacySekbidMatch[1]}`;
     }
 
-    if (user.uid) {
-      const legacySekbidMatch = user.uid.match(/^user_osim_(?:dept_)?sekbid_?(\d+)$/i);
-      if (legacySekbidMatch) {
-        return `user_osim_sekbid${legacySekbidMatch[1]}`;
-      }
+    if (isKetuaOrKoordinator && sekbidMatch) {
+      return `user_osim_sekbid${sekbidMatch[1]}`;
     }
-    if (user.uid && /^user_osim_\d+$/i.test(user.uid) && !user.uid.includes('24251000')) {
-      return user.uid;
+
+    return 'user_osim_ineligible_anggota';
+  }
+
+  // GURU: Format wajib 'user_guru_XX' (angka murni 2 digit, misal user_guru_01 s.d user_guru_XX)
+  const existingGuruMatch = uid.match(/^user_guru_(\d{1,3})$/i) || uid.match(/^guru_(\d{1,3})$/i);
+  if (existingGuruMatch) {
+    const num = parseInt(existingGuruMatch[1], 10);
+    return `user_guru_${String(num).padStart(2, '0')}`;
+  }
+
+  // Cek jika username mengandung nomor guru (guru_01, guru1, dll)
+  const userGuruMatch = username.match(/guru_?(\d{1,3})/i);
+  if (userGuruMatch) {
+    const num = parseInt(userGuruMatch[1], 10);
+    return `user_guru_${String(num).padStart(2, '0')}`;
+  }
+
+  // Cek dari ID pendidik jika ada
+  if ((user as any).teacherId) {
+    const tIdMatch = String((user as any).teacherId).match(/(\d+)/);
+    if (tIdMatch) {
+      const num = parseInt(tIdMatch[1], 10);
+      return `user_guru_${String(num).padStart(2, '0')}`;
     }
-    if (user.uid && /^osim_\d+$/i.test(user.uid)) {
-      return `user_${user.uid}`;
-    }
-    if (user.username && !user.username.includes('@')) {
-      const cleanU = user.username.replace(/[^a-zA-Z0-9_]/g, '_');
-      if (cleanU && !cleanU.startsWith('osim_m_')) return `user_osim_${cleanU}`;
-    }
-    const safeName = (user.displayName || '').toLowerCase().replace(/[^a-z0-9]/g, '_').substring(0, 15);
-    if (safeName && safeName !== 'pengurus' && safeName !== 'anggota') {
-      return `user_osim_${safeName}`;
-    }
-    return user.uid || 'user_osim_member';
   }
-  if (user.nip && cleanDigits(user.nip).length >= 4) {
-    return `user_guru_${cleanDigits(user.nip)}`;
-  }
-  if (user.uid && /^user_guru_\d+$/i.test(user.uid)) {
-    return user.uid;
-  }
-  if (user.uid && /^guru_\d+$/i.test(user.uid)) {
-    return `user_${user.uid}`;
-  }
-  if (user.username && !user.username.includes('@')) {
-    return `user_${user.username.replace(/[^a-zA-Z0-9_]/g, '')}`;
-  }
-  return 'user_guru';
+
+  return 'user_guru_01';
 };
 
 /**
@@ -523,6 +541,12 @@ export const deduplicateUsersList = (users: UserProfile[]): UserProfile[] => {
         seenUids.add(u.uid);
         result.push(u);
       }
+      continue;
+    }
+
+    // ATURAN BAKU KESISWAAN: Anggota Sekbid biasa TIDAK memiliki akun login dan TIDAK masuk ke cPanel
+    const isOsim = u.role === 'anggota_osim' || u.role === 'pengurus_osim';
+    if (isOsim && isAnggotaSekbid(u as any)) {
       continue;
     }
 
@@ -576,15 +600,21 @@ export const deduplicateUsersList = (users: UserProfile[]): UserProfile[] => {
 
       const isLoginActive = Boolean(existing.isLoginActive || u.isLoginActive || existing.loginStatus === 'active' || u.loginStatus === 'active');
 
+      // If Sekbid slot: ALWAYS prioritize Ketua Sekbid over any member record
+      const existingIsKetua = isKetuaSekbid(existing as any);
+      const uIsKetua = isKetuaSekbid(u as any);
+      const leaderRecord = (existingIsKetua && !uIsKetua) ? existing : (uIsKetua ? u : existing);
+
       const merged: UserProfile = {
         ...existing,
         ...u,
+        ...leaderRecord,
         uid: preferredUid,
         isLoginActive,
         loginStatus: isLoginActive ? 'active' : (existing.loginStatus || u.loginStatus || 'pending_activation'),
         accountStatus: isLoginActive ? 'active' : (existing.accountStatus || u.accountStatus || 'pending'),
-        phone: existing.phone || u.phone,
-        nip: existing.nip || u.nip,
+        phone: leaderRecord.phone || existing.phone || u.phone,
+        nip: leaderRecord.nip || existing.nip || u.nip,
         extracurricularIds: Array.from(new Set([...(existing.extracurricularIds || []), ...(u.extracurricularIds || [])])),
         extracurricularNames: Array.from(new Set([...(existing.extracurricularNames || []), ...(u.extracurricularNames || [])])),
         extracurricularName: u.extracurricularName || existing.extracurricularName

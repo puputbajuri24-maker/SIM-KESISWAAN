@@ -471,60 +471,59 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     } catch {}
     return [];
   });
-  const [schedules, setSchedules] = useState<ScheduleEvent[]>(INITIAL_SCHEDULES);
-  const [attendance, setAttendance] = useState<AttendanceSession[]>(INITIAL_ATTENDANCE);
-  const [activities, setActivities] = useState<SchoolActivity[]>(INITIAL_ACTIVITIES);
-  const [activityReports, setActivityReports] = useState<ActivityReport[]>(INITIAL_REPORTS);
-  const [violations, setViolations] = useState<StudentViolation[]>(INITIAL_VIOLATIONS);
-  const [counseling, setCounseling] = useState<StudentCounseling[]>(INITIAL_COUNSELING);
-  const [homeVisits, setHomeVisits] = useState<HomeVisitRecord[]>(INITIAL_HOME_VISITS);
-  const [parentCallLetters, setParentCallLetters] = useState<ParentCallLetter[]>(INITIAL_PARENT_CALL_LETTERS);
-  const [careerGuidances, setCareerGuidances] = useState<CareerGuidanceRecord[]>(INITIAL_CAREER_GUIDANCES);
-  const [achievements, setAchievements] = useState<StudentAchievement[]>(() => {
+  // Generic helper for resilient offline cache hydration on initial load
+  function loadCachedRecordState<T>(key: string, fallback: T): T {
     try {
-      const saved = localStorage.getItem('sim_achievements');
+      const saved = localStorage.getItem(key);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+        if (Array.isArray(fallback)) {
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed as unknown as T;
+          }
+        } else if (parsed && typeof parsed === 'object') {
+          return parsed as unknown as T;
         }
       }
     } catch (e) {}
-    return INITIAL_ACHIEVEMENTS;
-  });
-  const [permissions, setPermissions] = useState<StudentPermission[]>(INITIAL_PERMISSIONS);
-  const [needsRequests, setNeedsRequests] = useState<NeedsRequest[]>(INITIAL_NEEDS_REQUESTS);
-  const [osimMembers, setOsimMembers] = useState<OsimMember[]>(() => (INITIAL_OSIM_MEMBERS || []).filter((o: any) => o.id !== 'om1' && !o.isDeleted));
-  const [osimPrograms, setOsimPrograms] = useState<OsimWorkProgram[]>(INITIAL_OSIM_PROGRAMS);
-  const [osimAspirations, setOsimAspirations] = useState<OsimAspiration[]>(INITIAL_OSIM_ASPIRATIONS);
-  const [osimMeetings, setOsimMeetings] = useState<OsimMeeting[]>(INITIAL_OSIM_MEETINGS);
-  const [osimDepartments, setOsimDepartments] = useState<OsimDepartment[]>(INITIAL_OSIM_DEPARTMENTS);
-  const [cashAccounts, setCashAccounts] = useState<CashAccount[]>(INITIAL_CASH_ACCOUNTS);
-  const [cashTransactions, setCashTransactions] = useState<CashTransaction[]>(INITIAL_CASH_TRANSACTIONS);
-  const [schoolRules, setSchoolRules] = useState<SchoolRuleArticle[]>(() => {
+    return fallback;
+  }
+
+  const [schedules, setSchedules] = useState<ScheduleEvent[]>(() => loadCachedRecordState('sim_schedules', INITIAL_SCHEDULES));
+  const [attendance, setAttendance] = useState<AttendanceSession[]>(() => loadCachedRecordState('sim_attendance', INITIAL_ATTENDANCE));
+  const [activities, setActivities] = useState<SchoolActivity[]>(() => loadCachedRecordState('sim_activities', INITIAL_ACTIVITIES));
+  const [activityReports, setActivityReports] = useState<ActivityReport[]>(() => loadCachedRecordState('sim_activity_reports', INITIAL_REPORTS));
+  const [violations, setViolations] = useState<StudentViolation[]>(() => loadCachedRecordState('sim_violations', INITIAL_VIOLATIONS));
+  const [counseling, setCounseling] = useState<StudentCounseling[]>(() => loadCachedRecordState('sim_counseling', INITIAL_COUNSELING));
+  const [homeVisits, setHomeVisits] = useState<HomeVisitRecord[]>(() => loadCachedRecordState('sim_home_visits', INITIAL_HOME_VISITS));
+  const [parentCallLetters, setParentCallLetters] = useState<ParentCallLetter[]>(() => loadCachedRecordState('sim_parent_call_letters', INITIAL_PARENT_CALL_LETTERS));
+  const [careerGuidances, setCareerGuidances] = useState<CareerGuidanceRecord[]>(() => loadCachedRecordState('sim_career_guidances', INITIAL_CAREER_GUIDANCES));
+  const [achievements, setAchievements] = useState<StudentAchievement[]>(() => loadCachedRecordState('sim_achievements', INITIAL_ACHIEVEMENTS));
+  const [permissions, setPermissions] = useState<StudentPermission[]>(() => loadCachedRecordState('sim_permissions', INITIAL_PERMISSIONS));
+  const [needsRequests, setNeedsRequests] = useState<NeedsRequest[]>(() => loadCachedRecordState('sim_needs_requests', INITIAL_NEEDS_REQUESTS));
+  const [osimMembers, setOsimMembers] = useState<OsimMember[]>(() => {
     try {
-      const saved = localStorage.getItem('sim_school_rules');
+      const saved = localStorage.getItem('sim_osim_members');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+          return parsed.filter((o: any) => o.id !== 'om1' && !o.isDeleted);
         }
       }
     } catch (e) {}
-    return INITIAL_SCHOOL_RULES;
+    return (INITIAL_OSIM_MEMBERS || []).filter((o: any) => o.id !== 'om1' && !o.isDeleted);
   });
-  const [handbookMeta, setHandbookMeta] = useState<SchoolHandbookMeta>(() => {
-    try {
-      const saved = localStorage.getItem('sim_handbook_meta');
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch (e) {}
-    return INITIAL_HANDBOOK_META;
-  });
-  const [announcements, setAnnouncements] = useState<Announcement[]>(INITIAL_ANNOUNCEMENTS);
-  const [notifications, setNotifications] = useState<NotificationItem[]>(INITIAL_NOTIFICATIONS);
-  const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>(INITIAL_AUDIT_LOGS);
+  const [osimPrograms, setOsimPrograms] = useState<OsimWorkProgram[]>(() => loadCachedRecordState('sim_osim_programs', INITIAL_OSIM_PROGRAMS));
+  const [osimAspirations, setOsimAspirations] = useState<OsimAspiration[]>(() => loadCachedRecordState('sim_osim_aspirations', INITIAL_OSIM_ASPIRATIONS));
+  const [osimMeetings, setOsimMeetings] = useState<OsimMeeting[]>(() => loadCachedRecordState('sim_osim_meetings', INITIAL_OSIM_MEETINGS));
+  const [osimDepartments, setOsimDepartments] = useState<OsimDepartment[]>(() => loadCachedRecordState('sim_osim_departments', INITIAL_OSIM_DEPARTMENTS));
+  const [cashAccounts, setCashAccounts] = useState<CashAccount[]>(() => loadCachedRecordState('sim_cash_accounts', INITIAL_CASH_ACCOUNTS));
+  const [cashTransactions, setCashTransactions] = useState<CashTransaction[]>(() => loadCachedRecordState('sim_cash_transactions', INITIAL_CASH_TRANSACTIONS));
+  const [schoolRules, setSchoolRules] = useState<SchoolRuleArticle[]>(() => loadCachedRecordState('sim_school_rules', INITIAL_SCHOOL_RULES));
+  const [handbookMeta, setHandbookMeta] = useState<SchoolHandbookMeta>(() => loadCachedRecordState('sim_handbook_meta', INITIAL_HANDBOOK_META));
+  const [announcements, setAnnouncements] = useState<Announcement[]>(() => loadCachedRecordState('sim_announcements', INITIAL_ANNOUNCEMENTS));
+  const [notifications, setNotifications] = useState<NotificationItem[]>(() => loadCachedRecordState('sim_notifications', INITIAL_NOTIFICATIONS));
+  const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>(() => loadCachedRecordState('sim_audit_logs', INITIAL_AUDIT_LOGS));
 
   // Resilient automatic reconciliation between students and classes
   useEffect(() => {
@@ -892,98 +891,128 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             return mergedMembers;
           });
 
-          // Schedules Sync
+          // Schedules Sync (Resilient merge)
           const schedSnap = await getDocs(collection(db, 'schedules'));
-          const loadedSched: ScheduleEvent[] = [];
-          schedSnap.forEach(docSnap => {
-            const data = docSnap.data() as ScheduleEvent;
-            if (
-              PURGED_DEMO_EKSKUL_IDS.includes(data.extracurricularId) ||
-              isPurgedExtracurricular(data.extracurricularId) ||
-              isPurgedExtracurricular(data.title || '')
-            ) {
-              deleteDoc(doc(db, 'schedules', docSnap.id)).catch(() => {});
-            } else {
-              loadedSched.push({ id: docSnap.id, ...data });
-            }
-          });
-          setSchedules(loadedSched);
-          try {
-            localStorage.setItem('sim_schedules', JSON.stringify(loadedSched));
-          } catch (e) {}
+          if (!schedSnap.empty) {
+            const loadedSched: ScheduleEvent[] = [];
+            schedSnap.forEach(docSnap => {
+              const data = docSnap.data() as ScheduleEvent;
+              if (
+                PURGED_DEMO_EKSKUL_IDS.includes(data.extracurricularId) ||
+                isPurgedExtracurricular(data.extracurricularId) ||
+                isPurgedExtracurricular(data.title || '')
+              ) {
+                deleteDoc(doc(db, 'schedules', docSnap.id)).catch(() => {});
+              } else {
+                loadedSched.push({ id: docSnap.id, ...data });
+              }
+            });
+            setSchedules(prev => {
+              const m = new Map<string, ScheduleEvent>();
+              loadedSched.forEach(s => m.set(s.id, s));
+              prev.forEach(p => { if (p && p.id && !m.has(p.id)) m.set(p.id, p); });
+              const merged = Array.from(m.values());
+              try { localStorage.setItem('sim_schedules', JSON.stringify(merged)); } catch (e) {}
+              return merged;
+            });
+          }
 
-          // Attendance Sync
+          // Attendance Sync (Resilient merge)
           const attSnap = await getDocs(collection(db, 'attendance'));
-          const loadedAtt: AttendanceSession[] = [];
-          attSnap.forEach(docSnap => {
-            const data = docSnap.data() as AttendanceSession;
-            if (
-              PURGED_DEMO_EKSKUL_IDS.includes(data.extracurricularId) ||
-              isPurgedExtracurricular(data.extracurricularId) ||
-              isPurgedExtracurricular(data.extracurricularName || '')
-            ) {
-              if (auth.currentUser && (currentUser?.role === 'super_admin' || (currentUser?.role as string) === 'admin' || currentUser?.role === 'waka_kesiswaan')) {
-                deleteDoc(doc(db, 'attendance', docSnap.id)).catch(() => {});
+          if (!attSnap.empty) {
+            const loadedAtt: AttendanceSession[] = [];
+            attSnap.forEach(docSnap => {
+              const data = docSnap.data() as AttendanceSession;
+              if (
+                PURGED_DEMO_EKSKUL_IDS.includes(data.extracurricularId) ||
+                isPurgedExtracurricular(data.extracurricularId) ||
+                isPurgedExtracurricular(data.extracurricularName || '')
+              ) {
+                if (auth.currentUser && (currentUser?.role === 'super_admin' || (currentUser?.role as string) === 'admin' || currentUser?.role === 'waka_kesiswaan')) {
+                  deleteDoc(doc(db, 'attendance', docSnap.id)).catch(() => {});
+                }
+              } else {
+                loadedAtt.push({ id: docSnap.id, ...data });
               }
-            } else {
-              loadedAtt.push({ id: docSnap.id, ...data });
-            }
-          });
-          setAttendance(loadedAtt);
-          try {
-            localStorage.setItem('sim_attendance', JSON.stringify(loadedAtt));
-          } catch (e) {}
+            });
+            setAttendance(prev => {
+              const m = new Map<string, AttendanceSession>();
+              loadedAtt.forEach(a => m.set(a.id, a));
+              prev.forEach(p => { if (p && p.id && !m.has(p.id)) m.set(p.id, p); });
+              const merged = Array.from(m.values());
+              try { localStorage.setItem('sim_attendance', JSON.stringify(merged)); } catch (e) {}
+              return merged;
+            });
+          }
 
-          // Activities Sync
+          // Activities Sync (Resilient merge)
           const actSnap = await getDocs(collection(db, 'activities'));
-          const loadedAct: SchoolActivity[] = [];
-          actSnap.forEach(doc => loadedAct.push({ id: doc.id, ...doc.data() } as SchoolActivity));
-          setActivities(loadedAct);
-          try {
-            localStorage.setItem('sim_activities', JSON.stringify(loadedAct));
-          } catch (e) {}
+          if (!actSnap.empty) {
+            const loadedAct: SchoolActivity[] = [];
+            actSnap.forEach(doc => loadedAct.push({ id: doc.id, ...doc.data() } as SchoolActivity));
+            setActivities(prev => {
+              const m = new Map<string, SchoolActivity>();
+              loadedAct.forEach(a => m.set(a.id, a));
+              prev.forEach(p => { if (p && p.id && !m.has(p.id)) m.set(p.id, p); });
+              const merged = Array.from(m.values());
+              try { localStorage.setItem('sim_activities', JSON.stringify(merged)); } catch (e) {}
+              return merged;
+            });
+          }
 
-          // Activity Reports Sync
+          // Activity Reports Sync (Resilient merge)
           const repSnap = await getDocs(collection(db, 'activity_reports'));
-          const loadedRep: ActivityReport[] = [];
-          repSnap.forEach(doc => loadedRep.push({ id: doc.id, ...doc.data() } as ActivityReport));
-          setActivityReports(loadedRep);
-          try {
-            localStorage.setItem('sim_reports', JSON.stringify(loadedRep));
-          } catch (e) {}
+          if (!repSnap.empty) {
+            const loadedRep: ActivityReport[] = [];
+            repSnap.forEach(doc => loadedRep.push({ id: doc.id, ...doc.data() } as ActivityReport));
+            setActivityReports(prev => {
+              const m = new Map<string, ActivityReport>();
+              loadedRep.forEach(r => m.set(r.id, r));
+              prev.forEach(p => { if (p && p.id && !m.has(p.id)) m.set(p.id, p); });
+              const merged = Array.from(m.values());
+              try { localStorage.setItem('sim_reports', JSON.stringify(merged)); } catch (e) {}
+              return merged;
+            });
+          }
 
-          // Violations Sync (Purge orphan/zombie records like Nabila & Abdul Asri against active master students)
+          // Violations Sync (Purge orphan/zombie records like Nabila & Abdul Asri against active master students, with resilient merge)
           const violSnap = await getDocs(collection(db, 'violations'));
-          const loadedViol: StudentViolation[] = [];
-          const activeStudentIdSet = new Set(sortedStudents.map(s => s.id));
-          const activeStudentNameSet = new Set(sortedStudents.map(s => normalizeName(s.fullName)).filter(Boolean));
-          const canPurgeInDb = auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role);
+          if (!violSnap.empty) {
+            const loadedViol: StudentViolation[] = [];
+            const activeStudentIdSet = new Set(sortedStudents.map(s => s.id));
+            const activeStudentNameSet = new Set(sortedStudents.map(s => normalizeName(s.fullName)).filter(Boolean));
+            const canPurgeInDb = auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role);
 
-          violSnap.forEach(docSnap => {
-            const data = docSnap.data() as StudentViolation;
-            if (data.isDeleted) return;
+            violSnap.forEach(docSnap => {
+              const data = docSnap.data() as StudentViolation;
+              if (data.isDeleted) return;
 
-            const idMatch = data.studentId && activeStudentIdSet.has(data.studentId);
-            const nameMatch = data.studentName && activeStudentNameSet.has(normalizeName(data.studentName));
-            const isStudentActive = Boolean(idMatch || nameMatch);
+              const idMatch = data.studentId && activeStudentIdSet.has(data.studentId);
+              const nameMatch = data.studentName && activeStudentNameSet.has(normalizeName(data.studentName));
+              const isStudentActive = Boolean(idMatch || nameMatch);
 
-            if (!isStudentActive) {
-              // Tandai isDeleted di Firestore agar permanen tidak terbaca lagi
-              if (canPurgeInDb) {
-                updateDoc(docSnap.ref, {
-                  isDeleted: true,
-                  deletedAt: new Date().toISOString()
-                }).catch(() => {});
+              if (!isStudentActive) {
+                // Tandai isDeleted di Firestore agar permanen tidak terbaca lagi
+                if (canPurgeInDb) {
+                  updateDoc(docSnap.ref, {
+                    isDeleted: true,
+                    deletedAt: new Date().toISOString()
+                  }).catch(() => {});
+                }
+                return;
               }
-              return;
-            }
 
-            loadedViol.push({ id: docSnap.id, ...data });
-          });
-          setViolations(loadedViol);
-          try {
-            localStorage.setItem('sim_violations', JSON.stringify(loadedViol));
-          } catch (e) {}
+              loadedViol.push({ id: docSnap.id, ...data });
+            });
+            setViolations(prev => {
+              const m = new Map<string, StudentViolation>();
+              loadedViol.forEach(v => m.set(v.id, v));
+              prev.forEach(p => { if (p && p.id && !m.has(p.id)) m.set(p.id, p); });
+              const merged = Array.from(m.values());
+              try { localStorage.setItem('sim_violations', JSON.stringify(merged)); } catch (e) {}
+              return merged;
+            });
+          }
 
           // Achievements Sync (Resilient merge)
           try {
@@ -1024,58 +1053,94 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           if (auth.currentUser && isBkOrAdminUser) {
             try {
               const csSnap = await getDocs(collection(db, 'counseling'));
-              const loadedCs: StudentCounseling[] = [];
-              csSnap.forEach(doc => loadedCs.push({ id: doc.id, ...doc.data() } as StudentCounseling));
-              setCounseling(loadedCs);
-              try {
-                localStorage.setItem('sim_counseling', JSON.stringify(loadedCs));
-              } catch (e) {}
+              if (!csSnap.empty) {
+                const loadedCs: StudentCounseling[] = [];
+                csSnap.forEach(doc => loadedCs.push({ id: doc.id, ...doc.data() } as StudentCounseling));
+                setCounseling(prev => {
+                  const m = new Map<string, StudentCounseling>();
+                  loadedCs.forEach(c => m.set(c.id, c));
+                  prev.forEach(p => { if (p && p.id && !m.has(p.id)) m.set(p.id, p); });
+                  const merged = Array.from(m.values());
+                  try { localStorage.setItem('sim_counseling', JSON.stringify(merged)); } catch (e) {}
+                  return merged;
+                });
+              }
 
               const hvSnap = await getDocs(collection(db, 'home_visits'));
-              const loadedHv: HomeVisitRecord[] = [];
-              hvSnap.forEach(doc => loadedHv.push({ id: doc.id, ...doc.data() } as HomeVisitRecord));
-              setHomeVisits(loadedHv);
-              try {
-                localStorage.setItem('sim_home_visits', JSON.stringify(loadedHv));
-              } catch (e) {}
+              if (!hvSnap.empty) {
+                const loadedHv: HomeVisitRecord[] = [];
+                hvSnap.forEach(doc => loadedHv.push({ id: doc.id, ...doc.data() } as HomeVisitRecord));
+                setHomeVisits(prev => {
+                  const m = new Map<string, HomeVisitRecord>();
+                  loadedHv.forEach(h => m.set(h.id, h));
+                  prev.forEach(p => { if (p && p.id && !m.has(p.id)) m.set(p.id, p); });
+                  const merged = Array.from(m.values());
+                  try { localStorage.setItem('sim_home_visits', JSON.stringify(merged)); } catch (e) {}
+                  return merged;
+                });
+              }
 
               const pclSnap = await getDocs(collection(db, 'parent_call_letters'));
-              const loadedPcl: ParentCallLetter[] = [];
-              pclSnap.forEach(doc => loadedPcl.push({ id: doc.id, ...doc.data() } as ParentCallLetter));
-              setParentCallLetters(loadedPcl);
-              try {
-                localStorage.setItem('sim_parent_call_letters', JSON.stringify(loadedPcl));
-              } catch (e) {}
+              if (!pclSnap.empty) {
+                const loadedPcl: ParentCallLetter[] = [];
+                pclSnap.forEach(doc => loadedPcl.push({ id: doc.id, ...doc.data() } as ParentCallLetter));
+                setParentCallLetters(prev => {
+                  const m = new Map<string, ParentCallLetter>();
+                  loadedPcl.forEach(l => m.set(l.id, l));
+                  prev.forEach(p => { if (p && p.id && !m.has(p.id)) m.set(p.id, p); });
+                  const merged = Array.from(m.values());
+                  try { localStorage.setItem('sim_parent_call_letters', JSON.stringify(merged)); } catch (e) {}
+                  return merged;
+                });
+              }
 
               const cgSnap = await getDocs(collection(db, 'career_guidances'));
-              const loadedCg: CareerGuidanceRecord[] = [];
-              cgSnap.forEach(doc => loadedCg.push({ id: doc.id, ...doc.data() } as CareerGuidanceRecord));
-              setCareerGuidances(loadedCg);
-              try {
-                localStorage.setItem('sim_career_guidances', JSON.stringify(loadedCg));
-              } catch (e) {}
+              if (!cgSnap.empty) {
+                const loadedCg: CareerGuidanceRecord[] = [];
+                cgSnap.forEach(doc => loadedCg.push({ id: doc.id, ...doc.data() } as CareerGuidanceRecord));
+                setCareerGuidances(prev => {
+                  const m = new Map<string, CareerGuidanceRecord>();
+                  loadedCg.forEach(g => m.set(g.id, g));
+                  prev.forEach(p => { if (p && p.id && !m.has(p.id)) m.set(p.id, p); });
+                  const merged = Array.from(m.values());
+                  try { localStorage.setItem('sim_career_guidances', JSON.stringify(merged)); } catch (e) {}
+                  return merged;
+                });
+              }
             } catch (bkErr) {
               // Unprivileged roles do not have read permission for BK confidential collections
             }
           }
 
-          // Permissions Sync
+          // Permissions Sync (Resilient merge)
           const permSnap = await getDocs(collection(db, 'permissions'));
-          const loadedPerm: StudentPermission[] = [];
-          permSnap.forEach(doc => loadedPerm.push({ id: doc.id, ...doc.data() } as StudentPermission));
-          setPermissions(loadedPerm);
-          try {
-            localStorage.setItem('sim_permissions', JSON.stringify(loadedPerm));
-          } catch (e) {}
+          if (!permSnap.empty) {
+            const loadedPerm: StudentPermission[] = [];
+            permSnap.forEach(doc => loadedPerm.push({ id: doc.id, ...doc.data() } as StudentPermission));
+            setPermissions(prev => {
+              const m = new Map<string, StudentPermission>();
+              loadedPerm.forEach(p => m.set(p.id, p));
+              prev.forEach(p => { if (p && p.id && !m.has(p.id)) m.set(p.id, p); });
+              const merged = Array.from(m.values());
+              try { localStorage.setItem('sim_permissions', JSON.stringify(merged)); } catch (e) {}
+              return merged;
+            });
+          }
 
-          // Needs Requests Sync
+          // Needs Requests Sync (Resilient merge)
           const needSnap = await getDocs(collection(db, 'needs_requests'));
-          const loadedNeed: NeedsRequest[] = [];
-          needSnap.forEach(doc => loadedNeed.push({ id: doc.id, ...doc.data() } as NeedsRequest));
-          setNeedsRequests(loadedNeed);
-          try {
-            localStorage.setItem('sim_needs', JSON.stringify(loadedNeed));
-          } catch (e) {}
+          if (!needSnap.empty) {
+            const loadedNeed: NeedsRequest[] = [];
+            needSnap.forEach(doc => loadedNeed.push({ id: doc.id, ...doc.data() } as NeedsRequest));
+            setNeedsRequests(prev => {
+              const m = new Map<string, NeedsRequest>();
+              loadedNeed.forEach(n => m.set(n.id, n));
+              prev.forEach(p => { if (p && p.id && !m.has(p.id)) m.set(p.id, p); });
+              const merged = Array.from(m.values());
+              try { localStorage.setItem('sim_needs', JSON.stringify(merged)); } catch (e) {}
+              return merged;
+            });
+          }
 
           // OSIM Collections Sync
           const osimMemSnap = await getDocs(collection(db, 'osim_members'));
@@ -1117,28 +1182,46 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           }
 
           const osimProgSnap = await getDocs(collection(db, 'osim_programs'));
-          const loadedOsimProg: OsimWorkProgram[] = [];
-          osimProgSnap.forEach(doc => loadedOsimProg.push({ id: doc.id, ...doc.data() } as OsimWorkProgram));
-          setOsimPrograms(loadedOsimProg);
-          try {
-            localStorage.setItem('sim_osim_programs', JSON.stringify(loadedOsimProg));
-          } catch (e) {}
+          if (!osimProgSnap.empty) {
+            const loadedOsimProg: OsimWorkProgram[] = [];
+            osimProgSnap.forEach(doc => loadedOsimProg.push({ id: doc.id, ...doc.data() } as OsimWorkProgram));
+            setOsimPrograms(prev => {
+              const m = new Map<string, OsimWorkProgram>();
+              loadedOsimProg.forEach(p => m.set(p.id, p));
+              prev.forEach(p => { if (p && p.id && !m.has(p.id)) m.set(p.id, p); });
+              const merged = Array.from(m.values());
+              try { localStorage.setItem('sim_osim_programs', JSON.stringify(merged)); } catch (e) {}
+              return merged;
+            });
+          }
 
           const osimAspSnap = await getDocs(collection(db, 'osim_aspirations'));
-          const loadedOsimAsp: OsimAspiration[] = [];
-          osimAspSnap.forEach(doc => loadedOsimAsp.push({ id: doc.id, ...doc.data() } as OsimAspiration));
-          setOsimAspirations(loadedOsimAsp);
-          try {
-            localStorage.setItem('sim_osim_aspirations', JSON.stringify(loadedOsimAsp));
-          } catch (e) {}
+          if (!osimAspSnap.empty) {
+            const loadedOsimAsp: OsimAspiration[] = [];
+            osimAspSnap.forEach(doc => loadedOsimAsp.push({ id: doc.id, ...doc.data() } as OsimAspiration));
+            setOsimAspirations(prev => {
+              const m = new Map<string, OsimAspiration>();
+              loadedOsimAsp.forEach(a => m.set(a.id, a));
+              prev.forEach(p => { if (p && p.id && !m.has(p.id)) m.set(p.id, p); });
+              const merged = Array.from(m.values());
+              try { localStorage.setItem('sim_osim_aspirations', JSON.stringify(merged)); } catch (e) {}
+              return merged;
+            });
+          }
 
           const osimMeetSnap = await getDocs(collection(db, 'osim_meetings'));
-          const loadedOsimMeet: OsimMeeting[] = [];
-          osimMeetSnap.forEach(doc => loadedOsimMeet.push({ id: doc.id, ...doc.data() } as OsimMeeting));
-          setOsimMeetings(loadedOsimMeet);
-          try {
-            localStorage.setItem('sim_osim_meetings', JSON.stringify(loadedOsimMeet));
-          } catch (e) {}
+          if (!osimMeetSnap.empty) {
+            const loadedOsimMeet: OsimMeeting[] = [];
+            osimMeetSnap.forEach(doc => loadedOsimMeet.push({ id: doc.id, ...doc.data() } as OsimMeeting));
+            setOsimMeetings(prev => {
+              const m = new Map<string, OsimMeeting>();
+              loadedOsimMeet.forEach(meet => m.set(meet.id, meet));
+              prev.forEach(p => { if (p && p.id && !m.has(p.id)) m.set(p.id, p); });
+              const merged = Array.from(m.values());
+              try { localStorage.setItem('sim_osim_meetings', JSON.stringify(merged)); } catch (e) {}
+              return merged;
+            });
+          }
 
           const osimDeptSnap = await getDocs(collection(db, 'osim_departments'));
           if (!osimDeptSnap.empty) {
@@ -1277,15 +1360,28 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             } catch (e) {}
           }
 
-          // Announcements Sync
+          // Announcements Sync (Resilient merge)
           const annSnap = await getDocs(collection(db, 'announcements'));
           if (!annSnap.empty) {
             const loadedAnn: Announcement[] = [];
             annSnap.forEach(doc => loadedAnn.push({ id: doc.id, ...doc.data() } as Announcement));
-            setAnnouncements(loadedAnn);
-            try {
-              localStorage.setItem('sim_announcements', JSON.stringify(loadedAnn));
-            } catch (e) {}
+            setAnnouncements(prev => {
+              const annMap = new Map<string, Announcement>();
+              loadedAnn.forEach(a => annMap.set(a.id, a));
+              prev.forEach(pa => {
+                if (pa && pa.id && !annMap.has(pa.id)) {
+                  annMap.set(pa.id, pa);
+                  if (auth.currentUser) {
+                    setDoc(doc(db, 'announcements', pa.id), pa).catch(() => {});
+                  }
+                }
+              });
+              const merged = Array.from(annMap.values());
+              try {
+                localStorage.setItem('sim_announcements', JSON.stringify(merged));
+              } catch (e) {}
+              return merged;
+            });
           }
 
           // Audit Logs Sync from Firestore (Restricted to Waka/Admin with active auth session)
@@ -1609,10 +1705,27 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         snapshot.forEach(docSnap => {
           loaded.push({ id: docSnap.id, ...docSnap.data() } as Announcement);
         });
-        setAnnouncements(loaded);
-        try {
-          localStorage.setItem('sim_announcements', JSON.stringify(loaded));
-        } catch (e) {}
+        setAnnouncements(prev => {
+          const annMap = new Map<string, Announcement>();
+          loaded.forEach(a => annMap.set(a.id, a));
+          // Preserve local additions
+          prev.forEach(pa => {
+            if (pa && pa.id && !annMap.has(pa.id)) {
+              annMap.set(pa.id, pa);
+              if (auth.currentUser) {
+                setDoc(doc(db, 'announcements', pa.id), pa).catch(() => {});
+              }
+            }
+          });
+          const merged = Array.from(annMap.values());
+          if (merged.length > 0) {
+            try {
+              localStorage.setItem('sim_announcements', JSON.stringify(merged));
+            } catch (e) {}
+            return merged;
+          }
+          return prev;
+        });
       }, (err) => {
         if (isPermissionError(err)) {
           console.warn('[Firestore] Izin baca ditolak untuk announcements:', err);
@@ -1806,7 +1919,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const isStaff = userRole && ['super_admin', 'admin', 'waka_kesiswaan', 'waka', 'admin_kesiswaan', 'guru_bk', 'bk', 'pembina_osim', 'pembina', 'pembina_ekstrakurikuler', 'pembina_ekskul', 'coach_ekstrakurikuler', 'wali_kelas', 'homeroom_teacher', 'guru', 'teacher', 'guru_mapel'].includes(userRole);
     const isBkOrAdmin = userRole && ['super_admin', 'admin', 'waka_kesiswaan', 'waka', 'admin_kesiswaan', 'guru_bk', 'bk'].includes(userRole);
 
-    // Violations Listener (restricted to Staff & Admin)
+    // Violations Listener (restricted to Staff & Admin, with resilient merge)
     if (isStaff) {
       try {
         const unsub = onSnapshot(collection(db, 'violations'), (snapshot) => {
@@ -1817,10 +1930,14 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               loaded.push({ id: docSnap.id, ...data });
             }
           });
-          setViolations(loaded);
-          try {
-            localStorage.setItem('sim_violations', JSON.stringify(loaded));
-          } catch (e) {}
+          setViolations(prev => {
+            const m = new Map<string, StudentViolation>();
+            loaded.forEach(v => m.set(v.id, v));
+            prev.forEach(p => { if (p && p.id && !m.has(p.id)) m.set(p.id, p); });
+            const merged = Array.from(m.values());
+            try { localStorage.setItem('sim_violations', JSON.stringify(merged)); } catch (e) {}
+            return merged;
+          });
         }, (err) => {
           if (isPermissionError(err)) {
             console.warn('[Firestore] Memerlukan otentikasi staf untuk pelanggaran:', err);
@@ -1832,7 +1949,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       } catch (e) {}
     }
 
-    // Counseling Listener (strictly restricted to Guru BK and Waka / Admin with active Firebase Auth session)
+    // Counseling Listener (strictly restricted to Guru BK and Waka / Admin, with resilient merge)
     if (isBkOrAdmin && auth.currentUser) {
       try {
         const unsub = onSnapshot(collection(db, 'counseling'), (snapshot) => {
@@ -1840,10 +1957,14 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           snapshot.forEach(docSnap => {
             loaded.push({ id: docSnap.id, ...docSnap.data() } as CounselingSession);
           });
-          setCounseling(loaded);
-          try {
-            localStorage.setItem('sim_counseling', JSON.stringify(loaded));
-          } catch (e) {}
+          setCounseling(prev => {
+            const m = new Map<string, StudentCounseling>();
+            loaded.forEach(c => m.set(c.id, c));
+            prev.forEach(p => { if (p && p.id && !m.has(p.id)) m.set(p.id, p); });
+            const merged = Array.from(m.values());
+            try { localStorage.setItem('sim_counseling', JSON.stringify(merged)); } catch (e) {}
+            return merged;
+          });
         }, (err) => {
           if (isPermissionError(err)) {
             console.warn('[Firestore] Memerlukan otentikasi peran Guru BK untuk konseling:', err);
@@ -1855,17 +1976,21 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       } catch (e) {}
     }
 
-    // Permissions Listener
+    // Permissions Listener (with resilient merge)
     try {
       const unsub = onSnapshot(collection(db, 'permissions'), (snapshot) => {
         const loaded: StudentPermission[] = [];
         snapshot.forEach(docSnap => {
           loaded.push({ id: docSnap.id, ...docSnap.data() } as StudentPermission);
         });
-        setPermissions(loaded);
-        try {
-          localStorage.setItem('sim_permissions', JSON.stringify(loaded));
-        } catch (e) {}
+        setPermissions(prev => {
+          const m = new Map<string, StudentPermission>();
+          loaded.forEach(p => m.set(p.id, p));
+          prev.forEach(p => { if (p && p.id && !m.has(p.id)) m.set(p.id, p); });
+          const merged = Array.from(m.values());
+          try { localStorage.setItem('sim_permissions', JSON.stringify(merged)); } catch (e) {}
+          return merged;
+        });
       }, (err) => {
         if (isPermissionError(err)) {
           console.warn('[Firestore] Izin baca ditolak untuk permissions:', err);
@@ -1906,17 +2031,21 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       unsubscribers.push(unsub);
     } catch (e) {}
 
-    // OSIM Programs Listener
+    // OSIM Programs Listener (with resilient merge)
     try {
       const unsub = onSnapshot(collection(db, 'osim_programs'), (snapshot) => {
         const loaded: OsimWorkProgram[] = [];
         snapshot.forEach(docSnap => {
           loaded.push({ id: docSnap.id, ...docSnap.data() } as OsimWorkProgram);
         });
-        setOsimPrograms(loaded);
-        try {
-          localStorage.setItem('sim_osim_programs', JSON.stringify(loaded));
-        } catch (e) {}
+        setOsimPrograms(prev => {
+          const m = new Map<string, OsimWorkProgram>();
+          loaded.forEach(p => m.set(p.id, p));
+          prev.forEach(p => { if (p && p.id && !m.has(p.id)) m.set(p.id, p); });
+          const merged = Array.from(m.values());
+          try { localStorage.setItem('sim_osim_programs', JSON.stringify(merged)); } catch (e) {}
+          return merged;
+        });
       }, (err) => {
         if (isPermissionError(err)) {
           console.warn('[Firestore] Izin baca ditolak untuk osim_programs:', err);
@@ -4981,7 +5110,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateSchedule = async (id: string, data: Partial<ScheduleEvent>) => {
-    setSchedules(prev => prev.map(s => s.id === id ? { ...s, ...data } : s));
+    setSchedules(prev => {
+      const next = prev.map(s => s.id === id ? { ...s, ...data } : s);
+      try { localStorage.setItem('sim_schedules', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         updateDoc(doc(db, 'schedules', id), data).catch(() => {});
@@ -4991,7 +5124,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deleteSchedule = async (id: string) => {
-    setSchedules(prev => prev.filter(s => s.id !== id));
+    setSchedules(prev => {
+      const next = prev.filter(s => s.id !== id);
+      try { localStorage.setItem('sim_schedules', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         deleteDoc(doc(db, 'schedules', id)).catch(() => {});
@@ -5006,7 +5143,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       ...data,
       createdAt: new Date().toLocaleString('id-ID')
     };
-    setAttendance(prev => [newSession, ...prev]);
+    setAttendance(prev => {
+      const next = [newSession, ...prev];
+      try { localStorage.setItem('sim_attendance', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         setDoc(doc(db, 'attendance', newSession.id), newSession).catch(() => {});
@@ -5016,7 +5157,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deleteAttendanceRecord = async (id: string) => {
-    setAttendance(prev => prev.filter(a => a.id !== id));
+    setAttendance(prev => {
+      const next = prev.filter(a => a.id !== id);
+      try { localStorage.setItem('sim_attendance', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
   };
 
   // Activity Operations
@@ -5026,7 +5171,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       ...data,
       createdAt: new Date().toISOString().split('T')[0]
     };
-    setActivities(prev => [newAct, ...prev]);
+    setActivities(prev => {
+      const next = [newAct, ...prev];
+      try { localStorage.setItem('sim_activities', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         setDoc(doc(db, 'activities', newAct.id), newAct).catch(() => {});
@@ -5036,7 +5185,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateActivity = async (id: string, data: Partial<SchoolActivity>) => {
-    setActivities(prev => prev.map(a => a.id === id ? { ...a, ...data } : a));
+    setActivities(prev => {
+      const next = prev.map(a => a.id === id ? { ...a, ...data } : a);
+      try { localStorage.setItem('sim_activities', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         updateDoc(doc(db, 'activities', id), data).catch(() => {});
@@ -5046,7 +5199,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deleteActivity = async (id: string) => {
-    setActivities(prev => prev.filter(a => a.id !== id));
+    setActivities(prev => {
+      const next = prev.filter(a => a.id !== id);
+      try { localStorage.setItem('sim_activities', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         deleteDoc(doc(db, 'activities', id)).catch(() => {});
@@ -5061,7 +5218,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       ...data,
       createdAt: new Date().toISOString().split('T')[0]
     };
-    setActivityReports(prev => [newRep, ...prev]);
+    setActivityReports(prev => {
+      const next = [newRep, ...prev];
+      try { localStorage.setItem('sim_activity_reports', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         setDoc(doc(db, 'activity_reports', newRep.id), newRep).catch(() => {});
@@ -5071,7 +5232,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateReport = async (id: string, data: Partial<ActivityReport>) => {
-    setActivityReports(prev => prev.map(r => r.id === id ? { ...r, ...data } : r));
+    setActivityReports(prev => {
+      const next = prev.map(r => r.id === id ? { ...r, ...data } : r);
+      try { localStorage.setItem('sim_activity_reports', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         updateDoc(doc(db, 'activity_reports', id), data).catch(() => {});
@@ -5080,7 +5245,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deleteActivityReport = async (id: string) => {
-    setActivityReports(prev => prev.filter(r => r.id !== id));
+    setActivityReports(prev => {
+      const next = prev.filter(r => r.id !== id);
+      try { localStorage.setItem('sim_activity_reports', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         deleteDoc(doc(db, 'activity_reports', id)).catch(() => {});
@@ -5089,18 +5258,22 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const reviewReport = async (id: string, status: 'Disetujui' | 'Revisi' | 'Ditolak', feedback?: string) => {
-    setActivityReports(prev => prev.map(r => {
-      if (r.id === id) {
-        return {
-          ...r,
-          status,
-          feedback: feedback || r.feedback,
-          approvedBy: currentUser?.displayName || 'Waka Kesiswaan',
-          approvedAt: new Date().toISOString().split('T')[0]
-        };
-      }
-      return r;
-    }));
+    setActivityReports(prev => {
+      const next = prev.map(r => {
+        if (r.id === id) {
+          return {
+            ...r,
+            status,
+            feedback: feedback || r.feedback,
+            approvedBy: currentUser?.displayName || 'Waka Kesiswaan',
+            approvedAt: new Date().toISOString().split('T')[0]
+          };
+        }
+        return r;
+      });
+      try { localStorage.setItem('sim_activity_reports', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       updateDoc(doc(db, 'activity_reports', id), {
         status,
@@ -6026,7 +6199,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       counselorName: finalCounselorName,
       createdAt: new Date().toISOString().split('T')[0]
     };
-    setCounseling(prev => [newCs, ...prev]);
+    setCounseling(prev => {
+      const next = [newCs, ...prev];
+      try { localStorage.setItem('sim_counseling', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         setDoc(doc(db, 'counseling', newCs.id), newCs).catch(() => {});
@@ -6036,7 +6213,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateCounseling = async (id: string, data: Partial<StudentCounseling>) => {
-    setCounseling(prev => prev.map(c => c.id === id ? { ...c, ...data } : c));
+    setCounseling(prev => {
+      const next = prev.map(c => c.id === id ? { ...c, ...data } : c);
+      try { localStorage.setItem('sim_counseling', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         updateDoc(doc(db, 'counseling', id), data).catch(() => {});
@@ -6045,7 +6226,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deleteCounselingSession = async (id: string) => {
-    setCounseling(prev => prev.filter(c => c.id !== id));
+    setCounseling(prev => {
+      const next = prev.filter(c => c.id !== id);
+      try { localStorage.setItem('sim_counseling', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         deleteDoc(doc(db, 'counseling', id)).catch(() => {});
@@ -6060,7 +6245,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       ...data,
       createdAt: new Date().toISOString().split('T')[0]
     };
-    setHomeVisits(prev => [newHv, ...prev]);
+    setHomeVisits(prev => {
+      const next = [newHv, ...prev];
+      try { localStorage.setItem('sim_home_visits', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         setDoc(doc(db, 'home_visits', newHv.id), newHv).catch(() => {});
@@ -6070,7 +6259,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateHomeVisit = async (id: string, data: Partial<HomeVisitRecord>) => {
-    setHomeVisits(prev => prev.map(h => h.id === id ? { ...h, ...data } : h));
+    setHomeVisits(prev => {
+      const next = prev.map(h => h.id === id ? { ...h, ...data } : h);
+      try { localStorage.setItem('sim_home_visits', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         updateDoc(doc(db, 'home_visits', id), data).catch(() => {});
@@ -6079,7 +6272,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deleteHomeVisit = async (id: string) => {
-    setHomeVisits(prev => prev.filter(h => h.id !== id));
+    setHomeVisits(prev => {
+      const next = prev.filter(h => h.id !== id);
+      try { localStorage.setItem('sim_home_visits', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         deleteDoc(doc(db, 'home_visits', id)).catch(() => {});
@@ -6094,7 +6291,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       ...data,
       createdAt: new Date().toISOString().split('T')[0]
     };
-    setParentCallLetters(prev => [newLetter, ...prev]);
+    setParentCallLetters(prev => {
+      const next = [newLetter, ...prev];
+      try { localStorage.setItem('sim_parent_call_letters', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         setDoc(doc(db, 'parent_call_letters', newLetter.id), newLetter).catch(() => {});
@@ -6104,7 +6305,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateParentCallLetter = async (id: string, data: Partial<ParentCallLetter>) => {
-    setParentCallLetters(prev => prev.map(l => l.id === id ? { ...l, ...data } : l));
+    setParentCallLetters(prev => {
+      const next = prev.map(l => l.id === id ? { ...l, ...data } : l);
+      try { localStorage.setItem('sim_parent_call_letters', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         updateDoc(doc(db, 'parent_call_letters', id), data).catch(() => {});
@@ -6113,7 +6318,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deleteParentCallLetter = async (id: string) => {
-    setParentCallLetters(prev => prev.filter(l => l.id !== id));
+    setParentCallLetters(prev => {
+      const next = prev.filter(l => l.id !== id);
+      try { localStorage.setItem('sim_parent_call_letters', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         deleteDoc(doc(db, 'parent_call_letters', id)).catch(() => {});
@@ -6128,7 +6337,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       ...data,
       createdAt: new Date().toISOString().split('T')[0]
     };
-    setCareerGuidances(prev => [newCg, ...prev]);
+    setCareerGuidances(prev => {
+      const next = [newCg, ...prev];
+      try { localStorage.setItem('sim_career_guidances', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         setDoc(doc(db, 'career_guidances', newCg.id), newCg).catch(() => {});
@@ -6138,7 +6351,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateCareerGuidance = async (id: string, data: Partial<CareerGuidanceRecord>) => {
-    setCareerGuidances(prev => prev.map(c => c.id === id ? { ...c, ...data } : c));
+    setCareerGuidances(prev => {
+      const next = prev.map(c => c.id === id ? { ...c, ...data } : c);
+      try { localStorage.setItem('sim_career_guidances', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         updateDoc(doc(db, 'career_guidances', id), data).catch(() => {});
@@ -6147,7 +6364,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deleteCareerGuidance = async (id: string) => {
-    setCareerGuidances(prev => prev.filter(c => c.id !== id));
+    setCareerGuidances(prev => {
+      const next = prev.filter(c => c.id !== id);
+      try { localStorage.setItem('sim_career_guidances', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         deleteDoc(doc(db, 'career_guidances', id)).catch(() => {});
@@ -6274,7 +6495,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       ...data,
       createdAt: new Date().toISOString().split('T')[0]
     };
-    setPermissions(prev => [newPerm, ...prev]);
+    setPermissions(prev => {
+      const next = [newPerm, ...prev];
+      try { localStorage.setItem('sim_permissions', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         setDoc(doc(db, 'permissions', newPerm.id), newPerm).catch(() => {});
@@ -6284,7 +6509,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updatePermission = async (id: string, data: Partial<StudentPermission>) => {
-    setPermissions(prev => prev.map(p => p.id === id ? { ...p, ...data } : p));
+    setPermissions(prev => {
+      const next = prev.map(p => p.id === id ? { ...p, ...data } : p);
+      try { localStorage.setItem('sim_permissions', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         updateDoc(doc(db, 'permissions', id), data).catch(() => {});
@@ -6293,7 +6522,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deletePermission = async (id: string) => {
-    setPermissions(prev => prev.filter(p => p.id !== id));
+    setPermissions(prev => {
+      const next = prev.filter(p => p.id !== id);
+      try { localStorage.setItem('sim_permissions', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         deleteDoc(doc(db, 'permissions', id)).catch(() => {});
@@ -6302,7 +6535,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updatePermissionStatus = async (id: string, status: 'Menunggu' | 'Disetujui' | 'Ditolak' | 'Selesai') => {
-    setPermissions(prev => prev.map(p => p.id === id ? { ...p, status, approvedBy: currentUser?.displayName } : p));
+    setPermissions(prev => {
+      const next = prev.map(p => p.id === id ? { ...p, status, approvedBy: currentUser?.displayName } : p);
+      try { localStorage.setItem('sim_permissions', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         updateDoc(doc(db, 'permissions', id), { status, approvedBy: currentUser?.displayName }).catch(() => {});
@@ -6317,7 +6554,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       ...data,
       createdAt: new Date().toISOString().split('T')[0]
     };
-    setNeedsRequests(prev => [newNeed, ...prev]);
+    setNeedsRequests(prev => {
+      const next = [newNeed, ...prev];
+      try { localStorage.setItem('sim_needs_requests', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         setDoc(doc(db, 'needs_requests', newNeed.id), newNeed).catch(() => {});
@@ -6327,7 +6568,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const reviewNeedsRequest = async (id: string, status: 'Disetujui' | 'Ditolak' | 'Revisi', adminNotes?: string, approvedBudget?: number) => {
-    setNeedsRequests(prev => prev.map(n => n.id === id ? { ...n, status, adminNotes, approvedBudget: approvedBudget ?? n.approvedBudget } : n));
+    setNeedsRequests(prev => {
+      const next = prev.map(n => n.id === id ? { ...n, status, adminNotes, approvedBudget: approvedBudget ?? n.approvedBudget } : n);
+      try { localStorage.setItem('sim_needs_requests', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         updateDoc(doc(db, 'needs_requests', id), { status, adminNotes, approvedBudget }).catch(() => {});
@@ -6337,7 +6582,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deleteNeedsRequest = async (id: string) => {
-    setNeedsRequests(prev => prev.filter(n => n.id !== id));
+    setNeedsRequests(prev => {
+      const next = prev.filter(n => n.id !== id);
+      try { localStorage.setItem('sim_needs_requests', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         deleteDoc(doc(db, 'needs_requests', id)).catch(() => {});
@@ -6355,7 +6604,13 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       ...data,
       createdAt: new Date().toISOString().split('T')[0]
     };
-    setAnnouncements(prev => [newAnn, ...prev]);
+    setAnnouncements(prev => {
+      const next = [newAnn, ...prev];
+      try {
+        localStorage.setItem('sim_announcements', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         setDoc(doc(db, 'announcements', newAnn.id), newAnn).catch(() => {});
@@ -6366,7 +6621,13 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const updateAnnouncement = async (id: string, data: Partial<Announcement>) => {
     const updated = { ...data, updatedAt: new Date().toISOString().split('T')[0] };
-    setAnnouncements(prev => prev.map(a => a.id === id ? { ...a, ...updated } : a));
+    setAnnouncements(prev => {
+      const next = prev.map(a => a.id === id ? { ...a, ...updated } : a);
+      try {
+        localStorage.setItem('sim_announcements', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         setDoc(doc(db, 'announcements', id), updated, { merge: true }).catch(() => {});
@@ -6377,7 +6638,13 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const deleteAnnouncement = async (id: string) => {
     const target = announcements.find(a => a.id === id);
-    setAnnouncements(prev => prev.filter(a => a.id !== id));
+    setAnnouncements(prev => {
+      const next = prev.filter(a => a.id !== id);
+      try {
+        localStorage.setItem('sim_announcements', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         deleteDoc(doc(db, 'announcements', id)).catch(() => {});
@@ -6405,13 +6672,19 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const userKey = uid || currentUser?.uid || 'guest';
     const nowIso = new Date().toISOString();
 
-    setAnnouncements(prev => prev.map(a => {
-      if (a.id === id) {
-        const readBy = { ...(a.readByUsers || {}), [userKey]: nowIso };
-        return { ...a, readByUsers: readBy };
-      }
-      return a;
-    }));
+    setAnnouncements(prev => {
+      const next = prev.map(a => {
+        if (a.id === id) {
+          const readBy = { ...(a.readByUsers || {}), [userKey]: nowIso };
+          return { ...a, readByUsers: readBy };
+        }
+        return a;
+      });
+      try {
+        localStorage.setItem('sim_announcements', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
 
     try {
       const targetDoc = doc(db, 'announcements', id);
@@ -6426,13 +6699,19 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const userKey = uid || currentUser?.uid || 'guest';
     const nowIso = new Date().toISOString();
 
-    setAnnouncements(prev => prev.map(a => {
-      if (ids.includes(a.id)) {
-        const readBy = { ...(a.readByUsers || {}), [userKey]: nowIso };
-        return { ...a, readByUsers: readBy };
-      }
-      return a;
-    }));
+    setAnnouncements(prev => {
+      const next = prev.map(a => {
+        if (ids.includes(a.id)) {
+          const readBy = { ...(a.readByUsers || {}), [userKey]: nowIso };
+          return { ...a, readByUsers: readBy };
+        }
+        return a;
+      });
+      try {
+        localStorage.setItem('sim_announcements', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
 
     for (const annId of ids) {
       try {
@@ -6445,11 +6724,19 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Notifications
   const markNotificationAsRead = (id: string) => {
-    setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n));
+    setNotifications(prev => {
+      const next = prev.map(n => n.id === id ? { ...n, isRead: true } : n);
+      try { localStorage.setItem('sim_notifications', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
   };
 
   const markAllNotificationsAsRead = () => {
-    setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
+    setNotifications(prev => {
+      const next = prev.map(n => ({ ...n, isRead: true }));
+      try { localStorage.setItem('sim_notifications', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
   };
 
   const addNotification = (item: Omit<NotificationItem, 'id' | 'createdAt' | 'isRead'>) => {
@@ -6459,7 +6746,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       isRead: false,
       createdAt: new Date().toISOString().split('T')[0]
     };
-    setNotifications(prev => [newNotif, ...prev]);
+    setNotifications(prev => {
+      const next = [newNotif, ...prev];
+      try { localStorage.setItem('sim_notifications', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       setDoc(doc(db, 'notifications', newNotif.id), newNotif).catch(() => {});
     } catch (e) {}
@@ -6509,7 +6800,10 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       try {
         localStorage.setItem('sim_osim_members', JSON.stringify(nextMembers));
       } catch (e) {}
-      if (syncUsersFromOsim) {
+      const posLower = (newMember.position || '').toLowerCase();
+      const isBphTarget = isBphMember(newMember);
+      const isSekbidKetua = !isBphTarget && (posLower.includes('ketua') || posLower.includes('koordinator'));
+      if ((isBphTarget || isSekbidKetua) && syncUsersFromOsim) {
         setTimeout(() => {
           syncUsersFromOsim(osimDepartments || [], nextMembers).catch(e => console.warn('Auto sync osim member to cpanel note:', e));
         }, 50);
@@ -6666,7 +6960,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       ...validData,
       createdAt: new Date().toISOString().split('T')[0]
     };
-    setOsimPrograms(prev => [newProg, ...prev]);
+    setOsimPrograms(prev => {
+      const next = [newProg, ...prev];
+      try { localStorage.setItem('sim_osim_programs', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         setDoc(doc(db, 'osim_programs', newProg.id), newProg).catch(() => {});
@@ -6676,7 +6974,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateOsimProgram = async (id: string, data: Partial<OsimWorkProgram>) => {
-    setOsimPrograms(prev => prev.map(p => p.id === id ? { ...p, ...data } : p));
+    setOsimPrograms(prev => {
+      const next = prev.map(p => p.id === id ? { ...p, ...data } : p);
+      try { localStorage.setItem('sim_osim_programs', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         updateDoc(doc(db, 'osim_programs', id), data).catch(() => {});
@@ -6686,7 +6988,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deleteOsimProgram = async (id: string) => {
-    setOsimPrograms(prev => prev.filter(p => p.id !== id));
+    setOsimPrograms(prev => {
+      const next = prev.filter(p => p.id !== id);
+      try { localStorage.setItem('sim_osim_programs', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         deleteDoc(doc(db, 'osim_programs', id)).catch(() => {});
@@ -6702,7 +7008,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       ...data,
       createdAt: new Date().toISOString().split('T')[0]
     };
-    setOsimAspirations(prev => [newAsp, ...prev]);
+    setOsimAspirations(prev => {
+      const next = [newAsp, ...prev];
+      try { localStorage.setItem('sim_osim_aspirations', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         setDoc(doc(db, 'osim_aspirations', newAsp.id), newAsp).catch(() => {});
@@ -6712,7 +7022,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateOsimAspiration = async (id: string, data: Partial<OsimAspiration>) => {
-    setOsimAspirations(prev => prev.map(a => a.id === id ? { ...a, ...data } : a));
+    setOsimAspirations(prev => {
+      const next = prev.map(a => a.id === id ? { ...a, ...data } : a);
+      try { localStorage.setItem('sim_osim_aspirations', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         updateDoc(doc(db, 'osim_aspirations', id), data).catch(() => {});
@@ -6722,7 +7036,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const deleteOsimAspiration = async (id: string) => {
-    setOsimAspirations(prev => prev.filter(a => a.id !== id));
+    setOsimAspirations(prev => {
+      const next = prev.filter(a => a.id !== id);
+      try { localStorage.setItem('sim_osim_aspirations', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         deleteDoc(doc(db, 'osim_aspirations', id)).catch(() => {});
@@ -6902,7 +7220,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       ...data,
       createdAt: new Date().toISOString().split('T')[0]
     };
-    setCashAccounts(prev => [newAcc, ...prev]);
+    setCashAccounts(prev => {
+      const next = [newAcc, ...prev];
+      try { localStorage.setItem('sim_cash_accounts', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         setDoc(doc(db, 'cash_accounts', newAcc.id), newAcc).catch(() => {});
@@ -6912,7 +7234,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateCashAccount = async (id: string, data: Partial<CashAccount>) => {
-    setCashAccounts(prev => prev.map(a => a.id === id ? { ...a, ...data, updatedAt: new Date().toISOString() } : a));
+    setCashAccounts(prev => {
+      const next = prev.map(a => a.id === id ? { ...a, ...data, updatedAt: new Date().toISOString() } : a);
+      try { localStorage.setItem('sim_cash_accounts', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         updateDoc(doc(db, 'cash_accounts', id), { ...data, updatedAt: new Date().toISOString() }).catch(() => {});
@@ -6923,9 +7249,17 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   const deleteCashAccount = async (id: string) => {
     const target = cashAccounts.find(a => a.id === id);
-    setCashAccounts(prev => prev.filter(a => a.id !== id));
+    setCashAccounts(prev => {
+      const next = prev.filter(a => a.id !== id);
+      try { localStorage.setItem('sim_cash_accounts', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     // Also remove associated transactions
-    setCashTransactions(prev => prev.filter(t => t.accountId !== id));
+    setCashTransactions(prev => {
+      const next = prev.filter(t => t.accountId !== id);
+      try { localStorage.setItem('sim_cash_transactions', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
     try {
       if (auth.currentUser) {
         deleteDoc(doc(db, 'cash_accounts', id)).catch(() => {});
@@ -7005,17 +7339,25 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
 
     // Update transactions state
-    setCashTransactions(prev => [newTrx, ...prev]);
+    setCashTransactions(prev => {
+      const next = [newTrx, ...prev];
+      try { localStorage.setItem('sim_cash_transactions', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
 
     // Atomically recalculate and update account balance in state
-    setCashAccounts(prev => prev.map(acc => {
-      if (acc.id === validData.accountId) {
-        const delta = validData.type === 'MASUK' ? Number(validData.amount) : -Number(validData.amount);
-        const nextBal = (Number(acc.balance) || 0) + delta;
-        return { ...acc, balance: nextBal, updatedAt: new Date().toISOString() };
-      }
-      return acc;
-    }));
+    setCashAccounts(prev => {
+      const next = prev.map(acc => {
+        if (acc.id === validData.accountId) {
+          const delta = validData.type === 'MASUK' ? Number(validData.amount) : -Number(validData.amount);
+          const nextBal = (Number(acc.balance) || 0) + delta;
+          return { ...acc, balance: nextBal, updatedAt: new Date().toISOString() };
+        }
+        return acc;
+      });
+      try { localStorage.setItem('sim_cash_accounts', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
 
     // Atomically commit to Cloud Firestore using runTransaction
     if (auth.currentUser) {
@@ -7050,7 +7392,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (!existing) return;
 
     const merged = { ...existing, ...data, updatedAt: new Date().toISOString() };
-    setCashTransactions(prev => prev.map(t => t.id === id ? merged : t));
+    setCashTransactions(prev => {
+      const next = prev.map(t => t.id === id ? merged : t);
+      try { localStorage.setItem('sim_cash_transactions', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
 
     // If amount, type, or account changed, reconcile affected accounts
     const oldDelta = existing.type === 'MASUK' ? Number(existing.amount) : -Number(existing.amount);
@@ -7058,23 +7404,31 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     if (existing.accountId === merged.accountId) {
       const netChange = newDelta - oldDelta;
-      setCashAccounts(prev => prev.map(acc => {
-        if (acc.id === merged.accountId) {
-          return { ...acc, balance: (Number(acc.balance) || 0) + netChange, updatedAt: new Date().toISOString() };
-        }
-        return acc;
-      }));
+      setCashAccounts(prev => {
+        const next = prev.map(acc => {
+          if (acc.id === merged.accountId) {
+            return { ...acc, balance: (Number(acc.balance) || 0) + netChange, updatedAt: new Date().toISOString() };
+          }
+          return acc;
+        });
+        try { localStorage.setItem('sim_cash_accounts', JSON.stringify(next)); } catch (e) {}
+        return next;
+      });
     } else {
       // Revert old account and add to new account
-      setCashAccounts(prev => prev.map(acc => {
-        if (acc.id === existing.accountId) {
-          return { ...acc, balance: (Number(acc.balance) || 0) - oldDelta, updatedAt: new Date().toISOString() };
-        }
-        if (acc.id === merged.accountId) {
-          return { ...acc, balance: (Number(acc.balance) || 0) + newDelta, updatedAt: new Date().toISOString() };
-        }
-        return acc;
-      }));
+      setCashAccounts(prev => {
+        const next = prev.map(acc => {
+          if (acc.id === existing.accountId) {
+            return { ...acc, balance: (Number(acc.balance) || 0) - oldDelta, updatedAt: new Date().toISOString() };
+          }
+          if (acc.id === merged.accountId) {
+            return { ...acc, balance: (Number(acc.balance) || 0) + newDelta, updatedAt: new Date().toISOString() };
+          }
+          return acc;
+        });
+        try { localStorage.setItem('sim_cash_accounts', JSON.stringify(next)); } catch (e) {}
+        return next;
+      });
     }
 
     if (auth.currentUser) {
@@ -7118,16 +7472,24 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const target = cashTransactions.find(t => t.id === id);
     if (!target) return;
 
-    setCashTransactions(prev => prev.filter(t => t.id !== id));
+    setCashTransactions(prev => {
+      const next = prev.filter(t => t.id !== id);
+      try { localStorage.setItem('sim_cash_transactions', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
 
     // Revert balance in local state
     const deltaToRevert = target.type === 'MASUK' ? -Number(target.amount) : Number(target.amount);
-    setCashAccounts(prev => prev.map(acc => {
-      if (acc.id === target.accountId) {
-        return { ...acc, balance: (Number(acc.balance) || 0) + deltaToRevert, updatedAt: new Date().toISOString() };
-      }
-      return acc;
-    }));
+    setCashAccounts(prev => {
+      const next = prev.map(acc => {
+        if (acc.id === target.accountId) {
+          return { ...acc, balance: (Number(acc.balance) || 0) + deltaToRevert, updatedAt: new Date().toISOString() };
+        }
+        return acc;
+      });
+      try { localStorage.setItem('sim_cash_accounts', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
 
     if (auth.currentUser) {
       try {

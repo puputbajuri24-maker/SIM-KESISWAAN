@@ -1,5 +1,5 @@
 import React from 'react';
-import { Printer, X } from 'lucide-react';
+import { Printer } from 'lucide-react';
 import { Modal } from '../../../components/common/Modal';
 import { SchoolLetterhead } from '../../../components/common/SchoolLetterhead';
 import { OsimMeeting, SchoolSetting } from '../../../types';
@@ -37,7 +37,12 @@ export const OsimPrintMeetingModal: React.FC<OsimPrintMeetingModalProps> = ({
     }
   })();
 
-  const docNumber = `BA-${meeting.id.slice(0, 6).toUpperCase()}/OSIM-MAN2SBT/${new Date().getFullYear()}`;
+  const docNumber = meeting.meetingNumber || `BA-${meeting.id.slice(0, 6).toUpperCase()}/OSIM-MAN2SBT/${new Date().getFullYear()}`;
+  const attendees = meeting.attendees || [];
+  const hadirCount = attendees.filter(a => a.presentStatus === 'Hadir').length;
+  const izinCount = attendees.filter(a => a.presentStatus === 'Izin').length;
+  const sakitCount = attendees.filter(a => a.presentStatus === 'Sakit').length;
+  const alpaCount = attendees.filter(a => a.presentStatus === 'Alpa').length;
 
   return (
     <Modal
@@ -50,7 +55,7 @@ export const OsimPrintMeetingModal: React.FC<OsimPrintMeetingModalProps> = ({
         {/* Action Controls (Hidden on Print) */}
         <div className="flex items-center justify-between pb-3 border-b border-zinc-800 print:hidden">
           <div className="text-xs text-zinc-400">
-            Format resmi Berita Acara & Notulensi Sidang Pleno / Rapat OSIM siap cetak atau simpan PDF.
+            Format resmi Berita Acara & Notulensi Sidang Pleno / Rapat OSIM siap cetak atau simpan PDF lengkap dengan presensi kehadiran.
           </div>
           <div className="flex items-center gap-2">
             <button
@@ -104,7 +109,7 @@ export const OsimPrintMeetingModal: React.FC<OsimPrintMeetingModalProps> = ({
                   <td className="py-1 font-semibold text-zinc-700">Tempat / Lokasi</td>
                   <td className="py-1 text-zinc-900">: {meeting.location}</td>
                   <td className="py-1 font-semibold text-zinc-700">Jumlah Hadir</td>
-                  <td className="py-1 text-zinc-900 font-semibold">: {meeting.attendeesCount} Peserta</td>
+                  <td className="py-1 text-zinc-900 font-semibold">: {meeting.attendeesCount} Peserta Hadir</td>
                 </tr>
                 <tr>
                   <td className="py-1 font-semibold text-zinc-700">Pimpinan Rapat</td>
@@ -145,6 +150,56 @@ export const OsimPrintMeetingModal: React.FC<OsimPrintMeetingModalProps> = ({
               <div className="pl-3 text-zinc-800 italic bg-amber-50/50 p-2 rounded border border-amber-200/60 leading-relaxed">
                 "{meeting.wakaNotes}"
               </div>
+            </div>
+          )}
+
+          {/* Section 4: Attendance List */}
+          {attendees.length > 0 && (
+            <div className="mt-5">
+              <div className="flex items-center justify-between border-b border-zinc-300 pb-1 mb-2">
+                <h4 className="font-bold text-xs uppercase tracking-wider text-zinc-800">
+                  IV. DAFTAR PRESENSI & KEHADIRAN PESERTA RAPAT
+                </h4>
+                <span className="text-[10px] text-zinc-600 font-semibold">
+                  Rekapitulasi: Hadir: {hadirCount} | Izin: {izinCount} | Sakit: {sakitCount} | Alpa: {alpaCount} (Total: {attendees.length} Pengurus)
+                </span>
+              </div>
+              <table className="w-full text-left border-collapse border border-zinc-300 text-[11px] mb-2">
+                <thead>
+                  <tr className="bg-zinc-100 border-b border-zinc-300 text-zinc-700">
+                    <th className="py-1 px-2 border-r border-zinc-300 w-8 text-center">No</th>
+                    <th className="py-1 px-2 border-r border-zinc-300">Nama Lengkap</th>
+                    <th className="py-1 px-2 border-r border-zinc-300">Jabatan / Sekbid</th>
+                    <th className="py-1 px-2 border-r border-zinc-300 w-24 text-center">Status</th>
+                    <th className="py-1 px-2 w-24 text-center">Tanda Tangan</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {attendees.map((att, i) => (
+                    <tr key={att.memberId || i} className="border-b border-zinc-200/80">
+                      <td className="py-1 px-2 border-r border-zinc-300 text-center text-zinc-600">{i + 1}</td>
+                      <td className="py-1 px-2 border-r border-zinc-300 font-semibold text-zinc-900">{att.name}</td>
+                      <td className="py-1 px-2 border-r border-zinc-300 text-zinc-700">{att.roleOrPosition}</td>
+                      <td className="py-1 px-2 border-r border-zinc-300 text-center font-bold">
+                        <span className={
+                          att.presentStatus === 'Hadir'
+                            ? 'text-emerald-700'
+                            : att.presentStatus === 'Izin'
+                            ? 'text-amber-700'
+                            : att.presentStatus === 'Sakit'
+                            ? 'text-sky-700'
+                            : 'text-rose-700'
+                        }>
+                          {att.presentStatus}
+                        </span>
+                      </td>
+                      <td className="py-1 px-2 text-center text-zinc-400 font-mono text-[9px]">
+                        {att.presentStatus === 'Hadir' ? '✓ Hadir' : `(${att.presentStatus})`}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
 

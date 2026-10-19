@@ -26,11 +26,13 @@ import {
 import { Announcement } from '../../types';
 import { useSchool } from '../../contexts/SchoolContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import { AnnouncementModal } from './AnnouncementModal';
 import { AnnouncementPopupModal } from './AnnouncementPopupModal';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 
 export const AnnouncementManagementPanel: React.FC = () => {
+  const { toast } = useToast();
   const {
     announcements,
     addAnnouncement,
@@ -78,19 +80,33 @@ export const AnnouncementManagementPanel: React.FC = () => {
     return true;
   });
 
+  const canManageAnnouncements = isSuperAdmin || isWaka || currentUser?.role === 'admin_kesiswaan';
+
   const handleSaveAnnouncement = async (data: Omit<Announcement, 'id' | 'createdAt'>, id?: string) => {
-    if (id) {
-      await updateAnnouncement(id, data);
-    } else {
-      await addAnnouncement(data);
+    try {
+      if (id) {
+        await updateAnnouncement(id, data);
+        toast.success('Pengumuman berhasil diperbarui dan disinkronkan ke server!');
+      } else {
+        await addAnnouncement(data);
+        toast.success('Pengumuman baru berhasil disimpan ke penyimpanan lokal & server! Data aman dan tidak hilang saat di-reload.');
+      }
+    } catch (err: any) {
+      toast.error('Gagal menyimpan pengumuman: ' + (err?.message || 'Kesalahan sistem'));
     }
   };
 
   const handleDeleteConfirm = async () => {
     if (selectedAnnouncement) {
-      await deleteAnnouncement(selectedAnnouncement.id);
-      setIsDeleteModalOpen(false);
-      setSelectedAnnouncement(null);
+      try {
+        await deleteAnnouncement(selectedAnnouncement.id);
+        toast.success('Pengumuman berhasil dihapus.');
+      } catch (err: any) {
+        toast.error('Gagal menghapus pengumuman.');
+      } finally {
+        setIsDeleteModalOpen(false);
+        setSelectedAnnouncement(null);
+      }
     }
   };
 
@@ -198,12 +214,13 @@ export const AnnouncementManagementPanel: React.FC = () => {
               <Megaphone className="w-6 h-6 animate-pulse" />
             </div>
             <div>
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center space-x-2 flex-wrap gap-y-1">
                 <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-blue-500/15 text-blue-300 border border-blue-500/30 uppercase tracking-wider">
                   PUSAT PENGUMUMAN & BROADCAST
                 </span>
-                <span className="text-[10px] font-mono text-zinc-400 bg-[#222228] px-2 py-0.5 rounded border border-[#2d2d34]">
-                  SINKRON OTOMATIS
+                <span className="text-[10px] font-mono font-bold text-emerald-300 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/30 flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                  DUAL-LAYER PERSISTENCE AKTIF
                 </span>
               </div>
               <h2 className="text-lg sm:text-xl font-bold text-zinc-100 mt-1">
@@ -224,16 +241,18 @@ export const AnnouncementManagementPanel: React.FC = () => {
               <Eye className="w-4 h-4 text-blue-400" />
               <span>Pratinjau Popup</span>
             </button>
-            <button
-              onClick={() => {
-                setSelectedAnnouncement(null);
-                setIsCreateModalOpen(true);
-              }}
-              className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-bold text-white transition-all shadow-lg shadow-blue-600/30 flex items-center space-x-2"
-            >
-              <Plus className="w-4 h-4" />
-              <span>+ Buat Pengumuman Baru</span>
-            </button>
+            {canManageAnnouncements && (
+              <button
+                onClick={() => {
+                  setSelectedAnnouncement(null);
+                  setIsCreateModalOpen(true);
+                }}
+                className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-bold text-white transition-all shadow-lg shadow-blue-600/30 flex items-center space-x-2"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Buat Pengumuman Baru</span>
+              </button>
+            )}
           </div>
         </div>
 

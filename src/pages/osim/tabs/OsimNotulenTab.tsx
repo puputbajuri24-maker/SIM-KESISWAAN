@@ -17,32 +17,38 @@ import {
   FileCheck2,
   UserCheck,
   AlertCircle,
-  Sparkles
+  Sparkles,
+  ShieldCheck,
+  SendHorizontal
 } from 'lucide-react';
-import { OsimMeeting } from '../../../types';
+import { OsimMeeting, OsimMeetingStatus } from '../../../types';
 
 export interface OsimNotulenTabProps {
   osimMeetings: OsimMeeting[];
   isSekretarisOsim: boolean;
   canManageOsim: boolean;
+  isPembinaOsim?: boolean;
   currentUserName?: string;
   onOpenAddMeeting: () => void;
   onOpenDetailMeeting: (meeting: OsimMeeting, e?: React.MouseEvent) => void;
   onOpenEditMeeting: (meeting: OsimMeeting, e: React.MouseEvent) => void;
   onDeleteMeeting: (meeting: OsimMeeting) => void;
   onPrintMeeting?: (meeting: OsimMeeting) => void;
+  onVerifyMeeting?: (meeting: OsimMeeting, newStatus: OsimMeetingStatus, notes?: string) => Promise<void>;
 }
 
 export const OsimNotulenTab: React.FC<OsimNotulenTabProps> = ({
   osimMeetings,
   isSekretarisOsim,
   canManageOsim,
+  isPembinaOsim = false,
   currentUserName,
   onOpenAddMeeting,
   onOpenDetailMeeting,
   onOpenEditMeeting,
   onDeleteMeeting,
-  onPrintMeeting
+  onPrintMeeting,
+  onVerifyMeeting
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
@@ -80,9 +86,10 @@ export const OsimNotulenTab: React.FC<OsimNotulenTabProps> = ({
   const stats = useMemo(() => {
     const total = osimMeetings.length;
     const verified = osimMeetings.filter(m => m.status === 'Disahkan Pembina').length;
-    const draft = osimMeetings.filter(m => !m.status || m.status === 'Draft' || m.status === 'Diajukan').length;
+    const diajukan = osimMeetings.filter(m => m.status === 'Diajukan').length;
+    const draft = osimMeetings.filter(m => !m.status || m.status === 'Draft').length;
     const totalAttendees = osimMeetings.reduce((sum, m) => sum + (Number(m.attendeesCount) || 0), 0);
-    return { total, verified, draft, totalAttendees };
+    return { total, verified, diajukan, draft, totalAttendees };
   }, [osimMeetings]);
 
   const meetingTypes = [
@@ -98,7 +105,7 @@ export const OsimNotulenTab: React.FC<OsimNotulenTabProps> = ({
   return (
     <div className="space-y-4" id="view-notulen-osim">
       {/* Sekretaris Header & Summary Banner */}
-      <div className="bg-linear-to-r from-sky-950/40 via-zinc-900 to-zinc-900 border border-sky-800/40 p-4 rounded-xl shadow-xs">
+      <div className="bg-gradient-to-r from-sky-950/40 via-zinc-900 to-zinc-900 border border-sky-800/40 p-4 rounded-xl shadow-xs">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 rounded-xl bg-sky-500/20 text-sky-400 flex items-center justify-center border border-sky-500/30 shrink-0">
@@ -113,6 +120,12 @@ export const OsimNotulenTab: React.FC<OsimNotulenTabProps> = ({
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-sky-500/20 text-sky-300 border border-sky-500/40">
                     <Sparkles className="w-3 h-3 text-sky-400" />
                     NOTULIS RESMI (SEKRETARIS)
+                  </span>
+                )}
+                {isPembinaOsim && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                    <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                    PEMBINA / WAKA (HAK PENGESAHAN)
                   </span>
                 )}
               </div>
@@ -153,12 +166,12 @@ export const OsimNotulenTab: React.FC<OsimNotulenTabProps> = ({
             <span className="text-lg font-bold font-mono text-emerald-400">{stats.verified}</span>
           </div>
           <div className="bg-zinc-900/80 border border-zinc-800 p-2.5 rounded-lg">
-            <span className="text-[11px] text-zinc-400 block">Draft / Dalam Proses</span>
-            <span className="text-lg font-bold font-mono text-amber-400">{stats.draft}</span>
+            <span className="text-[11px] text-zinc-400 block">Diajukan / Draft</span>
+            <span className="text-lg font-bold font-mono text-amber-400">{stats.diajukan + stats.draft}</span>
           </div>
           <div className="bg-zinc-900/80 border border-zinc-800 p-2.5 rounded-lg">
-            <span className="text-[11px] text-zinc-400 block">Total Kehadiran Pengurus</span>
-            <span className="text-lg font-bold font-mono text-sky-400">{stats.totalAttendees} <span className="text-xs text-zinc-500 font-normal">orang</span></span>
+            <span className="text-[11px] text-zinc-400 block">Total Kehadiran</span>
+            <span className="text-lg font-bold font-mono text-sky-400">{stats.totalAttendees} <span className="text-xs text-zinc-500 font-normal">peserta</span></span>
           </div>
         </div>
       </div>
@@ -194,9 +207,10 @@ export const OsimNotulenTab: React.FC<OsimNotulenTabProps> = ({
             className="px-2.5 py-1.5 bg-zinc-950 border border-zinc-700/80 rounded-md text-xs text-zinc-200 focus:outline-none focus:border-sky-500"
           >
             <option value="all">Semua Status</option>
-            <option value="Draft">Draft Notulen</option>
-            <option value="Diajukan">Diajukan ke Pembina</option>
             <option value="Disahkan Pembina">Disahkan Pembina</option>
+            <option value="Diajukan">Diajukan ke Pembina</option>
+            <option value="Draft">Draft</option>
+            <option value="Revisi">Revisi</option>
           </select>
         </div>
       </div>
@@ -228,6 +242,9 @@ export const OsimNotulenTab: React.FC<OsimNotulenTabProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
           {filteredNotulen.map((m) => {
             const isVerified = m.status === 'Disahkan Pembina';
+            const isDiajukan = m.status === 'Diajukan';
+            const isDraft = !m.status || m.status === 'Draft';
+
             return (
               <div
                 key={m.id}
@@ -243,6 +260,10 @@ export const OsimNotulenTab: React.FC<OsimNotulenTabProps> = ({
                       className={`px-2 py-0.5 rounded text-[10px] font-bold inline-flex items-center gap-1 ${
                         isVerified
                           ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+                          : isDiajukan
+                          ? 'bg-purple-500/15 text-purple-300 border border-purple-500/30 animate-pulse'
+                          : m.status === 'Revisi'
+                          ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
                           : 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
                       }`}
                     >
@@ -251,10 +272,20 @@ export const OsimNotulenTab: React.FC<OsimNotulenTabProps> = ({
                           <CheckCircle2 className="w-3 h-3" />
                           DISAHKAN PEMBINA
                         </>
+                      ) : isDiajukan ? (
+                        <>
+                          <Clock className="w-3 h-3" />
+                          DIAJUKAN KE PEMBINA
+                        </>
+                      ) : m.status === 'Revisi' ? (
+                        <>
+                          <AlertCircle className="w-3 h-3" />
+                          REVISI PEMBINA
+                        </>
                       ) : (
                         <>
                           <Clock className="w-3 h-3" />
-                          DRAFT / NOTULEN
+                          DRAFT NOTULEN
                         </>
                       )}
                     </span>
@@ -317,13 +348,41 @@ export const OsimNotulenTab: React.FC<OsimNotulenTabProps> = ({
                 </div>
 
                 {/* Bottom Actions Bar */}
-                <div className="mt-4 pt-3 border-t border-zinc-800 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1 text-[11px] text-zinc-400">
-                    <Users className="w-3.5 h-3.5 text-zinc-500" />
-                    <span>{m.attendeesCount || 0} Hadir</span>
+                <div className="mt-4 pt-3 border-t border-zinc-800 flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5 text-[11px] text-zinc-400">
+                    <Users className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="font-semibold text-emerald-400">{m.attendeesCount || 0} Hadir</span>
+                    {m.attendees && m.attendees.length > 0 && (
+                      <span className="text-[10px] text-zinc-500">({m.attendees.length} anggota)</span>
+                    )}
                   </div>
 
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {/* Role-based Verification Actions */}
+                    {isPembinaOsim && !isVerified && onVerifyMeeting && (
+                      <button
+                        type="button"
+                        onClick={() => onVerifyMeeting(m, 'Disahkan Pembina')}
+                        className="px-2 py-1 rounded bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 text-xs font-semibold flex items-center gap-1 transition"
+                        title="Sahkan Notulensi Rapat ini sebagai Pembina OSIM"
+                      >
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                        Sahkan
+                      </button>
+                    )}
+
+                    {isSekretarisOsim && isDraft && onVerifyMeeting && (
+                      <button
+                        type="button"
+                        onClick={() => onVerifyMeeting(m, 'Diajukan')}
+                        className="px-2 py-1 rounded bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/30 text-xs font-semibold flex items-center gap-1 transition"
+                        title="Ajukan notulensi ini ke Pembina OSIM untuk diverifikasi"
+                      >
+                        <SendHorizontal className="w-3.5 h-3.5 text-purple-400" />
+                        Ajukan
+                      </button>
+                    )}
+
                     <button
                       type="button"
                       onClick={() => onOpenDetailMeeting(m)}

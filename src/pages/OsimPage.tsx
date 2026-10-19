@@ -60,6 +60,7 @@ import {
   OsimWorkProgram,
   OsimAspiration,
   OsimMeeting,
+  OsimMeetingStatus,
   OsimSekbid,
   OsimProgramStatus,
   OsimDepartment,
@@ -1359,9 +1360,9 @@ export const OsimPage: React.FC = () => {
       }
 
       // 2. Sinkronisasi Profil Pengurus OSIM ke cPanel Admin (Prinsip Satu Pintu):
-      // Seluruh pengurus OSIM (BPH dan Sekbid) didaftarkan profilnya ke cPanel untuk diaktifkan oleh Admin.
-      // Akun login TIDAK langsung aktif di sini, melainkan berstatus Belum Aktif dan diaktifkan di cPanel.
-      if (syncUsersFromOsim) {
+      // Hanya BPH dan Ketua Sekbid yang disinkronkan ke cPanel untuk akun login.
+      // Anggota Sekbid biasa TIDAK memiliki akun login di cPanel.
+      if ((isBph || isSekbidKetua) && syncUsersFromOsim) {
         try {
           const updatedMembersList = selectedMember
             ? osimMembers.map(m => m.id === selectedMember.id ? memberToSave : m)
@@ -1372,7 +1373,11 @@ export const OsimPage: React.FC = () => {
         }
       }
 
-      alert(`Profil pengurus OSIM "${memberToSave.fullName}" berhasil disimpan!\nStatus akun login: Belum Aktif (Aktivasi dan manajemen akun login sepenuhnya dikelola oleh Admin di menu cPanel).`);
+      if (isBph || isSekbidKetua) {
+        alert(`Profil pimpinan OSIM "${memberToSave.fullName}" berhasil disimpan!\nStatus akun login cPanel: Siap diaktifkan oleh Admin di menu cPanel.`);
+      } else {
+        alert(`Profil anggota OSIM "${memberToSave.fullName}" berhasil disimpan ke Struktur Kabinet!`);
+      }
     } catch (err: any) {
       console.error('Error saving member:', err);
       alert('Gagal menyimpan pengurus OSIM: ' + (err?.message || 'Terjadi kesalahan sistem'));
@@ -2061,7 +2066,18 @@ export const OsimPage: React.FC = () => {
   const handleOpenEditMeeting = (meet: OsimMeeting, e?: React.MouseEvent) => {
     e?.stopPropagation();
     setSelectedMeeting(meet);
-    setMeetingForm(meet);
+    const existingAttendees = (meet.attendees && meet.attendees.length > 0)
+      ? meet.attendees
+      : (osimMembers || []).map(m => ({
+          memberId: m.id,
+          name: m.fullName,
+          roleOrPosition: m.position || m.sekbid || 'Pengurus OSIM',
+          presentStatus: 'Hadir' as const
+        }));
+    setMeetingForm({
+      ...meet,
+      attendees: existingAttendees
+    });
     setIsMeetingModalOpen(true);
   };
 
@@ -2090,6 +2106,15 @@ export const OsimPage: React.FC = () => {
       ? currentUser.displayName
       : (osimMembers.find(m => (m.position || '').toLowerCase().includes('sekretaris'))?.fullName || 'Sekretaris OSIM');
     const defaultKetua = osimMembers.find(m => isBphMember(m) && (m.position || '').toLowerCase().includes('ketua') && !(m.position || '').toLowerCase().includes('wakil'))?.fullName || 'Ketua Umum OSIM';
+
+    // Populate initial attendance grid from active osimMembers
+    const initialAttendees = (osimMembers || []).map(m => ({
+      memberId: m.id,
+      name: m.fullName,
+      roleOrPosition: m.position || m.sekbid || 'Pengurus OSIM',
+      presentStatus: 'Hadir' as const
+    }));
+
     setMeetingForm({
       title: '',
       type: 'Rapat Pleno Pengurus',
@@ -2099,7 +2124,8 @@ export const OsimPage: React.FC = () => {
       location: 'Ruang Rapat OSIM & Kesiswaan',
       leader: defaultKetua,
       secretary: defaultSec,
-      attendeesCount: osimMembers.length > 0 ? osimMembers.length : 25,
+      attendeesCount: initialAttendees.length > 0 ? initialAttendees.length : 25,
+      attendees: initialAttendees,
       agenda: '',
       decisionNotes: '',
       wakaNotes: '',
@@ -2116,8 +2142,17 @@ export const OsimPage: React.FC = () => {
     }
 
     try {
+      const finalAttendees = meetingForm.attendees || [];
+      const calculatedHadir = finalAttendees.filter(a => a.presentStatus === 'Hadir').length;
+      const finalCount = calculatedHadir > 0 ? calculatedHadir : (Number(meetingForm.attendeesCount) || 20);
+
       if (selectedMeeting) {
-        await updateOsimMeeting(selectedMeeting.id, meetingForm);
+        await updateOsimMeeting(selectedMeeting.id, {
+          ...meetingForm,
+          attendees: finalAttendees,
+          attendeesCount: finalCount
+        });
+        toast.success(`Notulensi rapat "${meetingForm.title}" berhasil diperbarui dengan presensi ${finalCount} pengurus hadir (Tersimpan Permanen)!`);
       } else {
         await addOsimMeeting({
           title: meetingForm.title!,
@@ -2128,18 +2163,54 @@ export const OsimPage: React.FC = () => {
           location: meetingForm.location || 'Ruang Rapat OSIM',
           leader: meetingForm.leader || 'Ketua Umum OSIM',
           secretary: meetingForm.secretary || 'Sekretaris Umum',
-          attendeesCount: Number(meetingForm.attendeesCount) || 20,
+          attendeesCount: finalCount,
+          attendees: finalAttendees,
           agenda: meetingForm.agenda!,
           decisionNotes: meetingForm.decisionNotes || 'Rapat mufakat disetujui.',
           wakaNotes: meetingForm.wakaNotes || '',
-          academicYear: meetingForm.academicYear || activeAcademicYear
+          academicYear: meetingForm.academicYear || activeAcademicYear,
+          status: 'Draft'
         });
+        toast.success(`Notulensi rapat "${meetingForm.title}" berhasil dicatat oleh Sekretaris dengan ${finalCount} pengurus hadir (Tersimpan Permanen)!`);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error saving meeting:', err);
+      toast.error('Gagal menyimpan notulensi rapat: ' + (err?.message || 'Kesalahan sistem'));
     } finally {
       setIsMeetingModalOpen(false);
       setSelectedMeeting(null);
+    }
+  };
+
+  const handleVerifyMeeting = async (meeting: OsimMeeting, newStatus: OsimMeetingStatus, notes?: string) => {
+    try {
+      const nowIso = new Date().toISOString();
+      const approverName = currentUser?.displayName || (isPembinaOsim ? 'Pembina OSIM' : 'Waka Kesiswaan');
+      const payload: Partial<OsimMeeting> = {
+        status: newStatus,
+        wakaNotes: notes !== undefined ? notes : meeting.wakaNotes,
+        updatedAt: nowIso
+      };
+      if (newStatus === 'Disahkan Pembina') {
+        payload.approvedBy = approverName;
+        payload.approvedAt = nowIso;
+      }
+      await updateOsimMeeting(meeting.id, payload);
+      if (selectedMeeting && selectedMeeting.id === meeting.id) {
+        setSelectedMeeting({
+          ...selectedMeeting,
+          ...payload
+        });
+      }
+      toast.success(
+        newStatus === 'Disahkan Pembina'
+          ? `Notulensi rapat "${meeting.title}" telah resmi DISAHKAN oleh Pembina!`
+          : newStatus === 'Diajukan'
+          ? `Notulensi rapat "${meeting.title}" berhasil diajukan ke Pembina OSIM untuk diverifikasi.`
+          : `Status notulensi rapat berhasil diperbarui menjadi [${newStatus}].`
+      );
+    } catch (err: any) {
+      toast.error(`Gagal memperbarui status notulensi: ${err?.message || 'Kesalahan sistem'}`);
     }
   };
 
@@ -2547,12 +2618,14 @@ export const OsimPage: React.FC = () => {
           osimMeetings={osimMeetings}
           isSekretarisOsim={isSekretarisOsim}
           canManageOsim={canManageOsim || isSekretarisOsim}
+          isPembinaOsim={isPembinaOsim || isWakaOrAdmin}
           currentUserName={currentUser?.displayName}
           onOpenAddMeeting={handleOpenAddMeeting}
           onOpenDetailMeeting={handleOpenDetailMeeting}
           onOpenEditMeeting={handleOpenEditMeeting}
           onDeleteMeeting={handleOpenDeleteMeeting}
           onPrintMeeting={handleOpenPrintMeeting}
+          onVerifyMeeting={handleVerifyMeeting}
         />
       )}
 
@@ -2817,6 +2890,7 @@ export const OsimPage: React.FC = () => {
         setMeetingForm={setMeetingForm}
         onSaveMeeting={handleSaveMeeting}
         isEditing={Boolean(selectedMeeting)}
+        osimMembers={osimMembers}
       />
 
       {/* Modal Detail Pengurus OSIM */}
@@ -2838,9 +2912,13 @@ export const OsimPage: React.FC = () => {
         onClose={() => setIsMeetingDetailOpen(false)}
         selectedMeeting={selectedMeeting}
         canManageOsim={canManageOsim}
+        isPembinaOsim={isPembinaOsim || isWakaOrAdmin}
+        isSekretarisOsim={isSekretarisOsim}
+        currentUserName={currentUser?.displayName}
         onEditMeeting={handleOpenEditMeeting}
         onDeleteMeeting={handleOpenDeleteMeeting}
         onPrintMeeting={handleOpenPrintMeeting}
+        onVerifyMeeting={handleVerifyMeeting}
       />
 
       {/* Modal Cetak Berita Acara & Notulensi Sidang OSIM */}

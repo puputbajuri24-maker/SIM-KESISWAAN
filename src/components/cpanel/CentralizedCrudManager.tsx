@@ -33,7 +33,7 @@ import { useSchool } from '../../contexts/SchoolContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { Teacher, Extracurricular, ExtracurricularMember, OsimMember, UserProfile, UserRole } from '../../types';
-import { extractSekbidNumber, cleanDigits, isBphMember, getDefaultOsimUsername, getDefaultOsimPasswordForMember } from '../../utils/osimAccountHelper';
+import { extractSekbidNumber, cleanDigits, isBphMember, isAnggotaSekbid, isKetuaSekbid, isEligibleOsimAccount, getDefaultOsimUsername, getDefaultOsimPasswordForMember } from '../../utils/osimAccountHelper';
 import { getDefaultOsimPassword } from '../../services/seedData';
 import { canResetUserPassword, useCrudPermission } from '../../utils/rbacRules';
 
@@ -790,8 +790,9 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
               cashManagerTitle: osimRoleVal === 'bendahara' ? 'Bendahara OSIM' : undefined
             });
           } else {
-            const cleanNis = cleanDigits(editingOsimMember.studentNis);
-            const newUid = cleanNis ? `user_osim_${cleanNis}` : `user_osim_${editingOsimMember.id}`;
+            const newUid = isBph
+              ? (osimRoleVal === 'ketua' ? 'user_osim_ketua' : osimRoleVal === 'wakil' ? 'user_osim_wakil' : osimRoleVal === 'sekretaris' ? 'user_osim_sekretaris' : 'user_osim_bendahara')
+              : (sekbidNum ? `user_osim_sekbid${sekbidNum}` : 'user_osim_sekbid1');
             await addUser({
               uid: newUid,
               displayName: editingOsimMember.fullName,
@@ -848,8 +849,9 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
             ? (posLower.includes('ketua') && !posLower.includes('wakil') ? 'ketua' : posLower.includes('wakil') ? 'wakil' : posLower.includes('sekretaris') ? 'sekretaris' : posLower.includes('bendahara') ? 'bendahara' : 'sekbid')
             : 'sekbid';
 
-          const cleanNis = cleanDigits(student.nis);
-          const newUid = cleanNis ? `user_osim_${cleanNis}` : `user_osim_${student.id}`;
+          const newUid = isBph
+            ? (osimRoleVal === 'ketua' ? 'user_osim_ketua' : osimRoleVal === 'wakil' ? 'user_osim_wakil' : osimRoleVal === 'sekretaris' ? 'user_osim_sekretaris' : 'user_osim_bendahara')
+            : (sekbidNum ? `user_osim_sekbid${sekbidNum}` : 'user_osim_sekbid1');
           await addUser({
             uid: newUid,
             displayName: student.fullName,
@@ -974,6 +976,7 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
   const filteredPasswordUsers = useMemo(() => {
     return allUsers.filter(u => {
       const isOsim = u.role === 'pengurus_osim' || u.role === 'anggota_osim';
+      if (isOsim && isAnggotaSekbid(u as any)) return false;
       const isBph = isOsim && (u.osimDepartmentCode === 'BPH' || u.osimRole === 'ketua' || u.osimRole === 'sekretaris' || u.osimRole === 'bendahara');
       const isSekbid = isOsim && !isBph;
       const isPembinaEkstra = u.role === 'pembina_ekstrakurikuler' || u.role === 'pembina_ekskul' || u.role === 'pembina_ekstra' || u.role === 'pembina';

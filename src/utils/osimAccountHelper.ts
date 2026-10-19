@@ -33,12 +33,16 @@ export const normalizeSekbidName = (name?: string): string => {
  * Checks if a member belongs to BPH (Ketua Umum, Wakil Ketua, Sekretaris, Bendahara)
  * and NOT a Sekbid
  */
-export const isBphMember = (member: { position?: string; sekbid?: string }): boolean => {
+export const isBphMember = (member: { position?: string; sekbid?: string; osimPosition?: string; osimDepartmentName?: string; osimRole?: string; uid?: string }): boolean => {
   if (!member) return false;
-  const sekbidNum = extractSekbidNumber(member.sekbid) || extractSekbidNumber(member.position);
+  const uid = (member as any).uid || '';
+  if (['user_osim_ketua', 'user_osim_wakil', 'user_osim_sekretaris', 'user_osim_bendahara'].includes(uid)) return true;
+
+  const sekbidNum = extractSekbidNumber((member as any).osimDepartmentName || member.sekbid) || extractSekbidNumber((member as any).osimPosition || member.position);
   if (sekbidNum !== null) return false;
-  const pos = (member.position || '').toLowerCase();
-  const sek = (member.sekbid || '').toLowerCase();
+  const pos = ((member as any).osimPosition || member.position || '').toLowerCase();
+  const sek = ((member as any).osimDepartmentName || member.sekbid || '').toLowerCase();
+  const osimRole = ((member as any).osimRole || '').toLowerCase();
   
   // If explicitly declared in BPH
   if (sek.includes('bph') || sek.includes('badan pengurus harian')) return true;
@@ -50,12 +54,61 @@ export const isBphMember = (member: { position?: string; sekbid?: string }): boo
   }
 
   // Core BPH positions: Ketua, Wakil Ketua, Sekretaris, Bendahara
-  if (pos.includes('ketua') && !pos.includes('wakil')) return true;
-  if (pos.includes('wakil')) return true;
-  if (pos.includes('sekretaris')) return true;
-  if (pos.includes('bendahara')) return true;
+  if (osimRole === 'ketua' || (pos.includes('ketua') && !pos.includes('wakil'))) return true;
+  if (osimRole === 'wakil' || pos.includes('wakil')) return true;
+  if (osimRole === 'sekretaris' || pos.includes('sekretaris')) return true;
+  if (osimRole === 'bendahara' || pos.includes('bendahara')) return true;
 
   return false;
+};
+
+/**
+ * Checks if an OSIM member is eligible for a cPanel user account (BPH or Ketua/Koordinator Sekbid ONLY).
+ * Anggota Sekbid biasa TIDAK diberikan akun login dan TIDAK terdaftar di cPanel.
+ */
+export const isEligibleOsimAccount = (member: { position?: string; sekbid?: string; osimPosition?: string; osimDepartmentName?: string }): boolean => {
+  if (!member) return false;
+  if (isBphMember(member)) return true;
+  const pos = ((member as any).osimPosition || member.position || '').toLowerCase();
+  const sek = ((member as any).osimDepartmentName || member.sekbid || '').toLowerCase();
+  if (sek.includes('bph') || pos.includes('bph') || pos.includes('badan pengurus harian')) return true;
+  
+  // Jika secara tegas merupakan Anggota Sekbid (bukan Ketua/Koordinator), maka BUKAN pemegang akun login cPanel
+  if (pos.includes('anggota') && !pos.includes('ketua') && !pos.includes('koordinator')) {
+    return false;
+  }
+
+  const hasSekbid = extractSekbidNumber(sek) !== null || extractSekbidNumber(pos) !== null || pos.includes('sekbid') || sek.includes('sekbid') || pos.includes('bidang') || sek.includes('bidang');
+  if (hasSekbid) {
+    return pos.includes('ketua') || pos.includes('koordinator') || pos === 'ketua_sekbid';
+  }
+  return false;
+};
+
+/**
+ * Checks if a member is specifically a Ketua or Koordinator of a Seksi Bidang (Sekbid 1..8)
+ */
+export const isKetuaSekbid = (member: { position?: string; sekbid?: string; osimPosition?: string; osimDepartmentName?: string }): boolean => {
+  if (!member) return false;
+  if (isBphMember(member)) return false;
+  const pos = ((member as any).osimPosition || member.position || '').toLowerCase();
+  const sek = ((member as any).osimDepartmentName || member.sekbid || '').toLowerCase();
+  if (pos.includes('anggota') && !pos.includes('ketua') && !pos.includes('koordinator')) return false;
+  const hasSekbid = extractSekbidNumber(sek) !== null || extractSekbidNumber(pos) !== null || pos.includes('sekbid') || sek.includes('sekbid') || pos.includes('bidang') || sek.includes('bidang');
+  return hasSekbid && (pos.includes('ketua') || pos.includes('koordinator') || pos === 'ketua_sekbid');
+};
+
+/**
+ * Checks if a member is an Anggota Sekbid (non-ketua, non-BPH)
+ */
+export const isAnggotaSekbid = (member: { position?: string; sekbid?: string; osimPosition?: string; osimDepartmentName?: string; role?: string }): boolean => {
+  if (!member) return false;
+  if (isBphMember(member)) return false;
+  const pos = ((member as any).osimPosition || member.position || '').toLowerCase();
+  if (pos.includes('ketua') || pos.includes('koordinator') || pos === 'ketua_sekbid') return false;
+  const sek = ((member as any).osimDepartmentName || member.sekbid || '').toLowerCase();
+  const hasSekbid = extractSekbidNumber(sek) !== null || extractSekbidNumber(pos) !== null || pos.includes('sekbid') || sek.includes('sekbid') || pos.includes('bidang') || sek.includes('bidang');
+  return hasSekbid || pos.includes('anggota');
 };
 
 /**
