@@ -50,6 +50,7 @@ import { Modal } from '../components/common/Modal';
 import { ConfirmDialog } from '../components/common/ConfirmDialog';
 import { ExportActions } from '../components/common/ExportActions';
 import { ClassGridFilter } from '../components/common/ClassGridFilter';
+import { StudentGridPicker } from '../components/common/StudentGridPicker';
 import { SchoolLetterhead } from '../components/common/SchoolLetterhead';
 import { calculateRecordCountsByClass, isStudentInClass } from '../utils/classResolver';
 
@@ -1750,7 +1751,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
         onClose={() => setIsCounselingModalOpen(false)}
         title={editingCounseling ? 'Edit Rekam Konseling Siswa' : 'Catat Sesi Bimbingan Konseling Baru'}
         subtitle="Dokumentasi layanan BK dan rencana tindak lanjut pembinaan"
-        maxWidth="lg"
+        maxWidth="xl"
         footer={
           <>
             <button
@@ -1781,31 +1782,24 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
         }
       >
         <form onSubmit={handleSaveCounseling} className="space-y-3 font-sans text-xs">
-          <div>
-            <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
-              PILIH SISWA TERBIMBING *
-            </label>
-            <select
-              value={counselingForm.studentId}
-              onChange={e => {
-                const st = students.find(s => s.id === e.target.value);
-                setCounselingForm({
-                  ...counselingForm,
-                  studentId: e.target.value,
-                  studentName: st?.fullName || '',
-                  studentClass: st?.className || '',
-                  studentNis: st?.nis || ''
-                });
-              }}
-              className="w-full px-2.5 py-1.5 rounded bg-[#161618] border border-[#27272a] text-zinc-200 focus:border-pink-500"
-            >
-              {students.map(s => (
-                <option key={s.id} value={s.id}>
-                  {s.fullName} ({s.className}) - NIS: {s.nis}
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* 1. Pilih Siswa Berbasis Grid & Kategori Kelas */}
+          <StudentGridPicker
+            students={students}
+            classes={classes}
+            selectedStudentId={counselingForm.studentId}
+            onSelectStudent={st => {
+              setCounselingForm({
+                ...counselingForm,
+                studentId: st.id,
+                studentName: st.fullName || '',
+                studentClass: st.className || '',
+                studentNis: st.nis || ''
+              });
+            }}
+            label="PILIH SISWA TERBIMBING"
+            colorScheme="pink"
+            getStudentViolationPoints={getStudentViolationPoints}
+          />
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
             <div>
@@ -2007,7 +2001,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
         onClose={() => setIsHomeVisitModalOpen(false)}
         title={editingHomeVisit ? 'Edit Berita Acara Home Visit' : 'Catat Kunjungan Rumah (Home Visit) Baru'}
         subtitle="Dokumentasi kunjungan langsung ke tempat tinggal peserta didik"
-        maxWidth="lg"
+        maxWidth="xl"
         footer={
           <>
             <button
@@ -2038,34 +2032,27 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
         }
       >
         <form onSubmit={handleSaveHomeVisit} className="space-y-3 font-sans text-xs">
-          <div>
-            <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
-              PILIH SISWA *
-            </label>
-            <select
-              value={homeVisitForm.studentId}
-              onChange={e => {
-                const st = students.find(s => s.id === e.target.value);
-                setHomeVisitForm({
-                  ...homeVisitForm,
-                  studentId: e.target.value,
-                  studentName: st?.fullName || '',
-                  studentClass: st?.className || '',
-                  studentNis: st?.nis || '',
-                  address: st?.address || '',
-                  visitedPerson: st?.parentName || 'Orang Tua Siswa',
-                  phone: st?.parentPhone || st?.phone || ''
-                });
-              }}
-              className="w-full px-2.5 py-1.5 rounded bg-[#161618] border border-[#27272a] text-zinc-200"
-            >
-              {students.map(s => (
-                <option key={s.id} value={s.id}>
-                  {s.fullName} ({s.className})
-                </option>
-              ))}
-            </select>
-          </div>
+          {/* 1. Pilih Siswa Berbasis Grid & Kategori Kelas */}
+          <StudentGridPicker
+            students={students}
+            classes={classes}
+            selectedStudentId={homeVisitForm.studentId}
+            onSelectStudent={st => {
+              setHomeVisitForm({
+                ...homeVisitForm,
+                studentId: st.id,
+                studentName: st.fullName || '',
+                studentClass: st.className || '',
+                studentNis: st.nis || '',
+                address: st.address || '',
+                visitedPerson: st.parentName || 'Orang Tua Siswa',
+                phone: st.parentPhone || st.phone || ''
+              });
+            }}
+            label="PILIH SISWA HOME VISIT"
+            colorScheme="emerald"
+            getStudentViolationPoints={getStudentViolationPoints}
+          />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
@@ -2206,83 +2193,69 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
         }
       >
         <form onSubmit={handleSaveParentCall} className="space-y-3 font-sans text-xs">
-          {/* Pilih Siswa & Analisis Poin Otomatis */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <div>
-              <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
-                PILIH SISWA TERPANGGIL *
-              </label>
-              <select
-                value={parentCallForm.studentId}
-                onChange={e => {
-                  const st = students.find(s => s.id === e.target.value);
-                  if (!st) return;
-                  const pts = getStudentViolationPoints(st.id);
-                  const tier = getDisciplineTier(pts);
-                  const suggestedStage = (tier ? tier.tier : (pts >= 10 ? 1 : 2)) as SanctionStageType;
-                  const cClass = classes.find(c => c.name === st.className);
-                  const viols = getStudentViolationsList(st.id);
-                  const violSummary = viols.map(v => `${v.violationType} (+${v.points}p)`).slice(0, 3).join(', ');
+          {/* 1. Pilih Siswa Berbasis Grid & Analisis Poin Otomatis */}
+          <StudentGridPicker
+            students={students}
+            classes={classes}
+            selectedStudentId={parentCallForm.studentId}
+            onSelectStudent={st => {
+              const pts = getStudentViolationPoints(st.id);
+              const tier = getDisciplineTier(pts);
+              const suggestedStage = (tier ? tier.tier : (pts >= 10 ? 1 : 2)) as SanctionStageType;
+              const cClass = classes.find(c => c.name === st.className);
+              const viols = getStudentViolationsList(st.id);
+              const violSummary = viols.map(v => `${v.violationType} (+${v.points}p)`).slice(0, 3).join(', ');
 
-                  const callNum = suggestedStage === 1 ? 1 : suggestedStage === 2 ? 1 : suggestedStage === 3 ? 2 : 3;
-                  const spT: SpLetterType =
-                    suggestedStage === 1 ? 'Peringatan Lisan' :
-                    suggestedStage === 2 ? 'SP 1' :
-                    suggestedStage === 3 ? 'SP 2' :
-                    suggestedStage === 4 ? 'SP 3' : 'Pengembalian Siswa';
+              const callNum = suggestedStage === 1 ? 1 : suggestedStage === 2 ? 1 : suggestedStage === 3 ? 2 : 3;
+              const spT: SpLetterType =
+                suggestedStage === 1 ? 'Peringatan Lisan' :
+                suggestedStage === 2 ? 'SP 1' :
+                suggestedStage === 3 ? 'SP 2' :
+                suggestedStage === 4 ? 'SP 3' : 'Pengembalian Siswa';
 
-                  const loc = suggestedStage === 1 ? 'Ruang Kelas / Ruang Wali Kelas' : suggestedStage === 4 || suggestedStage === 5 ? 'Ruang Kepala Madrasah' : 'Ruang Bimbingan & Konseling (BK)';
-                  const rsn =
-                    suggestedStage === 1 ? `Peringatan lisan dan pembinaan sikap atas akumulasi ${pts} poin pelanggaran tata tertib.` :
-                    suggestedStage === 2 ? `Panggilan Orang Tua I dan penerbitan Surat Peringatan I (SP 1) atas akumulasi ${pts} poin pelanggaran.` :
-                    suggestedStage === 3 ? `Panggilan Orang Tua II, penyampaian SP 2, dan penetapan Skorsing Edukatif 3 hari kerja (Akumulasi ${pts} poin).` :
-                    suggestedStage === 4 ? `Panggilan Orang Tua III dan Sidang Kasus Kedisiplinan SP 3 (Peringatan Terakhir) atas akumulasi ${pts} poin.` :
-                    `Pemberitahuan Keputusan Pengembalian Pembinaan Siswa kepada Orang Tua/Wali (Akumulasi ${pts} poin).`;
+              const loc = suggestedStage === 1 ? 'Ruang Kelas / Ruang Wali Kelas' : suggestedStage === 4 || suggestedStage === 5 ? 'Ruang Kepala Madrasah' : 'Ruang Bimbingan & Konseling (BK)';
+              const rsn =
+                suggestedStage === 1 ? `Peringatan lisan dan pembinaan sikap atas akumulasi ${pts} poin pelanggaran tata tertib.` :
+                suggestedStage === 2 ? `Panggilan Orang Tua I dan penerbitan Surat Peringatan I (SP 1) atas akumulasi ${pts} poin pelanggaran.` :
+                suggestedStage === 3 ? `Panggilan Orang Tua II, penyampaian SP 2, dan penetapan Skorsing Edukatif 3 hari kerja (Akumulasi ${pts} poin).` :
+                suggestedStage === 4 ? `Panggilan Orang Tua III dan Sidang Kasus Kedisiplinan SP 3 (Peringatan Terakhir) atas akumulasi ${pts} poin.` :
+                `Pemberitahuan Keputusan Pengembalian Pembinaan Siswa kepada Orang Tua/Wali (Akumulasi ${pts} poin).`;
 
-                  setParentCallForm({
-                    ...parentCallForm,
-                    studentId: st.id,
-                    studentName: st.fullName || '',
-                    studentClass: st.className || '',
-                    studentNis: st.nis || '',
-                    parentName: st.parentName || parentCallForm.parentName || 'Orang Tua Siswa',
-                    pointsAtIssuance: pts,
-                    sanctionStage: suggestedStage,
-                    spType: spT,
-                    callNumber: callNum as 1 | 2 | 3,
-                    suspensionDays: suggestedStage === 3 ? 3 : undefined,
-                    letterNumber: generateLetterNumber(suggestedStage),
-                    homeroomTeacherName: cClass?.homeroomTeacher || parentCallForm.homeroomTeacherName || '',
-                    location: loc,
-                    reason: rsn,
-                    studentViolationSummary: violSummary
-                  });
-                }}
-                className="w-full px-2.5 py-1.5 rounded bg-[#161618] border border-[#27272a] text-zinc-200"
-              >
-                {students.map(s => {
-                  const pts = getStudentViolationPoints(s.id);
-                  return (
-                    <option key={s.id} value={s.id}>
-                      {s.fullName} ({s.className}) — {pts} Poin
-                    </option>
-                  );
-                })}
-              </select>
-            </div>
+              setParentCallForm({
+                ...parentCallForm,
+                studentId: st.id,
+                studentName: st.fullName || '',
+                studentClass: st.className || '',
+                studentNis: st.nis || '',
+                parentName: st.parentName || parentCallForm.parentName || 'Orang Tua Siswa',
+                pointsAtIssuance: pts,
+                sanctionStage: suggestedStage,
+                spType: spT,
+                callNumber: callNum as 1 | 2 | 3,
+                suspensionDays: suggestedStage === 3 ? 3 : undefined,
+                letterNumber: generateLetterNumber(suggestedStage),
+                homeroomTeacherName: cClass?.homeroomTeacher || parentCallForm.homeroomTeacherName || '',
+                location: loc,
+                reason: rsn,
+                studentViolationSummary: violSummary
+              });
+            }}
+            label="PILIH SISWA TERPANGGIL"
+            colorScheme="amber"
+            getStudentViolationPoints={getStudentViolationPoints}
+          />
 
-            <div>
-              <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
-                NAMA ORANG TUA / WALI
-              </label>
-              <input
-                type="text"
-                value={parentCallForm.parentName}
-                onChange={e => setParentCallForm({ ...parentCallForm, parentName: e.target.value })}
-                placeholder="Bapak/Ibu Orang Tua Siswa"
-                className="w-full px-2.5 py-1.5 rounded bg-[#161618] border border-[#27272a] text-zinc-200"
-              />
-            </div>
+          <div>
+            <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
+              NAMA ORANG TUA / WALI
+            </label>
+            <input
+              type="text"
+              value={parentCallForm.parentName}
+              onChange={e => setParentCallForm({ ...parentCallForm, parentName: e.target.value })}
+              placeholder="Bapak/Ibu Orang Tua Siswa"
+              className="w-full px-2.5 py-1.5 rounded bg-[#161618] border border-[#27272a] text-zinc-200"
+            />
           </div>
 
           {/* Status Akumulasi Poin Real-time & Rekomendasi SK B-380 */}
@@ -2529,7 +2502,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
         onClose={() => setIsCareerModalOpen(false)}
         title={editingCareer ? 'Edit Asesmen Karir & Peminatan' : 'Catat Bimbingan Karir & Studi Lanjut'}
         subtitle="Eksplorasi minat karir, pemetaan potensi, dan rekomendasi perguruan tinggi"
-        maxWidth="lg"
+        maxWidth="xl"
         footer={
           <>
             <button
@@ -2560,36 +2533,29 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
         }
       >
         <form onSubmit={handleSaveCareer} className="space-y-3 font-sans text-xs">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <div>
-              <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
-                PILIH SISWA *
-              </label>
-              <select
-                value={careerForm.studentId}
-                onChange={e => {
-                  const st = students.find(s => s.id === e.target.value);
-                  setCareerForm({
-                    ...careerForm,
-                    studentId: e.target.value,
-                    studentName: st?.fullName || '',
-                    studentClass: st?.className || '',
-                    studentNis: st?.nis || ''
-                  });
-                }}
-                className="w-full px-2.5 py-1.5 rounded bg-[#161618] border border-[#27272a] text-zinc-200"
-              >
-                {students.map(s => (
-                  <option key={s.id} value={s.id}>
-                    {s.fullName} ({s.className})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
-                JALUR MINAT TARGET
-              </label>
+          {/* 1. Pilih Siswa Berbasis Grid & Kategori Kelas */}
+          <StudentGridPicker
+            students={students}
+            classes={classes}
+            selectedStudentId={careerForm.studentId}
+            onSelectStudent={st => {
+              setCareerForm({
+                ...careerForm,
+                studentId: st.id,
+                studentName: st.fullName || '',
+                studentClass: st.className || '',
+                studentNis: st.nis || ''
+              });
+            }}
+            label="PILIH SISWA BIMBINGAN KARIR"
+            colorScheme="cyan"
+            getStudentViolationPoints={getStudentViolationPoints}
+          />
+
+          <div>
+            <label className="block font-mono text-[10px] text-slate-700 dark:text-zinc-400 uppercase tracking-wider font-bold mb-1">
+              JALUR MINAT TARGET
+            </label>
               <select
                 value={careerForm.targetPath}
                 onChange={e => setCareerForm({ ...careerForm, targetPath: e.target.value as any })}
@@ -2603,7 +2569,6 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
                 <option value="Kerja / Industri">Dunia Kerja / Industri</option>
               </select>
             </div>
-          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
