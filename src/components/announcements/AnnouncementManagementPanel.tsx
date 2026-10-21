@@ -529,6 +529,10 @@ export const AnnouncementManagementPanel: React.FC = () => {
         confirmText="Hapus Pengumuman"
         confirmVariant="danger"
         onConfirm={handleDeleteConfirm}
+        onClose={() => {
+          setIsDeleteModalOpen(false);
+          setSelectedAnnouncement(null);
+        }}
         onCancel={() => {
           setIsDeleteModalOpen(false);
           setSelectedAnnouncement(null);

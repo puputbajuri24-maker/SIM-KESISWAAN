@@ -37,7 +37,32 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   type,
   isLoading = false
 }) => {
-  const handleClose = onCancel || onClose || (() => {});
+  const handleClose = () => {
+    if (typeof onClose === 'function') {
+      onClose();
+    } else if (typeof onCancel === 'function') {
+      onCancel();
+    }
+  };
+
+  const handleCancel = () => {
+    if (typeof onCancel === 'function') {
+      onCancel();
+    } else if (typeof onClose === 'function') {
+      onClose();
+    }
+  };
+
+  const handleConfirm = async () => {
+    try {
+      await onConfirm();
+    } catch (err) {
+      console.error('Error on confirm action:', err);
+    } finally {
+      handleClose();
+    }
+  };
+
   const resolvedVariant: 'danger' | 'warning' | 'info' | 'success' =
     variant ||
     (confirmVariant === 'danger' || confirmVariant === 'warning' || confirmVariant === 'info' || confirmVariant === 'success' ? confirmVariant : undefined) ||
@@ -73,26 +98,17 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
         <>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleCancel}
             disabled={isLoading}
-            className="px-3.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-950 dark:hover:text-white transition-colors"
+            className="px-3.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-950 dark:hover:text-white transition-colors cursor-pointer"
           >
             {finalCancelText}
           </button>
           <button
             type="button"
-            onClick={() => {
-              onClose();
-              Promise.resolve().then(async () => {
-                try {
-                  await onConfirm();
-                } catch (err) {
-                  console.error('Error on confirm action:', err);
-                }
-              });
-            }}
+            onClick={handleConfirm}
             disabled={isLoading}
-            className={`px-4 py-1.5 text-xs font-bold rounded-xl transition-all ${btnColor} disabled:opacity-50`}
+            className={`px-4 py-1.5 text-xs font-bold rounded-xl transition-all ${btnColor} disabled:opacity-50 cursor-pointer`}
           >
             {isLoading ? 'Memproses...' : finalConfirmText}
           </button>
