@@ -1382,9 +1382,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               prev.forEach(pa => {
                 if (pa && pa.id && !annMap.has(pa.id)) {
                   annMap.set(pa.id, pa);
-                  if (auth.currentUser) {
-                    setDoc(doc(db, 'announcements', pa.id), pa).catch(() => {});
-                  }
+                  setDoc(doc(db, 'announcements', pa.id), pa).catch((err) => {
+                    handleFirestoreError(err, OperationType.WRITE, 'announcements');
+                  });
                 }
               });
               const merged = Array.from(annMap.values());
@@ -1392,6 +1392,22 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 localStorage.setItem('sim_announcements', JSON.stringify(merged));
               } catch (e) {}
               return merged;
+            });
+          } else {
+            // Firestore announcements is currently empty: initialize Firestore with current announcements
+            setAnnouncements(prev => {
+              const listToSeed = (prev && prev.length > 0) ? prev : (INITIAL_ANNOUNCEMENTS || []);
+              listToSeed.forEach(a => {
+                if (a && a.id) {
+                  setDoc(doc(db, 'announcements', a.id), a).catch((err) => {
+                    handleFirestoreError(err, OperationType.WRITE, 'announcements');
+                  });
+                }
+              });
+              try {
+                localStorage.setItem('sim_announcements', JSON.stringify(listToSeed));
+              } catch (e) {}
+              return listToSeed;
             });
           }
 
@@ -1723,9 +1739,6 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           prev.forEach(pa => {
             if (pa && pa.id && !annMap.has(pa.id)) {
               annMap.set(pa.id, pa);
-              if (auth.currentUser) {
-                setDoc(doc(db, 'announcements', pa.id), pa).catch(() => {});
-              }
             }
           });
           const merged = Array.from(annMap.values());
@@ -6038,6 +6051,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       members: members.length,
       osimMembers: osimMembers.length,
       osimPrograms: osimPrograms.length,
+      announcements: announcements.length,
       users: allUsers.length
     };
 
@@ -6058,6 +6072,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         members,
         osimMembers,
         osimPrograms,
+        announcements,
         schedules,
         attendance,
         activities,
@@ -6160,6 +6175,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (d.schedules) setSchedules(d.schedules);
       if (d.attendance) setAttendance(d.attendance);
       if (d.activities) setActivities(d.activities);
+      if (d.announcements) setAnnouncements(d.announcements);
 
       // Save to localStorage
       if (d.students) localStorage.setItem('sim_students', JSON.stringify(d.students));
@@ -6173,8 +6189,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (d.members) localStorage.setItem('sim_members', JSON.stringify(d.members));
       if (d.osimMembers) localStorage.setItem('sim_osim_members', JSON.stringify(d.osimMembers));
       if (d.osimPrograms) localStorage.setItem('sim_osim_programs', JSON.stringify(d.osimPrograms));
+      if (d.announcements) localStorage.setItem('sim_announcements', JSON.stringify(d.announcements));
 
-      // Push restored extracurriculars, members & user accounts to Firestore to guarantee persistence
+      // Push restored extracurriculars, members, announcements & user accounts to Firestore to guarantee persistence
       if (auth.currentUser) {
         if (Array.isArray(d.extracurriculars)) {
           d.extracurriculars.forEach((e: any) => {
@@ -6184,6 +6201,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         if (Array.isArray(d.members)) {
           d.members.forEach((m: any) => {
             if (m && m.id) setDoc(doc(db, 'extracurricular_members', m.id), m).catch(() => {});
+          });
+        }
+        if (Array.isArray(d.announcements)) {
+          d.announcements.forEach((a: any) => {
+            if (a && a.id) setDoc(doc(db, 'announcements', a.id), a).catch(() => {});
           });
         }
         if (Array.isArray(d.users)) {
@@ -6650,10 +6672,10 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return next;
     });
     try {
-      if (auth.currentUser) {
-        setDoc(doc(db, 'announcements', newAnn.id), newAnn).catch(() => {});
-      }
-    } catch (e) {}
+      await setDoc(doc(db, 'announcements', newAnn.id), newAnn);
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, 'announcements');
+    }
     logAction('CREATE_ANNOUNCEMENT', 'Pengumuman', `Membuat pengumuman: ${newAnn.title} (${newAnn.targetRole})`);
   };
 
@@ -6667,10 +6689,10 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return next;
     });
     try {
-      if (auth.currentUser) {
-        setDoc(doc(db, 'announcements', id), updated, { merge: true }).catch(() => {});
-      }
-    } catch (e) {}
+      await setDoc(doc(db, 'announcements', id), updated, { merge: true });
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, 'announcements');
+    }
     logAction('UPDATE_ANNOUNCEMENT', 'Pengumuman', `Memperbarui pengumuman ID ${id}`);
   };
 
@@ -6684,10 +6706,10 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return next;
     });
     try {
-      if (auth.currentUser) {
-        deleteDoc(doc(db, 'announcements', id)).catch(() => {});
-      }
-    } catch (e) {}
+      await deleteDoc(doc(db, 'announcements', id));
+    } catch (e) {
+      handleFirestoreError(e, OperationType.DELETE, 'announcements');
+    }
     logAction('DELETE_ANNOUNCEMENT', 'Pengumuman', `Menghapus pengumuman: ${target?.title || id}`);
   };
 
@@ -6726,10 +6748,12 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     try {
       const targetDoc = doc(db, 'announcements', id);
-      setDoc(targetDoc, {
+      await setDoc(targetDoc, {
         readByUsers: { [userKey]: nowIso }
-      }, { merge: true }).catch(() => {});
-    } catch (e) {}
+      }, { merge: true });
+    } catch (e) {
+      handleFirestoreError(e, OperationType.WRITE, 'announcements');
+    }
   };
 
   const markAllAnnouncementsAsReadForUser = async (ids: string[], uid?: string) => {
@@ -6753,10 +6777,12 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     for (const annId of ids) {
       try {
-        setDoc(doc(db, 'announcements', annId), {
+        await setDoc(doc(db, 'announcements', annId), {
           readByUsers: { [userKey]: nowIso }
-        }, { merge: true }).catch(() => {});
-      } catch (e) {}
+        }, { merge: true });
+      } catch (e) {
+        handleFirestoreError(e, OperationType.WRITE, 'announcements');
+      }
     }
   };
 

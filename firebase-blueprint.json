@@ -228,6 +228,36 @@
         "createdBy": { "type": "string", "maxLength": 128 }
       },
       "required": ["id", "label", "timestamp"]
+    },
+    "announcements": {
+      "title": "School Announcements & Broadcasts",
+      "description": "Official directives, guidance, and popups targeted to teachers, coaches, BK, and students",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 256 },
+        "content": { "type": "string", "maxLength": 5000 },
+        "targetType": { "type": "string", "maxLength": 64 },
+        "targetRole": { "type": "string", "maxLength": 64 },
+        "targetUserIds": { "type": "array", "items": { "type": "string" } },
+        "targetUserNames": { "type": "array", "items": { "type": "string" } },
+        "targetExtracurricularIds": { "type": "array", "items": { "type": "string" } },
+        "targetExtracurricularNames": { "type": "array", "items": { "type": "string" } },
+        "targetExtracurricularId": { "type": "string", "maxLength": 128 },
+        "publishDate": { "type": "string", "maxLength": 64 },
+        "expiryDate": { "type": "string", "maxLength": 64 },
+        "priority": { "type": "string", "enum": ["Biasa", "Penting", "Mendesak"] },
+        "authorName": { "type": "string", "maxLength": 128 },
+        "authorRole": { "type": "string", "maxLength": 128 },
+        "isActive": { "type": "boolean" },
+        "isPinned": { "type": "boolean" },
+        "attachmentUrl": { "type": "string", "maxLength": 1024 },
+        "attachmentName": { "type": "string", "maxLength": 256 },
+        "readByUsers": { "type": "object" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "title", "content", "priority", "authorName"]
     }
   },
   "firestore": {
@@ -286,6 +316,10 @@
     "/system_snapshots/{snapshotId}": {
       "schema": "system_snapshots",
       "description": "System state point-in-time recovery snapshots"
+    },
+    "/announcements/{announcementId}": {
+      "schema": "announcements",
+      "description": "School announcements, notices, and modal directives"
     }
   }
 }

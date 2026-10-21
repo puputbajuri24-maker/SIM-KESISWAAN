@@ -199,7 +199,23 @@ export const INITIAL_OSIM_ASPIRATIONS: OsimAspiration[] = [];
 export const INITIAL_OSIM_MEETINGS: OsimMeeting[] = [];
 export const INITIAL_OSIM_DEPARTMENTS: OsimDepartment[] = DEFAULT_OSIM_DEPARTMENTS;
 
-export const INITIAL_ANNOUNCEMENTS: Announcement[] = [];
+export const INITIAL_ANNOUNCEMENTS: Announcement[] = [
+  {
+    id: 'ann_welcome_default',
+    title: 'Pemberitahuan Resmi Sistem Kesiswaan & Kedisiplinan',
+    content: 'Selamat datang di Pusat Informasi & Bimbingan Kesiswaan MAN 2 Seram Bagian Timur. Seluruh agenda pembinaan ekstrakurikuler, bimbingan konseling, dan penegakan tata tertib siswa terintegrasi secara langsung melalui sistem ini.',
+    targetType: 'all',
+    targetRole: 'Semua',
+    priority: 'Penting',
+    publishDate: '2026-07-15',
+    expiryDate: '2027-06-30',
+    authorName: 'Puput Eka Bajuri, S. Pd., M. Or',
+    authorRole: 'Waka Kesiswaan',
+    isActive: true,
+    isPinned: true,
+    createdAt: '2026-07-15'
+  }
+];
 
 export const INITIAL_NOTIFICATIONS: NotificationItem[] = [];
 export const INITIAL_AUDIT_LOGS: AuditLogItem[] = [];
