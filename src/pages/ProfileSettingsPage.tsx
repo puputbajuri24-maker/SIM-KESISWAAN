@@ -19,10 +19,7 @@ import {
   HeartHandshake,
   Compass,
   ArrowRight,
-  Key,
   Lock,
-  Eye,
-  EyeOff,
   ShieldAlert
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -36,7 +33,7 @@ import {
 } from '../utils/initials';
 
 export const ProfileSettingsPage: React.FC = () => {
-  const { currentUser, updateUser, changePassword } = useAuth();
+  const { currentUser, updateUser } = useAuth();
   const { syncUserFromCPanel, logAction, extracurriculars } = useSchool();
 
   // Form state strictly covering the required 4 items:
@@ -48,17 +45,6 @@ export const ProfileSettingsPage: React.FC = () => {
   const [phone, setPhone] = useState<string>('');
   const [nip, setNip] = useState<string>('');
   const [photoURL, setPhotoURL] = useState<string>('');
-
-  // Password change state
-  const [currentPassword, setCurrentPassword] = useState<string>('');
-  const [newPassword, setNewPassword] = useState<string>('');
-  const [confirmPassword, setConfirmPassword] = useState<string>('');
-  const [showCurrentPassword, setShowCurrentPassword] = useState<boolean>(false);
-  const [showNewPassword, setShowNewPassword] = useState<boolean>(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState<boolean>(false);
-  const [isChangingPassword, setIsChangingPassword] = useState<boolean>(false);
-  const [passwordError, setPasswordError] = useState<string | null>(null);
-  const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
 
   // Upload & validation feedback state
   const [photoFileName, setPhotoFileName] = useState<string>('');
@@ -82,8 +68,19 @@ export const ProfileSettingsPage: React.FC = () => {
       setDisplayName(currentUser.displayName || '');
       setPhone(currentUser.phone || '');
       setNip(currentUser.nip || '');
-      // For Guru BK, Pembina, and OSIM Members, photo is omitted and replaced with 2-letter initials
-      if (isGuruBKOrPembinaRole(currentUser.role) || currentUser.role === 'anggota_osim' || currentUser.role === 'pengurus_osim' || currentUser.uid?.startsWith('user_osim_')) {
+      // For Guru BK, Pembina Ekstrakurikuler, and OSIM Members, photo is omitted and replaced with 2-letter initials
+      if (
+        isGuruBKOrPembinaRole(currentUser.role) ||
+        currentUser.role === 'coach_ekstrakurikuler' ||
+        currentUser.role === 'pembina_ekskul' ||
+        currentUser.role === 'pembina_osim' ||
+        currentUser.role === 'pembina' ||
+        currentUser.role === 'anggota_osim' ||
+        currentUser.role === 'pengurus_osim' ||
+        currentUser.uid?.startsWith('user_osim_') ||
+        Boolean(currentUser.assignedExtracurricularIds?.length) ||
+        Boolean(currentUser.extracurricularName)
+      ) {
         setPhotoURL('');
       } else {
         setPhotoURL(currentUser.photoURL || (currentUser as any).photoUrl || '');
@@ -93,10 +90,13 @@ export const ProfileSettingsPage: React.FC = () => {
   }, [currentUser]);
 
   const isPembinaEkstra = Boolean(
+    currentUser?.role === 'coach_ekstrakurikuler' ||
     currentUser?.role === 'pembina_ekstrakurikuler' ||
     currentUser?.role === 'pembina_ekskul' ||
     currentUser?.role === 'pembina_ekstra' ||
-    currentUser?.role === 'pembina'
+    currentUser?.role === 'pembina' ||
+    Boolean(currentUser?.assignedExtracurricularIds?.length) ||
+    Boolean(currentUser?.extracurricularName)
   );
 
   const getRoleBadgeInfo = (role?: UserRole) => {
@@ -158,7 +158,14 @@ export const ProfileSettingsPage: React.FC = () => {
   const badgeInfo = getRoleBadgeInfo(currentUser?.role);
   const RoleIcon = badgeInfo.icon;
 
-  const isGuruBKOrPembina = isGuruBKOrPembinaRole(currentUser?.role);
+  const isGuruBKOrPembina = isGuruBKOrPembinaRole(currentUser?.role) ||
+    isPembinaEkstra ||
+    currentUser?.role === 'coach_ekstrakurikuler' ||
+    currentUser?.role === 'pembina_ekskul' ||
+    currentUser?.role === 'pembina_osim' ||
+    currentUser?.role === 'pembina' ||
+    Boolean(currentUser?.assignedExtracurricularIds && currentUser.assignedExtracurricularIds.length > 0) ||
+    Boolean(currentUser?.extracurricularName);
   const teacherInitials = getTeacherInitials(displayName || currentUser?.displayName);
   const colorTheme = getInitialsColorTheme(currentUser?.role);
 
@@ -305,55 +312,6 @@ export const ProfileSettingsPage: React.FC = () => {
     }
   };
 
-  const handleChangePasswordSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setPasswordError(null);
-    setPasswordSuccess(null);
-
-    if (isOsimMember) {
-      setPasswordError('Fitur ganti kata sandi ditiadakan untuk akun anggota OSIM. Pengelolaan kata sandi dikelola secara terpusat oleh Super Admin melalui cPanel.');
-      return;
-    }
-
-    if (isPembinaEkstra) {
-      setPasswordError('Akun Pembina Ekstrakurikuler dikelola secara terpusat. Penggantian kata sandi hanya dapat dilakukan melalui cPanel oleh Administrator Madrasah.');
-      return;
-    }
-
-    if (!currentPassword) {
-      setPasswordError('Masukkan kata sandi akun Anda saat ini.');
-      return;
-    }
-
-    if (!newPassword || newPassword.length < 6) {
-      setPasswordError('Kata sandi baru minimal harus 6 karakter.');
-      return;
-    }
-
-    if (newPassword !== confirmPassword) {
-      setPasswordError('Konfirmasi kata sandi baru tidak cocok dengan kata sandi baru.');
-      return;
-    }
-
-    setIsChangingPassword(true);
-    try {
-      const res = await changePassword(currentPassword, newPassword);
-      if (res.success) {
-        setPasswordSuccess('Kata sandi berhasil diperbarui! Silakan gunakan kata sandi baru ini saat login.');
-        setCurrentPassword('');
-        setNewPassword('');
-        setConfirmPassword('');
-        setTimeout(() => setPasswordSuccess(null), 6000);
-      } else {
-        setPasswordError(res.error || 'Gagal memperbarui kata sandi akun.');
-      }
-    } catch (err: any) {
-      setPasswordError(err?.message || 'Terjadi kesalahan sistem saat memperbarui kata sandi.');
-    } finally {
-      setIsChangingPassword(false);
-    }
-  };
-
   return (
     <div className="space-y-6 max-w-4xl mx-auto pb-12">
       {/* Header & Synchronization Notice */}
@@ -467,11 +425,11 @@ export const ProfileSettingsPage: React.FC = () => {
                     {isOsimMember ? (
                       <>Untuk profil <strong>Anggota & Pengurus OSIM</strong>, foto profil menggunakan <strong>2 huruf inisial nama</strong> ({teacherInitials}). Fitur upload foto profil ditiadakan sesuai regulasi keseragaman sistem.</>
                     ) : (
-                      <>Untuk profil <strong>Guru BK</strong> dan <strong>Pembina</strong>, fitur upload foto profil ditiadakan dan digantikan otomatis dengan <strong>2 huruf inisial nama</strong> ({teacherInitials}).</>
+                      <>Untuk profil <strong>Pembina Ekstrakurikuler</strong> dan <strong>Guru BK</strong>, fitur upload foto profil ditiadakan dan digantikan otomatis dengan <strong>2 huruf inisial nama</strong> ({teacherInitials}).</>
                     )}
                   </p>
                   <div className="p-2.5 rounded-lg bg-[#1a1a1f] border border-[#2a2a30] flex items-center justify-between text-[11px] font-mono">
-                    <span className="text-zinc-400">{isOsimMember ? 'Inisial OSIM Terdaftar:' : 'Inisial Guru Terdaftar:'}</span>
+                    <span className="text-zinc-400">{isOsimMember ? 'Inisial OSIM Terdaftar:' : 'Inisial Pembina Terdaftar:'}</span>
                     <span className="font-black text-white px-2.5 py-0.5 rounded bg-white/10 border border-white/20 text-xs">
                       {teacherInitials}
                     </span>
@@ -764,226 +722,43 @@ export const ProfileSettingsPage: React.FC = () => {
         </div>
       </form>
 
-      {/* Account Security & Password Change Card */}
-      {isOsimMember ? (
-        <div className="bg-[#151518] border border-amber-500/30 rounded-xl overflow-hidden p-6 shadow-sm">
-          <div className="flex items-start space-x-4">
-            <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
-              <ShieldAlert className="w-6 h-6" />
+      {/* Account Security & Centralized Login Management Card */}
+      <div className="bg-[#151518] border border-amber-500/30 rounded-xl overflow-hidden p-6 shadow-sm">
+        <div className="flex items-start space-x-4">
+          <div className="w-12 h-12 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+            <ShieldAlert className="w-6 h-6" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-base font-bold text-white">
+                Pengelolaan Akses Login & Kata Sandi Terpusat
+              </h2>
+              <span className="text-[10px] font-mono px-2.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-semibold">
+                SENTRALISASI CPANEL
+              </span>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700 font-medium">
+                FULL SUPER ADMIN CONTROL
+              </span>
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-base font-bold text-white">
-                  Pengelolaan Kata Sandi Terpusat
-                </h2>
-                <span className="text-[10px] font-mono px-2.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-semibold">
-                  AKUN SISWA PENGURUS OSIM
+            <p className="text-xs text-zinc-300 mt-2 leading-relaxed">
+              Sesuai kebijakan keamanan dan tata kelola SIM Kesiswaan MAN 2 Seram Bagian Timur, fitur pergantian kata sandi mandiri ditiadakan. Seluruh hak akses login akun, aktivasi, dan reset kata sandi dikelola secara penuh oleh <strong>Super Admin / Administrator cPanel</strong> demi menjamin keamanan data, integritas kredensial, dan sinkronisasi lintas modul madrasah.
+            </p>
+            <div className="mt-4 p-3.5 rounded-xl bg-[#1c1c20] border border-[#2e2e34] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-zinc-400">
+              <div className="flex items-center space-x-2.5">
+                <Lock className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>
+                  {currentUser?.role === 'super_admin' || (currentUser?.role as string) === 'admin'
+                    ? 'Sebagai Super Admin, Anda memiliki hak penuh untuk mengelola pengguna, menetapkan peran, dan mereset kata sandi melalui tab Manajemen Pengguna di cPanel.'
+                    : 'Jika Anda lupa kata sandi atau memerlukan penyesuaian kredensial akun, silakan hubungi Administrator Kesiswaan / Super Admin untuk dibantu reset melalui cPanel.'}
                 </span>
               </div>
-              <p className="text-xs text-zinc-300 mt-2 leading-relaxed">
-                Fitur penggantian kata sandi mandiri dinonaktifkan untuk akun siswa Pengurus OSIM. Sesuai regulasi sistem madrasah, seluruh akun login operasional organisasi merupakan hak kelola penuh dari <strong>Admin Aplikasi (Super Admin / Proktor)</strong> dan <strong>Dewan Pembina OSIM</strong> guna memastikan keamanan data, kontinuitas program kerja, dan ketertiban pelaporan.
-              </p>
-              <div className="mt-4 p-3.5 rounded-xl bg-[#1c1c20] border border-[#2e2e34] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-zinc-400">
-                <div className="flex items-center space-x-2.5">
-                  <Lock className="w-4 h-4 text-amber-400 shrink-0" />
-                  <span>
-                    Jika Anda memerlukan reset atau penggantian kata sandi akun OSIM, hubungi <strong>Guru Pembina OSIM</strong> atau <strong>Admin cPanel Kesiswaan</strong>.
-                  </span>
-                </div>
-                <span className="text-[10px] font-mono text-zinc-400 bg-zinc-800/80 px-2 py-1 rounded border border-zinc-700/60 shrink-0">
-                  POLICY: MANAGED-BY-ADMIN-&-PEMBINA
-                </span>
-              </div>
+              <span className="text-[10px] font-mono text-amber-300 bg-amber-950/40 px-2.5 py-1 rounded border border-amber-800/60 shrink-0">
+                POLICY: MANAGED-BY-SUPERADMIN
+              </span>
             </div>
           </div>
         </div>
-      ) : isPembinaEkstra ? (
-        <div className="bg-[#151518] border border-blue-500/30 rounded-xl overflow-hidden p-6 shadow-sm">
-          <div className="flex items-start space-x-4">
-            <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
-              <ShieldAlert className="w-6 h-6" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-base font-bold text-white">
-                  Pengelolaan Kata Sandi Terpusat
-                </h2>
-                <span className="text-[10px] font-mono px-2.5 py-0.5 rounded bg-blue-500/20 text-blue-300 border border-blue-500/30 font-semibold">
-                  AKUN PEMBINA EKSTRAKURIKULER
-                </span>
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700 font-medium">
-                  MANAGED BY ADMIN
-                </span>
-              </div>
-              <p className="text-xs text-zinc-300 mt-2 leading-relaxed">
-                Fitur penggantian kata sandi mandiri dinonaktifkan untuk akun Pembina Ekstrakurikuler. Sesuai standar tata kelola madrasah, seluruh akun pembina ekstrakurikuler bersifat institusional dan dikelola secara terpusat oleh <strong>Super Admin / Admin cPanel Kesiswaan</strong> demi sinkronisasi data master guru pembina dan kelancaran serah terima program kerja kegiatan ekstrakurikuler.
-              </p>
-              <div className="mt-4 p-3.5 rounded-xl bg-[#1c1c20] border border-[#2e2e34] flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-zinc-400">
-                <div className="flex items-center space-x-2.5">
-                  <Lock className="w-4 h-4 text-blue-400 shrink-0" />
-                  <span>
-                    Jika Anda lupa kata sandi atau membutuhkan pergantian kredensial, silakan hubungi <strong>Administrator SIM Kesiswaan / Super Admin</strong> untuk mendapatkan bantuan reset melalui cPanel.
-                  </span>
-                </div>
-                <span className="text-[10px] font-mono text-zinc-400 bg-zinc-800/80 px-2 py-1 rounded border border-zinc-700/60 shrink-0">
-                  POLICY: MANAGED-BY-ADMIN
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="bg-[#151518] border border-[#27272a] rounded-xl overflow-hidden shadow-sm">
-          <div className="p-5 border-b border-[#27272a] flex items-center justify-between">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
-                <Lock className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="text-base font-bold text-white flex items-center gap-2">
-                  Keamanan Akun & Ganti Kata Sandi
-                </h2>
-                <p className="text-xs text-zinc-400">
-                  Perbarui kata sandi Anda. Kata sandi baru akan langsung berlaku untuk sesi login berikutnya.
-                </p>
-              </div>
-            </div>
-            <span className="text-[10px] font-mono px-2.5 py-1 rounded bg-zinc-800/80 text-zinc-300 border border-zinc-700/60 hidden sm:inline-block">
-              SECURITY PROTOCOL
-            </span>
-          </div>
-
-          <form onSubmit={handleChangePasswordSubmit} className="p-6 space-y-5">
-            {passwordSuccess && (
-              <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-start space-x-3 text-emerald-400 text-xs">
-                <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" />
-                <div>
-                  <p className="font-bold">Kata Sandi Berhasil Diperbarui!</p>
-                  <p className="text-zinc-300 mt-0.5">{passwordSuccess}</p>
-                </div>
-              </div>
-            )}
-
-            {passwordError && (
-              <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-start space-x-3 text-rose-400 text-xs">
-                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                <div>
-                  <p className="font-bold">Gagal Memperbarui Kata Sandi</p>
-                  <p className="text-zinc-300 mt-0.5">{passwordError}</p>
-                </div>
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {/* Current Password */}
-              <div>
-                <label className="block text-xs font-semibold text-zinc-300 mb-1.5 flex items-center gap-1.5">
-                  <Key className="w-3.5 h-3.5 text-zinc-400" />
-                  <span>Kata Sandi Saat Ini</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type={showCurrentPassword ? 'text' : 'password'}
-                    value={currentPassword}
-                    onChange={e => setCurrentPassword(e.target.value)}
-                    placeholder="Masukkan sandi saat ini"
-                    required
-                    className="w-full px-3.5 py-2.5 pr-10 rounded-xl bg-[#1c1c20] border border-[#323238] text-white text-xs placeholder-zinc-500 focus:outline-none focus:border-amber-500 font-mono transition-colors"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-200 p-1 transition-colors"
-                    title={showCurrentPassword ? 'Sembunyikan' : 'Tampilkan'}
-                  >
-                    {showCurrentPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-                <p className="text-[11px] text-zinc-400 mt-1">Default sistem: "password"</p>
-              </div>
-
-              {/* New Password */}
-              <div>
-                <label className="block text-xs font-semibold text-zinc-300 mb-1.5 flex items-center gap-1.5">
-                  <Lock className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Kata Sandi Baru</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type={showNewPassword ? 'text' : 'password'}
-                    value={newPassword}
-                    onChange={e => setNewPassword(e.target.value)}
-                    placeholder="Minimal 6 karakter"
-                    required
-                    minLength={6}
-                    className="w-full px-3.5 py-2.5 pr-10 rounded-xl bg-[#1c1c20] border border-[#323238] text-white text-xs placeholder-zinc-500 focus:outline-none focus:border-amber-500 font-mono transition-colors"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowNewPassword(!showNewPassword)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-200 p-1 transition-colors"
-                    title={showNewPassword ? 'Sembunyikan' : 'Tampilkan'}
-                  >
-                    {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-                <p className="text-[11px] text-zinc-400 mt-1">Minimal 6 karakter unik</p>
-              </div>
-
-              {/* Confirm New Password */}
-              <div>
-                <label className="block text-xs font-semibold text-zinc-300 mb-1.5 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Ulangi Kata Sandi Baru</span>
-                </label>
-                <div className="relative">
-                  <input
-                    type={showConfirmPassword ? 'text' : 'password'}
-                    value={confirmPassword}
-                    onChange={e => setConfirmPassword(e.target.value)}
-                    placeholder="Ketik ulang sandi baru"
-                    required
-                    minLength={6}
-                    className="w-full px-3.5 py-2.5 pr-10 rounded-xl bg-[#1c1c20] border border-[#323238] text-white text-xs placeholder-zinc-500 focus:outline-none focus:border-amber-500 font-mono transition-colors"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-200 p-1 transition-colors"
-                    title={showConfirmPassword ? 'Sembunyikan' : 'Tampilkan'}
-                  >
-                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-                <p className="text-[11px] text-zinc-400 mt-1">Harus sama dengan sandi baru</p>
-              </div>
-            </div>
-
-            <div className="pt-3 flex items-center justify-between border-t border-[#27272a]">
-              <p className="text-[11px] text-zinc-400">
-                Perubahan kata sandi disimpan langsung ke sistem autentikasi aman madrasah.
-              </p>
-              <button
-                type="submit"
-                disabled={isChangingPassword}
-                className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center justify-center space-x-2 transition-all shadow-lg shadow-amber-950/40 disabled:opacity-50"
-              >
-                {isChangingPassword ? (
-                  <>
-                    <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>Menyimpan Sandi...</span>
-                  </>
-                ) : (
-                  <>
-                    <Key className="w-4 h-4" />
-                    <span>Simpan Kata Sandi Baru</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
+      </div>
 
       {/* Timezone & Clock Preferences Card */}
       <TimezoneSettingsCard />

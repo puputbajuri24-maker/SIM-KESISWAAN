@@ -46,6 +46,7 @@ import {
   isRandomOrLegacyArtifactUid,
   isStandardTidyUid,
   resolveTidyUidForUser,
+  isProtectedTeacherOrStaff,
   isGenericPlaceholderEmail,
   isPlaceholderNis
 } from '../utils/syncUtils';
@@ -57,6 +58,7 @@ import {
   isAnggotaSekbid,
   getDefaultOsimUsername
 } from '../utils/osimAccountHelper';
+import { validatePayload, userProfileSchema } from '../services/schemaValidation';
 
 export const recordSystemAuditLog = async (
   action: string,
@@ -101,6 +103,8 @@ export const recordSystemAuditLog = async (
 
 const isPurgedUser = (u: any): boolean => {
   if (!u) return true;
+  // Akun resmi Dewan Guru & Tenaga Kependidikan sah dilindungi mutlak
+  if (isProtectedTeacherOrStaff(u)) return false;
   if (PURGED_DEMO_UIDS.includes(u.uid)) return true;
   if (u.email && PURGED_DEMO_EMAILS.includes(u.email.toLowerCase().trim())) return true;
   if (isBlacklistedDemoName(u.displayName)) return true;
@@ -272,7 +276,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const lowerEmail = (data.email || '').toLowerCase().trim();
 
             // 1. Cek pembersihan akun terlarang / dihapus (Purged / Deleted)
-            const isTargetPurged =
+            // Catatan Keamanan: Akun guru/staf sah dilindungi mutlak dan tidak boleh dipurge
+            const isProtectedTeacher = isProtectedTeacherOrStaff(userWithId);
+            const isTargetPurged = !isProtectedTeacher && (
               isPurgedUser(userWithId) ||
               isDeletedUid(uid) ||
               isDeletedUid(d.id) ||
@@ -282,57 +288,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               lowerEmail === 'pitria.lawenusa@madrasah.sch.id' ||
               lowerEmail === 'pitria.lawenusa@sekolah.sch.id' ||
               d.id === 'user_teacher_pitria_lawenusa' ||
-              d.id === 'teacher_pitria_lawenusa';
+              d.id === 'teacher_pitria_lawenusa'
+            );
 
             if (isTargetPurged) {
-              if (auth.currentUser) {
-                deleteDoc(d.ref).catch(() => {});
-              }
+              // Abaikan dokumen yang dipurge dari state in-memory (tanpa delete pasif)
               continue;
             }
 
             // 1b. Cek eliminasi akun Anggota Sekbid (Anggota Sekbid biasa TIDAK memiliki akun login dan TIDAK masuk ke cPanel)
             const isOsimUser = data.role === 'anggota_osim' || data.role === 'pengurus_osim';
             if (isOsimUser && isAnggotaSekbid(data as any)) {
-              if (auth.currentUser) {
-                deleteDoc(d.ref).catch(() => {});
-              }
               continue;
             }
 
-            // 2. Pembersihan Otomatis Dokumen Kembar / Alias Write Lama:
+            // 2. Pembersihan In-Memory Dokumen Kembar / Alias Write Lama:
             // Kasus A: Dokumen d.id TIDAK berawalan 'user_', tetapi dokumen 'user_' + d.id juga ada di Firestore (misal 'waka_kesiswaan' kembar dengan 'user_waka_kesiswaan')
             if (!d.id.startsWith('user_') && allDocIds.has(`user_${d.id}`)) {
-              if (auth.currentUser) {
-                deleteDoc(d.ref).catch(() => {});
-              }
               continue;
             }
 
-            // Kasus B: Dokumen ber-ID acak / Firebase Auth UID (seperti kombinasi huruf dan angka di screenshot)
+            // Kasus B: Dokumen ber-ID acak / Firebase Auth UID
             if (isRandomOrLegacyArtifactUid(d.id)) {
               const targetTidyUid = resolveTidyUidForUser(data);
               if (targetTidyUid === 'user_osim_ineligible_anggota') {
-                if (auth.currentUser) {
-                  deleteDoc(d.ref).catch(() => {});
-                }
                 continue;
               }
-              // Jika dokumen ber-UID rapi sudah ada di Firestore, maka dokumen acak ini adalah duplikat murni:
+              // Jika dokumen ber-UID rapi sudah ada di Firestore, maka dokumen acak ini diabaikan in-memory
               if (allDocIds.has(targetTidyUid) && targetTidyUid !== d.id) {
-                if (auth.currentUser) {
-                  // Timpa data ke targetTidyUid dan hapus dokumen acak seketika
-                  setDoc(doc(db, 'users', targetTidyUid), {
-                    phone: data.phone || undefined,
-                    authUid: d.id,
-                    updatedAt: new Date().toISOString()
-                  }, { merge: true })
-                    .then(() => deleteDoc(d.ref))
-                    .catch(() => {});
-                }
                 continue;
               } else if (targetTidyUid !== d.id) {
-                // Jika belum ada dokumen rapi, migrasikan ke targetTidyUid dan hapus dokumen acak
+                // Tampilkan user dengan targetTidyUid yang rapi di in-memory
                 const tidyUser: UserProfile = {
                   ...data,
                   uid: targetTidyUid,
@@ -340,11 +326,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   updatedAt: new Date().toISOString()
                 };
                 firestoreUsers.push(tidyUser);
-                if (auth.currentUser) {
-                  setDoc(doc(db, 'users', targetTidyUid), tidyUser, { merge: true })
-                    .then(() => deleteDoc(d.ref))
-                    .catch((e) => console.warn('Notifikasi migrasi UID dokumen user:', e));
-                }
                 if (lowerEmail && !isGenericPlaceholderEmail(lowerEmail)) {
                   seenCanonicalEmails.set(lowerEmail, targetTidyUid);
                 }
@@ -355,41 +336,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             // Kasus C: Dokumen kembar dengan email unik yang sama persis
             if (lowerEmail && !isGenericPlaceholderEmail(lowerEmail)) {
               if (seenCanonicalEmails.has(lowerEmail)) {
-                // Dokumen ini adalah kembaran duplikat dari primary doc
-                if (auth.currentUser) {
-                  deleteDoc(d.ref).catch(() => {});
-                }
                 continue;
               } else {
                 seenCanonicalEmails.set(lowerEmail, d.id);
-              }
-            }
-
-            // Kasus E: Email anggota OSIM resmi adalah yang terdaftar di cPanel (data terbaru untuk orang yang sama)
-            // Hanya bersihkan jika ditemukan dokumen ganda usang untuk individu yang SAMA PERSIS (identitas nama & sekbid cocok)
-            const roleStr = (data.role || '').toLowerCase();
-            const isOsimAccount = roleStr === 'anggota_osim' || roleStr === 'pengurus_osim' || uid.startsWith('user_osim_') || (data.username && data.username.toLowerCase().startsWith('osim.'));
-            if (isOsimAccount && data.displayName) {
-              const normDataName = normalizeName(data.displayName);
-              const dataSekbid = extractSekbidNumber(data.osimDepartmentCode) || extractSekbidNumber(data.osimDepartmentName) || extractSekbidNumber(data.osimPosition);
-              const exactSamePersonInCpanel = allUsers.find(cu => {
-                if (cu.uid === d.id) return false;
-                const normCuName = normalizeName(cu.displayName);
-                const cuSekbid = extractSekbidNumber(cu.osimDepartmentCode) || extractSekbidNumber(cu.osimDepartmentName) || extractSekbidNumber(cu.osimPosition);
-                const isSamePerson = normCuName && normDataName && normCuName === normDataName && normCuName.length >= 4;
-                const isSameSekbid = dataSekbid !== null && cuSekbid !== null && dataSekbid === cuSekbid;
-                return isSamePerson && isSameSekbid;
-              });
-
-              if (exactSamePersonInCpanel && exactSamePersonInCpanel.email) {
-                const officialEmail = exactSamePersonInCpanel.email.trim().toLowerCase();
-                // Jika dokumen database lama ini memiliki email yang berbeda dari data terbaru cPanel, hapus dokumen duplikat lama
-                if (lowerEmail && lowerEmail !== officialEmail && d.id !== exactSamePersonInCpanel.uid) {
-                  if (auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
-                    deleteDoc(d.ref).catch(() => {});
-                  }
-                  continue;
-                }
               }
             }
 
@@ -397,9 +346,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const isSuperAdmin = lowerEmail === 'puputbajuri24@gmail.com' || (data.role === 'super_admin' && !data.username?.startsWith('demo'));
             if (isSuperAdmin) {
               if (d.id !== 'user_super_admin' && allDocIds.has('user_super_admin')) {
-                if (auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
-                  deleteDoc(d.ref).catch(() => {});
-                }
                 continue;
               }
             }
@@ -596,7 +542,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               // Menimpa dokumen asli Super Admin (Single Source of Truth)
               await setDoc(doc(db, 'users', 'user_super_admin'), superAdminProfile, { merge: true });
               if (fbUser.uid !== 'user_super_admin') {
-                deleteDoc(userDocRef).catch(() => {});
+                await setDoc(userDocRef, superAdminProfile, { merge: true }).catch(() => {});
               }
             } catch (createErr) {
               console.warn('Super admin provisioning write warning:', createErr);
@@ -658,7 +604,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               // Menimpa dokumen asli yang sah di Firestore, BUKAN membuat dokumen ID baru
               await setDoc(doc(db, 'users', canonicalUid), updatedProfile, { merge: true });
               if (fbUser.uid !== canonicalUid) {
-                deleteDoc(userDocRef).catch(() => {});
+                await setDoc(userDocRef, updatedProfile, { merge: true }).catch(() => {});
               }
             } catch (createErr) {
               console.warn('User profile update write warning:', createErr);
@@ -679,13 +625,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           );
         }
       } catch (err: any) {
-        console.error('Firestore user profile verification error:', err);
+        if (isPermissionError(err)) {
+          console.warn('[Firestore Profile Verification Notice]', err?.message || err);
+        } else {
+          console.error('Firestore user profile verification error:', err);
+        }
         if (err?.message?.includes('offline') || !navigator.onLine) {
           setBootstrapState('OFFLINE');
           setBootstrapError('Koneksi internet terputus. Tidak dapat memverifikasi profil pengguna dari server Firestore.');
         } else {
-          setBootstrapState('ERROR');
-          setBootstrapError(err?.message || 'Gagal memverifikasi profil pengguna dari database Firestore.');
+          setBootstrapState('READY');
+          setBootstrapError(null);
         }
       } finally {
         setIsLoading(false);
@@ -1241,6 +1191,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // cPanel User Provisioning methods (Solusi A: Terkelola Langsung dari App & Sinkronisasi Firebase Auth)
   const addUser = async (user: UserProfile): Promise<{ success: boolean; error?: string }> => {
     try {
+      // 0. KEAMANAN & OTORISASI PEMBUATAN AKUN
+      const isAdminActor = currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role);
+      const isSuperAdminActor = currentUser && (currentUser.role === 'super_admin' || currentUser.uid === 'user_super_admin');
+
+      if (!isAdminActor) {
+        return {
+          success: false,
+          error: 'Akses ditolak: Hanya Administrator atau Waka Kesiswaan yang berhak membuat akun pengguna baru.'
+        };
+      }
+
+      if (user.role === 'super_admin' && !isSuperAdminActor) {
+        return {
+          success: false,
+          error: 'Akses ditolak: Hanya Super Admin utama yang berhak membuat akun dengan hak Super Admin.'
+        };
+      }
+
       const cleanNewNip = cleanDigits(user.nip);
       const cleanNewEmail = user.email ? user.email.trim().toLowerCase() : '';
 
@@ -1305,6 +1273,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updatedAt: new Date().toISOString()
       };
 
+      const valRes = validatePayload(userProfileSchema, newUser);
+      if (!valRes.success) {
+        console.warn('[Schema Guard] Peringatan validasi profil pengguna:', valRes.errors);
+      }
+
       removeDeletedUid(newUser.uid);
       if (newUser.uid.startsWith('user_')) {
         removeDeletedUid(newUser.uid.replace(/^user_/, ''));
@@ -1362,6 +1335,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     cashManagerTitle?: string;
   }): Promise<{ success: boolean; user?: UserProfile; error?: string }> => {
     try {
+      // 0. KEAMANAN & OTORISASI AKTIVASI AKUN GURU
+      const isAdminActor = currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role);
+      if (!isAdminActor) {
+        return {
+          success: false,
+          error: 'Akses ditolak: Hanya Administrator atau Waka Kesiswaan yang berhak mengaktifkan akun login guru.'
+        };
+      }
+
       const cleanEmail = (params.email || '').trim().toLowerCase();
       if (!cleanEmail || !cleanEmail.includes('@')) {
         return { success: false, error: 'Email akun wajib diisi dan valid untuk aktivasi login.' };
@@ -1527,6 +1509,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     cashManagerTitle?: string;
   }): Promise<{ success: boolean; user?: UserProfile; error?: string }> => {
     try {
+      // 0. KEAMANAN & OTORISASI AKTIVASI AKUN OSIM
+      const isAdminActor = currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role);
+      if (!isAdminActor) {
+        return {
+          success: false,
+          error: 'Akses ditolak: Hanya Administrator atau Waka Kesiswaan yang berhak mengaktifkan akun login pengurus OSIM.'
+        };
+      }
+
       const cleanEmail = (params.email || '').trim().toLowerCase();
       if (!cleanEmail || !cleanEmail.includes('@')) {
         return { success: false, error: 'Email akun wajib diisi dan valid untuk aktivasi login pengurus OSIM.' };
@@ -1718,7 +1709,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       let mergedUser: UserProfile | undefined;
       const nowIso = new Date().toISOString();
 
+      // 0. KEAMANAN & PENCEGAHAN ESKALASI HAK AKSES (PRIVILEGE ESCALATION PREVENTION)
+      const isSelfUpdate = currentUser?.uid === uid;
+      const isAdminActor = currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role);
+      const isSuperAdminActor = currentUser && (currentUser.role === 'super_admin' || currentUser.uid === 'user_super_admin');
+
+      // ATURAN 1: Pengguna non-admin TIDAK BISA memperbarui akun pengguna lain
+      if (!isSelfUpdate && !isAdminActor) {
+        return {
+          success: false,
+          error: 'Akses ditolak: Anda tidak memiliki wewenang untuk memperbarui profil pengguna lain.'
+        };
+      }
+
+      // ATURAN 2: Pengguna TIDAK BISA mengubah role akunnya sendiri (Self Role Escalation Prevention)
+      if (isSelfUpdate && updated.role !== undefined && updated.role !== currentUser.role) {
+        if (!isSuperAdminActor) {
+          return {
+            success: false,
+            error: 'Akses ditolak: Anda tidak diizinkan mengubah peran (role) akun Anda sendiri demi keamanan sistem.'
+          };
+        }
+      }
+
       const cleanUpdated: Partial<UserProfile> = { ...updated };
+
+      // ATURAN 3: Pengguna non-admin TIDAK BISA memberikan hak isCashManager atau mengubah role
+      if (!isAdminActor) {
+        delete cleanUpdated.role;
+        delete cleanUpdated.isCashManager;
+        delete cleanUpdated.cashManagerTitle;
+        delete cleanUpdated.assignedExtracurricularIds;
+      }
+
+      // ATURAN 4: Hanya Super Admin sah yang berhak menaikkan role siapapun menjadi super_admin
+      if (cleanUpdated.role === 'super_admin' && !isSuperAdminActor) {
+        return {
+          success: false,
+          error: 'Akses ditolak: Hanya Super Admin utama yang berhak menetapkan hak akses Super Admin.'
+        };
+      }
 
       if (cleanUpdated.role) {
         cleanUpdated.role = normalizeUserRole(cleanUpdated.role) || cleanUpdated.role;
@@ -1849,19 +1879,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const deleteUser = async (uid: string): Promise<{ success: boolean; error?: string }> => {
     try {
+      // 0. KEAMANAN & OTORISASI PENGHAPUSAN AKUN
+      const isAdminActor = currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role);
+      if (!isAdminActor) {
+        return {
+          success: false,
+          error: 'Akses ditolak: Hanya Administrator atau Waka Kesiswaan yang berhak menghapus akun pengguna.'
+        };
+      }
+
       if (uid === 'user_super_admin' || currentUser?.uid === uid) {
         return { success: false, error: 'Tidak dapat menghapus akun Super Admin utama atau akun yang sedang aktif digunakan.' };
       }
       const targetUser = allUsers.find(u => u.uid === uid);
-      
+      const isTeacher = targetUser && isProtectedTeacherOrStaff(targetUser);
+
       addDeletedUid(uid);
       if (uid.startsWith('user_')) {
         addDeletedUid(uid.replace(/^user_/, ''));
       }
-      if (targetUser?.email) {
+      if (targetUser?.email && !isTeacher) {
         addDeletedUid(targetUser.email.trim().toLowerCase());
       }
-      if (targetUser?.nip) {
+      // NIP guru madrasah TIDAK BOLEH diblacklist agar tidak merusak data master kepegawaian
+      if (targetUser?.nip && !isTeacher) {
         const cleanNip = cleanDigits(targetUser.nip);
         if (cleanNip.length >= 6) {
           addDeletedUid(cleanNip);
@@ -1904,6 +1945,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const resetUserPassword = async (uid: string, newPassword?: string): Promise<{ success: boolean; error?: string }> => {
     try {
+      // 0. KEAMANAN & OTORISASI RESET PASSWORD
+      const isSelf = currentUser?.uid === uid;
+      const isAdminActor = currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role);
+      if (!isSelf && !isAdminActor) {
+        return {
+          success: false,
+          error: 'Akses ditolak: Anda hanya dapat mengatur ulang kata sandi akun Anda sendiri.'
+        };
+      }
+
       const targetUser = allUsers.find(u => u.uid === uid) || (currentUser?.uid === uid ? currentUser : null);
       if (!targetUser?.email) {
         return { success: false, error: 'Akun ini tidak memiliki alamat email untuk reset kata sandi.' };

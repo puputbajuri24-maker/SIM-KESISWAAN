@@ -10,7 +10,7 @@ export const normalizeName = (name?: string): string => {
   return name
     .toLowerCase()
     .replace(/\s*\(.*?\)\s*/g, ' ') // Remove parentheses like (Ketua OSIM)
-    .replace(/\b(drs|dra|dr|prof|h|hj|kh|ustadz|ustadzah|s\.pd|s\.pd\.i|m\.pd|m\.pd\.i|s\.ag|m\.ag|s\.or|m\.or|s\.kom|m\.kom|s\.e|s\.si|m\.si|ph\.d|lc|b\.a|m\.a)\b/gi, '')
+    .replace(/\b(drs|dra|dr|prof|h|hj|kh|ustadz|ustadzah|s\.?\s*pd\.?\s*i?|m\.?\s*pd\.?\s*i?|s\.?\s*ag|m\.?\s*ag|s\.?\s*or|m\.?\s*or|s\.?\s*kom|m\.?\s*kom|s\.?\s*e|s\.?\s*si|m\.?\s*si|ph\.?d|lc|b\.?a|m\.?a)\b/gi, '')
     .replace(/[^a-z0-9]/g, '')
     .trim();
 };
@@ -90,6 +90,24 @@ export const isProtectedFunctionalUid = (uid?: string): boolean => {
   return false;
 };
 
+export const isProtectedTeacherOrStaff = (u: any): boolean => {
+  if (!u) return false;
+  const role = (u.role || '').toLowerCase().trim();
+  const uid = (u.uid || u.id || '').toLowerCase().trim();
+  const cleanNip = cleanDigits(u.nip || '');
+
+  if (['guru', 'guru_bk', 'wali_kelas', 'guru_mapel', 'pembina_ekskul', 'pembina_osim', 'kepala_madrasah', 'waka_kesiswaan', 'admin', 'super_admin'].includes(role)) {
+    return true;
+  }
+  if (cleanNip.length >= 6) {
+    return true;
+  }
+  if (uid.startsWith('user_guru_') || uid.startsWith('guru_') || uid === 'user_waka' || uid === 'user_guru_bk' || uid === 'user_super_admin') {
+    return true;
+  }
+  return false;
+};
+
 /**
  * Tombstone tracking for deleted user accounts so stale local caches or
  * un-purged default demo sets never resurrect deleted accounts.
@@ -100,15 +118,16 @@ export const getDeletedUids = (): Set<string> => {
     if (raw) {
       const arr = JSON.parse(raw);
       if (Array.isArray(arr)) {
-        // Filter out any protected functional UIDs, OSIM members, and student NIS numbers (numeric <= 10 digits)
+        // Filter out any protected functional UIDs, teacher accounts, OSIM members, and student NIS / teacher NIP numbers (numeric 4 to 25 digits)
         const valid = arr.filter(id => {
           if (!id) return false;
           if (isProtectedFunctionalUid(id)) return false;
           if (/^guru_\d+$/i.test(id) || /^user_guru_\d+$/i.test(id)) return false;
           if (/^user_osim_/i.test(id) || /^osim_m_/i.test(id) || /^osim\./i.test(id)) return false;
-          // Never tombstone student NIS numbers (pure digits <= 10 digits, e.g. 24251001)
-          if (/^\d{4,10}$/.test(id)) return false;
-          if (/^user_\d{4,10}$/.test(id)) return false;
+          // Never tombstone student NIS numbers or teacher NIPs (4 to 25 digits)
+          if (/^\d{4,25}$/.test(id)) return false;
+          if (/^user_\d{4,25}$/.test(id)) return false;
+          if (/^teacher_/i.test(id) || /^user_teacher_/i.test(id)) return false;
           return true;
         });
         if (valid.length !== arr.length) {
@@ -123,7 +142,7 @@ export const getDeletedUids = (): Set<string> => {
 
 export const addDeletedUid = (uid: string) => {
   if (!uid || isProtectedFunctionalUid(uid)) return;
-  // Never tombstone sequence teacher IDs, OSIM members, or student NIS numbers
+  // Never tombstone sequence teacher IDs, OSIM members, teacher NIPs, or student NIS numbers
   const cleanTrimmed = uid.trim();
   if (
     !cleanTrimmed ||
@@ -136,8 +155,10 @@ export const addDeletedUid = (uid: string) => {
     /^user_osim_/i.test(cleanTrimmed) ||
     /^osim_m_/i.test(cleanTrimmed) ||
     /^osim\./i.test(cleanTrimmed) ||
-    /^\d{4,10}$/.test(cleanTrimmed) ||
-    /^user_\d{4,10}$/.test(cleanTrimmed)
+    /^\d{4,25}$/.test(cleanTrimmed) ||
+    /^user_\d{4,25}$/.test(cleanTrimmed) ||
+    /^teacher_/i.test(cleanTrimmed) ||
+    /^user_teacher_/i.test(cleanTrimmed)
   ) return;
 
   try {
@@ -187,6 +208,12 @@ export const isDeletedUid = (uid?: string): boolean => {
     return false;
   }
   if (/^user_osim_/i.test(clean) || /^osim_m_/i.test(clean) || /^osim\./i.test(clean)) {
+    return false;
+  }
+  if (/^\d{4,25}$/.test(clean) || /^user_\d{4,25}$/.test(clean)) {
+    return false;
+  }
+  if (/^teacher_/i.test(clean) || /^user_teacher_/i.test(clean)) {
     return false;
   }
   try {

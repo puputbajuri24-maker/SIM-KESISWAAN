@@ -611,7 +611,7 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
         isOpen={isFormOpen}
         onClose={() => setIsFormOpen(false)}
         title={selectedEkskul ? 'Edit Profil Ekstrakurikuler' : 'Tambah Ekstrakurikuler Baru'}
-        subtitle="Pilih dari template resmi atau sesuaikan parameter pembinaan, visi misi, dan jadwal"
+        subtitle={selectedEkskul ? 'Sesuaikan parameter pembinaan, visi misi, dan jadwal kegiatan' : 'Pilih dari template resmi atau sesuaikan parameter pembinaan, visi misi, dan jadwal'}
         maxWidth="2xl"
         footer={
           <>
@@ -643,8 +643,9 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
         }
       >
         <form onSubmit={handleSave} className="space-y-4">
-          {/* Preset & Template Selector Section */}
-          <div className="p-3.5 rounded-xl bg-gradient-to-br from-indigo-50/80 via-purple-50/40 to-slate-50 dark:from-indigo-950/40 dark:via-purple-950/20 dark:to-slate-900/40 border border-indigo-200/80 dark:border-indigo-800/60 space-y-2.5">
+          {/* Preset & Template Selector Section - ditiadakan pada mode Edit Profil sesuai instruksi */}
+          {!selectedEkskul && (
+            <div className="p-3.5 rounded-xl bg-gradient-to-br from-indigo-50/80 via-purple-50/40 to-slate-50 dark:from-indigo-950/40 dark:via-purple-950/20 dark:to-slate-900/40 border border-indigo-200/80 dark:border-indigo-800/60 space-y-2.5">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-6 h-6 rounded-lg bg-indigo-600 flex items-center justify-center text-white shadow-sm">
@@ -789,6 +790,7 @@ export const ExtracurricularPage: React.FC<ExtracurricularPageProps> = ({ onNavi
               </div>
             )}
           </div>
+          )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>

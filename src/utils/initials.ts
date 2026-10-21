@@ -72,9 +72,13 @@ export function isGuruBKOrPembinaRole(role?: string | null): boolean {
     normalized === 'pembina' ||
     normalized === 'pembina_osim' ||
     normalized === 'pembina_ekskul' ||
+    normalized === 'coach_ekstrakurikuler' ||
     normalized === 'pengurus_osim' ||
     normalized.includes('bk') ||
     normalized.includes('pembina') ||
+    normalized.includes('coach') ||
+    normalized.includes('ekskul') ||
+    normalized.includes('ekstrakurikuler') ||
     normalized.includes('pengurus') ||
     normalized.includes('konseling') ||
     normalized.includes('konselor')

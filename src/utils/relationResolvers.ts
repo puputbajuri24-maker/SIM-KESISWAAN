@@ -41,7 +41,10 @@ export const resolveStudent = (
   if (identifier.name) {
     const normName = normalizeName(identifier.name);
     if (normName) {
-      const byName = students.find(s => normalizeName(s.fullName) === normName);
+      const byName = students.find(s => {
+        const norm = normalizeName(s.fullName || (s as any).name);
+        return norm === normName || (normName.length >= 5 && (norm.includes(normName) || normName.includes(norm)));
+      });
       if (byName) return byName;
     }
   }
@@ -100,7 +103,10 @@ export const resolveTeacher = (
 
   // 4. Match by Normalized Name
   if (!isInvalidName) {
-    const byName = teachers.find(t => normalizeName(t.fullName) === queryName);
+    const byName = teachers.find(t => {
+      const norm = normalizeName(t.fullName || t.name);
+      return norm === queryName || (queryName.length >= 5 && (norm.includes(queryName) || queryName.includes(norm)));
+    });
     if (byName) return byName;
   }
 

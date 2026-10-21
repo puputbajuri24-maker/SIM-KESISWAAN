@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "tsx firestore.rules.test.ts"
+    "test": "tsx firestore.rules.test.ts && tsx tests/priority2-rbac-and-security.test.ts && tsx tests/priority3-relational-integrity.test.ts && tsx tests/priority4-verification.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

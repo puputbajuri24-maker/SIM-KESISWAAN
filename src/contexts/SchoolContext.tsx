@@ -94,9 +94,13 @@ import { resolveStudent, resolveTeacher, auditRelationalIntegrity, RelationalHea
 import {
   validatePayload,
   cashTransactionSchema,
+  cashAccountSchema,
   studentViolationSchema,
+  studentProfileSchema,
+  teacherProfileSchema,
   counselingSessionSchema,
   osimProgramSchema,
+  isValidIdFormat,
   runFase7DefensiveAudit,
   Fase7AuditReport
 } from '../services/schemaValidation';
@@ -106,6 +110,8 @@ import {
   addDeletedUid,
   removeDeletedUid,
   isDeletedUid,
+  isProtectedTeacherOrStaff,
+  isProtectedFunctionalUid,
   isTeacherUserMatch,
   isStudentUserMatch,
   isOsimMemberUserMatch,
@@ -902,7 +908,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
                 isPurgedExtracurricular(data.extracurricularId) ||
                 isPurgedExtracurricular(data.title || '')
               ) {
-                deleteDoc(doc(db, 'schedules', docSnap.id)).catch(() => {});
+                if (auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
+                  deleteDoc(doc(db, 'schedules', docSnap.id)).catch(() => {});
+                }
               } else {
                 loadedSched.push({ id: docSnap.id, ...data });
               }
@@ -1173,6 +1181,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const keptIds = new Set(loadedOsimMem.map(m => m.id));
             const obsoleteMembers = rawOsimMem.filter(m => !keptIds.has(m.id));
             obsoleteMembers.forEach(obs => {
+              if (isProtectedTeacherOrStaff({ id: obs.id, fullName: obs.fullName } as any) || isProtectedFunctionalUid(obs.id)) {
+                return;
+              }
               addDeletedUid(obs.id);
               addDeletedUid(`user_${obs.id}`);
               deleteDoc(doc(db, 'osim_members', obs.id)).catch(() => {});
@@ -1473,7 +1484,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const id = docSnap.id;
             const data = docSnap.data() as SchoolClass;
             if (deletedClassSet.has(id) || isPurgedClassId(id) || isPurgedClassId(data?.name)) {
-              if (auth.currentUser) {
+              if (auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
                 deleteDoc(docSnap.ref).catch(() => {});
               }
               return;
@@ -1485,7 +1496,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           try {
             localStorage.setItem('sim_classes', JSON.stringify(cleanClasses));
           } catch (e) {}
-          if (duplicateIds.length > 0 && auth.currentUser) {
+          if (duplicateIds.length > 0 && auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
             duplicateIds.forEach(dupId => {
               deleteDoc(doc(db, 'classes', dupId)).catch(() => {});
             });
@@ -1863,16 +1874,16 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const data = docSnap.data() as Teacher;
             const id = docSnap.id;
             const cleanNip = cleanDigits(data.nip);
+            const isProtectedTeacher = isProtectedTeacherOrStaff(data);
             if (
-              id === 'user_super_admin' ||
-              id === 'teacher_pitria_lawenusa' ||
-              isBlacklistedDemoName(data.fullName || (data as any).name) ||
-              isDeletedUid(id) ||
-              (cleanNip.length >= 6 && isDeletedUid(cleanNip))
+              !isProtectedTeacher && (
+                id === 'user_super_admin' ||
+                id === 'teacher_pitria_lawenusa' ||
+                isBlacklistedDemoName(data.fullName || (data as any).name) ||
+                isDeletedUid(id) ||
+                (cleanNip.length >= 6 && isDeletedUid(cleanNip))
+              )
             ) {
-              if (auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
-                deleteDoc(docSnap.ref).catch(() => {});
-              }
               return;
             }
             raw.push({ id, ...data });
@@ -2784,6 +2795,20 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Student Operations
   const addStudent = async (data: Omit<Student, 'id' | 'createdAt'>): Promise<Student> => {
+    const valRes = validatePayload(studentProfileSchema, {
+      name: data.fullName,
+      fullName: data.fullName,
+      nis: data.nis,
+      nisn: data.nisn,
+      className: data.className,
+      gender: data.gender,
+      email: (data as any).email || undefined,
+      status: data.status || 'Aktif'
+    });
+    if (!valRes.success) {
+      console.warn('[Schema Guard] Peringatan validasi profil siswa:', valRes.errors);
+    }
+
     const matchedClass = findMatchingClass(data.classId || data.className, classes);
     const newStudent: Student = {
       id: `s_${Date.now()}`,
@@ -3412,6 +3437,19 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Teachers Operations
   const addTeacher = async (data: Omit<Teacher, 'id'>) => {
+    const valRes = validatePayload(teacherProfileSchema, {
+      fullName: data.fullName,
+      nip: data.nip || undefined,
+      gender: data.gender,
+      role: data.role || 'Guru',
+      subject: data.subject || undefined,
+      email: data.email || undefined,
+      isActive: data.isActive !== false
+    });
+    if (!valRes.success) {
+      console.warn('[Schema Guard] Peringatan validasi profil guru:', valRes.errors);
+    }
+
     const assignedCode = normalizeTeacherCode(data.code, teachers.length + 1, data.fullName);
     const newDocId = getNextTeacherDocId(teachers);
     const cleanAssigned = canonicalizeAssignedEkskulIds(data.assignedExtracurriculars, extracurriculars);
@@ -7215,6 +7253,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Cash Accounts
   const addCashAccount = async (data: Omit<CashAccount, 'id' | 'createdAt'>) => {
+    const valRes = validatePayload(cashAccountSchema, data);
+    if (!valRes.success) {
+      console.warn('[Schema Guard] Peringatan validasi akun kas:', valRes.errors);
+    }
+
     const newAcc: CashAccount = {
       id: `kas_${Date.now()}`,
       ...data,
