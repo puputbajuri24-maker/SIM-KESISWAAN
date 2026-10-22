@@ -24,6 +24,8 @@ import {
   CareerGuidanceRecord,
   StudentAchievement,
   Achievement,
+  StudentReward,
+  Reward,
   StudentPermission,
   NeedsRequest,
   Announcement,
@@ -165,6 +167,7 @@ interface SchoolContextType {
   violations: StudentViolation[];
   counseling: StudentCounseling[];
   achievements: StudentAchievement[];
+  rewards: StudentReward[];
   permissions: StudentPermission[];
   needsRequests: NeedsRequest[];
   announcements: Announcement[];
@@ -269,6 +272,12 @@ interface SchoolContextType {
   updateAchievement: (id: string, data: Partial<StudentAchievement>) => Promise<void>;
   deleteAchievement: (id: string, arg2?: any, arg3?: any) => Promise<void>;
   syncStudentAchievementPoints: (targetStudentId: string, currentAchievementsList?: StudentAchievement[]) => Promise<number>;
+
+  // Rewards
+  addReward: (data: Omit<StudentReward, 'id' | 'createdAt'>) => Promise<void>;
+  updateReward: (id: string, data: Partial<StudentReward>) => Promise<void>;
+  deleteReward: (id: string, studentId?: string, points?: number) => Promise<void>;
+  syncStudentRewardPoints: (targetStudentId: string, currentRewardsList?: StudentReward[]) => Promise<number>;
 
   // Permissions
   addPermission: (data: Omit<StudentPermission, 'id' | 'createdAt'>) => Promise<void>;
@@ -505,6 +514,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [parentCallLetters, setParentCallLetters] = useState<ParentCallLetter[]>(() => loadCachedRecordState('sim_parent_call_letters', INITIAL_PARENT_CALL_LETTERS));
   const [careerGuidances, setCareerGuidances] = useState<CareerGuidanceRecord[]>(() => loadCachedRecordState('sim_career_guidances', INITIAL_CAREER_GUIDANCES));
   const [achievements, setAchievements] = useState<StudentAchievement[]>(() => loadCachedRecordState('sim_achievements', INITIAL_ACHIEVEMENTS));
+  const [rewards, setRewards] = useState<StudentReward[]>(() => loadCachedRecordState('sim_rewards', []));
   const [permissions, setPermissions] = useState<StudentPermission[]>(() => loadCachedRecordState('sim_permissions', INITIAL_PERMISSIONS));
   const [needsRequests, setNeedsRequests] = useState<NeedsRequest[]>(() => loadCachedRecordState('sim_needs_requests', INITIAL_NEEDS_REQUESTS));
   const [osimMembers, setOsimMembers] = useState<OsimMember[]>(() => {
@@ -1054,6 +1064,70 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             } catch (e) {}
           } catch (achErr) {
             console.warn('[SchoolContext] Gagal sync achievements dari Firestore:', achErr);
+          }
+
+          // Rewards Sync (Dedicated Rewards Collection in Firestore)
+          try {
+            const rewSnap = await getDocs(collection(db, 'rewards'));
+            const loadedRew: StudentReward[] = [];
+            rewSnap.forEach(docSnap => loadedRew.push({ id: docSnap.id, ...docSnap.data() } as StudentReward));
+
+            const rewMap = new Map<string, StudentReward>();
+            loadedRew.forEach(r => rewMap.set(r.id, r));
+
+            // Preserve local additions that haven't synced yet
+            try {
+              const cachedRaw = localStorage.getItem('sim_rewards');
+              if (cachedRaw) {
+                const cachedRews: StudentReward[] = JSON.parse(cachedRaw);
+                if (Array.isArray(cachedRews)) {
+                  cachedRews.forEach(cr => {
+                    if (cr && cr.id && !rewMap.has(cr.id)) {
+                      rewMap.set(cr.id, cr);
+                      setDoc(doc(db, 'rewards', cr.id), cr).catch(() => {});
+                    }
+                  });
+                }
+              }
+            } catch (e) {}
+
+            // Auto-populate from achievements with points if rewards table is fresh
+            if (loadedRew.length === 0) {
+              const currentAchs = achievements.length > 0 ? achievements : INITIAL_ACHIEVEMENTS;
+              currentAchs.forEach(a => {
+                if (Number(a.pointsAwarded) > 0) {
+                  const seedRew: StudentReward = {
+                    id: `rew_${a.id.replace('ach_', '')}`,
+                    studentId: a.studentId,
+                    studentNis: a.studentNis,
+                    studentName: a.studentName,
+                    studentClass: a.studentClass,
+                    rewardTitle: a.title,
+                    category: (a.category as any) || 'Akademik',
+                    points: Number(a.pointsAwarded) || 10,
+                    date: a.date,
+                    officerName: 'Penyelenggara / Tim Kesiswaan',
+                    description: a.description || 'Pemberian apresiasi atas prestasi yang diraih siswa.',
+                    actionTaken: 'Pencatatan Poin Prestasi & Piagam',
+                    certificateUrl: a.certificateUrl,
+                    academicYear: a.academicYear,
+                    status: 'Diverifikasi',
+                    achievementId: a.id,
+                    createdAt: a.createdAt || new Date().toISOString().split('T')[0]
+                  };
+                  rewMap.set(seedRew.id, seedRew);
+                  setDoc(doc(db, 'rewards', seedRew.id), seedRew).catch(() => {});
+                }
+              });
+            }
+
+            const finalRews = Array.from(rewMap.values());
+            setRewards(finalRews);
+            try {
+              localStorage.setItem('sim_rewards', JSON.stringify(finalRews));
+            } catch (e) {}
+          } catch (rewErr) {
+            console.warn('[SchoolContext] Gagal sync rewards dari Firestore:', rewErr);
           }
 
           // BK Collections Sync (Strictly Restricted to Guru BK and Waka/Admin with active Firebase Auth session)
@@ -1725,6 +1799,37 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       unsubscribers.push(unsub);
     } catch (e) {}
 
+    // 9b. Real-time Rewards Listener (Public)
+    try {
+      const unsub = onSnapshot(collection(db, 'rewards'), (snapshot) => {
+        const loaded: StudentReward[] = [];
+        snapshot.forEach(docSnap => {
+          loaded.push({ id: docSnap.id, ...docSnap.data() } as StudentReward);
+        });
+        setRewards(prevRews => {
+          const rewMap = new Map<string, StudentReward>();
+          loaded.forEach(r => rewMap.set(r.id, r));
+          prevRews.forEach(pr => {
+            if (pr && pr.id && !rewMap.has(pr.id)) {
+              rewMap.set(pr.id, pr);
+            }
+          });
+          const finalRews = Array.from(rewMap.values());
+          try {
+            localStorage.setItem('sim_rewards', JSON.stringify(finalRews));
+          } catch (e) {}
+          return finalRews;
+        });
+      }, (err) => {
+        if (isPermissionError(err)) {
+          console.warn('[Firestore] Izin baca ditolak untuk rewards:', err);
+        } else {
+          handleFirestoreError(err, OperationType.GET, 'rewards');
+        }
+      });
+      unsubscribers.push(unsub);
+    } catch (e) {}
+
     // 10. Real-time Announcements Listener (Public)
     try {
       const unsub = onSnapshot(collection(db, 'announcements'), (snapshot) => {
@@ -2107,6 +2212,77 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       unsubscribers.push(unsub);
     } catch (e) {}
 
+    // Rewards Real-time Listener (mirroring violations structure)
+    try {
+      const unsub = onSnapshot(collection(db, 'rewards'), (snapshot) => {
+        const loaded: StudentReward[] = [];
+        snapshot.forEach(docSnap => {
+          const data = docSnap.data() as StudentReward;
+          if (!data.isDeleted) {
+            loaded.push({
+              id: docSnap.id,
+              ...data,
+              studentID: data.studentID || data.studentId,
+              class: data.class || data.studentClass,
+              rewardType: data.rewardType || data.rewardTitle
+            });
+          }
+        });
+        setRewards(prev => {
+          const m = new Map<string, StudentReward>();
+          loaded.forEach(r => m.set(r.id, r));
+          prev.forEach(p => { if (p && p.id && !m.has(p.id)) m.set(p.id, p); });
+          const merged = Array.from(m.values());
+          try { localStorage.setItem('sim_rewards', JSON.stringify(merged)); } catch (e) {}
+          return merged;
+        });
+      }, (err) => {
+        if (isPermissionError(err)) {
+          console.warn('[Firestore] Izin baca ditolak untuk rewards:', err);
+        } else {
+          handleFirestoreError(err, OperationType.GET, 'rewards');
+        }
+      });
+      unsubscribers.push(unsub);
+    } catch (e) {}
+
+    // Auto-bootstrap rewards collection in Firestore if empty so it appears immediately in Firebase Console
+    const ensureRewardsCollection = async () => {
+      try {
+        const snap = await getDocs(collection(db, 'rewards'));
+        if (snap.empty) {
+          const studentSnap = await getDocs(collection(db, 'students'));
+          const targetStudent = studentSnap.docs[0]?.data();
+          const sampleReward: StudentReward = {
+            id: `rew_${Date.now()}`,
+            studentId: targetStudent?.id || 's_sample_01',
+            studentID: targetStudent?.id || 's_sample_01',
+            studentName: targetStudent?.fullName || 'Siswa Berprestasi Teladan',
+            studentNis: targetStudent?.nis || '202601001',
+            studentClass: targetStudent?.className || '10-A',
+            class: targetStudent?.className || '10-A',
+            rewardType: '[RW-01] Menemukan dan mengembalikan barang berharga',
+            rewardTitle: '[RW-01] Menemukan dan mengembalikan barang berharga',
+            category: 'Kedisiplinan & Karakter',
+            points: 10,
+            date: new Date().toISOString().split('T')[0],
+            description: 'Pemberian piagam penghargaan integritas kejujuran atas penyerahan barang temuan kepada madrasah.',
+            actionTaken: 'Pemberian piagam penghargaan & penambahan 10 poin apresiasi',
+            officerName: 'Wali Kelas & Guru BK',
+            status: 'Diverifikasi',
+            academicYear: activeAcademicYear || '2026/2027',
+            isDeleted: false,
+            createdAt: new Date().toISOString().split('T')[0],
+            updatedAt: new Date().toISOString()
+          };
+          await setDoc(doc(db, 'rewards', sampleReward.id), sampleReward);
+        }
+      } catch (err) {
+        console.warn('[Firestore] Note initializing rewards collection:', err);
+      }
+    };
+    ensureRewardsCollection();
+
     return () => {
       unsubscribers.forEach(unsub => unsub());
     };
@@ -2155,6 +2331,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         parentCallLetters,
         careerGuidances,
         achievements,
+        rewards,
         permissions,
         needsRequests,
         osimMembers: cleanOsim,
@@ -2187,13 +2364,14 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const isBkOrAdminUser = currentUser && ['super_admin', 'admin', 'waka_kesiswaan', 'waka', 'guru_bk', 'bk'].includes(currentUser.role);
       const isStaffUser = currentUser && ['super_admin', 'admin', 'waka_kesiswaan', 'waka', 'admin_kesiswaan', 'guru_bk', 'bk', 'pembina_osim', 'pembina', 'pembina_ekstrakurikuler', 'pembina_ekskul', 'coach_ekstrakurikuler', 'wali_kelas', 'homeroom_teacher', 'guru', 'teacher', 'guru_mapel'].includes(currentUser.role);
 
-      const [tSnap, sSnap, cSnap, eSnap, uSnap, vSnap, csSnap, ctSnap] = await Promise.all([
+      const [tSnap, sSnap, cSnap, eSnap, uSnap, vSnap, rSnap, csSnap, ctSnap] = await Promise.all([
         getDocs(collection(db, 'teachers')).catch(() => null),
         getDocs(collection(db, 'students')).catch(() => null),
         getDocs(collection(db, 'classes')).catch(() => null),
         getDocs(collection(db, 'extracurriculars')).catch(() => null),
         getDocs(collection(db, 'users')).catch(() => null),
         (isStaffUser && auth.currentUser) ? getDocs(collection(db, 'violations')).catch(() => null) : Promise.resolve(null),
+        getDocs(collection(db, 'rewards')).catch(() => null),
         (isBkOrAdminUser && auth.currentUser) ? getDocs(collection(db, 'counseling')).catch(() => null) : Promise.resolve(null),
         getDocs(collection(db, 'cash_transactions')).catch(() => null)
       ]);
@@ -2204,6 +2382,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         extracurriculars: { firestore: eSnap ? eSnap.size : 0, react: extracurriculars.length },
         users: { firestore: uSnap ? uSnap.size : 0, react: allUsers.length },
         violations: { firestore: vSnap ? vSnap.size : 0, react: violations.length },
+        rewards: { firestore: rSnap ? rSnap.size : 0, react: rewards.length },
         counseling: { firestore: csSnap ? csSnap.size : 0, react: counseling.length },
         cash_transactions: { firestore: ctSnap ? ctSnap.size : 0, react: cashTransactions.length }
       };
@@ -6487,6 +6666,41 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     } catch (e) {
       console.warn('[SchoolContext] Gagal simpan achievement ke Firebase Firestore:', e);
     }
+
+    // Mirror to dedicated rewards collection in Firestore and local state
+    if (newAch.pointsAwarded > 0) {
+      const mirrorReward: StudentReward = {
+        id: `rew_${newAch.id.replace('ach_', '')}`,
+        studentId: newAch.studentId,
+        studentID: newAch.studentId,
+        studentNis: newAch.studentNis,
+        studentName: newAch.studentName,
+        studentClass: newAch.studentClass,
+        class: newAch.studentClass,
+        rewardTitle: newAch.title,
+        rewardType: newAch.title,
+        category: (newAch.category as any) || 'Akademik',
+        points: newAch.pointsAwarded,
+        date: newAch.date,
+        officerName: 'Penyelenggara / Tim Kesiswaan',
+        description: newAch.description || 'Pemberian apresiasi atas prestasi yang diraih siswa.',
+        actionTaken: 'Pencatatan Poin Prestasi & Piagam',
+        certificateUrl: newAch.certificateUrl,
+        academicYear: newAch.academicYear,
+        status: 'Diverifikasi',
+        achievementId: newAch.id,
+        isDeleted: false,
+        createdAt: newAch.createdAt,
+        updatedAt: new Date().toISOString()
+      };
+      setRewards(prev => {
+        const next = [mirrorReward, ...prev.filter(r => r.achievementId !== newAch.id && r.id !== mirrorReward.id)];
+        try { localStorage.setItem('sim_rewards', JSON.stringify(next)); } catch (e) {}
+        return next;
+      });
+      setDoc(doc(db, 'rewards', mirrorReward.id), mirrorReward).catch(() => {});
+    }
+
     logAction('RECORD_ACHIEVEMENT', 'Prestasi Siswa', `Mencatat prestasi: ${data.title} oleh ${data.studentName} (+${newAch.pointsAwarded} poin)`);
   };
 
@@ -6545,7 +6759,173 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     } catch (e) {
       console.warn('[SchoolContext] Gagal hapus achievement dari Firebase:', e);
     }
+
+    // Also remove mirrored reward if present
+    setRewards(prev => {
+      const next = prev.filter(r => r.achievementId !== id && r.id !== `rew_${id.replace('ach_', '')}`);
+      try { localStorage.setItem('sim_rewards', JSON.stringify(next)); } catch (e) {}
+      return next;
+    });
+    deleteDoc(doc(db, 'rewards', `rew_${id.replace('ach_', '')}`)).catch(() => {});
+
     logAction('DELETE_ACHIEVEMENT', 'Prestasi Siswa', `Menghapus data prestasi: ${target?.title || id}`);
+  };
+
+  // Rewards Operations (Dedicated Table in Firebase Firestore)
+  const syncStudentRewardPoints = async (targetStudentId: string, currentRewardsList?: StudentReward[]) => {
+    if (!targetStudentId) return 0;
+    const list = currentRewardsList || rewards;
+    const activeStudentRews = list.filter(r => r.studentId === targetStudentId);
+    const calculatedPoints = activeStudentRews.reduce((sum, r) => sum + (Number(r.points) || 0), 0);
+
+    // Update state in memory & localStorage
+    setStudents(prev => {
+      const updated = prev.map(s => s.id === targetStudentId ? { ...s, achievementPoints: calculatedPoints } : s);
+      try {
+        localStorage.setItem('sim_students', JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+
+    // Persist to Firestore
+    try {
+      await updateDoc(doc(db, 'students', targetStudentId), { achievementPoints: calculatedPoints });
+    } catch (e) {
+      try {
+        await setDoc(doc(db, 'students', targetStudentId), { achievementPoints: calculatedPoints }, { merge: true });
+      } catch (innerErr) {}
+    }
+
+    return calculatedPoints;
+  };
+
+  const addReward = async (data: Omit<StudentReward, 'id' | 'createdAt'>) => {
+    // Relational Integrity: Safely resolve student
+    const student = resolveStudent(students, {
+      id: data.studentId || data.studentID,
+      nis: data.studentNis,
+      name: data.studentName
+    });
+    const targetStudentId = student?.id || data.studentId || data.studentID || '';
+    const finalStudentName = student?.fullName || data.studentName || '';
+    const finalStudentClass = student?.className || data.studentClass || data.class || '';
+    const finalStudentNis = student?.nis || data.studentNis || '';
+    const finalRewardType = data.rewardType || data.rewardTitle || 'Penghargaan Siswa';
+    const nowIso = new Date().toISOString();
+    const todayDate = data.date || nowIso.split('T')[0];
+
+    const newRew: StudentReward = {
+      id: `rew_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      officerName: currentUser?.displayName || data.officerName || 'Tim Kesiswaan',
+      actionTaken: data.actionTaken || 'Pemberian Poin Penghargaan',
+      ...data,
+      studentId: targetStudentId,
+      studentID: targetStudentId,
+      studentName: finalStudentName,
+      studentClass: finalStudentClass,
+      class: finalStudentClass,
+      studentNis: finalStudentNis,
+      rewardTitle: finalRewardType,
+      rewardType: finalRewardType,
+      category: data.category || 'Kedisiplinan & Karakter',
+      points: Number(data.points) || 0,
+      date: todayDate,
+      description: data.description || 'Pemberian poin apresiasi/penghargaan siswa.',
+      status: data.status || 'Diverifikasi',
+      academicYear: data.academicYear || activeAcademicYear || '',
+      isDeleted: false,
+      createdAt: (data as any).createdAt || todayDate,
+      updatedAt: nowIso
+    };
+    const updatedRewards = [newRew, ...rewards];
+    setRewards(updatedRewards);
+    try {
+      localStorage.setItem('sim_rewards', JSON.stringify(updatedRewards));
+    } catch (e) {}
+
+    // Atomically recalculate and sync student points
+    if (targetStudentId) {
+      await syncStudentRewardPoints(targetStudentId, updatedRewards);
+    }
+
+    try {
+      await setDoc(doc(db, 'rewards', newRew.id), newRew);
+    } catch (e) {
+      console.warn('[SchoolContext] Gagal simpan reward ke Firebase Firestore:', e);
+      handleFirestoreError(e, OperationType.WRITE, 'rewards');
+    }
+    logAction('RECORD_REWARD', 'Reward Siswa', `Mencatat apresiasi/reward: ${newRew.rewardTitle} untuk ${finalStudentName} (+${newRew.points} poin)`);
+  };
+
+  const updateReward = async (id: string, data: Partial<StudentReward>) => {
+    let targetStudentId = '';
+    const nowIso = new Date().toISOString();
+    const updatedRewards = rewards.map(r => {
+      if (r.id === id) {
+        targetStudentId = data.studentId || data.studentID || r.studentId;
+        const studentClass = data.studentClass || data.class || r.studentClass;
+        const rewardType = data.rewardType || data.rewardTitle || r.rewardType;
+        return {
+          ...r,
+          ...data,
+          studentId: targetStudentId,
+          studentID: targetStudentId,
+          studentClass: studentClass,
+          class: studentClass,
+          rewardTitle: rewardType,
+          rewardType: rewardType,
+          points: data.points !== undefined ? Number(data.points) : r.points,
+          updatedAt: nowIso
+        };
+      }
+      return r;
+    });
+    setRewards(updatedRewards);
+    try {
+      localStorage.setItem('sim_rewards', JSON.stringify(updatedRewards));
+    } catch (e) {}
+
+    if (targetStudentId) {
+      await syncStudentRewardPoints(targetStudentId, updatedRewards);
+    }
+
+    try {
+      await updateDoc(doc(db, 'rewards', id), {
+        ...data,
+        updatedAt: nowIso
+      });
+    } catch (e) {
+      try {
+        const full = updatedRewards.find(r => r.id === id);
+        if (full) {
+          await setDoc(doc(db, 'rewards', id), full, { merge: true });
+        }
+      } catch (innerErr) {
+        handleFirestoreError(innerErr, OperationType.WRITE, 'rewards');
+      }
+    }
+    logAction('UPDATE_REWARD', 'Reward Siswa', `Memperbarui reward ID ${id}`);
+  };
+
+  const deleteReward = async (id: string, studentId?: string, _points?: number) => {
+    const target = rewards.find(r => r.id === id);
+    const targetStudentId = studentId || target?.studentId;
+    const updatedRewards = rewards.filter(r => r.id !== id);
+    setRewards(updatedRewards);
+    try {
+      localStorage.setItem('sim_rewards', JSON.stringify(updatedRewards));
+    } catch (e) {}
+
+    if (targetStudentId) {
+      await syncStudentRewardPoints(targetStudentId, updatedRewards);
+    }
+
+    try {
+      await deleteDoc(doc(db, 'rewards', id));
+    } catch (e) {
+      handleFirestoreError(e, OperationType.DELETE, 'rewards');
+    }
+    logAction('DELETE_REWARD', 'Reward Siswa', `Menghapus catatan reward: ${target?.rewardTitle || id}`);
   };
 
   // Permissions
@@ -7711,6 +8091,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         parentCallLetters,
         careerGuidances,
         achievements,
+        rewards,
         permissions,
         needsRequests,
         announcements,
@@ -7803,6 +8184,10 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         updateAchievement,
         deleteAchievement,
         syncStudentAchievementPoints,
+        addReward,
+        updateReward,
+        deleteReward,
+        syncStudentRewardPoints,
         addPermission,
         updatePermission,
         deletePermission,

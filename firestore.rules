@@ -199,6 +199,11 @@ service cloud.firestore {
       allow write: if isValidId(achievementId);
     }
 
+    match /rewards/{rewardId} {
+      allow read: if true;
+      allow write: if isValidId(rewardId);
+    }
+
     match /notifications/{notificationId} {
       allow read: if true;
       allow write: if isValidId(notificationId);

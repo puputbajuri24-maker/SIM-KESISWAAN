@@ -14,7 +14,9 @@ import {
   Send,
   Building,
   UserCheck,
-  RefreshCw
+  RefreshCw,
+  CheckCircle2,
+  Search
 } from 'lucide-react';
 import { useSchool } from '../contexts/SchoolContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -58,6 +60,26 @@ export const PermissionsPage: React.FC = () => {
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const [selectedPerm, setSelectedPerm] = useState<StudentPermission | null>(null);
 
+  // Modal fast selection state
+  const [studentSearchQuery, setStudentSearchQuery] = useState('');
+  const [studentClassFilter, setStudentClassFilter] = useState('all');
+
+  // Filtered students for quick grid picker
+  const displayedStudents = useMemo(() => {
+    return (students || []).filter(s => {
+      if (studentClassFilter !== 'all' && s.className !== studentClassFilter) {
+        return false;
+      }
+      if (!studentSearchQuery.trim()) return true;
+      const q = studentSearchQuery.toLowerCase().trim();
+      return (
+        (s.fullName && s.fullName.toLowerCase().includes(q)) ||
+        (s.nis && s.nis.toLowerCase().includes(q)) ||
+        (s.className && s.className.toLowerCase().includes(q))
+      );
+    });
+  }, [students, studentSearchQuery, studentClassFilter]);
+
   const [formData, setFormData] = useState<Partial<StudentPermission>>({
     studentId: '',
     studentName: '',
@@ -87,6 +109,8 @@ export const PermissionsPage: React.FC = () => {
 
   const handleOpenAdd = () => {
     setSelectedPerm(null);
+    setStudentSearchQuery('');
+    setStudentClassFilter('all');
     const defaultStudent = students[0];
     setFormData({
       studentId: defaultStudent?.id || '',
@@ -108,6 +132,8 @@ export const PermissionsPage: React.FC = () => {
     e?.stopPropagation();
     setSelectedPerm(p);
     setFormData(p);
+    setStudentSearchQuery('');
+    setStudentClassFilter('all');
     setIsFormOpen(true);
   };
 
@@ -537,30 +563,85 @@ export const PermissionsPage: React.FC = () => {
         }
       >
         <form onSubmit={handleSave} className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Pilih Siswa *
-            </label>
-            <select
-              value={formData.studentId}
-              onChange={e => {
-                const st = students.find(s => s.id === e.target.value);
-                setFormData({
-                  ...formData,
-                  studentId: e.target.value,
-                  studentName: st?.fullName || '',
-                  studentNis: st?.nis || '',
-                  studentClass: st?.className || ''
-                });
-              }}
-              className="w-full px-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 font-semibold"
-            >
-              {students.map(s => (
-                <option key={s.id} value={s.id}>
-                  {s.fullName} ({s.className} • NIS: {s.nis})
-                </option>
-              ))}
-            </select>
+          {/* Quick Select Student Grid */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                Pilih Siswa *
+              </label>
+              {formData.studentName && (
+                <span className="text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/60 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800">
+                  Terpilih: {formData.studentName} ({formData.studentClass || '-'})
+                </span>
+              )}
+            </div>
+
+            {/* Student Search & Class Filter */}
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  placeholder="Cari nama atau NIS siswa..."
+                  value={studentSearchQuery}
+                  onChange={e => setStudentSearchQuery(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-1 focus:ring-indigo-500 text-slate-800 dark:text-slate-100 placeholder:text-slate-400"
+                />
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+              <select
+                value={studentClassFilter}
+                onChange={e => setStudentClassFilter(e.target.value)}
+                className="px-2.5 py-1.5 text-xs rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 font-medium text-slate-700 dark:text-slate-200 shrink-0"
+              >
+                <option value="all">Semua Kelas</option>
+                {classes.map(c => (
+                  <option key={c.id} value={c.name}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Interactive Student Selection Cards / Grid */}
+            <div className="max-h-48 overflow-y-auto pr-1 grid grid-cols-1 sm:grid-cols-2 gap-1.5 border border-slate-200/80 dark:border-slate-800 rounded-lg p-1.5 bg-slate-50/60 dark:bg-slate-900/60">
+              {displayedStudents.length === 0 ? (
+                <div className="col-span-full py-5 text-center text-xs text-slate-500 dark:text-slate-400">
+                  Tidak ada siswa yang cocok dengan pencarian "{studentSearchQuery}".
+                </div>
+              ) : (
+                displayedStudents.map(s => {
+                  const isSelected = formData.studentId === s.id;
+                  return (
+                    <button
+                      type="button"
+                      key={s.id}
+                      onClick={() => {
+                        setFormData({
+                          ...formData,
+                          studentId: s.id,
+                          studentName: s.fullName,
+                          studentNis: s.nis,
+                          studentClass: s.className || ''
+                        });
+                      }}
+                      className={`text-left p-2 rounded-lg border text-xs transition-all flex items-center justify-between gap-1.5 cursor-pointer ${
+                        isSelected
+                          ? 'border-indigo-500 bg-indigo-500/10 text-indigo-950 dark:text-indigo-200 font-bold shadow-sm ring-1 ring-indigo-500'
+                          : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800'
+                      }`}
+                    >
+                      <div className="truncate min-w-0">
+                        <p className="truncate font-semibold">{s.fullName}</p>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                          NIS: {s.nis || '-'} • <span className="font-semibold text-slate-700 dark:text-slate-300">{s.className || '-'}</span>
+                        </p>
+                      </div>
+                      {isSelected && (
+                        <CheckCircle2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                      )}
+                    </button>
+                  );
+                })
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

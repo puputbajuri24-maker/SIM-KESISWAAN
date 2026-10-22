@@ -72,6 +72,35 @@
       },
       "required": ["studentId", "violationType", "points", "date"]
     },
+    "rewards": {
+      "title": "Student Rewards & Achievements",
+      "description": "Student positive conduct rewards, achievements, and appreciation points mirroring violations structure",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "studentId": { "type": "string", "maxLength": 128 },
+        "studentID": { "type": "string", "maxLength": 128 },
+        "studentName": { "type": "string", "maxLength": 128 },
+        "studentClass": { "type": "string", "maxLength": 64 },
+        "class": { "type": "string", "maxLength": 64 },
+        "studentNis": { "type": "string", "maxLength": 64 },
+        "studentCode": { "type": "string", "maxLength": 64 },
+        "rewardType": { "type": "string", "maxLength": 256 },
+        "rewardTitle": { "type": "string", "maxLength": 256 },
+        "category": { "type": "string", "maxLength": 128 },
+        "points": { "type": "number" },
+        "date": { "type": "string" },
+        "description": { "type": "string", "maxLength": 2048 },
+        "actionTaken": { "type": "string", "maxLength": 1024 },
+        "officerName": { "type": "string", "maxLength": 128 },
+        "status": { "type": "string", "maxLength": 64 },
+        "academicYear": { "type": "string", "maxLength": 32 },
+        "isDeleted": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["studentId", "studentName", "points", "date"]
+    },
     "counseling": {
       "title": "Student Counseling Records",
       "description": "Confidential counseling interventions conducted by Guru BK",
@@ -280,6 +309,10 @@
     "/violations/{violationId}": {
       "schema": "violations",
       "description": "Student infractions recorded by BK and discipline officers"
+    },
+    "/rewards/{rewardId}": {
+      "schema": "rewards",
+      "description": "Student positive rewards and achievement records mirroring violations"
     },
     "/counseling/{counselingId}": {
       "schema": "counseling",

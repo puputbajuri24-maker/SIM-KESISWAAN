@@ -690,6 +690,46 @@ export interface StudentAchievement {
 
 export type Achievement = StudentAchievement;
 
+export type RewardCategory =
+  | 'Akademik'
+  | 'Kedisiplinan & Karakter'
+  | 'Keagamaan & Tahfidz'
+  | 'Olahraga & Seni'
+  | 'Kepemimpinan & Organisasi'
+  | 'Sosial & Kepedulian'
+  | 'Lainnya';
+
+export type RewardStatus = 'Diverifikasi' | 'Disetujui' | 'Diberikan';
+
+export interface StudentReward {
+  id: string;
+  studentId: string;
+  studentID?: string; // Compatibility alias
+  studentCode?: string;
+  studentNis: string;
+  studentName: string;
+  studentClass: string;
+  class?: string; // Compatibility alias mirroring violations
+  rewardTitle: string;
+  rewardType?: string; // Compatibility alias mirroring violations (violationType)
+  category: RewardCategory;
+  points: number; // Poin reward (+5, +10, +20, dst)
+  date: string;
+  officerName: string;
+  description?: string;
+  actionTaken?: string;
+  certificateUrl?: string;
+  academicYear: string;
+  status?: RewardStatus;
+  achievementId?: string;
+  isDeleted?: boolean;
+  deletedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type Reward = StudentReward;
+
 export type PermissionType = 'Izin' | 'Sakit' | 'Dispensasi Lomba' | 'Dispensasi Kegiatan Sekolah' | 'Dispensasi Kegiatan' | 'Lainnya';
 export type PermissionStatus = 'Menunggu' | 'Diajukan' | 'Disetujui' | 'Ditolak' | 'Selesai';
 

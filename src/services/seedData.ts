@@ -18,6 +18,7 @@ import {
   ParentCallLetter,
   CareerGuidanceRecord,
   StudentAchievement,
+  StudentReward,
   StudentPermission,
   NeedsRequest,
   Announcement,
@@ -191,6 +192,7 @@ export const INITIAL_HOME_VISITS: HomeVisitRecord[] = [];
 export const INITIAL_PARENT_CALL_LETTERS: ParentCallLetter[] = [];
 export const INITIAL_CAREER_GUIDANCES: CareerGuidanceRecord[] = [];
 export const INITIAL_ACHIEVEMENTS: StudentAchievement[] = [];
+export const INITIAL_REWARDS: StudentReward[] = [];
 export const INITIAL_PERMISSIONS: StudentPermission[] = [];
 export const INITIAL_NEEDS_REQUESTS: NeedsRequest[] = [];
 export const INITIAL_OSIM_MEMBERS: OsimMember[] = [];
@@ -423,6 +425,7 @@ export async function clearAllFirebaseOperationalData(): Promise<{ success: bool
       'parent_call_letters',
       'career_guidances',
       'achievements',
+      'rewards',
       'permissions',
       'needs_requests',
       'osim_members',
@@ -509,6 +512,7 @@ export async function uploadAllStateToFirebase(bundle: {
   parentCallLetters?: any[];
   careerGuidances?: any[];
   achievements?: any[];
+  rewards?: any[];
   permissions?: any[];
   needsRequests?: any[];
   osimMembers?: any[];
@@ -646,6 +650,32 @@ export async function uploadAllStateToFirebase(bundle: {
     if (Array.isArray(bundle.achievements)) {
       for (const ach of bundle.achievements) {
         if (ach && ach.id) allOperations.push({ collection: 'achievements', id: ach.id, data: ach });
+      }
+    }
+
+    // Rewards (mirroring violations structure)
+    if (Array.isArray(bundle.rewards)) {
+      for (const rew of bundle.rewards) {
+        if (rew && rew.id) {
+          allOperations.push({
+            collection: 'rewards',
+            id: rew.id,
+            data: {
+              ...rew,
+              studentID: rew.studentID || rew.studentId || '',
+              studentId: rew.studentId || rew.studentID || '',
+              studentName: rew.studentName || '',
+              studentClass: rew.studentClass || rew.class || '',
+              class: rew.class || rew.studentClass || '',
+              rewardType: rew.rewardType || rew.rewardTitle || '',
+              rewardTitle: rew.rewardTitle || rew.rewardType || '',
+              points: Number(rew.points) || 0,
+              date: rew.date || new Date().toISOString().split('T')[0],
+              description: rew.description || '',
+              isDeleted: rew.isDeleted ?? false
+            }
+          });
+        }
       }
     }
 
