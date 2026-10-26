@@ -186,7 +186,15 @@ export const CPanelPage: React.FC = () => {
   const pembinaEkskulUsers = useMemo(
     () => allUsers.filter(u => {
       const norm = normalizeUserRole(u.role);
-      return norm === 'coach_ekstrakurikuler' || u.role === 'coach_ekstrakurikuler' || u.role === 'pembina_ekskul' || u.role === 'pembina' || (u.role as string) === 'pembina_ekstrakurikuler';
+      return (
+        norm === 'coach_ekstrakurikuler' ||
+        u.role === 'coach_ekstrakurikuler' ||
+        u.role === 'pembina_ekskul' ||
+        u.role === 'pembina' ||
+        (u.role as string) === 'pembina_ekstrakurikuler' ||
+        (Array.isArray(u.assignedExtracurricularIds) && u.assignedExtracurricularIds.length > 0) ||
+        (Array.isArray(u.extracurricularIds) && u.extracurricularIds.length > 0)
+      );
     }),
     [allUsers]
   );
@@ -194,12 +202,58 @@ export const CPanelPage: React.FC = () => {
   const osimPengurusUsers = useMemo(
     () => allUsers.filter(u => {
       const norm = normalizeUserRole(u.role);
-      return norm === 'anggota_osim' || u.role === 'anggota_osim' || u.role === 'pengurus_osim';
+      return (
+        norm === 'anggota_osim' ||
+        u.role === 'anggota_osim' ||
+        u.role === 'pengurus_osim' ||
+        (Boolean(u.uid) && u.uid.startsWith('user_osim_'))
+      );
     }),
     [allUsers]
   );
   const wakaUsers = useMemo(() => allUsers.filter(u => normalizeUserRole(u.role) === 'waka_kesiswaan'), [allUsers]);
   const adminUsers = useMemo(() => allUsers.filter(u => normalizeUserRole(u.role) === 'super_admin'), [allUsers]);
+
+  const getTargetPrintUsers = (scope: string = printFilterRole, specificUser: UserProfile | null = selectedUserForPrint): UserProfile[] => {
+    if (specificUser) return [specificUser];
+    if (scope === 'all') return allUsers;
+    if (scope === 'guru_bk') {
+      return allUsers.filter(u => normalizeUserRole(u.role) === 'guru_bk' || u.role === 'guru_bk');
+    }
+    if (scope === 'pembina_osim') {
+      return allUsers.filter(u => normalizeUserRole(u.role) === 'pembina_osim' || u.role === 'pembina_osim');
+    }
+    if (scope === 'pembina_ekskul' || scope === 'coach_ekstrakurikuler') {
+      return allUsers.filter(u => {
+        const norm = normalizeUserRole(u.role);
+        return (
+          norm === 'coach_ekstrakurikuler' ||
+          u.role === 'coach_ekstrakurikuler' ||
+          u.role === 'pembina_ekskul' ||
+          u.role === 'pembina' ||
+          (u.role as string) === 'pembina_ekstrakurikuler' ||
+          (Array.isArray(u.assignedExtracurricularIds) && u.assignedExtracurricularIds.length > 0) ||
+          (Array.isArray(u.extracurricularIds) && u.extracurricularIds.length > 0)
+        );
+      });
+    }
+    if (scope === 'pengurus_osim' || scope === 'anggota_osim') {
+      return allUsers.filter(u => {
+        const norm = normalizeUserRole(u.role);
+        return (
+          norm === 'anggota_osim' ||
+          u.role === 'pengurus_osim' ||
+          u.role === 'anggota_osim' ||
+          (Boolean(u.uid) && u.uid.startsWith('user_osim_'))
+        );
+      });
+    }
+    return allUsers.filter(u => u.role === scope || normalizeUserRole(u.role) === scope);
+  };
+
+  const currentPrintUsers = useMemo(() => {
+    return getTargetPrintUsers(printFilterRole, selectedUserForPrint);
+  }, [allUsers, printFilterRole, selectedUserForPrint]);
 
   const [selectedBkUserId, setSelectedBkUserId] = useState<string>('');
   const [selectedPembinaUserId, setSelectedPembinaUserId] = useState<string>('');
@@ -1418,30 +1472,100 @@ Alamat Sistem : ${window.location.origin}
       return;
     }
 
+    const displayPassword = cred.password || 'osim12345';
+
     printWindow.document.write(`
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Kartu Login Akun SIM Kesiswaan - ${cred.displayName}</title>
+          <title>Kartu Akun Login SIM Kesiswaan - ${cred.displayName}</title>
           <style>
-            body { font-family: Arial, sans-serif; padding: 20px; background: #fff; color: #111; }
-            .card { width: 380px; border: 2px solid #059669; border-radius: 8px; padding: 16px; margin: 20px auto; }
-            .header { text-align: center; border-bottom: 2px solid #059669; padding-bottom: 8px; margin-bottom: 12px; }
-            .header h3 { margin: 0; font-size: 14px; color: #065f46; text-transform: uppercase; font-weight: bold; }
-            .header p { margin: 2px 0 0 0; font-size: 10px; color: #555; }
-            .info-row { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 6px; padding: 4px 0; border-bottom: 1px dashed #e5e7eb; }
-            .info-label { font-weight: bold; color: #374151; }
-            .info-val { font-family: monospace; font-weight: bold; color: #111827; }
-            .highlight { background: #ecfdf5; padding: 8px 10px; border-radius: 6px; font-size: 12px; margin: 12px 0; border: 1px solid #a7f3d0; }
-            .footer { font-size: 9px; color: #6b7280; text-align: center; margin-top: 10px; border-top: 1px dashed #d1d5db; padding-top: 6px; }
-            @media print { body { padding: 0; } }
+            @page {
+              size: auto;
+              margin: 15mm;
+            }
+            body {
+              font-family: Arial, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+              padding: 20px;
+              background: #fff;
+              color: #111;
+              margin: 0;
+            }
+            .card {
+              max-width: 440px;
+              border: 2px solid #059669;
+              border-radius: 8px;
+              padding: 18px 20px;
+              margin: 20px auto;
+              background: #fff;
+              box-sizing: border-box;
+            }
+            .header {
+              text-align: center;
+              border-bottom: 2px solid #059669;
+              padding-bottom: 8px;
+              margin-bottom: 12px;
+            }
+            .header h3 {
+              margin: 0;
+              font-size: 14.5px;
+              color: #065f46;
+              text-transform: uppercase;
+              font-weight: 800;
+              letter-spacing: 0.5px;
+            }
+            .header p {
+              margin: 3px 0 0 0;
+              font-size: 11px;
+              color: #4b5563;
+              font-weight: 600;
+              text-transform: uppercase;
+            }
+            .info-row {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              font-size: 11.5px;
+              margin-bottom: 6px;
+              padding-bottom: 5px;
+              border-bottom: 1px dashed #e5e7eb;
+            }
+            .info-label {
+              font-weight: 700;
+              color: #1f2937;
+            }
+            .info-val {
+              font-family: monospace;
+              font-weight: 700;
+              color: #111827;
+              text-align: right;
+            }
+            .highlight {
+              background: #ecfdf5;
+              padding: 10px 12px;
+              border-radius: 6px;
+              margin: 12px 0 10px 0;
+              border: 1px solid #a7f3d0;
+            }
+            .footer {
+              font-size: 9.5px;
+              color: #6b7280;
+              text-align: center;
+              margin-top: 10px;
+              border-top: 1px dashed #d1d5db;
+              padding-top: 6px;
+            }
+            @media print {
+              body { padding: 0; background: #fff; }
+              .card { margin: 0 auto; page-break-inside: avoid; }
+            }
           </style>
         </head>
         <body>
           <div class="card">
             <div class="header">
               <h3>KARTU AKUN LOGIN SIM KESISWAAN</h3>
-              <p>${schoolSetting?.name || 'MADRASAH ALIYAH NEGERI'}</p>
+              <p>${schoolSetting?.name || 'MAN 2 SERAM BAGIAN TIMUR'}</p>
             </div>
             <div class="info-row">
               <span class="info-label">Nama Pengguna:</span>
@@ -1449,7 +1573,7 @@ Alamat Sistem : ${window.location.origin}
             </div>
             <div class="info-row">
               <span class="info-label">Hak Akses (Role):</span>
-              <span class="info-val" style="color: #059669;">${cred.roleLabel}</span>
+              <span class="info-val" style="color: #059669; font-weight: bold;">${cred.roleLabel}</span>
             </div>
             <div class="info-row">
               <span class="info-label">NIP / NIS:</span>
@@ -1465,14 +1589,14 @@ Alamat Sistem : ${window.location.origin}
             </div>
             <div class="info-row">
               <span class="info-label">Kata Sandi Awal:</span>
-              <span class="info-val" style="color: #b45309; font-size: 12px;">${cred.password || 'osim12345'}</span>
+              <span class="info-val" style="color: #b45309; font-size: 12px; font-weight: bold;">${displayPassword}</span>
             </div>
-            <div class="highlight" style="${(cred.role === 'anggota_osim' || cred.role === 'pengurus_osim') ? 'background: #fffbeb; border-color: #fde68a;' : ''}">
-              <div style="font-size: 10px; color: ${(cred.role === 'anggota_osim' || cred.role === 'pengurus_osim') ? '#92400e' : '#065f46'}; font-weight: bold;">
-                ${(cred.role === 'anggota_osim' || cred.role === 'pengurus_osim') ? 'KETENTUAN PENGURUS OSIM:' : 'METODE AUTENTIKASI:'}
+            <div class="highlight">
+              <div style="font-size: 10px; color: #065f46; font-weight: bold; text-transform: uppercase;">
+                METODE AUTENTIKASI:
               </div>
-              <div style="font-size: 11px; font-family: monospace; margin-top: 2px; color: ${(cred.role === 'anggota_osim' || cred.role === 'pengurus_osim') ? '#78350f' : '#065f46'};">
-                ${(cred.role === 'anggota_osim' || cred.role === 'pengurus_osim') ? 'Halaman profil hanya dapat mengubah nomor WhatsApp. Nama, NIS & Password dikelola terpusat oleh Admin.' : 'Firebase Authentication (Cloud Identity)'}
+              <div style="font-size: 11.5px; font-family: monospace; color: #065f46; margin-top: 2px;">
+                Firebase Authentication (Cloud Identity)
               </div>
             </div>
             <div class="footer">
@@ -1487,74 +1611,7 @@ Alamat Sistem : ${window.location.origin}
   };
 
   const handlePrintAllSlips = () => {
-    const printWindow = window.open('', '_blank');
-    if (!printWindow) {
-      window.print();
-      return;
-    }
-
-    const cardsHtml = allUsers.map(u => {
-      const cred = getUserSlipCredentials(u, osimMembers);
-      return `
-      <div class="card">
-        <div class="header">
-          <h3>KARTU AKUN SIM KESISWAAN</h3>
-          <p>${schoolSetting?.name || 'MADRASAH ALIYAH NEGERI'}</p>
-        </div>
-        <div class="info-row">
-          <span class="info-label">Nama:</span>
-          <span>${cred.displayName}</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">Peran:</span>
-          <span class="info-val" style="color: #059669;">${cred.roleLabel}</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">NIP / NIS:</span>
-          <span class="info-val">${cred.nipOrNis}</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">Email:</span>
-          <span class="info-val">${cred.email}</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label">Username:</span>
-          <span class="info-val" style="color: #047857;">${cred.loginUsername}</span>
-        </div>
-        <div class="highlight">
-          <span style="font-size: 10px; color: #065f46; font-weight: bold;">AUTENTIKASI:</span>
-          <span style="font-size: 11px; font-family: monospace; font-weight: bold; color: #065f46;"> Firebase Auth</span>
-        </div>
-      </div>
-    `;
-    }).join('');
-
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Koleksi Kartu Akun Login SIM Kesiswaan Madrasah</title>
-          <style>
-            body { font-family: Arial, sans-serif; padding: 20px; color: #111; }
-            .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
-            .card { border: 1.5px solid #059669; border-radius: 6px; padding: 12px; page-break-inside: avoid; }
-            .header { text-align: center; border-bottom: 1.5px solid #059669; padding-bottom: 4px; margin-bottom: 8px; }
-            .header h3 { margin: 0; font-size: 12px; color: #065f46; }
-            .header p { margin: 0; font-size: 9px; color: #555; }
-            .info-row { display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 3px; }
-            .info-label { font-weight: bold; color: #4b5563; }
-            .info-val { font-family: monospace; }
-            .highlight { background: #ecfdf5; padding: 4px 6px; border-radius: 3px; font-size: 11px; margin-top: 6px; border: 1px solid #a7f3d0; }
-            @media print { body { padding: 5px; } }
-          </style>
-        </head>
-        <body>
-          <div class="grid">${cardsHtml}</div>
-          <script>window.onload = function() { window.print(); }</script>
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
+    handleExecutePrintSlips(allUsers);
   };
 
   const handleOpenPrintModal = (target: 'all' | UserProfile = 'all') => {
@@ -1574,12 +1631,8 @@ Alamat Sistem : ${window.location.origin}
     let targetUsers: UserProfile[] = [];
     if (Array.isArray(customTargetUsers) && customTargetUsers.length > 0) {
       targetUsers = customTargetUsers;
-    } else if (selectedUserForPrint) {
-      targetUsers = [selectedUserForPrint];
-    } else if (printFilterRole === 'all') {
-      targetUsers = allUsers;
     } else {
-      targetUsers = allUsers.filter(u => u.role === printFilterRole);
+      targetUsers = getTargetPrintUsers(printFilterRole, selectedUserForPrint);
     }
 
     if (targetUsers.length === 0) {
@@ -1595,11 +1648,12 @@ Alamat Sistem : ${window.location.origin}
 
     const cardsHtml = targetUsers.map(u => {
       const cred = getUserSlipCredentials(u, osimMembers);
+      const displayPassword = printIncludePassword ? (cred.password || 'osim12345') : '••••••••';
       return `
       <div class="card">
         <div class="header">
-          <h3>KARTU AKUN LOGIN RESMI SIM KESISWAAN</h3>
-          <p>${schoolSetting?.name || 'MADRASAH ALIYAH NEGERI'}</p>
+          <h3>KARTU AKUN LOGIN SIM KESISWAAN</h3>
+          <p>${schoolSetting?.name || 'MAN 2 SERAM BAGIAN TIMUR'}</p>
         </div>
         <div class="info-row">
           <span class="info-label">Nama Pengguna:</span>
@@ -1607,10 +1661,10 @@ Alamat Sistem : ${window.location.origin}
         </div>
         <div class="info-row">
           <span class="info-label">Hak Akses (Role):</span>
-          <span class="info-val" style="color: #059669;">${cred.roleLabel}</span>
+          <span class="info-val" style="color: #059669; font-weight: bold;">${cred.roleLabel}</span>
         </div>
         <div class="info-row">
-          <span class="info-label">NIP / NIS / NIK:</span>
+          <span class="info-label">NIP / NIS:</span>
           <span class="info-val">${cred.nipOrNis}</span>
         </div>
         <div class="info-row">
@@ -1621,10 +1675,14 @@ Alamat Sistem : ${window.location.origin}
           <span class="info-label">Username Login:</span>
           <span class="info-val" style="color: #047857; font-size: 12px;">${cred.loginUsername}</span>
         </div>
+        <div class="info-row">
+          <span class="info-label">Kata Sandi Awal:</span>
+          <span class="info-val" style="color: #b45309; font-size: 12px; font-weight: bold;">${displayPassword}</span>
+        </div>
         <div class="highlight">
-          <div style="font-size: 10px; color: #065f46; font-weight: bold;">AUTENTIKASI AKUN:</div>
-          <div style="font-size: 11px; font-family: monospace; font-weight: bold; color: #047857;">
-            Firebase Authentication (Cloud)
+          <div style="font-size: 10px; color: #065f46; font-weight: bold; text-transform: uppercase;">METODE AUTENTIKASI:</div>
+          <div style="font-size: 11px; font-family: monospace; color: #065f46; margin-top: 2px;">
+            Firebase Authentication (Cloud Identity)
           </div>
         </div>
         <div class="footer">
@@ -1640,20 +1698,89 @@ Alamat Sistem : ${window.location.origin}
         <head>
           <title>Koleksi Kartu Akun Login SIM Kesiswaan - ${schoolSetting?.name || 'Madrasah'}</title>
           <style>
-            body { font-family: Arial, sans-serif; padding: 20px; background: #f3f4f6; color: #111; }
-            .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
-            .card { border: 2px solid #059669; border-radius: 8px; padding: 14px; background: #fff; page-break-inside: avoid; }
-            .header { text-align: center; border-bottom: 2px solid #059669; padding-bottom: 6px; margin-bottom: 8px; }
-            .header h3 { margin: 0; font-size: 12px; color: #065f46; text-transform: uppercase; font-weight: bold; }
-            .header p { margin: 2px 0 0 0; font-size: 10px; color: #555; }
-            .info-row { display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 4px; padding: 3px 0; border-bottom: 1px dashed #e5e7eb; }
-            .info-label { font-weight: bold; color: #374151; }
-            .info-val { font-family: monospace; font-weight: bold; color: #111827; }
-            .highlight { background: #ecfdf5; padding: 6px 8px; border-radius: 4px; font-size: 11px; margin: 8px 0; border: 1px solid #a7f3d0; display: flex; justify-content: space-between; align-items: center; }
-            .footer { font-size: 9px; color: #6b7280; text-align: center; margin-top: 6px; border-top: 1px dashed #d1d5db; padding-top: 4px; }
+            @page {
+              size: A4 portrait;
+              margin: 10mm;
+            }
+            body {
+              font-family: Arial, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+              padding: 10px;
+              background: #fff;
+              color: #111;
+              margin: 0;
+            }
+            .grid {
+              display: grid;
+              grid-template-columns: repeat(2, 1fr);
+              gap: 16px;
+            }
+            .card {
+              border: 2px solid #059669;
+              border-radius: 8px;
+              padding: 14px 16px;
+              background: #fff;
+              page-break-inside: avoid;
+              box-sizing: border-box;
+            }
+            .header {
+              text-align: center;
+              border-bottom: 2px solid #059669;
+              padding-bottom: 6px;
+              margin-bottom: 10px;
+            }
+            .header h3 {
+              margin: 0;
+              font-size: 13px;
+              color: #065f46;
+              text-transform: uppercase;
+              font-weight: 800;
+              letter-spacing: 0.5px;
+            }
+            .header p {
+              margin: 3px 0 0 0;
+              font-size: 10px;
+              color: #4b5563;
+              font-weight: 600;
+              text-transform: uppercase;
+            }
+            .info-row {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              font-size: 11px;
+              margin-bottom: 5px;
+              padding-bottom: 4px;
+              border-bottom: 1px dashed #e5e7eb;
+            }
+            .info-label {
+              font-weight: 700;
+              color: #1f2937;
+            }
+            .info-val {
+              font-family: monospace;
+              font-weight: 700;
+              color: #111827;
+              text-align: right;
+            }
+            .highlight {
+              background: #ecfdf5;
+              padding: 8px 10px;
+              border-radius: 6px;
+              margin: 10px 0 8px 0;
+              border: 1px solid #a7f3d0;
+            }
+            .footer {
+              font-size: 9px;
+              color: #6b7280;
+              text-align: center;
+              margin-top: 8px;
+              border-top: 1px dashed #d1d5db;
+              padding-top: 5px;
+            }
             @media print {
               body { padding: 0; background: #fff; }
               .grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+              .card { page-break-inside: avoid; }
             }
           </style>
         </head>
@@ -3558,13 +3685,13 @@ Alamat Sistem : ${window.location.origin}
       <Modal
         isOpen={isPrintModalOpen}
         onClose={() => setIsPrintModalOpen(false)}
-        title="Cetak Kartu Slip Akun Login SIM Kesiswaan"
+        title="CETAK KARTU SLIP AKUN LOGIN SIM KESISWAAN"
         maxWidth="max-w-3xl"
       >
         <div className="space-y-4 text-xs">
-          <div className="bg-[#18181d] border border-[#27272a] rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="space-y-1">
-              <span className="text-zinc-400 font-semibold block">Pilih Cakupan Cetak:</span>
+          <div className="bg-zinc-50 dark:bg-[#18181d] border border-zinc-200 dark:border-[#27272a] rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="space-y-1.5">
+              <span className="text-zinc-600 dark:text-zinc-400 font-semibold block text-xs">Pilih Cakupan Cetak:</span>
               <div className="flex flex-wrap items-center gap-1.5">
                 <button
                   type="button"
@@ -3572,10 +3699,10 @@ Alamat Sistem : ${window.location.origin}
                     setSelectedUserForPrint(null);
                     setPrintFilterRole('all');
                   }}
-                  className={`px-2.5 py-1 rounded-lg font-bold transition ${
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
                     !selectedUserForPrint && printFilterRole === 'all'
-                      ? 'bg-emerald-600 text-white'
-                      : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                      ? 'bg-emerald-600 text-white font-bold shadow-sm'
+                      : 'bg-zinc-200 hover:bg-zinc-300 text-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:text-zinc-300'
                   }`}
                 >
                   Semua Akun ({allUsers.length})
@@ -3586,10 +3713,10 @@ Alamat Sistem : ${window.location.origin}
                     setSelectedUserForPrint(null);
                     setPrintFilterRole('guru_bk');
                   }}
-                  className={`px-2.5 py-1 rounded-lg font-bold transition ${
-                    !selectedUserForPrint && printFilterRole === 'guru_bk'
-                      ? 'bg-purple-600 text-white'
-                      : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    !selectedUserForPrint && (printFilterRole === 'guru_bk')
+                      ? 'bg-emerald-600 text-white font-bold shadow-sm'
+                      : 'bg-zinc-200 hover:bg-zinc-300 text-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:text-zinc-300'
                   }`}
                 >
                   Guru BK
@@ -3600,10 +3727,10 @@ Alamat Sistem : ${window.location.origin}
                     setSelectedUserForPrint(null);
                     setPrintFilterRole('pembina_osim');
                   }}
-                  className={`px-2.5 py-1 rounded-lg font-bold transition ${
-                    !selectedUserForPrint && printFilterRole === 'pembina_osim'
-                      ? 'bg-amber-600 text-white'
-                      : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    !selectedUserForPrint && (printFilterRole === 'pembina_osim')
+                      ? 'bg-emerald-600 text-white font-bold shadow-sm'
+                      : 'bg-zinc-200 hover:bg-zinc-300 text-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:text-zinc-300'
                   }`}
                 >
                   Pembina OSIM
@@ -3614,10 +3741,10 @@ Alamat Sistem : ${window.location.origin}
                     setSelectedUserForPrint(null);
                     setPrintFilterRole('pembina_ekskul');
                   }}
-                  className={`px-2.5 py-1 rounded-lg font-bold transition ${
-                    !selectedUserForPrint && printFilterRole === 'pembina_ekskul'
-                      ? 'bg-emerald-600 text-white'
-                      : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    !selectedUserForPrint && (printFilterRole === 'pembina_ekskul' || printFilterRole === 'coach_ekstrakurikuler')
+                      ? 'bg-emerald-600 text-white font-bold shadow-sm'
+                      : 'bg-zinc-200 hover:bg-zinc-300 text-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:text-zinc-300'
                   }`}
                 >
                   Pembina Ekskul
@@ -3628,10 +3755,10 @@ Alamat Sistem : ${window.location.origin}
                     setSelectedUserForPrint(null);
                     setPrintFilterRole('pengurus_osim');
                   }}
-                  className={`px-2.5 py-1 rounded-lg font-bold transition ${
-                    !selectedUserForPrint && printFilterRole === 'pengurus_osim'
-                      ? 'bg-cyan-600 text-white'
-                      : 'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                    !selectedUserForPrint && (printFilterRole === 'pengurus_osim' || printFilterRole === 'anggota_osim')
+                      ? 'bg-emerald-600 text-white font-bold shadow-sm'
+                      : 'bg-zinc-200 hover:bg-zinc-300 text-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:text-zinc-300'
                   }`}
                 >
                   Pengurus OSIM
@@ -3639,91 +3766,104 @@ Alamat Sistem : ${window.location.origin}
               </div>
             </div>
 
-            <label className="flex items-center space-x-2 cursor-pointer shrink-0 bg-[#121215] px-3 py-2 rounded-lg border border-[#27272a]">
+            <label className="flex items-center space-x-2 cursor-pointer shrink-0 bg-white dark:bg-[#121215] px-3 py-2 rounded-lg border border-zinc-200 dark:border-[#27272a]">
               <input
                 type="checkbox"
                 checked={printIncludePassword}
                 onChange={e => setPrintIncludePassword(e.target.checked)}
-                className="rounded bg-zinc-800 border-zinc-700 text-emerald-500 w-4 h-4"
+                className="rounded border-zinc-300 dark:border-zinc-700 text-emerald-600 w-4 h-4 focus:ring-emerald-500"
               />
-              <span className="text-zinc-200 font-bold text-xs">Cantumkan Kata Sandi</span>
+              <span className="text-zinc-800 dark:text-zinc-200 font-bold text-xs">Cantumkan Kata Sandi</span>
             </label>
           </div>
 
           {/* Slip Preview Grid */}
           <div className="space-y-2">
-            <span className="text-zinc-400 font-mono text-[11px] block">
-              Pratinjau Format Slip ({selectedUserForPrint ? '1 Akun Spesifik' : printFilterRole === 'all' ? `${allUsers.length} Akun` : `${allUsers.filter(u => u.role === printFilterRole).length} Akun`}):
+            <span className="text-zinc-600 dark:text-zinc-400 font-mono text-[11px] block">
+              Pratinjau Format Slip ({selectedUserForPrint ? '1 Akun Spesifik' : `${currentPrintUsers.length} Akun`}):
             </span>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-72 overflow-y-auto p-2 bg-[#121215] rounded-xl border border-[#27272a]">
-              {(selectedUserForPrint
-                ? [selectedUserForPrint]
-                : printFilterRole === 'all'
-                ? allUsers
-                : allUsers.filter(u => u && u.role === printFilterRole)
-              )
-              .filter(Boolean)
-              .slice(0, 6).map((u, pIdx) => {
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-96 overflow-y-auto p-3 bg-zinc-100 dark:bg-[#121215] rounded-xl border border-zinc-200 dark:border-[#27272a]">
+              {currentPrintUsers.slice(0, 6).map((u, pIdx) => {
                 const cred = getUserSlipCredentials(u, osimMembers);
-                const badge = getRoleBadge(u);
+                const displayPassword = printIncludePassword ? (cred.password || 'osim12345') : '••••••••';
                 return (
                   <div
                     key={u?.uid ? `slip-preview-${u.uid}-${pIdx}` : `slip-preview-idx-${pIdx}`}
-                    className="bg-white text-zinc-900 rounded-xl p-3.5 border-2 border-emerald-600 shadow-sm space-y-2"
+                    className="bg-white text-zinc-900 rounded-xl p-4 border-2 border-emerald-600 shadow-sm space-y-2.5 text-left"
                   >
-                    <div className="border-b border-emerald-600 pb-1.5 flex items-center justify-between">
-                      <div>
-                        <h4 className="font-extrabold text-xs text-emerald-900 uppercase">KARTU LOGIN SIM KESISWAAN</h4>
-                        <p className="text-[9px] text-zinc-600 font-semibold">{schoolSetting?.name || 'MADRASAH ALIYAH NEGERI'}</p>
-                      </div>
-                      <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-100 text-emerald-900 border border-emerald-300">
-                        {badge.label}
-                      </span>
+                    <div className="text-center border-b-2 border-emerald-600 pb-2">
+                      <h4 className="font-extrabold text-xs sm:text-sm text-emerald-800 tracking-wide uppercase">
+                        KARTU AKUN LOGIN SIM KESISWAAN
+                      </h4>
+                      <p className="text-[10px] text-zinc-600 font-semibold uppercase mt-0.5">
+                        {schoolSetting?.name || 'MAN 2 SERAM BAGIAN TIMUR'}
+                      </p>
                     </div>
 
-                    <div className="space-y-1 font-mono text-[11px]">
-                      <div className="flex justify-between border-b border-dashed border-zinc-200 pb-0.5">
-                        <span className="text-zinc-600 font-semibold">Nama:</span>
-                        <span className="font-bold text-zinc-950 font-sans truncate max-w-[170px]">{cred.displayName}</span>
+                    <div className="space-y-1.5 text-[11px]">
+                      <div className="flex justify-between items-center border-b border-dashed border-zinc-200 pb-1">
+                        <span className="font-bold text-zinc-800">Nama Pengguna:</span>
+                        <span className="font-semibold text-zinc-950 truncate max-w-[190px]">{cred.displayName}</span>
                       </div>
-                      <div className="flex justify-between border-b border-dashed border-zinc-200 pb-0.5">
-                        <span className="text-zinc-600 font-semibold">NIP / NIS:</span>
-                        <span className="font-bold text-zinc-900">{cred.nipOrNis}</span>
+                      <div className="flex justify-between items-center border-b border-dashed border-zinc-200 pb-1">
+                        <span className="font-bold text-zinc-800">Hak Akses (Role):</span>
+                        <span className="font-bold text-emerald-600 uppercase font-mono">{cred.roleLabel}</span>
                       </div>
-                      <div className="flex justify-between border-b border-dashed border-zinc-200 pb-0.5">
-                        <span className="text-zinc-600 font-semibold">Email:</span>
-                        <span className="text-zinc-800 truncate max-w-[170px]">{cred.email}</span>
+                      <div className="flex justify-between items-center border-b border-dashed border-zinc-200 pb-1">
+                        <span className="font-bold text-zinc-800">NIP / NIS:</span>
+                        <span className="font-mono font-bold text-zinc-950">{cred.nipOrNis}</span>
+                      </div>
+                      <div className="flex justify-between items-center border-b border-dashed border-zinc-200 pb-1">
+                        <span className="font-bold text-zinc-800">Email Akun:</span>
+                        <span className="font-mono text-zinc-900 truncate max-w-[190px]">{cred.email}</span>
+                      </div>
+                      <div className="flex justify-between items-center border-b border-dashed border-zinc-200 pb-1">
+                        <span className="font-bold text-zinc-800">Username Login:</span>
+                        <span className="font-mono font-bold text-emerald-700">{cred.loginUsername}</span>
+                      </div>
+                      <div className="flex justify-between items-center border-b border-dashed border-zinc-200 pb-1">
+                        <span className="font-bold text-zinc-800">Kata Sandi Awal:</span>
+                        <span className="font-mono font-bold text-amber-700">
+                          {displayPassword}
+                        </span>
                       </div>
                     </div>
 
-                    <div className="bg-emerald-50 border border-emerald-300 rounded-lg p-2 font-mono text-xs flex items-center justify-between">
-                      <div>
-                        <span className="text-[10px] text-zinc-500 block">USERNAME:</span>
-                        <strong className="text-emerald-950">{cred.loginUsername}</strong>
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2.5">
+                      <div className="text-[10px] font-bold text-emerald-800 uppercase tracking-wide">
+                        METODE AUTENTIKASI:
                       </div>
-                      <div className="text-right">
-                        <span className="text-[10px] text-zinc-500 block">AUTENTIKASI:</span>
-                        <strong className="text-emerald-700 text-[11px]">
-                          Firebase Auth
-                        </strong>
+                      <div className="text-[11px] font-mono text-emerald-800 mt-0.5">
+                        Firebase Authentication (Cloud Identity)
                       </div>
+                    </div>
+
+                    <div className="text-center pt-1.5 border-t border-dashed border-zinc-300">
+                      <p className="text-[9px] text-zinc-500 font-sans">
+                        Tahun Ajaran: {activeAcademicYear || '2026/2027'} • Autentikasi aman melalui Google Firebase Authentication.
+                      </p>
                     </div>
                   </div>
                 );
               })}
+              {currentPrintUsers.length === 0 && (
+                <div className="col-span-2 py-8 text-center text-zinc-400 font-mono text-xs">
+                  Tidak ada akun dalam cakupan ini.
+                </div>
+              )}
             </div>
-            {allUsers.length > 6 && !selectedUserForPrint && (
-              <p className="text-[10px] text-zinc-500 font-mono text-center">
-                * Menampilkan pratinjau 6 kartu pertama. Saat dicetak, seluruh {allUsers.length} kartu akan dicetak lengkap dalam tata letak A4/Folio.
+            {currentPrintUsers.length > 0 && (
+              <p className="text-[10px] sm:text-[11px] text-zinc-500 font-mono text-center">
+                * Menampilkan pratinjau {Math.min(6, currentPrintUsers.length)} kartu pertama. Saat dicetak, seluruh {currentPrintUsers.length} kartu akan dicetak lengkap dalam tata letak A4/Folio.
               </p>
             )}
           </div>
 
-          <div className="flex items-center justify-between pt-3 border-t border-[#27272a]">
+          <div className="flex items-center justify-between pt-3 border-t border-zinc-200 dark:border-[#27272a]">
             <button
               type="button"
               onClick={() => setIsPrintModalOpen(false)}
-              className="px-3.5 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-semibold text-xs"
+              className="px-3.5 py-2 rounded-lg bg-zinc-200 hover:bg-zinc-300 text-zinc-700 dark:bg-zinc-800 dark:hover:bg-zinc-700 dark:text-zinc-300 font-semibold text-xs transition"
             >
               Tutup
             </button>
@@ -3731,7 +3871,7 @@ Alamat Sistem : ${window.location.origin}
             <button
               type="button"
               onClick={handleExecutePrintSlips}
-              className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-950/50"
+              className="px-5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-950/50 transition active:scale-[0.98]"
             >
               <Printer className="w-4 h-4" />
               <span>Cetak Slip Sekarang</span>

@@ -338,13 +338,30 @@ export const getUserSlipCredentials = (
     : undefined;
 
   const roleStr = String(u.role || 'user');
-  const roleLabel = isOsimUser
-    ? (u.osimPosition || u.osimDepartmentName || 'PENGURUS OSIM').toUpperCase()
-    : (roleStr ? roleStr.toUpperCase().replace(/_/g, ' ') : 'PENGGUNA');
+  let roleLabel = 'PENGGUNA';
+  if (isOsimUser) {
+    roleLabel = (u.osimPosition || u.osimDepartmentName || 'PENGURUS OSIM').toUpperCase();
+  } else if (roleStr === 'coach_ekstrakurikuler' || roleStr === 'pembina_ekskul' || roleStr === 'pembina_ekstrakurikuler' || roleStr === 'pembina') {
+    roleLabel = 'PEMBINA EKSTRAKURIKULER';
+  } else if (roleStr === 'guru_bk') {
+    roleLabel = 'GURU BK';
+  } else if (roleStr === 'pembina_osim') {
+    roleLabel = 'PEMBINA OSIM';
+  } else if (roleStr === 'waka_kesiswaan' || roleStr === 'waka') {
+    roleLabel = 'WAKA KESISWAAN';
+  } else if (roleStr === 'super_admin') {
+    roleLabel = 'SUPER ADMIN';
+  } else if (roleStr === 'staf_tu' || roleStr === 'staf_tata_usaha' || roleStr === 'tu') {
+    roleLabel = 'STAF TATA USAHA';
+  } else {
+    roleLabel = roleStr ? roleStr.toUpperCase().replace(/_/g, ' ') : 'PENGGUNA';
+  }
 
-  const defaultPwd = isOsimUser
-    ? (u.password || getDefaultOsimPasswordForMember(linkedMem || (u as any)) || 'osim12345')
-    : (u.password || 'Dikelola oleh Firebase Auth');
+  const defaultPwd = (u.password && u.password.trim() !== '' && u.password !== 'Dikelola oleh Firebase Auth')
+    ? u.password
+    : (isOsimUser
+        ? (getDefaultOsimPasswordForMember(linkedMem || (u as any)) || 'osim12345')
+        : (u.nip && u.nip.length >= 4 ? `guru${u.nip.slice(-4)}` : 'guru12345'));
 
   return {
     displayName: u.displayName || u.username || 'Tanpa Nama',
