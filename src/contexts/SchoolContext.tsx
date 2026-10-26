@@ -372,7 +372,8 @@ interface SchoolContextType {
 
   // cPanel Cross-Module Synchronization
   syncUserFromCPanel: (user: UserProfile, oldUser?: UserProfile) => Promise<void>;
-  syncDeleteUserFromCPanel: (uid: string, user?: UserProfile) => Promise<void>;
+  syncDeleteUserFromCPanel: (uid: string, user?: UserProfile, options?: { deleteFromTeachers?: boolean }) => Promise<void>;
+  syncDeleteUsersBulkFromCPanel: (uids: string[], usersList: UserProfile[], options?: { deleteFromTeachers?: boolean }) => Promise<void>;
   syncAllCPanelUsers: (users: UserProfile[]) => Promise<void>;
 
   // Logging, Full Data Management & Database Reset / Seed
@@ -4995,7 +4996,13 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     );
   };
 
-  const syncDeleteUserFromCPanel = async (uid: string, user?: UserProfile) => {
+  const syncDeleteUserFromCPanel = async (
+    uid: string,
+    user?: UserProfile,
+    options?: { deleteFromTeachers?: boolean }
+  ) => {
+    const shouldDeleteFromTeachers = options?.deleteFromTeachers === true;
+
     // 1. Record tombstones to ensure deleted users/entities are never resurrected
     addDeletedUid(uid);
     addDeletedUid(`user_${uid}`);
@@ -5009,8 +5016,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       addDeletedUid(user.username);
     }
 
-    // 2. Identify and delete matching teacher record from state and Firestore
-    let teacherDeletedId: string | null = null;
+    // 2. Identify and handle matching teacher record based on user choice
     const targetTeacher = teachers.find(t =>
       t.id === uid ||
       t.id === uid.replace(/^user_/, '') ||
@@ -5018,42 +5024,27 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       (user && isTeacherUserMatch(user, t))
     );
 
-    if (targetTeacher) {
-      teacherDeletedId = targetTeacher.id;
+    if (shouldDeleteFromTeachers && targetTeacher) {
       addDeletedUid(targetTeacher.id);
       if (targetTeacher.nip) addDeletedUid(cleanDigits(targetTeacher.nip));
       try {
-        await deleteDoc(doc(db, 'teachers', targetTeacher.id));
+        deleteDoc(doc(db, 'teachers', targetTeacher.id)).catch(() => {});
         deleteDoc(doc(db, 'teachers', `user_${targetTeacher.id}`)).catch(() => {});
       } catch (e) {}
-    }
 
-    setTeachers(prev => {
-      const remaining = prev.filter(t => {
-        if (t.id === uid || t.id === uid.replace(/^user_/, '') || `user_${t.id}` === uid) return false;
-        if (teacherDeletedId && t.id === teacherDeletedId) return false;
-        if (user && isTeacherUserMatch(user, t)) return false;
-        return true;
+      setTeachers(prev => {
+        const remaining = prev.filter(t => t.id !== targetTeacher.id);
+        try { localStorage.setItem('sim_teachers', JSON.stringify(remaining)); } catch (e) {}
+        return remaining;
       });
-      try {
-        localStorage.setItem('sim_teachers', JSON.stringify(remaining));
-      } catch (e) {}
-      return remaining;
-    });
 
-    // 3. User accounts in cPanel are for staff, teachers, and OSIM officers.
-    // CRITICAL INTEGRITY RULE: Deleting a user account in cPanel MUST NEVER delete the student record from the master students database.
-    // As explicitly required: "user hanya menghapusnya dari anggota bukan menghapusnya sebagai siswa. Jika user tidak menghapus siswa, maka siswa tidak akan terhapus."
-    // Students can ONLY be deleted explicitly from the "Data Siswa" master management module.
-
-    // 4. Reset extracurricular coach if assigned
-    if (user || targetTeacher) {
+      // Reset extracurricular coach if assigned
       const coachName = user?.displayName || targetTeacher?.fullName;
       setExtracurriculars(prev => {
         const updated = prev.map(ekskul => {
           if (
             ekskul.coachId === uid ||
-            (targetTeacher && ekskul.coachId === targetTeacher.id) ||
+            ekskul.coachId === targetTeacher.id ||
             (coachName && ekskul.coachName === coachName)
           ) {
             return { ...ekskul, coachName: 'Belum Ditentukan', coachId: '' };
@@ -5063,9 +5054,30 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         try { localStorage.setItem('sim_extracurriculars', JSON.stringify(updated)); } catch (e) {}
         return updated;
       });
+    } else if (!shouldDeleteFromTeachers && targetTeacher) {
+      // Opsi 1: Hanya hapus akses login cPanel - profil master dewan guru tetap aman!
+      setTeachers(prev => {
+        const updated = prev.map(t =>
+          t.id === targetTeacher.id
+            ? { ...t, isLoginActive: false, accountStatus: 'pending' as any, loginStatus: 'pending_activation' as any }
+            : t
+        );
+        try { localStorage.setItem('sim_teachers', JSON.stringify(updated)); } catch (e) {}
+        return updated;
+      });
+      try {
+        updateDoc(doc(db, 'teachers', targetTeacher.id), {
+          isLoginActive: false,
+          accountStatus: 'pending',
+          loginStatus: 'pending_activation'
+        }).catch(() => {});
+      } catch (e) {}
     }
 
-    // 5. Delete matching OSIM member from state and Firestore
+    // 3. User accounts in cPanel are for staff, teachers, and OSIM officers.
+    // CRITICAL INTEGRITY RULE: Deleting a user account in cPanel MUST NEVER delete the student record from the master students database.
+
+    // 4. Delete matching OSIM member from state and Firestore if applicable
     const matchedOsimIds: string[] = [];
     osimMembers.forEach(m => {
       let isMatch = false;
@@ -5079,34 +5091,130 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (isMatch) {
         matchedOsimIds.push(m.id);
         addDeletedUid(m.id);
-        // CRITICAL: Never tombstone m.studentNis! The student is an active student in the school.
         if (m.loginUsername && !m.loginUsername.startsWith('osim.') && !/^\d{4,}$/.test(m.loginUsername)) {
           addDeletedUid(m.loginUsername);
         }
       }
     });
 
-    for (const osimId of matchedOsimIds) {
-      try {
-        await deleteDoc(doc(db, 'osim_members', osimId));
-      } catch (e) {}
-    }
-    try {
-      await deleteDoc(doc(db, 'osim_members', uid));
-    } catch (e) {}
+    if (matchedOsimIds.length > 0 || osimMembers.some(m => m.id === uid)) {
+      for (const osimId of matchedOsimIds) {
+        deleteDoc(doc(db, 'osim_members', osimId)).catch(() => {});
+      }
+      deleteDoc(doc(db, 'osim_members', uid)).catch(() => {});
 
-    setOsimMembers(prev => {
-      const remaining = prev.filter(m => !matchedOsimIds.includes(m.id) && m.id !== uid);
-      try {
-        localStorage.setItem('sim_osim_members', JSON.stringify(remaining));
-      } catch (e) {}
-      return remaining;
-    });
+      setOsimMembers(prev => {
+        const remaining = prev.filter(m => !matchedOsimIds.includes(m.id) && m.id !== uid);
+        try { localStorage.setItem('sim_osim_members', JSON.stringify(remaining)); } catch (e) {}
+        return remaining;
+      });
+    }
 
     logAction(
       'CPANEL_DELETE_SYNC',
       'cPanel Kesiswaan',
-      `Sinkronisasi penghapusan akun ${user?.displayName || uid} pada seluruh modul (Guru, OSIM, Ekskul). Data pokok siswa di kelas tetap aman.`
+      `Sinkronisasi penghapusan akun ${user?.displayName || uid} (${shouldDeleteFromTeachers ? 'Sekaligus Master Guru' : 'Hanya Akun Login cPanel'}).`
+    );
+  };
+
+  const syncDeleteUsersBulkFromCPanel = async (
+    uids: string[],
+    usersList: UserProfile[],
+    options?: { deleteFromTeachers?: boolean }
+  ) => {
+    const shouldDeleteFromTeachers = options?.deleteFromTeachers === true;
+    const uidSet = new Set(uids);
+
+    // 1. Tombstone deleted UIDs
+    uids.forEach(uid => {
+      addDeletedUid(uid);
+      addDeletedUid(`user_${uid}`);
+      if (uid.startsWith('user_')) addDeletedUid(uid.replace(/^user_/, ''));
+    });
+
+    usersList.forEach(user => {
+      if (user?.nip && user.role !== 'pengurus_osim' && !user.studentClass && user.nip.length >= 12) {
+        addDeletedUid(cleanDigits(user.nip));
+        addDeletedUid(`user_${cleanDigits(user.nip)}`);
+      }
+      if (user?.username && !user.username.startsWith('osim.') && !/^\d{4,}$/.test(user.username)) {
+        addDeletedUid(user.username);
+      }
+    });
+
+    if (shouldDeleteFromTeachers) {
+      // Find matching teachers to delete
+      const deletedTeacherIds: string[] = [];
+      teachers.forEach(t => {
+        const matches = uidSet.has(t.id) || uidSet.has(`user_${t.id}`) || usersList.some(u => isTeacherUserMatch(u, t));
+        if (matches) {
+          deletedTeacherIds.push(t.id);
+          addDeletedUid(t.id);
+          if (t.nip) addDeletedUid(cleanDigits(t.nip));
+        }
+      });
+
+      const deletedTeacherSet = new Set(deletedTeacherIds);
+
+      // Remove from teachers state
+      setTeachers(prev => {
+        const remaining = prev.filter(t => !deletedTeacherSet.has(t.id));
+        try { localStorage.setItem('sim_teachers', JSON.stringify(remaining)); } catch (e) {}
+        return remaining;
+      });
+
+      // Background Firestore delete for teachers
+      (async () => {
+        try {
+          const promises = deletedTeacherIds.flatMap(id => [
+            deleteDoc(doc(db, 'teachers', id)).catch(() => {}),
+            deleteDoc(doc(db, 'teachers', `user_${id}`)).catch(() => {})
+          ]);
+          await Promise.allSettled(promises);
+        } catch (e) {
+          console.warn('Firestore bulk delete teachers notice:', e);
+        }
+      })();
+
+      // Reset extracurricular coaches
+      const deletedNamesSet = new Set(usersList.map(u => u.displayName.toLowerCase().trim()));
+      setExtracurriculars(prev => {
+        const updated = prev.map(ekskul => {
+          if (
+            (ekskul.coachId && (uidSet.has(ekskul.coachId) || deletedTeacherSet.has(ekskul.coachId))) ||
+            (ekskul.coachName && deletedNamesSet.has(ekskul.coachName.toLowerCase().trim()))
+          ) {
+            return { ...ekskul, coachName: 'Belum Ditentukan', coachId: '' };
+          }
+          return ekskul;
+        });
+        try { localStorage.setItem('sim_extracurriculars', JSON.stringify(updated)); } catch (e) {}
+        return updated;
+      });
+    } else {
+      // Opsi 1: Hanya hapus akses login cPanel - master dewan guru tetap aman!
+      setTeachers(prev => {
+        const updated = prev.map(t => {
+          const matchedUser = usersList.find(u => isTeacherUserMatch(u, t) || u.uid === t.id || u.uid === `user_${t.id}`);
+          if (matchedUser) {
+            return {
+              ...t,
+              isLoginActive: false,
+              accountStatus: 'pending' as any,
+              loginStatus: 'pending_activation' as any
+            };
+          }
+          return t;
+        });
+        try { localStorage.setItem('sim_teachers', JSON.stringify(updated)); } catch (e) {}
+        return updated;
+      });
+    }
+
+    logAction(
+      'CPANEL_BULK_DELETE_USERS',
+      'cPanel Kesiswaan',
+      `Penghapusan massal ${uids.length} akun pengguna cPanel (${shouldDeleteFromTeachers ? 'Sekaligus Master Guru' : 'Hanya Akun Login cPanel'}).`
     );
   };
 
@@ -8718,6 +8826,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         addNotification,
         syncUserFromCPanel,
         syncDeleteUserFromCPanel,
+        syncDeleteUsersBulkFromCPanel,
         syncAllCPanelUsers,
         logAction,
         clearAuditLogs,

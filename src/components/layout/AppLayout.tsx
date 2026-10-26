@@ -152,7 +152,17 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
 
   // Khusus Admin: Hanya Administrator yang berhak mengubah tema dan mode (dark/light)
   const isAdmin = useMemo(() => {
-    return Boolean(isSuperAdmin || (currentUser && (currentUser.role === 'super_admin' || currentUser.role === 'admin_kesiswaan')));
+    return Boolean(
+      isSuperAdmin ||
+      (currentUser && (
+        currentUser.role === 'super_admin' ||
+        (currentUser.role as string) === 'admin' ||
+        currentUser.role === 'admin_kesiswaan' ||
+        currentUser.role === 'waka_kesiswaan' ||
+        currentUser.uid === 'user_super_admin' ||
+        (currentUser.email && currentUser.email.toLowerCase().trim() === 'puputbajuri24@gmail.com')
+      ))
+    );
   }, [isSuperAdmin, currentUser]);
 
   // Pastikan akun non-admin otomatis mengikuti standar instansi (mode terang resmi) tanpa opsi beralih

@@ -178,6 +178,7 @@ interface AuthContextType {
   addUser: (user: UserProfile) => Promise<{ success: boolean; error?: string }>;
   updateUser: (uid: string, updated: Partial<UserProfile>) => Promise<{ success: boolean; error?: string }>;
   deleteUser: (uid: string) => Promise<{ success: boolean; error?: string }>;
+  deleteUsersBulk: (uids: string[]) => Promise<{ success: boolean; deletedCount: number; error?: string }>;
   resetUserPassword: (uid: string, newPassword?: string) => Promise<{ success: boolean; error?: string }>;
   changePassword: (currentPass: string, newPass: string) => Promise<{ success: boolean; error?: string }>;
   syncUsersFromTeachers: (teachersList: Teacher[], extracurricularsList?: Extracurricular[]) => Promise<number>;
@@ -1979,6 +1980,76 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const deleteUsersBulk = async (uids: string[]): Promise<{ success: boolean; deletedCount: number; error?: string }> => {
+    try {
+      const isAdminActor = currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role);
+      if (!isAdminActor) {
+        return {
+          success: false,
+          deletedCount: 0,
+          error: 'Akses ditolak: Hanya Administrator atau Waka Kesiswaan yang berhak menghapus akun pengguna.'
+        };
+      }
+
+      // Filter akun yang dilindungi (Super Admin utama atau akun yang sedang aktif digunakan)
+      const validUids = uids.filter(id => id !== 'user_super_admin' && currentUser?.uid !== id);
+      if (validUids.length === 0) {
+        return { success: false, deletedCount: 0, error: 'Tidak ada akun yang diizinkan untuk dihapus.' };
+      }
+
+      const uidSet = new Set(validUids);
+      const targetUsers = allUsers.filter(u => uidSet.has(u.uid));
+
+      targetUsers.forEach(targetUser => {
+        const isTeacher = isProtectedTeacherOrStaff(targetUser);
+        addDeletedUid(targetUser.uid);
+        if (targetUser.uid.startsWith('user_')) {
+          addDeletedUid(targetUser.uid.replace(/^user_/, ''));
+        }
+        if (targetUser.email && !isTeacher) {
+          addDeletedUid(targetUser.email.trim().toLowerCase());
+        }
+      });
+
+      // 1. UPDATE STATE & LOCAL STORAGE SEGERA (OPTIMISTIC UPDATE)
+      setAllUsers(prev => {
+        const next = prev.filter(u => !uidSet.has(u.uid));
+        try { localStorage.setItem(LOCAL_STORAGE_ALL_USERS_KEY, JSON.stringify(next)); } catch {}
+        return next;
+      });
+
+      // 2. FIRESTORE PERSISTENCE DI BACKGROUND
+      (async () => {
+        try {
+          const deletePromises: Promise<any>[] = [];
+          targetUsers.forEach(u => {
+            deletePromises.push(deleteDoc(doc(db, 'users', u.uid)).catch(() => {}));
+            if (u.uid.startsWith('user_')) {
+              deletePromises.push(deleteDoc(doc(db, 'users', u.uid.replace(/^user_/, ''))).catch(() => {}));
+            }
+            if (u.authUid) {
+              deletePromises.push(deleteDoc(doc(db, 'users', u.authUid)).catch(() => {}));
+            }
+          });
+          await Promise.allSettled(deletePromises);
+        } catch (e) {
+          console.warn('Firestore bulk delete user notice:', e);
+        }
+      })();
+
+      recordSystemAuditLog(
+        'DELETE_USERS_BULK',
+        'Manajemen Pengguna',
+        `Administrator menghapus ${targetUsers.length} akun secara massal: ${targetUsers.map(u => u.displayName).join(', ')}`,
+        currentUser
+      );
+
+      return { success: true, deletedCount: targetUsers.length };
+    } catch (e: any) {
+      return { success: false, deletedCount: 0, error: e?.message || 'Gagal menghapus akun secara massal.' };
+    }
+  };
+
   const resetUserPassword = async (uid: string, newPassword?: string): Promise<{ success: boolean; error?: string }> => {
     try {
       // 0. KEAMANAN & OTORISASI RESET PASSWORD
@@ -3004,6 +3075,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         addUser,
         updateUser,
         deleteUser,
+        deleteUsersBulk,
         resetUserPassword,
         changePassword,
         syncUsersFromTeachers,

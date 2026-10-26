@@ -96,22 +96,40 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // 1. Initial State from localStorage (light mode across all devices by default)
-  const [mode, setModeState] = useState<ThemeMode>(() => {
+  // Helper: Dapatkan mode awal tanpa memicu pemaksaan ke 'dark'
+  // 1. Cek nilai dari localStorage ('simkesiswaan_theme' atau 'simkesiswaan_theme_mode')
+  // 2. Jika tidak ada di localStorage, gunakan nilai default dari atribut data-mode di index.html (bawaan: 'light')
+  const getInitialMode = (): ThemeMode => {
+    if (typeof window === 'undefined') return 'light';
     try {
-      const saved = localStorage.getItem('simkesiswaan_theme_mode') as ThemeMode;
-      if (saved === 'dark' || saved === 'light') return saved;
+      // Periksa apakah 'simkesiswaan_theme' atau 'simkesiswaan_theme_mode' benar-benar ada di localStorage
+      const saved = localStorage.getItem('simkesiswaan_theme') || localStorage.getItem('simkesiswaan_theme_mode');
+      if (saved === 'dark' || saved === 'light' || saved === 'system') {
+        return saved as ThemeMode;
+      }
+      // Jika belum ada di localStorage, baca atribut bawaan data-mode dari index.html
+      const htmlMode = document.documentElement.getAttribute('data-mode') as ThemeMode;
+      if (htmlMode === 'dark' || htmlMode === 'light') {
+        return htmlMode;
+      }
     } catch (e) {}
-    return 'light'; // Light mode by default as requested
-  });
+    return 'light'; // Standar bawaan resmi madrasah (light mode)
+  };
 
-  const [palette, setPaletteState] = useState<ThemePalette>(() => {
+  const getInitialPalette = (): ThemePalette => {
+    if (typeof window === 'undefined') return 'navy';
     try {
       const saved = localStorage.getItem('simkesiswaan_theme_palette') as ThemePalette;
       if (THEME_PALETTES.some(p => p.id === saved)) return saved;
+      const htmlTheme = document.documentElement.getAttribute('data-theme') as ThemePalette;
+      if (THEME_PALETTES.some(p => p.id === htmlTheme)) return htmlTheme;
     } catch (e) {}
-    return 'sunset';
-  });
+    return 'navy';
+  };
+
+  // 1. Initial State from localStorage / index.html (light mode across all devices by default)
+  const [mode, setModeState] = useState<ThemeMode>(getInitialMode);
+  const [palette, setPaletteState] = useState<ThemePalette>(getInitialPalette);
 
   const [fontSize, setFontSizeState] = useState<FontSize>(() => {
     try {
@@ -149,7 +167,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return () => mediaQuery.removeEventListener('change', handler);
   }, []);
 
-  // 3. Resolve Dark vs Light: Guarantee dark mode unless explicitly set to light
+  // 3. Resolve Dark vs Light: Guarantee light mode unless explicitly set to dark
   const resolvedMode: 'dark' | 'light' = useMemo(() => {
     if (mode === 'system') {
       return systemIsDark ? 'dark' : 'light';
@@ -177,8 +195,9 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     root.setAttribute('data-font-contrast', fontContrast);
     root.setAttribute('data-font-family', fontFamily);
 
-    // Save to localStorage
+    // Save to localStorage (dukung simkesiswaan_theme dan simkesiswaan_theme_mode)
     try {
+      localStorage.setItem('simkesiswaan_theme', mode);
       localStorage.setItem('simkesiswaan_theme_mode', mode);
       localStorage.setItem('simkesiswaan_theme_palette', palette);
       localStorage.setItem('simkesiswaan_font_size', fontSize);
@@ -188,16 +207,33 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [mode, resolvedMode, palette, fontSize, fontContrast, fontFamily]);
 
   // 5. Global Real-Time Theme Listener (doc: settings/theme_config)
-  // Ensures ALL devices (HP, Tablet, Desktop) immediately display identical theme
+  // Ensures ALL devices (HP, Tablet, Desktop) immediately display identical theme without overwriting local choice
   useEffect(() => {
     let unsubTheme: (() => void) | null = null;
+    let isInitialMount = true;
+
     try {
       unsubTheme = onSnapshot(doc(db, 'settings', 'theme_config'), (docSnap) => {
-        if (!docSnap.exists()) return;
+        if (!docSnap.exists()) {
+          isInitialMount = false;
+          return;
+        }
         const data = docSnap.data();
+
+        // CEK KEAMANAN INITIAL OVERWRITE:
+        // Jangan timpa mode 'light' ke 'dark' saat loading pertama kali jika localStorage
+        // secara eksplisit telah menyetel 'light' atau jika data-mode di index.html adalah 'light'.
         if (data?.mode && (data.mode === 'dark' || data.mode === 'light' || data.mode === 'system')) {
+          if (isInitialMount) {
+            const localSaved = localStorage.getItem('simkesiswaan_theme') || localStorage.getItem('simkesiswaan_theme_mode');
+            if (localSaved === 'light' && data.mode === 'dark') {
+              isInitialMount = false;
+              return;
+            }
+          }
           setModeState(prev => (prev !== data.mode ? data.mode : prev));
         }
+
         if (data?.palette && THEME_PALETTES.some(p => p.id === data.palette)) {
           setPaletteState(prev => (prev !== data.palette ? data.palette : prev));
         }
@@ -210,7 +246,10 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (data?.fontFamily && ['jakarta', 'inter', 'system'].includes(data.fontFamily)) {
           setFontFamilyState(prev => (prev !== data.fontFamily ? data.fontFamily : prev));
         }
+
+        isInitialMount = false;
       }, (err) => {
+        isInitialMount = false;
         if (isPermissionError(err)) {
           console.warn('Theme config read notice (using local preferences):', err);
         } else {
@@ -247,14 +286,20 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // 1. Save to global theme config in Firestore if authenticated admin
       let isAdminUser = false;
       try {
-        const sessionUser = sessionStorage.getItem('sim_kesiswaan_session_user');
+        const sessionUser = sessionStorage.getItem('sim_kesiswaan_session_user') || localStorage.getItem('sim_kesiswaan_active_user');
         if (sessionUser) {
           const parsed = JSON.parse(sessionUser);
-          isAdminUser = parsed?.role === 'super_admin' || parsed?.role === 'admin_kesiswaan';
+          isAdminUser = 
+            parsed?.role === 'super_admin' || 
+            parsed?.role === 'admin' || 
+            parsed?.role === 'admin_kesiswaan' || 
+            parsed?.role === 'waka_kesiswaan' ||
+            parsed?.uid === 'user_super_admin' ||
+            (parsed?.email && parsed.email.toLowerCase().trim() === 'puputbajuri24@gmail.com');
         }
       } catch {}
 
-      if (auth.currentUser && isAdminUser) {
+      if (isAdminUser) {
         setDoc(doc(db, 'settings', 'theme_config'), updatedPref, { merge: true }).catch((err) => {
           if (!isPermissionError(err)) {
             handleFirestoreError(err, OperationType.WRITE, 'settings/theme_config');
@@ -265,7 +310,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // 2. Also save to user doc ONLY if logged in with a strictly standard tidy UID
       let uid: string | null = null;
       try {
-        const sessionUser = sessionStorage.getItem('sim_kesiswaan_session_user');
+        const sessionUser = sessionStorage.getItem('sim_kesiswaan_session_user') || localStorage.getItem('sim_kesiswaan_active_user');
         if (sessionUser) {
           const parsed = JSON.parse(sessionUser);
           uid = parsed?.uid || null;

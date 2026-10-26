@@ -435,6 +435,25 @@ const MainContent: React.FC = () => {
 };
 
 export default function App() {
+  // Verifikasi mounted: Pastikan provider/komponen tidak memicu update paksa ke 'dark'
+  // dan verifikasi apakah 'simkesiswaan_theme' di localStorage benar-benar ada sebelum mengizinkan mode tema
+  useEffect(() => {
+    try {
+      const savedTheme = localStorage.getItem('simkesiswaan_theme') || localStorage.getItem('simkesiswaan_theme_mode');
+      if (!savedTheme) {
+        // Jika belum ada preferensi tema di localStorage, jangan izinkan class 'dark' aktif tanpa izin
+        const defaultMode = (document.documentElement.getAttribute('data-mode') as 'light' | 'dark') || 'light';
+        if (defaultMode === 'light' && document.documentElement.classList.contains('dark')) {
+          document.documentElement.classList.remove('dark');
+          document.documentElement.classList.add('light');
+          document.documentElement.setAttribute('data-mode', 'light');
+        }
+      }
+    } catch (e) {
+      // Abaikan kendala akses storage
+    }
+  }, []);
+
   return (
     <ErrorBoundary
       fallbackTitle="Sistem SIM-KESISWAAN Terhenti Sementara"

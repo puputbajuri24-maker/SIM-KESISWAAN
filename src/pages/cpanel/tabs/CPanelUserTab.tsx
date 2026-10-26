@@ -26,7 +26,9 @@ import {
   Tent,
   CheckCircle2,
   Mail,
-  Database
+  Database,
+  Lock,
+  CheckSquare
 } from 'lucide-react';
 import { Teacher, UserProfile, Extracurricular } from '../../../types';
 
@@ -82,6 +84,11 @@ export interface CPanelUserTabProps {
   loginWithUser?: (user: UserProfile) => void;
   loginWithDemoRole?: (role: any, customUid?: string) => void;
   isSuperAdmin?: boolean;
+  selectedUserUids?: string[];
+  handleToggleSelectUser?: (uid: string) => void;
+  handleSelectAllUsers?: () => void;
+  handleClearSelectedUsers?: () => void;
+  handleOpenBulkDeleteModal?: () => void;
 }
 
 export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
@@ -136,7 +143,26 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
   loginWithUser,
   loginWithDemoRole,
   isSuperAdmin,
+  selectedUserUids = [],
+  handleToggleSelectUser,
+  handleSelectAllUsers,
+  handleClearSelectedUsers,
+  handleOpenBulkDeleteModal,
 }) => {
+  // Helper Keamanan Seleksi Massal: Super Admin & Akun Pengguna Aktif Sendiri tidak boleh dipilih untuk dihapus
+  const isUserSelectable = (u: UserProfile) => {
+    if (!u) return false;
+    if (u.uid === 'user_super_admin' || u.role === 'super_admin' || (u.email && u.email.toLowerCase().trim() === 'puputbajuri24@gmail.com')) return false;
+    if (currentUser?.uid && (u.uid === currentUser.uid || (currentUser.email && u.email && u.email.toLowerCase().trim() === currentUser.email.toLowerCase().trim()))) return false;
+    return true;
+  };
+
+  const selectableUsersInView = filteredUsers.filter(isUserSelectable);
+  const selectableUidsInView = selectableUsersInView.map(u => u.uid);
+  const selectedInViewCount = selectableUidsInView.filter(uid => selectedUserUids?.includes(uid)).length;
+  const isAllInViewSelected = selectableUsersInView.length > 0 && selectedInViewCount === selectableUsersInView.length;
+  const isSomeInViewSelected = selectedInViewCount > 0 && !isAllInViewSelected;
+
   // Helper: Dapatkan tugas binaan ekstrakurikuler yang valid, bersih dari angka serial, dan dikunci 1 pembina = 1 unit binaan utama
   const getUserEkskuls = (u: UserProfile) => {
     if (!u) return [];
@@ -911,6 +937,25 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
             </button>
           </div>
 
+          {/* Quick Select All Button */}
+          {selectableUsersInView.length > 0 && (
+            <button
+              type="button"
+              onClick={handleSelectAllUsers}
+              className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center space-x-1.5 transition-colors ${
+                isAllInViewSelected
+                  ? 'bg-emerald-600/20 border-emerald-500/50 text-emerald-300 hover:bg-emerald-600/30'
+                  : 'bg-[#222226] hover:bg-[#2b2b30] border-[#37373f] text-zinc-300 hover:text-white'
+              }`}
+              title={isAllInViewSelected ? "Batalkan pilihan semua" : "Pilih semua akun yang ditampilkan"}
+            >
+              <CheckSquare className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="hidden sm:inline">
+                {isAllInViewSelected ? 'Batalkan Semua' : 'Pilih Semua'}
+              </span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => handleOpenPrintModal('all')}
@@ -922,6 +967,49 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
           </button>
         </div>
       </div>
+
+      {/* BULK ACTION BAR (Floating / Sticky when users are selected) */}
+      {selectedUserUids && selectedUserUids.length > 0 && (
+        <div className="sticky top-2 z-30 p-3.5 rounded-xl bg-[#1a1215] border border-red-500/50 shadow-2xl backdrop-blur-md flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="flex items-center space-x-3">
+            <div className="w-9 h-9 rounded-xl bg-red-500/20 border border-red-500/40 text-red-400 flex items-center justify-center shrink-0">
+              <Users className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="text-xs font-bold text-white">
+                  {selectedUserUids.length} Akun Guru / Pengguna Dipilih
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-md bg-red-500/20 text-red-300 font-mono font-bold border border-red-500/30">
+                  Aksi Massal
+                </span>
+              </div>
+              <p className="text-[11px] text-zinc-400 mt-0.5">
+                Tindakan akan diterapkan serentak ke {selectedUserUids.length} akun yang ditandai. Akun Super Admin & akun Anda sendiri otomatis diproteksi.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2 shrink-0 self-end sm:self-auto">
+            <button
+              type="button"
+              onClick={handleClearSelectedUsers}
+              className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs font-semibold border border-zinc-700 transition-colors flex items-center space-x-1.5"
+            >
+              <X className="w-3.5 h-3.5" />
+              <span>Batal Pilihan</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleOpenBulkDeleteModal}
+              className="px-3.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold shadow-lg shadow-red-950/50 border border-red-400/50 transition-all flex items-center space-x-1.5 active:scale-95"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Hapus Massal ({selectedUserUids.length})</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Empty State */}
       {filteredUsers.length === 0 && (
@@ -958,16 +1046,38 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
             const isRevealed = showPasswordMap[u.uid];
             const teacherInitials = getTeacherInitials(u.displayName);
             const theme = getInitialsColorTheme(u.role);
+            const isSelected = selectedUserUids?.includes(u.uid);
+            const selectable = isUserSelectable(u);
 
             return (
               <div
                 key={u.uid ? `grid-user-${u.uid}-${idx}` : `grid-user-idx-${idx}`}
-                className="bg-[#151518] border border-[#27272a] hover:border-emerald-500/40 rounded-xl p-4 transition-all shadow hover:shadow-lg flex flex-col justify-between space-y-3"
+                className={`border rounded-xl p-4 transition-all shadow hover:shadow-lg flex flex-col justify-between space-y-3 relative ${
+                  isSelected
+                    ? 'bg-[#1e1315] border-red-500/60 ring-2 ring-red-500/30'
+                    : 'bg-[#151518] border-[#27272a] hover:border-emerald-500/40'
+                }`}
               >
                 {/* Card Top: Identity & Role */}
                 <div className="space-y-2.5">
                   <div className="flex items-start justify-between gap-2.5">
-                    <div className="flex items-center space-x-3 min-w-0">
+                    <div className="flex items-center space-x-2.5 min-w-0">
+                      {/* Checkbox Massal */}
+                      <div className="shrink-0 flex items-center pr-0.5">
+                        {selectable ? (
+                          <input
+                            type="checkbox"
+                            checked={!!isSelected}
+                            onChange={() => handleToggleSelectUser?.(u.uid)}
+                            className="w-4 h-4 rounded border-[#3f3f46] text-emerald-600 focus:ring-emerald-500 focus:ring-offset-0 bg-[#27272a] cursor-pointer"
+                            title={`Pilih akun ${u.displayName}`}
+                          />
+                        ) : (
+                          <div title="Akun Super Admin / Akun Anda sendiri dilindungi" className="w-4 h-4 flex items-center justify-center text-zinc-600">
+                            <Lock className="w-3.5 h-3.5" />
+                          </div>
+                        )}
+                      </div>
                       {u.photoURL ? (
                         <img
                           src={u.photoURL}
@@ -1186,6 +1296,19 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="border-b border-[#27272a] bg-[#1a1a1e] text-zinc-300 font-mono text-[10px] uppercase">
+                  <th className="py-3 px-3 w-10 text-center">
+                    <input
+                      type="checkbox"
+                      checked={isAllInViewSelected}
+                      ref={el => {
+                        if (el) el.indeterminate = isSomeInViewSelected;
+                      }}
+                      onChange={handleSelectAllUsers}
+                      disabled={selectableUsersInView.length === 0}
+                      className="w-4 h-4 rounded border-[#3f3f46] text-emerald-600 focus:ring-emerald-500 focus:ring-offset-0 bg-[#27272a] cursor-pointer disabled:opacity-30"
+                      title={isAllInViewSelected ? "Batalkan pilihan semua akun yang ditampilkan" : "Pilih semua akun yang ditampilkan"}
+                    />
+                  </th>
                   <th className="py-3 px-4 font-bold">Pengguna & Identitas</th>
                   <th className="py-3 px-4 font-bold">Peran / Hak Akses</th>
                   <th className="py-3 px-4 font-bold">Kredensial Login (NIP / Password)</th>
@@ -1199,12 +1322,33 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
                   const isRevealed = showPasswordMap[u.uid];
                   const teacherInitials = getTeacherInitials(u.displayName);
                   const theme = getInitialsColorTheme(u.role);
+                  const isSelected = selectedUserUids?.includes(u.uid);
+                  const selectable = isUserSelectable(u);
 
                   return (
                     <tr
                       key={u.uid ? `table-user-${u.uid}-${idx}` : `table-user-idx-${idx}`}
-                      className="hover:bg-[#1a1a1f] transition-colors"
+                      className={`transition-colors ${
+                        isSelected
+                          ? 'bg-red-950/20 hover:bg-red-950/30 border-l-2 border-red-500'
+                          : 'hover:bg-[#1a1a1f]'
+                      }`}
                     >
+                      <td className="py-3 px-3 text-center">
+                        {selectable ? (
+                          <input
+                            type="checkbox"
+                            checked={!!isSelected}
+                            onChange={() => handleToggleSelectUser?.(u.uid)}
+                            className="w-4 h-4 rounded border-[#3f3f46] text-emerald-600 focus:ring-emerald-500 focus:ring-offset-0 bg-[#27272a] cursor-pointer"
+                            title={`Pilih akun ${u.displayName}`}
+                          />
+                        ) : (
+                          <div title="Akun Super Admin / Akun Anda sendiri dilindungi" className="inline-flex items-center justify-center text-zinc-600">
+                            <Lock className="w-3.5 h-3.5" />
+                          </div>
+                        )}
+                      </td>
                       <td className="py-3 px-4">
                         <div className="flex items-center space-x-3">
                           {u.photoURL ? (

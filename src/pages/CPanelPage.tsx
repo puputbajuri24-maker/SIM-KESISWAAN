@@ -85,7 +85,7 @@ import { normalizeUserRole } from '../permissions';
 import { getNextTeacherDocId } from '../utils/idGenerator';
 
 export const CPanelPage: React.FC = () => {
-  const { allUsers, currentUser, isSuperAdmin, addUser, updateUser, deleteUser, resetUserPassword, syncUsersFromTeachers, syncUsersFromOsim, loginWithUser, loginWithDemoRole, migrateAllUsersToTidyUids, activateTeacherAccount, activateOsimAccount } = useAuth();
+  const { allUsers, currentUser, isSuperAdmin, addUser, updateUser, deleteUser, deleteUsersBulk, resetUserPassword, syncUsersFromTeachers, syncUsersFromOsim, loginWithUser, loginWithDemoRole, migrateAllUsersToTidyUids, activateTeacherAccount, activateOsimAccount } = useAuth();
   const {
     schoolSetting,
     updateSchoolSetting,
@@ -106,6 +106,7 @@ export const CPanelPage: React.FC = () => {
     auditLogs,
     syncUserFromCPanel,
     syncDeleteUserFromCPanel,
+    syncDeleteUsersBulkFromCPanel,
     syncAllCPanelUsers,
     osimDepartments,
     osimMembers,
@@ -123,6 +124,13 @@ export const CPanelPage: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [showPasswordMap, setShowPasswordMap] = useState<Record<string, boolean>>({});
+
+  // Bulk Selection and Mass Deletion State for User Accounts / Teachers
+  const [selectedUserUids, setSelectedUserUids] = useState<string[]>([]);
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+  const [bulkDeleteScope, setBulkDeleteScope] = useState<'cpanel_only' | 'both'>('cpanel_only');
+  const [bulkDeleteConfirmText, setBulkDeleteConfirmText] = useState('');
+  const [isSubmittingBulkDelete, setIsSubmittingBulkDelete] = useState(false);
 
   // View Mode for user list (Tabel vs Kartu Grid) - same as Pembina Ekstra & OSIM
   const [userViewMode, setUserViewMode] = useState<'table' | 'cards'>('table');
@@ -1316,6 +1324,92 @@ Alamat Sistem : ${window.location.origin}
     setIsDeleteModalOpen(false);
   };
 
+  // =========================================================================
+  // BULK CHECKLIST & MASS DELETION (HAPUS MASSAL AKUN GURU CPANEL)
+  // =========================================================================
+  const handleToggleSelectUser = (uid: string) => {
+    // Akun Super Admin & akun yang sedang aktif digunakan dilindungi secara mutlak
+    if (uid === 'user_super_admin' || currentUser?.uid === uid) return;
+    const targetUser = allUsers.find(u => u.uid === uid);
+    if (targetUser?.role === 'super_admin' || (targetUser?.email && targetUser.email.toLowerCase().trim() === 'puputbajuri24@gmail.com')) return;
+
+    setSelectedUserUids(prev =>
+      prev.includes(uid) ? prev.filter(id => id !== uid) : [...prev, uid]
+    );
+  };
+
+  const handleSelectAllUsers = () => {
+    const selectableUsers = filteredUsers.filter(u =>
+      u.uid !== 'user_super_admin' &&
+      u.role !== 'super_admin' &&
+      (!currentUser || u.uid !== currentUser.uid) &&
+      (!u.email || u.email.toLowerCase().trim() !== 'puputbajuri24@gmail.com')
+    );
+    const selectableUids = selectableUsers.map(u => u.uid);
+    const allSelected = selectableUids.length > 0 && selectableUids.every(id => selectedUserUids.includes(id));
+
+    if (allSelected) {
+      // Batalkan pilihan untuk akun yang sedang ditampilkan
+      setSelectedUserUids(prev => prev.filter(id => !selectableUids.includes(id)));
+    } else {
+      // Tambahkan seluruh akun yang sedang ditampilkan ke antrean pilihan
+      setSelectedUserUids(prev => Array.from(new Set([...prev, ...selectableUids])));
+    }
+  };
+
+  const handleClearSelectedUsers = () => {
+    setSelectedUserUids([]);
+  };
+
+  const handleOpenBulkDeleteModal = () => {
+    if (selectedUserUids.length === 0) {
+      showToast('Pilih minimal satu akun guru / pengguna untuk diproses.', 'error');
+      return;
+    }
+    setBulkDeleteScope('cpanel_only');
+    setBulkDeleteConfirmText('');
+    setIsBulkDeleteModalOpen(true);
+  };
+
+  const handleConfirmBulkDelete = async () => {
+    if (bulkDeleteConfirmText.trim().toUpperCase() !== 'HAPUS') {
+      showToast('Ketik kata "HAPUS" dengan benar untuk mengonfirmasi tindakan massal.', 'error');
+      return;
+    }
+    if (selectedUserUids.length === 0) {
+      setIsBulkDeleteModalOpen(false);
+      return;
+    }
+
+    setIsSubmittingBulkDelete(true);
+    try {
+      const uidsToDelete = [...selectedUserUids];
+      const matchedUsers = allUsers.filter(u => uidsToDelete.includes(u.uid));
+
+      const res = await deleteUsersBulk(uidsToDelete);
+      if (res.success) {
+        await syncDeleteUsersBulkFromCPanel(uidsToDelete, matchedUsers, {
+          deleteFromTeachers: bulkDeleteScope === 'both'
+        });
+        showToast(
+          `${res.deletedCount} akun guru berhasil dihapus (${
+            bulkDeleteScope === 'both'
+              ? 'Sekaligus dicabut dari Master Dewan Guru'
+              : 'Hanya hak akses login cPanel yang dihapus'
+          }).`
+        );
+        setSelectedUserUids([]);
+        setIsBulkDeleteModalOpen(false);
+      } else {
+        showToast(res.error || 'Gagal memproses penghapusan massal akun.', 'error');
+      }
+    } catch (e: any) {
+      showToast(e?.message || 'Terjadi kesalahan sistem saat menghapus akun secara massal.', 'error');
+    } finally {
+      setIsSubmittingBulkDelete(false);
+    }
+  };
+
   const handlePrintAccountSlip = (u: UserProfile) => {
     const cred = getUserSlipCredentials(u, osimMembers);
     const printWindow = window.open('', '_blank');
@@ -2022,6 +2116,11 @@ Alamat Sistem : ${window.location.origin}
           loginWithUser={loginWithUser}
           loginWithDemoRole={loginWithDemoRole}
           isSuperAdmin={isSuperAdmin}
+          selectedUserUids={selectedUserUids}
+          handleToggleSelectUser={handleToggleSelectUser}
+          handleSelectAllUsers={handleSelectAllUsers}
+          handleClearSelectedUsers={handleClearSelectedUsers}
+          handleOpenBulkDeleteModal={handleOpenBulkDeleteModal}
         />
       )}
 
@@ -3932,6 +4031,194 @@ Alamat Sistem : ${window.location.origin}
         confirmLabel="Hapus Akun"
         variant="danger"
       />
+
+      {/* BULK DELETE USERS MODAL (DUAL SCOPE IMPLEMENTATION) */}
+      <Modal
+        isOpen={isBulkDeleteModalOpen}
+        onClose={() => {
+          if (!isSubmittingBulkDelete) {
+            setIsBulkDeleteModalOpen(false);
+          }
+        }}
+        title="Hapus Massal Akun Pengguna / Dewan Guru"
+        maxWidth="max-w-2xl"
+      >
+        <div className="space-y-4">
+          {/* Header Warning Banner */}
+          <div className="p-3.5 rounded-xl bg-red-950/40 border border-red-500/40 flex items-start space-x-3">
+            <div className="w-9 h-9 rounded-lg bg-red-600/20 border border-red-500/40 text-red-400 flex items-center justify-center shrink-0 mt-0.5">
+              <AlertTriangle className="w-5 h-5 text-red-400" />
+            </div>
+            <div className="text-xs space-y-1">
+              <div className="font-bold text-red-200 flex items-center gap-2">
+                <span>Konfirmasi Penghapusan Massal</span>
+                <span className="px-2 py-0.5 rounded-full bg-red-500/30 text-white font-mono font-bold text-[10px]">
+                  {selectedUserUids.length} Akun Dipilih
+                </span>
+              </div>
+              <p className="text-zinc-300 leading-relaxed">
+                Anda akan menghapus <strong className="text-white font-mono">{selectedUserUids.length} akun</strong> secara serentak. Harap perhatikan cakupan penghapusan di bawah ini dengan teliti.
+              </p>
+            </div>
+          </div>
+
+          {/* Selected Accounts Preview List */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-bold text-zinc-300 uppercase tracking-wider flex items-center justify-between">
+              <span>Daftar Akun yang Akan Diproses ({selectedUserUids.length}):</span>
+              <span className="text-zinc-500 font-normal lowercase">pratinjau data</span>
+            </label>
+            <div className="max-h-40 overflow-y-auto rounded-xl border border-[#27272a] bg-[#121215] divide-y divide-zinc-800/80 p-1">
+              {allUsers
+                .filter(u => selectedUserUids.includes(u.uid))
+                .map((u, idx) => (
+                  <div key={u.uid || idx} className="p-2 flex items-center justify-between text-xs hover:bg-zinc-800/40 rounded-lg">
+                    <div className="flex items-center space-x-2.5 min-w-0">
+                      <div className="w-6 h-6 rounded-md bg-zinc-800 text-zinc-300 flex items-center justify-center font-bold text-[10px] shrink-0 font-mono">
+                        {idx + 1}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-semibold text-white truncate text-xs">{u.displayName}</div>
+                        <div className="text-[10px] text-zinc-400 font-mono truncate">{u.email || '-'}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-2 shrink-0">
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 font-mono">
+                        {u.role}
+                      </span>
+                      {u.nip && (
+                        <span className="text-[10px] text-zinc-400 font-mono hidden sm:inline">
+                          NIP: {u.nip}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </div>
+
+          {/* DUAL SCOPE SELECTION (Opsi 1 vs Opsi 2) */}
+          <div className="space-y-2 pt-1">
+            <label className="text-[11px] font-bold text-zinc-300 uppercase tracking-wider block">
+              Pilih Cakupan Penghapusan (Scope):
+            </label>
+
+            {/* Scope 1: cpanel_only */}
+            <div
+              onClick={() => setBulkDeleteScope('cpanel_only')}
+              className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
+                bulkDeleteScope === 'cpanel_only'
+                  ? 'bg-emerald-950/20 border-emerald-500/60 ring-1 ring-emerald-500/40'
+                  : 'bg-[#18181b] border-[#27272a] hover:border-zinc-700'
+              }`}
+            >
+              <div className="flex items-start space-x-3">
+                <input
+                  type="radio"
+                  name="bulkDeleteScope"
+                  checked={bulkDeleteScope === 'cpanel_only'}
+                  onChange={() => setBulkDeleteScope('cpanel_only')}
+                  className="mt-1 w-4 h-4 text-emerald-600 focus:ring-emerald-500 bg-zinc-800 border-zinc-600 cursor-pointer"
+                />
+                <div className="space-y-1">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs font-bold text-white">
+                      Opsi 1: Hanya Hapus Hak Akses Login cPanel
+                    </span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
+                      Direkomendasikan (Aman)
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-zinc-400 leading-relaxed">
+                    Hanya menghapus akun login di <strong className="text-zinc-200">Firebase Auth & profil cPanel</strong>.
+                    Biodata guru di <strong>Database Master Dewan Guru tetap utuh tersimpan</strong> (ditandai 'Belum Aktif'),
+                    tugas pembina atau wali kelas tetap aman, dan data seluruh siswa di kelas maupun Buku Induk Siswa 100% aman.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Scope 2: both */}
+            <div
+              onClick={() => setBulkDeleteScope('both')}
+              className={`p-3.5 rounded-xl border cursor-pointer transition-all ${
+                bulkDeleteScope === 'both'
+                  ? 'bg-red-950/20 border-red-500/60 ring-1 ring-red-500/40'
+                  : 'bg-[#18181b] border-[#27272a] hover:border-zinc-700'
+              }`}
+            >
+              <div className="flex items-start space-x-3">
+                <input
+                  type="radio"
+                  name="bulkDeleteScope"
+                  checked={bulkDeleteScope === 'both'}
+                  onChange={() => setBulkDeleteScope('both')}
+                  className="mt-1 w-4 h-4 text-red-600 focus:ring-red-500 bg-zinc-800 border-zinc-600 cursor-pointer"
+                />
+                <div className="space-y-1">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs font-bold text-red-300">
+                      Opsi 2: Hapus Sekaligus dari Master Database Dewan Guru
+                    </span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 font-bold border border-red-500/30">
+                      Permanen
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-zinc-400 leading-relaxed">
+                    Menghapus akun login cPanel dan <strong className="text-red-300">sekaligus mencabut data guru dari Master Dewan Guru</strong>.
+                    Status pembina ekstrakurikuler yang bersangkutan akan direset. Data siswa di kelas maupun Buku Induk Siswa tetap 100% aman tidak terhapus.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Safety Confirmation Keyword Input */}
+          <div className="p-3.5 rounded-xl bg-[#121215] border border-[#27272a] space-y-2">
+            <label className="text-[11px] font-bold text-zinc-300 block">
+              Konfirmasi Keamanan: Ketik <span className="text-red-400 font-mono font-extrabold tracking-wider">HAPUS</span> untuk melanjutkan
+            </label>
+            <input
+              type="text"
+              value={bulkDeleteConfirmText}
+              onChange={e => setBulkDeleteConfirmText(e.target.value)}
+              placeholder="Ketik HAPUS di sini..."
+              disabled={isSubmittingBulkDelete}
+              className="w-full px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-700 text-white text-xs font-mono tracking-widest focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 uppercase disabled:opacity-50"
+            />
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex items-center justify-end space-x-2.5 pt-2 border-t border-[#27272a]">
+            <button
+              type="button"
+              onClick={() => setIsBulkDeleteModalOpen(false)}
+              disabled={isSubmittingBulkDelete}
+              className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs font-semibold transition-colors disabled:opacity-50"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirmBulkDelete}
+              disabled={bulkDeleteConfirmText.trim().toUpperCase() !== 'HAPUS' || isSubmittingBulkDelete}
+              className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-40 disabled:hover:bg-red-600 text-white text-xs font-bold shadow-lg shadow-red-950/50 border border-red-400/40 transition-all flex items-center space-x-1.5 active:scale-95"
+            >
+              {isSubmittingBulkDelete ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Memproses Penghapusan...</span>
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Konfirmasi Hapus Massal ({selectedUserUids.length})</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* CONFIRM CLEAR OPERATIONAL DATA DIALOG */}
       <ConfirmDialog
