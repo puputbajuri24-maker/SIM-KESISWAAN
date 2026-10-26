@@ -94,8 +94,8 @@ export const TeachersPage: React.FC = () => {
   const [selectedTeacherIds, setSelectedTeacherIds] = useState<Set<string>>(new Set());
   const [isSyncingAccounts, setIsSyncingAccounts] = useState(false);
 
-  // Role Pill Filter State ('all' | 'waka' | 'guru_bk' | 'pembina_osim' | 'pembina_ekskul' | 'wali_kelas' | 'dewan_guru')
-  const [rolePillFilter, setRolePillFilter] = useState<'all' | 'waka' | 'guru_bk' | 'pembina_osim' | 'pembina_ekskul' | 'wali_kelas' | 'dewan_guru'>('all');
+  // Role Pill Filter State ('all' | 'waka' | 'guru_bk' | 'pembina_osim' | 'pembina_ekskul' | 'wali_kelas' | 'staf_tu' | 'dewan_guru')
+  const [rolePillFilter, setRolePillFilter] = useState<'all' | 'waka' | 'guru_bk' | 'pembina_osim' | 'pembina_ekskul' | 'wali_kelas' | 'staf_tu' | 'dewan_guru'>('all');
 
   // Import State
   const [previewTeachers, setPreviewTeachers] = useState<ParsedImportTeacher[]>([]);
@@ -478,6 +478,7 @@ export const TeachersPage: React.FC = () => {
       pembina_osim: 0,
       pembina_ekskul: 0,
       wali_kelas: 0,
+      staf_tu: 0,
       dewan_guru: 0
     };
     teachers.forEach(t => {
@@ -567,6 +568,10 @@ export const TeachersPage: React.FC = () => {
       cell: t => {
         const hierarchy = getTeacherHierarchyClassification(t);
         const getBadgeStyle = () => {
+          const rLow = (t.role || '').toLowerCase();
+          if (rLow.includes('tu') || rLow.includes('tata usaha')) {
+            return 'bg-teal-100 text-teal-800 dark:bg-teal-950/70 dark:text-teal-200 border-teal-200 dark:border-teal-800';
+          }
           switch (hierarchy.categoryKey) {
             case 'waka':
               return 'bg-blue-100 text-blue-800 dark:bg-blue-950/70 dark:text-blue-200 border-blue-200 dark:border-blue-800';
@@ -731,17 +736,17 @@ export const TeachersPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-slate-100 tracking-tight">
-            Dewan Guru & Pembina Kesiswaan
+            Dewan Guru & Staf TU
           </h2>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Daftar guru pembina ekstrakurikuler, konselor BK, tim ketertiban, dan staf kesiswaan.
+            Daftar dewan guru, pembina ekstrakurikuler, konselor BK, wali kelas, dan staf tata usaha (TU).
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <ExportActions
-            filename="daftar_guru_pembina"
-            title="Daftar Guru Pembina Kesiswaan"
+            filename="daftar_guru_dan_staf_tu"
+            title="Daftar Guru & Staf TU"
             data={filteredAndSortedTeachers}
             headers={[
               { header: 'Nama Guru', key: 'fullName' },
@@ -776,16 +781,6 @@ export const TeachersPage: React.FC = () => {
 
               {isWakaOrAdmin && teachers.length > 0 && (
                 <>
-                  <button
-                    type="button"
-                    onClick={handleQuickSyncAllTeacherAccounts}
-                    disabled={isSyncingAccounts}
-                    className="px-3.5 py-2 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-300 dark:border-blue-700/80 hover:border-blue-400 text-blue-900 dark:text-blue-200 text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all disabled:opacity-50"
-                    title="Fase 3: Sinkronkan seluruh akun dewan guru ke cPanel & Firebase Auth secara serentak"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 text-blue-600 dark:text-blue-400 ${isSyncingAccounts ? 'animate-spin' : ''}`} />
-                    <span>{isSyncingAccounts ? 'Menyinkronkan...' : 'Sinkron Akun Login'}</span>
-                  </button>
 
                   <button
                     type="button"
@@ -815,7 +810,7 @@ export const TeachersPage: React.FC = () => {
                 className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/20 flex items-center gap-2 transition-all hover:scale-105"
               >
                 <Plus className="w-4 h-4" />
-                <span>+ Tambah Guru / Pembina</span>
+                <span>+ Tambah Guru / Staf TU</span>
               </button>
             </>
           )}
@@ -872,7 +867,7 @@ export const TeachersPage: React.FC = () => {
           }`}
         >
           <Layers className="w-3.5 h-3.5" />
-          <span>Semua Guru & Pembina (1-6)</span>
+          <span>Semua Guru & Staf TU</span>
           <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${rolePillFilter === 'all' ? 'bg-indigo-800 text-indigo-100' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
             {roleCounts.all}
           </span>
@@ -960,6 +955,22 @@ export const TeachersPage: React.FC = () => {
 
         <button
           type="button"
+          onClick={() => setRolePillFilter('staf_tu')}
+          className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+            rolePillFilter === 'staf_tu'
+              ? 'bg-teal-600 text-white shadow-sm shadow-teal-600/30'
+              : 'bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-900/60'
+          }`}
+        >
+          <FileText className="w-3.5 h-3.5" />
+          <span>6. Staf TU</span>
+          <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${rolePillFilter === 'staf_tu' ? 'bg-teal-800 text-teal-100' : 'bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300'}`}>
+            {roleCounts.staf_tu}
+          </span>
+        </button>
+
+        <button
+          type="button"
           onClick={() => setRolePillFilter('dewan_guru')}
           className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
             rolePillFilter === 'dewan_guru'
@@ -968,7 +979,7 @@ export const TeachersPage: React.FC = () => {
           }`}
         >
           <Users className="w-3.5 h-3.5" />
-          <span>6. Guru & Staf</span>
+          <span>7. Guru Mapel</span>
           <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${rolePillFilter === 'dewan_guru' ? 'bg-slate-900 text-slate-100' : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'}`}>
             {roleCounts.dewan_guru}
           </span>
@@ -1029,7 +1040,7 @@ export const TeachersPage: React.FC = () => {
       <Modal
         isOpen={isFormOpen}
         onClose={() => setIsFormOpen(false)}
-        title={selectedTeacher ? 'EDIT DATA GURU & PEMBINA' : 'TAMBAH GURU & PEMBINA BARU'}
+        title={selectedTeacher ? 'EDIT DATA GURU & STAF TU' : 'TAMBAH GURU & STAF TU BARU'}
         subtitle="Data Pokok Kepegawaian & Penugasan Kesiswaan (Tersinkronisasi Otomatis ke CPanel)"
         maxWidth="2xl"
         footer={
@@ -1057,7 +1068,7 @@ export const TeachersPage: React.FC = () => {
               ) : (
                 <>
                   <Check className="w-4 h-4 stroke-[2.5]" />
-                  <span>{selectedTeacher ? 'Simpan Perubahan Guru' : 'Simpan & Daftarkan Guru'}</span>
+                  <span>{selectedTeacher ? 'Simpan Perubahan' : 'Simpan & Daftarkan'}</span>
                 </>
               )}
             </button>
@@ -1070,7 +1081,7 @@ export const TeachersPage: React.FC = () => {
             <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
               Pilih Hak Akses / Peran Akun *
             </label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
               {[
                 {
                   role: 'Guru BK',
@@ -1101,6 +1112,12 @@ export const TeachersPage: React.FC = () => {
                   title: 'Waka Kesiswaan',
                   subtitle: 'Pimpinan Madrasah',
                   color: 'text-blue-600 dark:text-blue-400'
+                },
+                {
+                  role: 'Staf Tata Usaha',
+                  title: 'Staf TU',
+                  subtitle: 'Administrasi & Surat',
+                  color: 'text-teal-600 dark:text-teal-400'
                 },
                 {
                   role: 'Guru Mata Pelajaran',
@@ -1210,7 +1227,7 @@ export const TeachersPage: React.FC = () => {
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                 <Users className="w-3.5 h-3.5 text-amber-600" />
-                Ekstrakurikuler Binaan Utama *
+                Ekstrakurikuler Binaan Utama {formData.role === 'Staf Tata Usaha' || formData.role === 'Guru Mata Pelajaran' ? '(Opsional)' : '*'}
               </label>
               <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
                 {formData.assignedExtracurriculars?.length ? `${formData.assignedExtracurriculars.length} Unit Dipilih` : 'Maks. Unit Binaan'}

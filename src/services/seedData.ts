@@ -33,7 +33,9 @@ import {
   CashAccount,
   CashTransaction,
   SchoolRuleArticle,
-  SchoolHandbookMeta
+  SchoolHandbookMeta,
+  SchoolLetter,
+  LetterNumberingConfig
 } from '../types';
 import { db } from './firebase';
 import { handleFirestoreError, OperationType, isPermissionError } from './firestoreErrors';
@@ -146,6 +148,17 @@ export const DEFAULT_SUPER_ADMIN: UserProfile = {
   status: 'Aktif'
 };
 
+export const DEFAULT_STAF_TU: UserProfile = {
+  uid: 'user_staf_tu',
+  email: 'tu@man2sbt.sch.id',
+  username: 'staf_tu',
+  displayName: 'Staf Administrasi & Persuratan TU',
+  role: 'staf_tu',
+  phone: '081234567890',
+  nip: '199205102022031002',
+  status: 'Aktif'
+};
+
 export const getDefaultOsimPassword = (codeOrRole: string): string => {
   // Only used for development environment fallback hints
   return '';
@@ -159,7 +172,8 @@ export const generateDefaultOsimAccounts = (_departments: OsimDepartment[] = DEF
 export const DEFAULT_OSIM_ACCOUNTS: UserProfile[] = [];
 
 export const DEMO_USERS: UserProfile[] = [
-  DEFAULT_SUPER_ADMIN
+  DEFAULT_SUPER_ADMIN,
+  DEFAULT_STAF_TU
 ];
 
 export const INITIAL_TEACHERS: Teacher[] = [];
@@ -225,6 +239,86 @@ export const INITIAL_AUDIT_LOGS: AuditLogItem[] = [];
 export const INITIAL_CASH_ACCOUNTS: CashAccount[] = [];
 export const INITIAL_CASH_TRANSACTIONS: CashTransaction[] = [];
 
+export const DEFAULT_LETTER_CONFIG: LetterNumberingConfig = {
+  id: 'default_config',
+  prefix: 'B',
+  schoolCode: 'Ma.26.06',
+  classificationCode: 'PP.00.6',
+  formatPattern: '{PREFIX}-{NO}/{KODE_SEKOLAH}/{KLASIFIKASI}/{BULAN}/{TAHUN}',
+  lastCounter: 102,
+  counterResetPeriod: 'tahunan',
+  lastResetYear: 2026,
+  lastResetMonth: 10,
+  updatedAt: '2026-08-01T08:00:00.000Z',
+  updatedBy: 'Staf Tata Usaha'
+};
+
+export const INITIAL_LETTERS: SchoolLetter[] = [
+  {
+    id: 'letter_init_01',
+    letterNumber: 'B-101/Ma.26.06/PP.00.6/08/2026',
+    letterType: 'surat_keluar',
+    category: 'dispensasi',
+    title: 'Surat Dispensasi Mengikuti Seleksi Kompetisi Sains Madrasah (KSM)',
+    subject: 'Dispensasi Siswa Mengikuti KSM Tingkat Kabupaten Seram Bagian Timur',
+    sender: 'MAN 2 Seram Bagian Timur',
+    recipient: 'Bapak/Ibu Guru Pengajar & Wali Kelas',
+    date: '2026-08-10',
+    description: 'Pemberian izin dispensasi meninggalkan kegiatan belajar mengajar di kelas untuk mengikuti pemusatan latihan dan lomba KSM.',
+    status: 'terbit_bernomor',
+    tuOfficerId: 'user_staf_tu',
+    tuOfficerName: 'Staf Administrasi & Persuratan TU',
+    numberedAt: '2026-08-10T09:15:00.000Z',
+    classificationCode: 'PP.00.6',
+    academicYear: '2026/2027',
+    createdAt: '2026-08-10T08:30:00.000Z',
+    updatedAt: '2026-08-10T09:15:00.000Z'
+  },
+  {
+    id: 'letter_init_02',
+    letterNumber: 'B-102/Ma.26.06/PP.01.1/08/2026',
+    letterType: 'surat_keluar',
+    category: 'keterangan_aktif',
+    title: 'Surat Keterangan Aktif Belajar Siswa',
+    subject: 'Keterangan Masih Aktif Mengikuti Pendidikan untuk Kelengkapan Beasiswa',
+    sender: 'MAN 2 Seram Bagian Timur',
+    recipient: 'Kepala Kantor Kementerian Agama Kab. SBT',
+    date: '2026-08-15',
+    description: 'Menerangkan bahwa siswa yang bersangkutan benar-benar terdaftar dan aktif belajar pada Tahun Ajaran 2026/2027.',
+    status: 'terbit_bernomor',
+    tuOfficerId: 'user_staf_tu',
+    tuOfficerName: 'Staf Administrasi & Persuratan TU',
+    numberedAt: '2026-08-15T10:00:00.000Z',
+    classificationCode: 'PP.01.1',
+    academicYear: '2026/2027',
+    createdAt: '2026-08-15T09:30:00.000Z',
+    updatedAt: '2026-08-15T10:00:00.000Z'
+  },
+  {
+    id: 'letter_init_03',
+    letterNumber: '088/Kk.26.06/PP.00/08/2026',
+    letterType: 'surat_masuk',
+    category: 'undangan',
+    title: 'Undangan Rapat Koordinasi Waka Kesiswaan & Pembina OSIM',
+    subject: 'Rakor Penguatan Pendidikan Karakter dan Pencegahan Bullying di Madrasah',
+    sender: 'Kantor Kementerian Agama Kabupaten Seram Bagian Timur',
+    recipient: 'Kepala MAN 2 Seram Bagian Timur (C.q. Waka Kesiswaan)',
+    date: '2026-08-18',
+    receivedDate: '2026-08-19',
+    description: 'Undangan menghadiri rapat kerja teknis bidang kesiswaan di Aula Kemenag Kab. SBT pada hari Senin, 24 Agustus 2026.',
+    status: 'diarsipkan',
+    tuOfficerId: 'user_staf_tu',
+    tuOfficerName: 'Staf Administrasi & Persuratan TU',
+    numberedAt: '2026-08-19T08:20:00.000Z',
+    classificationCode: 'HM.01',
+    academicYear: '2026/2027',
+    createdAt: '2026-08-19T08:20:00.000Z',
+    updatedAt: '2026-08-19T08:20:00.000Z'
+  }
+];
+
+export const INITIAL_LETTER_CONFIGS: LetterNumberingConfig[] = [DEFAULT_LETTER_CONFIG];
+
 // Helper to seed master structure to Firebase Firestore
 export async function seedAllFirebaseData(): Promise<{ success: boolean; message: string }> {
   try {
@@ -261,6 +355,12 @@ export async function seedAllFirebaseData(): Promise<{ success: boolean; message
     // Announcements
     for (const ann of INITIAL_ANNOUNCEMENTS) {
       allOperations.push({ collection: 'announcements', id: ann.id, data: ann });
+    }
+
+    // Letter Configs & Initial Letters
+    allOperations.push({ collection: 'letter_configs', id: DEFAULT_LETTER_CONFIG.id, data: DEFAULT_LETTER_CONFIG });
+    for (const ltr of INITIAL_LETTERS) {
+      allOperations.push({ collection: 'letters', id: ltr.id, data: ltr });
     }
 
     // Commit in chunks of 200
@@ -526,6 +626,8 @@ export async function uploadAllStateToFirebase(bundle: {
   handbookMeta?: any;
   announcements?: any[];
   auditLogs?: any[];
+  letters?: any[];
+  letterConfigs?: any[];
 }): Promise<{ success: boolean; message: string; count: number }> {
   try {
     const allOperations: Array<{ collection: string; id: string; data: any }> = [];
@@ -758,6 +860,18 @@ export async function uploadAllStateToFirebase(bundle: {
     if (Array.isArray(bundle.announcements)) {
       for (const ann of bundle.announcements) {
         if (ann && ann.id) allOperations.push({ collection: 'announcements', id: ann.id, data: ann });
+      }
+    }
+
+    // Letters & Letter Configs
+    if (Array.isArray(bundle.letters)) {
+      for (const ltr of bundle.letters) {
+        if (ltr && ltr.id) allOperations.push({ collection: 'letters', id: ltr.id, data: ltr });
+      }
+    }
+    if (Array.isArray(bundle.letterConfigs)) {
+      for (const lc of bundle.letterConfigs) {
+        if (lc && lc.id) allOperations.push({ collection: 'letter_configs', id: lc.id, data: lc });
       }
     }
 

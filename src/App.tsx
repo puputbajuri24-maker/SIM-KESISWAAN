@@ -19,6 +19,7 @@ import { ViolationsPage } from './pages/ViolationsPage';
 import { CounselingPage } from './pages/CounselingPage';
 import { AchievementsPage } from './pages/AchievementsPage';
 import { PermissionsPage } from './pages/PermissionsPage';
+import { LettersPage } from './pages/LettersPage';
 import { TeachersPage } from './pages/TeachersPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ProfileSettingsPage } from './pages/ProfileSettingsPage';
@@ -182,6 +183,7 @@ const VALID_TABS: NavTab[] = [
   'counseling',
   'achievements',
   'permissions',
+  'letters',
   'teachers',
   'cash',
   'announcements',
@@ -402,6 +404,8 @@ const MainContent: React.FC = () => {
         return <AchievementsPage />;
       case 'permissions':
         return <PermissionsPage />;
+      case 'letters':
+        return <LettersPage />;
       case 'teachers':
         return <TeachersPage />;
       case 'cash':

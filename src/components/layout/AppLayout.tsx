@@ -88,6 +88,7 @@ export type NavTab =
   | 'counseling'
   | 'achievements'
   | 'permissions'
+  | 'letters'
   | 'teachers'
   | 'cash'
   | 'announcements'
@@ -112,6 +113,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
     isWaka,
     isSuperAdmin,
     isGuruBK,
+    isStaffTU,
+    canManageLetters,
     isWaliKelas,
     isGuruMapel,
     isPembinaOsim,
@@ -379,7 +382,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
           items: [
             { id: 'announcements', label: 'Pusat Pengumuman', icon: Megaphone, count: unreadAnnouncements.length ? `${unreadAnnouncements.length}` : undefined },
             { id: 'students', label: 'Data Siswa', icon: Users },
-            { id: 'teachers', label: 'Guru & Pembina', icon: UserCog },
+            { id: 'teachers', label: 'Guru & Staf TU', icon: UserCog },
             { id: 'osim', label: 'Pengurus & Proker OSIM', icon: Crown, tag: 'OSIM' },
             { id: 'extracurriculars', label: 'Ekstrakurikuler', icon: Compass },
             { id: 'schedules', label: 'Jadwal & Kalender', icon: Calendar }
@@ -401,7 +404,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
             { id: 'violations', label: 'Pelanggaran & Disiplin', icon: ShieldAlert, alert: true },
             { id: 'counseling', label: 'Bimbingan Konseling (BK)', icon: HeartHandshake },
             { id: 'achievements', label: 'Prestasi & Penghargaan', icon: Award, tag: 'BARU' },
-            { id: 'permissions', label: 'Dispensasi & Izin', icon: FileCheck }
+            { id: 'permissions', label: 'Dispensasi & Izin', icon: FileCheck },
+            { id: 'letters', label: 'Persuratan & TU', icon: Mail, tag: 'TU' }
           ]
         },
         {
@@ -426,7 +430,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
           items: [
             { id: 'announcements', label: 'Pusat Pengumuman', icon: Megaphone, count: unreadAnnouncements.length ? `${unreadAnnouncements.length}` : undefined },
             { id: 'students', label: 'Data Siswa', icon: Users },
-            { id: 'teachers', label: 'Guru & Pembina', icon: UserCog },
+            { id: 'teachers', label: 'Guru & Staf TU', icon: UserCog },
             { id: 'osim', label: 'Pengurus & Proker OSIM', icon: Crown, tag: 'OSIM' },
             { id: 'extracurriculars', label: 'Ekstrakurikuler', icon: Compass },
             { id: 'schedules', label: 'Jadwal & Kalender', icon: Calendar }
@@ -448,7 +452,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
             { id: 'violations', label: 'Pelanggaran & Disiplin', icon: ShieldAlert, alert: true },
             { id: 'counseling', label: 'Bimbingan Konseling (BK)', icon: HeartHandshake },
             { id: 'achievements', label: 'Prestasi & Penghargaan', icon: Award },
-            { id: 'permissions', label: 'Dispensasi & Izin', icon: FileCheck }
+            { id: 'permissions', label: 'Dispensasi & Izin', icon: FileCheck },
+            { id: 'letters', label: 'Persuratan & TU', icon: Mail, tag: 'TU' }
           ]
         },
         {
@@ -456,6 +461,31 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
           items: [
             { id: 'settings', label: 'Konfigurasi Sistem', icon: Settings },
             { id: 'profile', label: 'Pengaturan Profil Saya', icon: UserCog }
+          ]
+        }
+      ]
+    : isStaffTU
+    ? [
+        {
+          title: 'PORTAL TATA USAHA',
+          items: [
+            { id: 'dashboard', label: 'Command Center TU', icon: LayoutDashboard, tag: 'TU' },
+            { id: 'letters', label: 'Administrasi Persuratan', icon: Mail, tag: 'UTAMA' }
+          ]
+        },
+        {
+          title: 'LAYANAN SATU PINTU',
+          items: [
+            { id: 'permissions', label: 'Dispensasi & Izin Santri', icon: FileCheck },
+            { id: 'students', label: 'Data Induk Siswa', icon: Users },
+            { id: 'announcements', label: 'Pusat Pengumuman', icon: Megaphone, count: unreadAnnouncements.length ? `${unreadAnnouncements.length}` : undefined },
+            { id: 'reports', label: 'Rekapitulasi Laporan', icon: FileText }
+          ]
+        },
+        {
+          title: 'PENGATURAN',
+          items: [
+            { id: 'profile', label: 'Profil Petugas TU', icon: UserCog }
           ]
         }
       ]
@@ -475,7 +505,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({ activeTab, setActiveTab, c
             { id: 'rules', label: 'Buku Tata Tertib Siswa', icon: BookOpenCheck, tag: 'TATIB' },
             { id: 'violations', label: 'Pelanggaran & Disiplin', icon: ShieldAlert, alert: true },
             { id: 'students', label: 'Data & Riwayat Siswa', icon: Users },
-            { id: 'permissions', label: 'Dispensasi & Izin', icon: FileCheck }
+            { id: 'permissions', label: 'Dispensasi & Izin', icon: FileCheck },
+            { id: 'letters', label: 'Draf Surat & Panggilan', icon: Mail, tag: 'TU' }
           ]
         },
         ...(isAlsoPembinaEkskul ? [

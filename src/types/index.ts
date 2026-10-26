@@ -7,7 +7,8 @@ export type CanonicalUserRole =
   | 'anggota_osim'
   | 'siswa'
   | 'wali_kelas'
-  | 'guru';
+  | 'guru'
+  | 'staf_tu';
 
 export type AuthBootstrapState = 
   | 'AUTH_LOADING'
@@ -32,7 +33,9 @@ export type LegacyUserRole =
   | 'student'
   | 'teacher'
   | 'guru_mapel'
-  | 'homeroom_teacher';
+  | 'homeroom_teacher'
+  | 'tu'
+  | 'staf_tata_usaha';
 
 export type UserRole = CanonicalUserRole | LegacyUserRole;
 
@@ -95,6 +98,7 @@ export interface UserProfile {
   photoURL?: string;
   nip?: string;
   counselorSpecialization?: string; // e.g. "Bimbingan Karir & Psikologi Remaja"
+  teacherId?: string; // Explicit relational link to Teacher document ID
   isCashManager?: boolean; // Delegasi Hak Kelola Kas / Bendahara Amanah
   cashFundScopes?: string[]; // Daftar ID akun kas yang diamanahkan, e.g. ['all'] or ['kas_utama_kesiswaan', 'kas_bk', 'kas_osim']
   cashManagerTitle?: string; // Jabatan amanah kas, e.g. "Bendahara Kesiswaan", "Bendahara OSIM", "Bendahara BK"
@@ -1226,5 +1230,78 @@ export interface SchoolHandbookMeta {
   issuedDate?: string; // Tanggal Cetak / Penetapan
   lastUpdated?: string;
 }
+
+// =============================================================================
+// ADMINISTRASI PERSURATAN & TATA USAHA (TU) - SATU PINTU
+// =============================================================================
+export type SchoolLetterType = 'surat_masuk' | 'surat_keluar';
+
+export type SchoolLetterCategory = 
+  | 'dispensasi'
+  | 'panggilan_ortu'
+  | 'surat_tugas'
+  | 'keterangan_aktif'
+  | 'mutasi'
+  | 'undangan'
+  | 'rekomendasi'
+  | 'lainnya';
+
+export type SchoolLetterStatus = 
+  | 'draf_menunggu_nomor'  // Draf diajukan oleh Guru / BK / Waka
+  | 'terbit_bernomor'       // Resmi bernomor dari Staf TU
+  | 'diarsipkan'           // Selesai & tersimpan dalam buku kendali
+  | 'ditolak';             // Ditolak / perlu revisi TU
+
+export interface SchoolLetter {
+  id: string;
+  letterNumber: string; // Nomor resmi TU (misal: "B-102/MA.01/PP.00.6/10/2026"), kosong jika masih draf
+  letterType: SchoolLetterType;
+  category: SchoolLetterCategory;
+  title: string; // Perihal / judul surat
+  subject?: string; // Alias perihal
+  sender: string; // Pengirim (instansi luar / pihak madrasah / pemohon)
+  recipient: string; // Penerima / tujuan surat (orang tua / instansi luar / siswa)
+  date: string; // Tanggal surat (YYYY-MM-DD)
+  receivedDate?: string; // Tanggal diterima (khusus surat masuk)
+  // Relasional Siswa (jika surat menyangkut data siswa/dispensasi/panggilan)
+  studentId?: string;
+  studentID?: string;
+  studentName?: string;
+  studentClass?: string;
+  studentNis?: string;
+  // Konten & Dokumen
+  description?: string;
+  contentBody?: string;
+  attachmentUrl?: string; // Scan surat masuk / lampiran
+  attachmentName?: string;
+  status: SchoolLetterStatus;
+  // Validasi & Penerbitan oleh TU
+  tuOfficerId?: string;
+  tuOfficerName?: string;
+  numberedAt?: string;
+  classificationCode?: string; // Kode klasifikasi dinas (misal: PP.00.6, KP.01.1, dll)
+  academicYear?: string;
+  notes?: string;
+  createdBy?: string;
+  createdById?: string;
+  isDeleted?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LetterNumberingConfig {
+  id: string;
+  prefix?: string; // e.g. "B"
+  schoolCode: string; // e.g. "MA.01" atau "MAN.2.SBT"
+  classificationCode: string; // e.g. "PP.00.6" (Kesiswaan)
+  formatPattern: string; // e.g. "{NO}/{KODE_SEKOLAH}/{KLASIFIKASI}/{BULAN_ROMAWI}/{TAHUN}"
+  lastCounter: number;
+  counterResetPeriod: 'tahunan' | 'bulanan';
+  lastResetYear: number;
+  lastResetMonth: number;
+  updatedAt: string;
+  updatedBy?: string;
+}
+
 
 

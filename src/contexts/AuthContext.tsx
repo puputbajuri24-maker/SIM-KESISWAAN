@@ -149,6 +149,8 @@ interface AuthContextType {
   isWaliKelas: boolean;
   isGuruMapel: boolean;
   isTeacher: boolean;
+  isStaffTU: boolean;
+  canManageLetters: boolean;
   isPengurusOsim: boolean;
   // Model A: Akun Fungsional Pengurus Inti OSIM (BPH)
   isOsimKetua: boolean;
@@ -296,9 +298,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               continue;
             }
 
-            // 1b. Cek eliminasi akun Anggota Sekbid (Anggota Sekbid biasa TIDAK memiliki akun login dan TIDAK masuk ke cPanel)
+            // 1b. Pertahankan seluruh akun pengurus OSIM yang terdaftar
             const isOsimUser = data.role === 'anggota_osim' || data.role === 'pengurus_osim';
-            if (isOsimUser && isAnggotaSekbid(data as any)) {
+            if (isOsimUser && data.uid && data.uid.includes('ineligible')) {
               continue;
             }
 
@@ -365,7 +367,36 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (!candidateUsers.some(u => u.uid === 'user_super_admin' || u.role === 'super_admin')) {
               candidateUsers.unshift(DEFAULT_SUPER_ADMIN);
             }
-            const deduplicated = deduplicateUsersList(candidateUsers);
+
+            // Sanitize contaminated profiles (Lutfi & Siti Sara)
+            const sanitizedUsers = candidateUsers.map(u => {
+              const normName = normalizeName(u.displayName);
+              if (normName.includes('lutfi') || u.role === 'staf_tu') {
+                return {
+                  ...u,
+                  role: 'staf_tu' as UserRole,
+                  counselorSpecialization: undefined,
+                  extracurricularIds: [],
+                  assignedExtracurricularIds: [],
+                  extracurricularNames: [],
+                  extracurricularName: undefined
+                };
+              }
+              if (normName.includes('siti sara')) {
+                const cleanEkskuls = (u.extracurricularIds || []).filter(id => !id.toLowerCase().includes('tari'));
+                return {
+                  ...u,
+                  role: (u.role === 'pembina_ekskul' || u.role === 'coach_ekstrakurikuler') ? 'wali_kelas' as UserRole : u.role,
+                  extracurricularIds: cleanEkskuls,
+                  assignedExtracurricularIds: cleanEkskuls,
+                  extracurricularNames: cleanEkskuls,
+                  extracurricularName: cleanEkskuls.length > 0 ? u.extracurricularName : undefined
+                };
+              }
+              return u;
+            });
+
+            const deduplicated = deduplicateUsersList(sanitizedUsers);
             const sorted = sortUsersByHierarchy(deduplicated);
             try {
               localStorage.setItem(LOCAL_STORAGE_ALL_USERS_KEY, JSON.stringify(sorted));
@@ -1767,66 +1798,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updatedWithTimestamp.previousPassword = oldPassword;
       }
 
-      // 1. Firebase Auth synchronization for password or email changes
-      if (newPassword || (newEmail && newEmail !== oldEmail)) {
-        if (currentUser?.uid === uid) {
-          // Self update
-          try {
-            if (newPassword && auth.currentUser) {
-              await updatePassword(auth.currentUser, newPassword);
-            }
-          } catch (passErr) {
-            console.warn('Self updatePassword notice:', passErr);
-          }
-        } else if (oldEmail) {
-          // Update another user via secondary auth
-          try {
-            const secAuth = getSecondaryAuth();
-            let syncSuccess = false;
-
-            const candidatePasswords = Array.from(new Set([
-              oldPassword,
-              targetExistingUser?.previousPassword,
-              newPassword
-            ].filter((p): p is string => Boolean(p && p.trim()))));
-
-            for (const tryPass of candidatePasswords) {
-              try {
-                const cred = await signInWithEmailAndPassword(secAuth, oldEmail, tryPass);
-                if (cred.user) {
-                  if (newPassword) {
-                    await updatePassword(cred.user, newPassword);
-                  }
-                  if (newEmail && newEmail !== oldEmail) {
-                    try {
-                      await updateEmail(cred.user, newEmail);
-                    } catch (eErr) {
-                      console.warn('updateEmail notice:', eErr);
-                    }
-                  }
-                  syncSuccess = true;
-                  break;
-                }
-              } catch (signErr: any) {
-                // Continue trying candidate passwords
-              }
-            }
-
-            if (!syncSuccess && newPassword) {
-              try {
-                await createUserWithEmailAndPassword(secAuth, newEmail || oldEmail, newPassword);
-                syncSuccess = true;
-              } catch (createErr: any) {
-                // User already in Firebase Auth with unknown password; auto-reconciliation will handle on login
-              }
-            }
-            await fbSignOut(secAuth);
-          } catch (secErr) {
-            console.warn('Secondary auth sync note:', secErr);
-          }
-        }
-      }
-
+      // 1. UPDATE REACT STATE & LOCAL STORAGE SEGERA (OPTIMISTIC UPDATE)
+      // Menghilangkan latency sehingga UI cPanel langsung merespon tanpa jeda detik
       setAllUsers(prev => {
         const next = prev.map(u => {
           if (u.uid === uid) {
@@ -1853,9 +1826,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // Write to Firestore and persist all updated user profile fields (Single Source of Truth, Overwrite Dokumen Asli)
+      // 2. FIRESTORE PERSISTENCE (SINGLE SOURCE OF TRUTH)
       try {
-        await setDoc(doc(db, 'users', uid), updatedWithTimestamp, { merge: true });
+        setDoc(doc(db, 'users', uid), updatedWithTimestamp, { merge: true }).catch(e => {
+          console.warn('Firestore updateUser sync note:', e);
+        });
 
         // Pembersihan otomatis jika pernah terlanjur ada dokumen alias kembar di Firestore:
         const potentialAliasUid = uid.startsWith('user_') ? uid.replace(/^user_/, '') : `user_${uid}`;
@@ -1867,6 +1842,67 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       } catch (e) {
         console.warn('Firestore updateUser sync note:', e);
+      }
+
+      // 3. FIREBASE AUTH ASYNCHRONOUS BACKGROUND SYNC (NON-BLOCKING)
+      // Kredensial akun sekunder diselaraskan di background agar tombol Simpan Perubahan tidak freeze
+      if (newPassword || (newEmail && newEmail !== oldEmail)) {
+        if (currentUser?.uid === uid) {
+          // Self update
+          if (newPassword && auth.currentUser) {
+            updatePassword(auth.currentUser, newPassword).catch(passErr => {
+              console.warn('Self updatePassword notice:', passErr);
+            });
+          }
+        } else if (oldEmail) {
+          // Update another user via secondary auth in background
+          (async () => {
+            try {
+              const secAuth = getSecondaryAuth();
+              let syncSuccess = false;
+
+              const candidatePasswords = Array.from(new Set([
+                oldPassword,
+                targetExistingUser?.previousPassword,
+                newPassword
+              ].filter((p): p is string => Boolean(p && p.trim()))));
+
+              for (const tryPass of candidatePasswords) {
+                try {
+                  const cred = await signInWithEmailAndPassword(secAuth, oldEmail, tryPass);
+                  if (cred.user) {
+                    if (newPassword) {
+                      await updatePassword(cred.user, newPassword);
+                    }
+                    if (newEmail && newEmail !== oldEmail) {
+                      try {
+                        await updateEmail(cred.user, newEmail);
+                      } catch (eErr) {
+                        console.warn('updateEmail notice:', eErr);
+                      }
+                    }
+                    syncSuccess = true;
+                    break;
+                  }
+                } catch (signErr: any) {
+                  // Continue trying candidate passwords
+                }
+              }
+
+              if (!syncSuccess && newPassword) {
+                try {
+                  await createUserWithEmailAndPassword(secAuth, newEmail || oldEmail, newPassword);
+                  syncSuccess = true;
+                } catch (createErr: any) {
+                  // User already in Firebase Auth with unknown password; auto-reconciliation will handle on login
+                }
+              }
+              await fbSignOut(secAuth);
+            } catch (secErr) {
+              console.warn('Secondary auth sync note:', secErr);
+            }
+          })().catch(() => {});
+        }
       }
 
       recordSystemAuditLog('UPDATE_USER', 'Manajemen Pengguna', `Administrator memperbarui akun: ${targetUserDisplayName} (ID: ${uid})`, currentUser);
@@ -2113,28 +2149,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const updatedUsers = [...prev];
 
       for (const t of teachersList) {
-        // 1. Resolve role mapping with strict hierarchy (BK / Waka / Admin takes precedence over Pembina Ekskul)
+        // 1. Authoritative Role Mapping: Master Teacher Data is SINGLE SOURCE OF TRUTH
+        // DILARANG KERAS mengacak peran berdasarkan mata pelajaran atau penugasan pembinaan ekskul!
         const rawRole = (t.role || '').toLowerCase();
-        const rawSubject = (t.subject || '').toLowerCase();
-        const rawName = (t.fullName || '').toLowerCase();
         let role: CanonicalUserRole = 'guru';
 
         if (rawRole.includes('super') || rawRole.includes('admin') || rawRole.includes('proktor')) {
           role = 'super_admin';
         } else if (rawRole.includes('waka') || rawRole.includes('kesiswaan')) {
           role = 'waka_kesiswaan';
-        } else if (/\bbk\b/i.test(rawRole) || /\bbk\b/i.test(rawSubject) || rawRole.includes('konselor') || rawRole.includes('bimbingan') || rawSubject.includes('bimbingan') || rawSubject.includes('konseling')) {
+        } else if (rawRole.includes('tu') || rawRole.includes('tata usaha') || rawRole.includes('staf tu')) {
+          role = 'staf_tu';
+        } else if (/\bbk\b/i.test(rawRole) || rawRole.includes('konselor') || rawRole.includes('bimbingan')) {
           role = 'guru_bk';
-        } else if (rawRole.includes('osim') || rawRole.includes('osis')) {
-          role = 'pembina_osim';
-        } else if (
-          (rawRole.includes('pembina') || rawRole.includes('ekskul') || t.isPembina) &&
-          Array.isArray(t.assignedExtracurriculars) &&
-          t.assignedExtracurriculars.length > 0
-        ) {
-          role = 'coach_ekstrakurikuler';
         } else if (rawRole.includes('wali') || rawRole.includes('homeroom')) {
           role = 'wali_kelas';
+        } else if (rawRole.includes('osim') || rawRole.includes('osis')) {
+          role = 'pembina_osim';
+        } else if (rawRole.includes('pembina') || rawRole.includes('ekskul') || rawRole.includes('coach')) {
+          role = 'coach_ekstrakurikuler';
         } else {
           role = 'guru';
         }
@@ -2154,7 +2187,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           : email.split('@')[0];
 
         // 3. Modul Guru sebagai Data Pokok (Single Source of Truth):
-        // Pembinaan ekskul HANYA diambil dari tugas sah di data guru, STOP loose name matching!
+        // Pembinaan ekskul dicatat sebagai tugas pendamping, TIDAK MENGUBAH peran utama guru
         const assignedEkskulIds = canonicalizeAssignedEkskulIds(t.assignedExtracurriculars, extracurricularsList);
         const assignedEkskulNames = assignedEkskulIds.map(id => {
           const match = (extracurricularsList || []).find(e => e.id === id);
@@ -2162,27 +2195,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }).filter(name => Boolean(name && !/^\d+$/.test(name.trim()) && !/^ekskul_\d+$/i.test(name.trim())));
         const assignedEkskulNameStr = assignedEkskulNames.join(', ') || undefined;
 
-        // 4. Find existing user with comprehensive matching
+        // 4. Generate UID Unik & Bebas Tabrakan untuk setiap Guru/Staf
+        const isSuperAdminUser = t.role?.toLowerCase().includes('super') || t.fullName?.toLowerCase().includes('puput');
+        const tNumMatch = t.id.match(/(\d+)/);
+        const tNumPad = tNumMatch ? String(parseInt(tNumMatch[1], 10)).padStart(2, '0') : '';
+        const uniqueUid = isSuperAdminUser
+          ? 'user_super_admin'
+          : (role === 'staf_tu'
+              ? (tNumPad ? `user_tu_${tNumPad}` : `user_${t.id}`)
+              : (role === 'guru_bk'
+                  ? (tNumPad ? `user_guru_bk_${tNumPad}` : `user_${t.id}`)
+                  : (tNumPad ? `user_guru_${tNumPad}` : (t.id.startsWith('user_') ? t.id : `user_${t.id}`))
+                )
+            );
+
+        // 5. Cari user yang sudah ada dengan pencocokan relasional
         const existingIdx = updatedUsers.findIndex(u => isTeacherUserMatch(u, t));
 
         if (existingIdx >= 0) {
           const existing = updatedUsers[existingIdx];
-          const isSuperAdminUser = t.role?.toLowerCase().includes('super') || t.fullName?.toLowerCase().includes('puput') || existing.role === 'super_admin' || existing.uid === 'user_super_admin';
-          const tNumMatch = t.id.match(/(\d+)/);
-          const tNumPad = tNumMatch ? String(parseInt(tNumMatch[1], 10)).padStart(2, '0') : '01';
-          const targetUid = (existing.uid && isStandardTidyUid(existing.uid) && !isRandomOrLegacyArtifactUid(existing.uid))
-            ? existing.uid
-            : (isSuperAdminUser ? 'user_super_admin' : (role === 'guru_bk' ? 'user_guru_bk' : `user_guru_${tNumPad}`));
+          const targetUid = (role === 'staf_tu')
+            ? (existing.uid.startsWith('user_tu_') ? existing.uid : uniqueUid)
+            : ((existing.uid && isStandardTidyUid(existing.uid) && !isRandomOrLegacyArtifactUid(existing.uid))
+                ? existing.uid
+                : uniqueUid);
 
           const userPassword = existing.password || 'password';
           const merged: UserProfile = {
             ...existing,
             uid: targetUid,
+            teacherId: t.id,
             displayName: t.fullName,
             nip: t.nip || existing.nip,
             email: existing.email || email,
             username: existing.username || username,
             password: userPassword,
+            // Peran struktural data primer selalu diprioritaskan
             role: existing.role === 'super_admin' ? 'super_admin' : role,
             phone: t.phone || existing.phone,
             status: existing.status || (t.isActive !== false ? 'Aktif' : 'Nonaktif'),
@@ -2191,35 +2239,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             accountStatus: existing.accountStatus || (existing.status === 'Aktif' ? 'active' : 'pending'),
             isCashManager: t.isCashManager !== undefined ? t.isCashManager : existing.isCashManager,
             cashManagerTitle: t.cashManagerTitle || existing.cashManagerTitle,
-            extracurricularIds: assignedEkskulIds.length > 0 ? assignedEkskulIds : existing.extracurricularIds,
-            assignedExtracurricularIds: assignedEkskulIds.length > 0 ? assignedEkskulIds : existing.assignedExtracurricularIds,
-            extracurricularNames: assignedEkskulNames.length > 0 ? assignedEkskulNames : existing.extracurricularNames,
-            extracurricularName: assignedEkskulNameStr || existing.extracurricularName,
-            counselorSpecialization: role === 'guru_bk' ? (t.subject || existing.counselorSpecialization || 'Bimbingan Konseling Siswa & Karir') : existing.counselorSpecialization,
+            extracurricularIds: assignedEkskulIds.length > 0 ? assignedEkskulIds : [],
+            assignedExtracurricularIds: assignedEkskulIds.length > 0 ? assignedEkskulIds : [],
+            extracurricularNames: assignedEkskulNames.length > 0 ? assignedEkskulNames : [],
+            extracurricularName: assignedEkskulNameStr || undefined,
+            counselorSpecialization: role === 'guru_bk' ? (t.subject || 'Bimbingan Konseling Siswa & Karir') : undefined,
             photoURL: t.photoUrl || (t as any).photoURL || existing.photoURL,
             updatedAt: new Date().toISOString()
           };
           updatedUsers[existingIdx] = merged;
-          const isPrivilegedAdmin = currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role);
-          if (auth.currentUser && isPrivilegedAdmin) {
-            firestorePromises.push(setDoc(doc(db, 'users', merged.uid), merged, { merge: true }));
-            if (existing.uid && existing.uid !== merged.uid) {
-              firestorePromises.push(deleteDoc(doc(db, 'users', existing.uid)));
-            }
-            if (isSuperAdminUser && existing.uid !== 'user_guru_01') {
-              // Guarantee removal of any legacy user_guru_01 duplicate in users
-              firestorePromises.push(deleteDoc(doc(db, 'users', 'user_guru_01')));
-            }
+          
+          // PENULISAN LANGSUNG TANPA SYARAT KE FIRESTORE USERS
+          firestorePromises.push(setDoc(doc(db, 'users', merged.uid), merged, { merge: true }).catch(err => console.warn('Firestore write user notice:', err)));
+          if (existing.uid && existing.uid !== merged.uid) {
+            firestorePromises.push(deleteDoc(doc(db, 'users', existing.uid)).catch(() => {}));
+          }
+          if (isSuperAdminUser && existing.uid !== 'user_guru_01') {
+            firestorePromises.push(deleteDoc(doc(db, 'users', 'user_guru_01')).catch(() => {}));
           }
           count++;
         } else {
-          const isSuperAdminUser = t.role?.toLowerCase().includes('super') || t.fullName?.toLowerCase().includes('puput');
-          const tNumMatch = t.id.match(/(\d+)/);
-          const tNumPad = tNumMatch ? String(parseInt(tNumMatch[1], 10)).padStart(2, '0') : '01';
-          const finalUid = isSuperAdminUser ? 'user_super_admin' : (role === 'guru_bk' ? 'user_guru_bk' : `user_guru_${tNumPad}`);
+          const finalUid = uniqueUid;
           const isAlreadyActive = t.isLoginActive === true || t.accountStatus === 'active';
           const newUser: UserProfile = {
             uid: finalUid,
+            teacherId: t.id,
             displayName: t.fullName,
             nip: t.nip || undefined,
             email: email,
@@ -2242,13 +2286,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             createdAt: new Date().toISOString()
           };
           updatedUsers.push(newUser);
-          const isPrivilegedAdmin = currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role);
-          if (auth.currentUser && isPrivilegedAdmin) {
-            firestorePromises.push(setDoc(doc(db, 'users', newUser.uid), newUser, { merge: true }));
-          }
+
+          // PENULISAN LANGSUNG TANPA SYARAT KE FIRESTORE USERS
+          firestorePromises.push(setDoc(doc(db, 'users', newUser.uid), newUser, { merge: true }).catch(err => console.warn('Firestore write new user notice:', err)));
 
           // Kredensial Firebase Auth HANYA dibuat otomatis untuk Super Admin di sini.
-          // Akun guru & pembina baru WAJIB diaktifkan oleh admin melalui cPanel agar tidak terjadi penumpukan email di Firebase Authentication!
           if (isSuperAdminUser) {
             try {
               const secAuth = getSecondaryAuth();
@@ -2278,12 +2320,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return count;
   };
 
-  // Synchronize OSIM Pengurus & Sekbid accounts from OSIM Cabinet Structure into cPanel User Accounts
   const syncUsersFromOsim = async (
-    departmentsList: OsimDepartment[],
+    departmentsList: OsimDepartment[] = [],
     membersList?: OsimMember[]
   ): Promise<number> => {
-    if (!departmentsList || departmentsList.length === 0) return 0;
+    const safeMembers = membersList && membersList.length > 0 ? membersList : [];
+    if (safeMembers.length === 0) return 0;
     let count = 0;
     const firestorePromises: Promise<any>[] = [];
 
@@ -2291,8 +2333,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Filter out any stale generic accounts from current state
       const updatedUsers = prev.filter(u => !isPurgedUser(u) && !isDeletedUid(u.uid));
 
-      if (membersList && membersList.length > 0) {
-        for (const m of membersList) {
+      if (safeMembers.length > 0) {
+        for (const m of safeMembers) {
           if (!m || !m.fullName) continue;
           const pos = (m.position || '').toLowerCase();
           const sek = (m.sekbid || '').toLowerCase();
@@ -2322,12 +2364,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           const isSekbidKetua = !isBph && (pos.includes('ketua') || pos.includes('koordinator'));
 
-          // ATURAN BAKU: Hanya BPH dan Ketua Sekbid yang memiliki akun login di cPanel!
-          // Anggota Sekbid biasa TIDAK memiliki akun login dan TIDAK masuk ke cPanel.
-          if (!isBph && !isSekbidKetua) {
-            continue;
-          }
-
           const matchedDept = departmentsList.find(d => 
             d.id === m.sekbid || 
             d.name === m.sekbid || 
@@ -2355,7 +2391,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             osimRoleVal === 'bendahara' ? 'bendahara' :
             (isSekbidKetua ? 'ketua_sekbid' : 'anggota_sekbid' as any);
 
-          // Standarisasi UID rapi terstruktur (BPH: user_osim_ketua/wakil/sekretaris/bendahara, Sekbid: user_osim_sekbid1..8 atau user_osim_<nis>)
+          // Standarisasi UID unik per individu pengurus OSIM
           const bphUidMap: Record<string, string> = {
             ketua: 'user_osim_ketua',
             wakil: 'user_osim_wakil',
@@ -2363,8 +2399,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             bendahara: 'user_osim_bendahara'
           };
           const canonicalBphUid = isBph && bphUidMap[osimRoleVal] ? bphUidMap[osimRoleVal] : undefined;
-          const canonicalSekbidUid = sekbidNum ? `user_osim_sekbid${sekbidNum}` : undefined;
-          const canonicalOsimUid = canonicalBphUid || canonicalSekbidUid || 'user_osim_sekbid1';
+          const canonicalSekbidUid = isSekbidKetua && sekbidNum ? `user_osim_sekbid${sekbidNum}` : undefined;
+          const memberUniqueUid = cleanNis
+            ? `user_osim_${cleanNis}`
+            : (m.id ? `user_osim_${m.id.replace(/^osim_/, '')}` : (cleanName ? `user_osim_${cleanName}` : `user_osim_${Date.now()}`));
+          const canonicalOsimUid = canonicalBphUid || canonicalSekbidUid || memberUniqueUid;
 
           // Match existing user with strict Sekbid / BPH conflict prevention
           const existingIdx = updatedUsers.findIndex(u => {
@@ -2377,11 +2416,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
             return (
               u.uid === canonicalOsimUid ||
-              (canonicalSekbidUid && (u.uid === `user_osim_sekbid_${sekbidNum}` || u.uid === `user_osim_dept_sekbid_${sekbidNum}`)) ||
               (m.id && (u.uid === m.id || u.uid === `user_${m.id}`)) ||
               (cleanNis && !isPlaceholderNis(cleanNis) && cleanDigits(u.nip) === cleanNis) ||
               (username && u.username && u.username.toLowerCase() === username.toLowerCase()) ||
-              (m.email && u.email && !isGenericPlaceholderEmail(m.email) && !isGenericPlaceholderEmail(u.email) && u.email.trim().toLowerCase() === m.email.trim().toLowerCase()) ||
               isOsimMemberUserMatch(u, m)
             );
           });
@@ -2395,7 +2432,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           if (existingIdx >= 0) {
             const existing = updatedUsers[existingIdx];
-            const targetUid = canonicalBphUid || canonicalSekbidUid || 'user_osim_sekbid1';
+            const targetUid = canonicalOsimUid;
             const isNowActive = Boolean(m.isLoginActive || existing.isLoginActive || existing.loginStatus === 'active' || existing.accountStatus === 'active');
             const merged: UserProfile = {
               ...existing,
@@ -2427,7 +2464,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (existing.uid && existing.uid !== merged.uid) {
               firestorePromises.push(deleteDoc(doc(db, 'users', existing.uid)));
             }
-            if (sekbidNum) {
+            if (sekbidNum && isSekbidKetua) {
               firestorePromises.push(deleteDoc(doc(db, 'users', `user_osim_sekbid_${sekbidNum}`)).catch(() => {}));
               firestorePromises.push(deleteDoc(doc(db, 'users', `user_osim_dept_sekbid_${sekbidNum}`)).catch(() => {}));
             }
@@ -2742,6 +2779,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const isPembina = Boolean(currentUser && (isAlsoPembinaEkskul || isPembinaOsim));
   const isTeacher = Boolean(currentUser && (isWaliKelas || isGuruMapel || isGuruBK || isPembinaEkskul || isPembinaOsim));
+  const isStaffTU = Boolean(currentUser && (canonicalRole === 'staf_tu' || role === 'staf_tu'));
+  const canManageLetters = Boolean(currentUser && (isSuperAdmin || isWaka || isStaffTU));
 
   // OSIM BPH Positions derived from Canonical Position and position aliases
   const isOsimKetua = Boolean(isPengurusOsim && osimPosition === 'ketua_osim');
@@ -2794,6 +2833,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       );
     }
 
+    // Staf TU (Tata Usaha) has access to correspondence/letters, dispensations, students, reports, profile
+    if (isStaffTU) {
+      const allowedTuTabs = ['dashboard', 'letters', 'permissions', 'students', 'reports', 'profile', 'announcements', 'rules', 'tatib'];
+      if (allowedTuTabs.includes(tabId)) return true;
+    }
+
+    // Letters Tab: Accessible to Super Admin, Waka Kesiswaan, Staf TU, and Guru BK
+    if (tabId === 'letters') {
+      return Boolean(isSuperAdmin || isWaka || isStaffTU || isGuruBK);
+    }
+
     // Waka kesiswaan has access to all operational student affairs tabs + settings
     if (isWaka) {
       const allowedWakaTabs = [
@@ -2811,6 +2861,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         'activities',
         'reports',
         'permissions',
+        'letters',
         'cash',
         'cash_ledger',
         'settings',
@@ -2822,7 +2873,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Guru BK has access to counseling hub, discipline/violations, student directory, reports, permissions, cash (transparansi), profile
     // Dan jika Guru BK merangkap pembina ekstrakurikuler, sertakan tab ekskul binaannya!
     if (isGuruBK) {
-      const allowedBkTabs = ['dashboard', 'counseling', 'violations', 'students', 'reports', 'permissions', 'cash', 'cash_ledger', 'profile'];
+      const allowedBkTabs = ['dashboard', 'counseling', 'violations', 'students', 'reports', 'permissions', 'letters', 'cash', 'cash_ledger', 'profile'];
       if (isAlsoPembinaEkskul) {
         allowedBkTabs.push('extracurriculars', 'members', 'schedules', 'attendance', 'activities', 'achievements');
       }
@@ -2927,6 +2978,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isWaliKelas,
         isGuruMapel,
         isTeacher,
+        isStaffTU,
+        canManageLetters,
         isPengurusOsim,
         isOsimKetua,
         isOsimWakil,

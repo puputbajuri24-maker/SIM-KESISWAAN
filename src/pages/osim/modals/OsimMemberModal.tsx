@@ -1,5 +1,5 @@
 import React from 'react';
-import { Check, Edit2, RotateCcw, Layers, Search, Crown, Key, Eye, EyeOff, GraduationCap, ShieldCheck, Mail } from 'lucide-react';
+import { Check, Edit2, RotateCcw, Layers, Search, Crown, Key, Eye, EyeOff, GraduationCap, ShieldCheck, Mail, Loader2 } from 'lucide-react';
 import { Modal } from '../../../components/common/Modal';
 import { Student, OsimMember, OsimSekbid } from '../../../types';
 
@@ -8,6 +8,7 @@ interface OsimMemberModalProps {
   onClose: () => void;
   selectedMember: OsimMember | null;
   onSaveMember: (e: React.FormEvent) => Promise<void>;
+  isSavingMember?: boolean;
   memberSelectionMode: 'db' | 'manual';
   setMemberSelectionMode: (mode: 'db' | 'manual') => void;
   isChangingSelectedStudent: boolean;
@@ -39,6 +40,7 @@ export const OsimMemberModal: React.FC<OsimMemberModalProps> = ({
   onClose,
   selectedMember,
   onSaveMember,
+  isSavingMember = false,
   memberSelectionMode,
   setMemberSelectionMode,
   isChangingSelectedStudent,
@@ -612,18 +614,32 @@ export const OsimMemberModal: React.FC<OsimMemberModalProps> = ({
           <div className="flex items-center gap-2 self-end sm:self-auto">
             <button
               type="button"
+              disabled={isSavingMember}
               onClick={onClose}
-              className="px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 text-xs hover:bg-zinc-700 transition"
+              className="px-3 py-1.5 rounded bg-zinc-800 text-zinc-300 text-xs hover:bg-zinc-700 disabled:opacity-50 transition"
             >
               Batal
             </button>
             <button
               type="submit"
-              disabled={!memberForm.fullName}
-              className="px-4 py-1.5 rounded bg-amber-600 hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold flex items-center gap-1.5 transition"
+              disabled={!memberForm.fullName || isSavingMember}
+              className={`px-4 py-1.5 rounded text-white text-xs font-semibold flex items-center gap-1.5 transition active:scale-95 shadow-md ${
+                isSavingMember
+                  ? 'bg-amber-600/70 opacity-70 cursor-wait shadow-none'
+                  : 'bg-amber-600 hover:bg-amber-500 shadow-amber-950/40 disabled:opacity-50 disabled:cursor-not-allowed'
+              }`}
             >
-              <Check className="w-3.5 h-3.5" />
-              Simpan Pengurus
+              {isSavingMember ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-white" />
+                  <span>Menyimpan Pengurus...</span>
+                </>
+              ) : (
+                <>
+                  <Check className="w-3.5 h-3.5" />
+                  <span>Simpan Pengurus</span>
+                </>
+              )}
             </button>
           </div>
         </div>

@@ -373,6 +373,7 @@ export const OsimPage: React.FC = () => {
   const [selectedPhotoPreview, setSelectedPhotoPreview] = useState<string | null>(null);
 
   const [isMemberModalOpen, setIsMemberModalOpen] = useState(false);
+  const [isSavingMember, setIsSavingMember] = useState(false);
   const [isMemberDetailOpen, setIsMemberDetailOpen] = useState(false);
   const [selectedMember, setSelectedMember] = useState<OsimMember | null>(null);
   const [isMemberDeleteOpen, setIsMemberDeleteOpen] = useState(false);
@@ -1302,14 +1303,15 @@ export const OsimPage: React.FC = () => {
   const handleSaveMember = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!canManageCabinetStructure) {
-      alert('Akses Dibatasi: Anda tidak memiliki wewenang untuk menambah atau mengubah pengurus kabinet.');
+      toast.error('Akses Dibatasi: Anda tidak memiliki wewenang untuk menambah atau mengubah pengurus kabinet.');
       return;
     }
     if (!memberForm.fullName || !memberForm.position) {
-      alert('Mohon isi nama lengkap dan posisi/jabatan pengurus.');
+      toast.warning('Mohon isi nama lengkap dan posisi/jabatan pengurus.');
       return;
     }
 
+    setIsSavingMember(true);
     try {
       const cleanUsername = memberLoginUsername.trim().toLowerCase();
       const posLower = (memberForm.position || '').toLowerCase();
@@ -1339,7 +1341,6 @@ export const OsimPage: React.FC = () => {
         username: effectiveUsername || undefined
       } as OsimMember;
 
-      let savedMemberId = selectedMember?.id;
       if (selectedMember) {
         await updateOsimMember(selectedMember.id, memberToSave);
       } else {
@@ -1353,37 +1354,38 @@ export const OsimPage: React.FC = () => {
           (extractSekbidNumber(d.name) !== null && extractSekbidNumber(d.name) === extractSekbidNumber(memberForm.sekbid))
         );
         if (matchedDept && matchedDept.coordinatorName !== memberForm.fullName) {
-          await updateOsimDepartment(matchedDept.id, {
+          updateOsimDepartment(matchedDept.id, {
             coordinatorName: memberForm.fullName
-          });
+          }).catch(err => console.warn('Dept coordinator update note:', err));
         }
       }
 
       // 2. Sinkronisasi Profil Pengurus OSIM ke cPanel Admin (Prinsip Satu Pintu):
       // Hanya BPH dan Ketua Sekbid yang disinkronkan ke cPanel untuk akun login.
-      // Anggota Sekbid biasa TIDAK memiliki akun login di cPanel.
+      // Dijalankan secara asinkron di latar belakang tanpa menghambat penutupan modal.
       if ((isBph || isSekbidKetua) && syncUsersFromOsim) {
-        try {
-          const updatedMembersList = selectedMember
-            ? osimMembers.map(m => m.id === selectedMember.id ? memberToSave : m)
-            : [...osimMembers, memberToSave];
-          await syncUsersFromOsim(osimDepartments, updatedMembersList);
-        } catch (e) {
-          console.warn('Note on syncUsersFromOsim:', e);
-        }
+        const updatedMembersList = selectedMember
+          ? osimMembers.map(m => m.id === selectedMember.id ? memberToSave : m)
+          : [...osimMembers, memberToSave];
+        syncUsersFromOsim(osimDepartments, updatedMembersList).catch(e => {
+          console.warn('Note on background syncUsersFromOsim:', e);
+        });
       }
 
+      // Tutup modal secara langsung (optimistic UI) dan berikan notifikasi toast sukses
+      setIsMemberModalOpen(false);
+      setSelectedMember(null);
+
       if (isBph || isSekbidKetua) {
-        alert(`Profil pimpinan OSIM "${memberToSave.fullName}" berhasil disimpan!\nStatus akun login cPanel: Siap diaktifkan oleh Admin di menu cPanel.`);
+        toast.success(`Profil pimpinan OSIM "${memberToSave.fullName}" berhasil disimpan & disinkronkan ke cPanel!`);
       } else {
-        alert(`Profil anggota OSIM "${memberToSave.fullName}" berhasil disimpan ke Struktur Kabinet!`);
+        toast.success(`Profil anggota OSIM "${memberToSave.fullName}" berhasil disimpan ke Struktur Kabinet!`);
       }
     } catch (err: any) {
       console.error('Error saving member:', err);
-      alert('Gagal menyimpan pengurus OSIM: ' + (err?.message || 'Terjadi kesalahan sistem'));
+      toast.error('Gagal menyimpan pengurus OSIM: ' + (err?.message || 'Terjadi kesalahan sistem'));
     } finally {
-      setIsMemberModalOpen(false);
-      setSelectedMember(null);
+      setIsSavingMember(false);
     }
   };
 
@@ -2835,6 +2837,7 @@ export const OsimPage: React.FC = () => {
         onClose={() => setIsMemberModalOpen(false)}
         selectedMember={selectedMember}
         onSaveMember={handleSaveMember}
+        isSavingMember={isSavingMember}
         memberSelectionMode={memberSelectionMode}
         setMemberSelectionMode={setMemberSelectionMode}
         isChangingSelectedStudent={isChangingSelectedStudent}

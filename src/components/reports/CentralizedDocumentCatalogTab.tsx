@@ -18,7 +18,8 @@ import {
   Info,
   Calendar,
   Building,
-  CheckCircle2
+  CheckCircle2,
+  Mail
 } from 'lucide-react';
 import {
   StudentViolation,
@@ -35,7 +36,8 @@ import {
   Extracurricular,
   Student,
   Teacher,
-  SchoolSetting
+  SchoolSetting,
+  SchoolLetter
 } from '../../types';
 import { UnifiedPrintDocumentData } from '../common/UnifiedPrintDocumentModal';
 
@@ -52,6 +54,7 @@ interface CentralizedDocumentCatalogTabProps {
   cashAccounts?: CashAccount[];
   osimPrograms?: OsimWorkProgram[];
   osimMeetings?: OsimMeeting[];
+  letters?: SchoolLetter[];
   extracurriculars: Extracurricular[];
   students: Student[];
   teachers: Teacher[];
@@ -74,6 +77,7 @@ export const CentralizedDocumentCatalogTab: React.FC<CentralizedDocumentCatalogT
   cashAccounts = [],
   osimPrograms = [],
   osimMeetings = [],
+  letters = [],
   extracurriculars,
   students,
   teachers,
@@ -629,6 +633,63 @@ export const CentralizedDocumentCatalogTab: React.FC<CentralizedDocumentCatalogT
     };
   };
 
+  // 10. Buku Agenda Surat Masuk & Surat Keluar Tata Usaha (Kemenag)
+  const generateLettersAgendaDocument = (): UnifiedPrintDocumentData => {
+    return {
+      documentId: 'doc-letters-agenda',
+      documentTitle: 'BUKU AGENDA SURAT MASUK & SURAT KELUAR TATA USAHA',
+      documentNumber: `B-001/Ma.26.06/PP.00/${new Date().getMonth() + 1}/${new Date().getFullYear()}`,
+      documentCategory: 'general',
+      paperOrientation: 'landscape',
+      recommendedSlots: 2,
+      customReporterRole: 'Staf Tata Usaha Madrasah',
+      content: (
+        <div>
+          <p className="text-center text-[11px] font-sans text-slate-700 mb-3">
+            Tahun Pelajaran: {activeAcademicYear} • Total {letters.length} Surat Dinas Terdaftar
+          </p>
+          <table className="w-full font-sans text-[10px] border-collapse border border-slate-400 mb-4">
+            <thead>
+              <tr className="bg-slate-100 text-slate-900">
+                <th className="border border-slate-400 p-1 text-center w-8">No</th>
+                <th className="border border-slate-400 p-1.5 text-left">Nomor Surat Resmi</th>
+                <th className="border border-slate-400 p-1 text-center">Jenis</th>
+                <th className="border border-slate-400 p-1.5 text-left">Perihal / Judul</th>
+                <th className="border border-slate-400 p-1.5 text-left">Pengirim / Penerima</th>
+                <th className="border border-slate-400 p-1 text-center">Tanggal</th>
+                <th className="border border-slate-400 p-1 text-center">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {letters.map((l, idx) => (
+                <tr key={l.id} className="border-b border-slate-300">
+                  <td className="border border-slate-300 p-1 text-center">{idx + 1}</td>
+                  <td className="border border-slate-300 p-1.5 font-mono font-bold text-slate-900">{l.letterNumber || '(Menunggu TU)'}</td>
+                  <td className="border border-slate-300 p-1 text-center font-bold">
+                    {l.letterType === 'surat_masuk' ? 'Surat Masuk' : 'Surat Keluar'}
+                  </td>
+                  <td className="border border-slate-300 p-1.5 font-medium">{l.title}</td>
+                  <td className="border border-slate-300 p-1.5">{l.letterType === 'surat_masuk' ? l.sender : l.recipient}</td>
+                  <td className="border border-slate-300 p-1 text-center font-mono">{l.date}</td>
+                  <td className="border border-slate-300 p-1 text-center font-semibold">
+                    {l.status === 'terbit_bernomor' ? 'Resmi Bernomor' : l.status === 'draf_menunggu_nomor' ? 'Menunggu TU' : l.status}
+                  </td>
+                </tr>
+              ))}
+              {letters.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="p-4 text-center text-slate-500 italic">
+                    Belum ada arsip surat masuk / surat keluar terdata.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )
+    };
+  };
+
   // Master Document Catalog List
   const documentCatalog = useMemo(() => {
     return [
@@ -739,6 +800,18 @@ export const CentralizedDocumentCatalogTab: React.FC<CentralizedDocumentCatalogT
         signers: '3 Penanda Tangan (Bendahara, Waka, Kepala Madrasah)',
         generator: generateCashLedgerDocument,
         badgeColor: 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 border-cyan-500/20'
+      },
+      {
+        id: 'letters_agenda',
+        code: 'AGENDA-TU',
+        title: 'Buku Agenda Persuratan Dinas & Penomoran Surat TU',
+        category: 'general',
+        categoryLabel: 'Administrasi & Persuratan TU',
+        description: 'Buku register induk surat masuk dan surat keluar dinas Kementerian Agama MAN 2 Seram Bagian Timur.',
+        paperFormat: 'Kertas A4 / F4 • Landscape',
+        signers: '2 Penanda Tangan (Staf Tata Usaha & Kepala Madrasah)',
+        generator: generateLettersAgendaDocument,
+        badgeColor: 'bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20'
       }
     ];
   }, [
@@ -752,6 +825,7 @@ export const CentralizedDocumentCatalogTab: React.FC<CentralizedDocumentCatalogT
     achievements,
     osimMeetings,
     cashTransactions,
+    letters,
     activeAcademicYear,
     schoolSetting,
     city,

@@ -62,7 +62,7 @@ import {
 } from '../utils/classResolver';
 
 export const StudentsPage: React.FC = () => {
-  const { isWakaOrAdmin } = useAuth();
+  const { isWakaOrAdmin, isStaffTU } = useAuth();
   const { toast } = useToast();
   const [isSavingStudent, setIsSavingStudent] = useState(false);
   const [isSavingHomeroom, setIsSavingHomeroom] = useState(false);
@@ -843,9 +843,9 @@ export const StudentsPage: React.FC = () => {
         );
       }
     },
-    {
+    ...(!isStaffTU ? [{
       header: 'Poin Disiplin / Prestasi',
-      cell: s => (
+      cell: (s: Student) => (
         <div className="flex items-center gap-2 text-xs">
           <span className={`px-2 py-0.5 rounded-lg font-bold ${
             (s.violationPoints || 0) > 0 ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300' : 'bg-slate-100 text-slate-500'
@@ -859,7 +859,7 @@ export const StudentsPage: React.FC = () => {
           </span>
         </div>
       )
-    },
+    }] : []),
     {
       header: 'Status',
       accessorKey: 'status',
@@ -878,20 +878,24 @@ export const StudentsPage: React.FC = () => {
           >
             <Eye className="w-4 h-4" />
           </button>
-          <button
-            onClick={e => handleOpenEdit(s, e)}
-            className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:hover:bg-amber-900 dark:text-amber-400 transition-colors"
-            title="Edit Data Siswa"
-          >
-            <Edit2 className="w-4 h-4" />
-          </button>
-          <button
-            onClick={e => handleOpenDelete(s, e)}
-            className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-400 transition-colors"
-            title="Hapus Siswa"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
+          {!isStaffTU && (
+            <>
+              <button
+                onClick={e => handleOpenEdit(s, e)}
+                className="p-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:hover:bg-amber-900 dark:text-amber-400 transition-colors"
+                title="Edit Data Siswa"
+              >
+                <Edit2 className="w-4 h-4" />
+              </button>
+              <button
+                onClick={e => handleOpenDelete(s, e)}
+                className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-400 transition-colors"
+                title="Hapus Siswa"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </>
+          )}
         </div>
       )
     }
@@ -932,8 +936,10 @@ export const StudentsPage: React.FC = () => {
               { header: 'Jurusan', key: 'major' },
               { header: 'No HP', key: 'phone' },
               { header: 'Orang Tua / Wali', key: 'parentName' },
-              { header: 'Poin Pelanggaran', key: 'violationPoints' },
-              { header: 'Poin Prestasi', key: 'achievementPoints' },
+              ...(!isStaffTU ? [
+                { header: 'Poin Pelanggaran', key: 'violationPoints' },
+                { header: 'Poin Prestasi', key: 'achievementPoints' }
+              ] : []),
               { header: 'Status', key: 'status' }
             ]}
           />
@@ -949,57 +955,65 @@ export const StudentsPage: React.FC = () => {
             </button>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setIsClassManageOpen(true)}
-            className="px-3.5 py-2 rounded-xl bg-purple-50 dark:bg-purple-950/50 border border-purple-300 dark:border-purple-800/80 hover:bg-purple-100 dark:hover:bg-purple-900/60 text-purple-800 dark:text-purple-200 text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors"
-            title="Kelola Master Rombel Kelas, Tingkat, Jurusan, dan Wali Kelas"
-          >
-            <Table className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-            <span>Kelola Rombel ({classes.length})</span>
-          </button>
+          {!isStaffTU ? (
+            <>
+              <button
+                type="button"
+                onClick={() => setIsClassManageOpen(true)}
+                className="px-3.5 py-2 rounded-xl bg-purple-50 dark:bg-purple-950/50 border border-purple-300 dark:border-purple-800/80 hover:bg-purple-100 dark:hover:bg-purple-900/60 text-purple-800 dark:text-purple-200 text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors"
+                title="Kelola Master Rombel Kelas, Tingkat, Jurusan, dan Wali Kelas"
+              >
+                <Table className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                <span>Kelola Rombel ({classes.length})</span>
+              </button>
 
-          {/* Dedicated Tab Button to Add / Set Homeroom Teacher */}
-          <button
-            type="button"
-            onClick={() => handleOpenAddHomeroom()}
-            className="px-3.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 dark:bg-amber-950/60 dark:hover:bg-amber-900 dark:text-amber-200 text-xs font-bold border border-amber-300 dark:border-amber-700/80 flex items-center gap-1.5 shadow-xs transition-colors"
-            title="Tambah atau Tetapkan Guru sebagai Wali Kelas Rombel"
-          >
-            <UserCheck className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-            <span>+ Tambah Wali Kelas</span>
-          </button>
+              {/* Dedicated Tab Button to Add / Set Homeroom Teacher */}
+              <button
+                type="button"
+                onClick={() => handleOpenAddHomeroom()}
+                className="px-3.5 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 dark:bg-amber-950/60 dark:hover:bg-amber-900 dark:text-amber-200 text-xs font-bold border border-amber-300 dark:border-amber-700/80 flex items-center gap-1.5 shadow-xs transition-colors"
+                title="Tambah atau Tetapkan Guru sebagai Wali Kelas Rombel"
+              >
+                <UserCheck className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                <span>+ Tambah Wali Kelas</span>
+              </button>
 
-          <button
-            onClick={() => {
-              handleResetImport();
-              setIsImportOpen(true);
-            }}
-            className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-2 shadow-xs transition-colors"
-          >
-            <Upload className="w-4 h-4 text-slate-500" />
-            <span>Import Excel/CSV</span>
-          </button>
+              <button
+                onClick={() => {
+                  handleResetImport();
+                  setIsImportOpen(true);
+                }}
+                className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold flex items-center gap-2 shadow-xs transition-colors"
+              >
+                <Upload className="w-4 h-4 text-slate-500" />
+                <span>Import Excel/CSV</span>
+              </button>
 
-          {isWakaOrAdmin && students.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setIsClearAllStudentsOpen(true)}
-              className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-300 font-bold text-xs border border-rose-200 dark:border-rose-800 transition-colors"
-              title="Kosongkan semua data siswa master untuk upload data fresh"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>Reset Siswa</span>
-            </button>
+              {isWakaOrAdmin && students.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setIsClearAllStudentsOpen(true)}
+                  className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-300 font-bold text-xs border border-rose-200 dark:border-rose-800 transition-colors"
+                  title="Kosongkan semua data siswa master untuk upload data fresh"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Reset Siswa</span>
+                </button>
+              )}
+
+              <button
+                onClick={handleOpenAdd}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/20 flex items-center gap-2 transition-all hover:scale-105"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Tambah Siswa</span>
+              </button>
+            </>
+          ) : (
+            <div className="px-3 py-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-800/80 text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center gap-1.5 shadow-2xs">
+              <span>🔒 Mode Lihat Terkunci (Staf TU)</span>
+            </div>
           )}
-
-          <button
-            onClick={handleOpenAdd}
-            className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/20 flex items-center gap-2 transition-all hover:scale-105"
-          >
-            <Plus className="w-4 h-4" />
-            <span>+ Tambah Siswa</span>
-          </button>
         </div>
       </div>
 
@@ -1445,32 +1459,36 @@ export const StudentsPage: React.FC = () => {
                 </span>
               )}
             </button>
-            <button
-              onClick={() => setDetailTab('prestasi')}
-              className={`px-3 py-2 rounded-t-xl transition-colors ${
-                detailTab === 'prestasi' ? 'bg-indigo-50 dark:bg-indigo-950 text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              Prestasi ({studentAchievements.length})
-            </button>
-            <button
-              onClick={() => setDetailTab('pelanggaran')}
-              className={`px-3 py-2 rounded-t-xl transition-colors flex items-center gap-1.5 ${
-                detailTab === 'pelanggaran' ? 'bg-indigo-50 dark:bg-indigo-950 text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              <Scale className="w-3.5 h-3.5" />
-              <span>Buku Kedisiplinan SK B-380</span>
-              {studentViolations.length > 0 && (
-                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
-                  studentTotalPoints >= 41 ? 'bg-rose-600 text-white' :
-                  studentTotalPoints >= 10 ? 'bg-amber-600 text-white' :
-                  'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
-                }`}>
-                  {studentTotalPoints} P
-                </span>
-              )}
-            </button>
+            {!isStaffTU && (
+              <>
+                <button
+                  onClick={() => setDetailTab('prestasi')}
+                  className={`px-3 py-2 rounded-t-xl transition-colors ${
+                    detailTab === 'prestasi' ? 'bg-indigo-50 dark:bg-indigo-950 text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  Prestasi ({studentAchievements.length})
+                </button>
+                <button
+                  onClick={() => setDetailTab('pelanggaran')}
+                  className={`px-3 py-2 rounded-t-xl transition-colors flex items-center gap-1.5 ${
+                    detailTab === 'pelanggaran' ? 'bg-indigo-50 dark:bg-indigo-950 text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <Scale className="w-3.5 h-3.5" />
+                  <span>Buku Kedisiplinan SK B-380</span>
+                  {studentViolations.length > 0 && (
+                    <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-bold ${
+                      studentTotalPoints >= 41 ? 'bg-rose-600 text-white' :
+                      studentTotalPoints >= 10 ? 'bg-amber-600 text-white' :
+                      'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200'
+                    }`}>
+                      {studentTotalPoints} P
+                    </span>
+                  )}
+                </button>
+              </>
+            )}
           </div>
 
           {/* Tab 1: Profile */}
@@ -1511,19 +1529,21 @@ export const StudentsPage: React.FC = () => {
                     Siswa berhak mendaftar dan aktif di lebih dari 1 ekstrakurikuler yang digemarinya.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setManageEkskulSelectedIds(
-                      studentMemberships.filter(m => m.status === 'Aktif').map(m => m.extracurricularId)
-                    );
-                    setIsManagingStudentEkskuls(!isManagingStudentEkskuls);
-                  }}
-                  className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center gap-1.5 transition shadow-2xs cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>{isManagingStudentEkskuls ? 'Tutup Pilihan Ekskul' : '+ Tambah / Kelola Ekskul'}</span>
-                </button>
+                {!isStaffTU && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setManageEkskulSelectedIds(
+                        studentMemberships.filter(m => m.status === 'Aktif').map(m => m.extracurricularId)
+                      );
+                      setIsManagingStudentEkskuls(!isManagingStudentEkskuls);
+                    }}
+                    className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center gap-1.5 transition shadow-2xs cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>{isManagingStudentEkskuls ? 'Tutup Pilihan Ekskul' : '+ Tambah / Kelola Ekskul'}</span>
+                  </button>
+                )}
               </div>
 
               {/* Multi-selection picker for extracurriculars */}
@@ -1655,21 +1675,25 @@ export const StudentsPage: React.FC = () => {
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <StatusBadge status={m.status} />
-                        <button
-                          type="button"
-                          onClick={() => updateMemberStatus(m.id, m.status === 'Aktif' ? 'Nonaktif' : 'Aktif')}
-                          className="px-2 py-1 rounded-lg border text-[11px] font-medium border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition cursor-pointer"
-                        >
-                          {m.status === 'Aktif' ? 'Nonaktifkan' : 'Aktifkan'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => removeMember(m.id)}
-                          className="p-1 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer"
-                          title="Hapus dari Ekskul Ini"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {!isStaffTU && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => updateMemberStatus(m.id, m.status === 'Aktif' ? 'Nonaktif' : 'Aktif')}
+                              className="px-2 py-1 rounded-lg border text-[11px] font-medium border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition cursor-pointer"
+                            >
+                              {m.status === 'Aktif' ? 'Nonaktifkan' : 'Aktifkan'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeMember(m.id)}
+                              className="p-1 rounded-lg text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer"
+                              title="Hapus dari Ekskul Ini"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -1728,20 +1752,22 @@ export const StudentsPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-amber-200/60 dark:border-amber-900/40">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        if (window.confirm(`Lepaskan ${studentOsimMembership.fullName} dari kepengurusan OSIM?`)) {
-                          await deleteOsimMember(studentOsimMembership.id);
-                        }
-                      }}
-                      className="px-3 py-1.5 rounded-lg text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Lepas dari OSIM</span>
-                    </button>
-                  </div>
+                  {!isStaffTU && (
+                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-amber-200/60 dark:border-amber-900/40">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (window.confirm(`Lepaskan ${studentOsimMembership.fullName} dari kepengurusan OSIM?`)) {
+                            await deleteOsimMember(studentOsimMembership.id);
+                          }
+                        }}
+                        className="px-3 py-1.5 rounded-lg text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-xs font-semibold flex items-center gap-1 transition cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Lepas dari OSIM</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -1754,14 +1780,16 @@ export const StudentsPage: React.FC = () => {
                       <p className="text-[11px] text-slate-400 mt-1 max-w-sm mx-auto">
                         Anda dapat menetapkan siswa ini sebagai BPH atau Koordinator/Anggota Sekbid OSIM madrasah.
                       </p>
-                      <button
-                        type="button"
-                        onClick={() => setIsAddingStudentToOsim(true)}
-                        className="mt-4 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs inline-flex items-center gap-1.5 transition shadow-md shadow-amber-600/20 cursor-pointer"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span>+ Tetapkan Sebagai Pengurus OSIM</span>
-                      </button>
+                      {!isStaffTU && (
+                        <button
+                          type="button"
+                          onClick={() => setIsAddingStudentToOsim(true)}
+                          className="mt-4 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs inline-flex items-center gap-1.5 transition shadow-md shadow-amber-600/20 cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>+ Tetapkan Sebagai Pengurus OSIM</span>
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <div className="p-4 rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50/40 dark:bg-amber-950/20 space-y-3">
@@ -1861,7 +1889,7 @@ export const StudentsPage: React.FC = () => {
           )}
 
           {/* Tab 3: Prestasi */}
-          {detailTab === 'prestasi' && (
+          {detailTab === 'prestasi' && !isStaffTU && (
             <div className="space-y-3 pt-2">
               {studentAchievements.length === 0 ? (
                 <p className="text-xs text-slate-400 py-6 text-center">Belum ada catatan prestasi terverifikasi.</p>
@@ -1881,7 +1909,7 @@ export const StudentsPage: React.FC = () => {
           )}
 
           {/* Tab 4: Buku Kedisiplinan & SK B-380 */}
-          {detailTab === 'pelanggaran' && (
+          {detailTab === 'pelanggaran' && !isStaffTU && (
             <div className="space-y-4 pt-2">
               {/* Disciplinary Summary Card */}
               <div className="p-4 rounded-2xl bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 text-white shadow-sm">

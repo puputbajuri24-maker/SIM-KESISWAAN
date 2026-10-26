@@ -62,6 +62,7 @@ export const ReportsPage: React.FC = () => {
     cashAccounts,
     osimPrograms,
     osimMeetings,
+    letters = [],
     schoolSetting,
     activeAcademicYear,
     addActivityReport,
@@ -983,6 +984,7 @@ export const ReportsPage: React.FC = () => {
           cashAccounts={cashAccounts}
           osimPrograms={osimPrograms}
           osimMeetings={osimMeetings}
+          letters={letters}
           extracurriculars={extracurriculars}
           students={students}
           teachers={teachers}

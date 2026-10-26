@@ -52,8 +52,8 @@ export interface Tahap5ScenarioResult {
 export interface CPanelBackupRestoreTabProps {
   teachers: Teacher[];
   allUsers: UserProfile[];
-  unregisteredTeachers: Teacher[];
-  handleSyncFromTeachers: () => void;
+  unregisteredTeachers?: Teacher[];
+  handleSyncFromTeachers?: () => void;
   isSyncingAll: boolean;
   showToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
   isClearingData: boolean;
@@ -2192,49 +2192,6 @@ export const CPanelBackupRestoreTab: React.FC<CPanelBackupRestoreTabProps> = ({
       {/* TRADITIONAL BACKUP, RESTORE & CLOUD SYNC */}
       {(activeSectionView === 'backup' || activeSectionView === 'all') && (
       <>
-      {/* Dewan Guru to cPanel Two-Way Sync Card */}
-      <div className="bg-[#151518] border border-[#27272a] rounded-xl p-5 space-y-4 col-span-1 md:col-span-2">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center space-x-3">
-            <div className="p-2.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-              <Users className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="font-bold text-sm text-zinc-100">
-                Sinkronisasi Dua Arah: Dewan Guru & Pembina ↔ Akun Pengguna cPanel
-              </h3>
-              <p className="text-[11px] text-zinc-300">
-                Memastikan seluruh guru & pembina hasil import file Excel terdaftar sebagai user login cPanel, serta menyelaraskan tugas pembinaan ekskul & konselor BK.
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={handleSyncFromTeachers}
-            disabled={isSyncingAll}
-            className="px-4 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-xs font-bold text-white flex items-center space-x-2 transition-colors shrink-0 shadow-lg shadow-emerald-950/40 disabled:opacity-50"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isSyncingAll ? 'animate-spin' : ''}`} />
-            <span>{isSyncingAll ? 'MENYINKRONKAN...' : 'JALANKAN SINKRONISASI DATA GURU'}</span>
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-          <div className="p-3 bg-[#1a1a1e] rounded-lg border border-[#2a2a30]">
-            <span className="text-[10px] text-zinc-300 font-mono font-bold uppercase block">TOTAL DATA DI DEWAN GURU</span>
-            <span className="text-xl font-bold font-mono text-zinc-100">{teachers.length} Guru/Pembina</span>
-          </div>
-          <div className="p-3 bg-[#1a1a1e] rounded-lg border border-[#2a2a30]">
-            <span className="text-[10px] text-zinc-300 font-mono font-bold uppercase block">TOTAL AKUN PENGGUNA CPANEL</span>
-            <span className="text-xl font-bold font-mono text-emerald-400">{allUsers.length} Akun</span>
-          </div>
-          <div className="p-3 bg-[#1a1a1e] rounded-lg border border-[#2a2a30]">
-            <span className="text-[10px] text-zinc-300 font-mono font-bold uppercase block">STATUS KESELARASAN DATA</span>
-            <span className={`text-xs font-bold font-mono block mt-1 ${unregisteredTeachers.length === 0 ? 'text-emerald-400' : 'text-amber-400'}`}>
-              {unregisteredTeachers.length === 0 ? '✓ 100% Selaras & Tersinkron' : `⚠ ${unregisteredTeachers.length} Guru Belum Memiliki Akun`}
-            </span>
-          </div>
-        </div>
-      </div>
 
       <div className="bg-[#151518] border border-[#27272a] rounded-xl p-5 space-y-4">
         <div className="flex items-center space-x-3">

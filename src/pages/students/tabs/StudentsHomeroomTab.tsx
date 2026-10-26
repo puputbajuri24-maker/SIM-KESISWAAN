@@ -6,6 +6,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { SchoolClass, Teacher } from '../../../types';
+import { useAuth } from '../../../contexts/AuthContext';
 
 export interface StudentsHomeroomTabProps {
   homeroomStats: { totalClasses: number; filled: number; empty: number };
@@ -32,6 +33,7 @@ export const StudentsHomeroomTab: React.FC<StudentsHomeroomTabProps> = ({
   studentCountsByClassId,
   handleQuickAssignHomeroom,
 }) => {
+  const { isStaffTU } = useAuth();
   return (
     <div className="space-y-6" id="view-students-homeroom">
       {/* Summary Cards */}
@@ -89,14 +91,20 @@ export const StudentsHomeroomTab: React.FC<StudentsHomeroomTabProps> = ({
             placeholder="Cari rombel atau wali kelas..."
             className="px-3.5 py-1.5 text-xs rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 focus:outline-hidden focus:ring-2 focus:ring-amber-500/20 w-full sm:w-64"
           />
-          <button
-            type="button"
-            onClick={() => handleOpenAddHomeroom()}
-            className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-1.5 shrink-0 shadow-sm transition-all"
-          >
-            <Plus className="w-4 h-4" />
-            <span>+ Tetapkan Wali Kelas</span>
-          </button>
+          {!isStaffTU ? (
+            <button
+              type="button"
+              onClick={() => handleOpenAddHomeroom()}
+              className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-1.5 shrink-0 shadow-sm transition-all"
+            >
+              <Plus className="w-4 h-4" />
+              <span>+ Tetapkan Wali Kelas</span>
+            </button>
+          ) : (
+            <span className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 text-xs font-semibold shrink-0">
+              👁️ Lihat Wali Kelas
+            </span>
+          )}
         </div>
       </div>
 
@@ -159,31 +167,37 @@ export const StudentsHomeroomTab: React.FC<StudentsHomeroomTabProps> = ({
                 </div>
               </div>
 
-              <div className="mt-4 pt-3 space-y-2">
-                <div className="flex items-center gap-2">
-                  <select
-                    value={c.homeroomTeacher || ''}
-                    onChange={e => handleQuickAssignHomeroom(c.id, e.target.value)}
-                    className="w-full text-xs font-semibold px-2.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-amber-500/20"
-                  >
-                    <option value="">-- Pilih Cepat dari Dewan Guru --</option>
-                    {teachers.map(t => (
-                      <option key={t.id} value={t.fullName}>
-                        {t.fullName} ({t.role || 'Guru'})
-                      </option>
-                    ))}
-                  </select>
-                </div>
+              {!isStaffTU ? (
+                <div className="mt-4 pt-3 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={c.homeroomTeacher || ''}
+                      onChange={e => handleQuickAssignHomeroom(c.id, e.target.value)}
+                      className="w-full text-xs font-semibold px-2.5 py-1.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-amber-500/20"
+                    >
+                      <option value="">-- Pilih Cepat dari Dewan Guru --</option>
+                      {teachers.map(t => (
+                        <option key={t.id} value={t.fullName}>
+                          {t.fullName} ({t.role || 'Guru'})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-                <button
-                  type="button"
-                  onClick={() => handleOpenAddHomeroom(c.id)}
-                  className="w-full py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
-                >
-                  <Edit2 className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Atur / Tambah Guru Baru</span>
-                </button>
-              </div>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenAddHomeroom(c.id)}
+                    className="w-full py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
+                  >
+                    <Edit2 className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Atur / Tambah Guru Baru</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-3 pt-2 text-center border-t border-slate-100 dark:border-slate-800">
+                  <span className="text-[10px] text-slate-400 font-medium">Penetapan resmi oleh Waka Kesiswaan / Admin</span>
+                </div>
+              )}
             </div>
           );
         })}

@@ -204,6 +204,16 @@ service cloud.firestore {
       allow write: if isValidId(rewardId);
     }
 
+    match /letters/{letterId} {
+      allow read: if true;
+      allow write: if isValidId(letterId);
+    }
+
+    match /letter_configs/{configId} {
+      allow read: if true;
+      allow write: if isValidId(configId);
+    }
+
     match /notifications/{notificationId} {
       allow read: if true;
       allow write: if isValidId(notificationId);

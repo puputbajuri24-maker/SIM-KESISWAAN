@@ -16,6 +16,7 @@ import { DataTable, Column } from '../../../components/common/DataTable';
 import { StatusBadge } from '../../../components/common/Badge';
 import { ClassGridFilter } from '../../../components/common/ClassGridFilter';
 import { StudentSortOrder } from '../../../utils/classResolver';
+import { useAuth } from '../../../contexts/AuthContext';
 
 export interface StudentsListTabProps {
   classes: SchoolClass[];
@@ -72,6 +73,8 @@ export const StudentsListTab: React.FC<StudentsListTabProps> = ({
   handleOpenEdit,
   handleOpenDelete,
 }) => {
+  const { isStaffTU } = useAuth();
+
   return (
     <div className="space-y-4" id="view-students-list">
       {/* Class Selector Grid Filter */}
@@ -207,11 +210,11 @@ export const StudentsListTab: React.FC<StudentsListTabProps> = ({
           searchPlaceholder="Cari siswa berdasarkan NIS, Nama, atau Kelas..."
           searchableKeys={['nis', 'nisn', 'fullName', 'className', 'parentName']}
           onRowClick={handleOpenDetail}
-          selectable={true}
+          selectable={!isStaffTU}
           selectedIds={selectedStudentIds}
           onToggleSelect={handleToggleSelectStudent}
           onToggleSelectAll={handleToggleSelectAllStudents}
-          batchActions={(ids) => (
+          batchActions={!isStaffTU ? (ids) => (
             <button
               type="button"
               onClick={() => setIsBulkDeleteOpen(true)}
@@ -220,7 +223,7 @@ export const StudentsListTab: React.FC<StudentsListTabProps> = ({
               <Trash2 className="w-3.5 h-3.5" />
               <span>Hapus {ids.length} Siswa Terpilih</span>
             </button>
-          )}
+          ) : undefined}
           emptyTitle="Tidak Ada Siswa"
           emptySubtitle="Tidak ditemukan data siswa yang sesuai dengan filter pencarian."
         />
@@ -331,7 +334,7 @@ export const StudentsListTab: React.FC<StudentsListTabProps> = ({
                             <th className="px-4 py-2.5">NIS / NISN</th>
                             <th className="px-4 py-2.5">Nama Siswa</th>
                             <th className="px-4 py-2.5">Gender / No. HP</th>
-                            <th className="px-4 py-2.5">Poin Disiplin</th>
+                            {!isStaffTU && <th className="px-4 py-2.5">Poin Disiplin</th>}
                             <th className="px-4 py-2.5">Status</th>
                             <th className="px-4 py-2.5 text-right">Aksi</th>
                           </tr>
@@ -366,20 +369,22 @@ export const StudentsListTab: React.FC<StudentsListTabProps> = ({
                                 <span className="font-semibold">{st.gender === 'L' ? 'Laki-Laki' : 'Perempuan'}</span>
                                 {st.phone && <p className="text-[10px] text-slate-400">{st.phone}</p>}
                               </td>
-                              <td className="px-4 py-2.5">
-                                <div className="flex items-center gap-1.5">
-                                  <span className={`px-2 py-0.5 rounded-md font-bold text-[11px] ${
-                                    (st.violationPoints || 0) > 0 ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300' : 'bg-slate-100 text-slate-500'
-                                  }`}>
-                                    ⚠️ {st.violationPoints || 0}
-                                  </span>
-                                  <span className={`px-2 py-0.5 rounded-md font-bold text-[11px] ${
-                                    (st.achievementPoints || 0) > 0 ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300' : 'bg-slate-100 text-slate-500'
-                                  }`}>
-                                    🏆 {st.achievementPoints || 0}
-                                  </span>
-                                </div>
-                              </td>
+                              {!isStaffTU && (
+                                <td className="px-4 py-2.5">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className={`px-2 py-0.5 rounded-md font-bold text-[11px] ${
+                                      (st.violationPoints || 0) > 0 ? 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300' : 'bg-slate-100 text-slate-500'
+                                    }`}>
+                                      ⚠️ {st.violationPoints || 0}
+                                    </span>
+                                    <span className={`px-2 py-0.5 rounded-md font-bold text-[11px] ${
+                                      (st.achievementPoints || 0) > 0 ? 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300' : 'bg-slate-100 text-slate-500'
+                                    }`}>
+                                      🏆 {st.achievementPoints || 0}
+                                    </span>
+                                  </div>
+                                </td>
+                              )}
                               <td className="px-4 py-2.5">
                                 <StatusBadge status={st.status} />
                               </td>
@@ -392,20 +397,24 @@ export const StudentsListTab: React.FC<StudentsListTabProps> = ({
                                   >
                                     <Eye className="w-3.5 h-3.5" />
                                   </button>
-                                  <button
-                                    onClick={e => handleOpenEdit(st, e)}
-                                    className="p-1 rounded-md bg-amber-50 hover:bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:hover:bg-amber-900 dark:text-amber-400"
-                                    title="Edit"
-                                  >
-                                    <Edit2 className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button
-                                    onClick={e => handleOpenDelete(st, e)}
-                                    className="p-1 rounded-md bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-400"
-                                    title="Hapus"
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5" />
-                                  </button>
+                                  {!isStaffTU && (
+                                    <>
+                                      <button
+                                        onClick={e => handleOpenEdit(st, e)}
+                                        className="p-1 rounded-md bg-amber-50 hover:bg-amber-100 text-amber-600 dark:bg-amber-950/60 dark:hover:bg-amber-900 dark:text-amber-400"
+                                        title="Edit"
+                                      >
+                                        <Edit2 className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        onClick={e => handleOpenDelete(st, e)}
+                                        className="p-1 rounded-md bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:hover:bg-rose-900 dark:text-rose-400"
+                                        title="Hapus"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </>
+                                  )}
                                 </div>
                               </td>
                             </tr>

@@ -976,7 +976,6 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
   const filteredPasswordUsers = useMemo(() => {
     return allUsers.filter(u => {
       const isOsim = u.role === 'pengurus_osim' || u.role === 'anggota_osim';
-      if (isOsim && isAnggotaSekbid(u as any)) return false;
       const isBph = isOsim && (u.osimDepartmentCode === 'BPH' || u.osimRole === 'ketua' || u.osimRole === 'sekretaris' || u.osimRole === 'bendahara');
       const isSekbid = isOsim && !isBph;
       const isPembinaEkstra = u.role === 'pembina_ekstrakurikuler' || u.role === 'pembina_ekskul' || u.role === 'pembina_ekstra' || u.role === 'pembina';

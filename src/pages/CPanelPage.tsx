@@ -174,18 +174,24 @@ export const CPanelPage: React.FC = () => {
   const [ekskulSearchInModal, setEkskulSearchInModal] = useState('');
 
   // Quick Role Testing state & users groupings
-  const bkUsers = useMemo(() => allUsers.filter(u => u.role === 'guru_bk'), [allUsers]);
+  const bkUsers = useMemo(() => allUsers.filter(u => normalizeUserRole(u.role) === 'guru_bk'), [allUsers]);
   const pembinaEkskulUsers = useMemo(
-    () => allUsers.filter(u => u.role === 'coach_ekstrakurikuler' || u.role === 'pembina_ekskul' || u.role === 'pembina' || (u.role as string) === 'pembina_ekstrakurikuler'),
+    () => allUsers.filter(u => {
+      const norm = normalizeUserRole(u.role);
+      return norm === 'coach_ekstrakurikuler' || u.role === 'coach_ekstrakurikuler' || u.role === 'pembina_ekskul' || u.role === 'pembina' || (u.role as string) === 'pembina_ekstrakurikuler';
+    }),
     [allUsers]
   );
-  const pembinaOsimUsers = useMemo(() => allUsers.filter(u => u.role === 'pembina_osim'), [allUsers]);
+  const pembinaOsimUsers = useMemo(() => allUsers.filter(u => normalizeUserRole(u.role) === 'pembina_osim'), [allUsers]);
   const osimPengurusUsers = useMemo(
-    () => allUsers.filter(u => (u.role === 'anggota_osim' || u.role === 'pengurus_osim') && !isAnggotaSekbid(u as any)),
+    () => allUsers.filter(u => {
+      const norm = normalizeUserRole(u.role);
+      return norm === 'anggota_osim' || u.role === 'anggota_osim' || u.role === 'pengurus_osim';
+    }),
     [allUsers]
   );
-  const wakaUsers = useMemo(() => allUsers.filter(u => u.role === 'waka_kesiswaan' || (u.role as string) === 'waka'), [allUsers]);
-  const adminUsers = useMemo(() => allUsers.filter(u => u.role === 'super_admin'), [allUsers]);
+  const wakaUsers = useMemo(() => allUsers.filter(u => normalizeUserRole(u.role) === 'waka_kesiswaan'), [allUsers]);
+  const adminUsers = useMemo(() => allUsers.filter(u => normalizeUserRole(u.role) === 'super_admin'), [allUsers]);
 
   const [selectedBkUserId, setSelectedBkUserId] = useState<string>('');
   const [selectedPembinaUserId, setSelectedPembinaUserId] = useState<string>('');
@@ -602,11 +608,13 @@ Alamat Sistem : ${window.location.origin}
     const rawName = (teacher.fullName || '').toLowerCase();
     const isBK = rawRole.includes('bk') || rawRole.includes('bimbingan') || rawRole.includes('konselor') || rawSubject.includes('bk') || rawName.includes('bk');
     const isWaka = rawRole.includes('waka') || rawName.includes('waka');
+    const isTU = rawRole.includes('tu') || rawRole.includes('tata usaha') || rawRole.includes('staf tu');
     const isOsim = rawRole.includes('osim') || rawRole.includes('osis') || (teacher.extracurricularName && teacher.extracurricularName.toLowerCase().includes('osim'));
     const isWali = rawRole.includes('wali') || rawRole.includes('homeroom');
 
     if (isBK) role = 'guru_bk';
     else if (isWaka) role = 'waka_kesiswaan';
+    else if (isTU) role = 'staf_tu';
     else if (isOsim) role = 'pembina_osim';
     else if (isWali) role = 'wali_kelas';
     else if (teacher.isPembina || (teacher.assignedExtracurriculars && teacher.assignedExtracurriculars.length > 0)) role = 'pembina_ekskul';
@@ -1576,70 +1584,56 @@ Alamat Sistem : ${window.location.origin}
   }, [allUsers, printSlipTargetUser, printSlipRoleFilter]);
 
   const getRoleBadge = (userOrRole: UserRole | UserProfile) => {
-    if (typeof userOrRole === 'object' && userOrRole) {
-      const u = userOrRole;
-      if (u.role === 'wali_kelas' || (u.role as string) === 'homeroom_teacher') {
-        return { label: 'WALI KELAS', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' };
-      }
-      if (u.role === 'guru' || (u.role as string) === 'teacher' || (u.role as string) === 'guru_mapel') {
-        return { label: 'GURU MAPEL', color: 'bg-teal-500/10 text-teal-400 border-teal-500/30' };
-      }
-      const h = getUserHierarchyClassification(u);
-      switch (h.rank) {
-        case 1:
-          return { label: '1. PROKTOR / SUPER ADMIN', color: 'bg-red-500/10 text-red-400 border-red-500/30' };
-        case 2:
-          return { label: '2. WAKA KESISWAAN', color: 'bg-blue-500/10 text-blue-400 border-blue-500/30' };
-        case 3:
-          return { label: '3. GURU BK', color: 'bg-purple-500/10 text-purple-400 border-purple-500/30' };
-        case 4:
-          return { label: '4. PEMBINA OSIM', color: 'bg-amber-500/10 text-amber-400 border-amber-500/30' };
-        case 5:
-          return { label: '5. PEMBINA EKSKUL', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' };
-        case 6:
-          return { label: `6. ${h.categoryLabel.toUpperCase()}`, color: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30' };
-        case 7:
-          return { label: `7. ${h.categoryLabel.toUpperCase()}`, color: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30' };
-        default:
-          return { label: 'PENGGUNA', color: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/30' };
-      }
-    }
+    const rawRole: string | undefined = (typeof userOrRole === 'object' && userOrRole !== null)
+      ? (userOrRole as UserProfile).role
+      : (typeof userOrRole === 'string' ? (userOrRole as string) : undefined);
+    const role = normalizeUserRole(rawRole) || rawRole;
+    const u: UserProfile | null = (typeof userOrRole === 'object' && userOrRole !== null) ? (userOrRole as UserProfile) : null;
 
-    const role = userOrRole;
-    switch (role) {
-      case 'super_admin':
-        return { label: '1. PROKTOR / SUPER ADMIN', color: 'bg-red-500/10 text-red-400 border-red-500/30' };
-      case 'waka_kesiswaan':
-        return { label: '2. WAKA KESISWAAN', color: 'bg-blue-500/10 text-blue-400 border-blue-500/30' };
-      case 'guru_bk':
-        return { label: '3. GURU BK', color: 'bg-purple-500/10 text-purple-400 border-purple-500/30' };
-      case 'pembina_osim':
-        return { label: '4. PEMBINA OSIM', color: 'bg-amber-500/10 text-amber-400 border-amber-500/30' };
-      case 'coach_ekstrakurikuler':
-      case 'pembina_ekskul':
-      case 'pembina':
-        return { label: '5. PEMBINA EKSKUL', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' };
-      case 'wali_kelas':
-      case 'homeroom_teacher' as any:
-        return { label: 'WALI KELAS', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' };
-      case 'guru':
-      case 'teacher' as any:
-      case 'guru_mapel' as any:
-        return { label: 'GURU MAPEL', color: 'bg-teal-500/10 text-teal-400 border-teal-500/30' };
-      case 'anggota_osim':
-      case 'pengurus_osim':
-        return { label: '6-7. PENGURUS OSIM', color: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' };
-      default:
-        return { label: 'PENGGUNA', color: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/30' };
+    if (role === 'super_admin') {
+      return { label: '1. PROKTOR / SUPER ADMIN', color: 'bg-red-500/10 text-red-400 border-red-500/30' };
     }
+    if (role === 'waka_kesiswaan') {
+      return { label: '2. WAKA KESISWAAN', color: 'bg-blue-500/10 text-blue-400 border-blue-500/30' };
+    }
+    if (role === 'guru_bk') {
+      return { label: '3. GURU BK', color: 'bg-purple-500/10 text-purple-400 border-purple-500/30' };
+    }
+    if (role === 'staf_tu' || (role as string) === 'tu' || (role as string) === 'staf_tata_usaha' || (role as string) === 'tata_usaha') {
+      return { label: 'STAF TATA USAHA (TU)', color: 'bg-teal-500/10 text-teal-400 border-teal-500/30' };
+    }
+    if (role === 'pembina_osim') {
+      return { label: '4. PEMBINA OSIM', color: 'bg-amber-500/10 text-amber-400 border-amber-500/30' };
+    }
+    if (
+      role === 'coach_ekstrakurikuler' ||
+      role === 'pembina_ekskul' ||
+      role === 'pembina' ||
+      (role as string) === 'pembina_ekstrakurikuler'
+    ) {
+      return { label: '5. PEMBINA EKSKUL', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' };
+    }
+    if (role === 'wali_kelas' || (role as string) === 'homeroom_teacher') {
+      return { label: 'WALI KELAS', color: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' };
+    }
+    if (role === 'guru' || (role as string) === 'teacher' || (role as string) === 'guru_mapel') {
+      return { label: 'GURU MAPEL', color: 'bg-teal-500/10 text-teal-400 border-teal-500/30' };
+    }
+    if (role === 'anggota_osim' || role === 'pengurus_osim') {
+      if (u) {
+        const h = getUserHierarchyClassification(u);
+        if (h.rank === 6) {
+          return { label: `6. ${h.categoryLabel.toUpperCase()}`, color: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/30' };
+        }
+        return { label: `7. ${h.categoryLabel.toUpperCase()}`, color: 'bg-cyan-500/15 text-cyan-300 border-cyan-500/30' };
+      }
+      return { label: '6-7. PENGURUS OSIM', color: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30' };
+    }
+    return { label: 'PENGGUNA', color: 'bg-zinc-500/10 text-zinc-400 border-zinc-500/30' };
   };
 
   const filteredUsers = useMemo(() => {
     const rawFiltered = allUsers.filter(u => {
-      // Sesuai aturan: Anggota Sekbid biasa TIDAK ada di cPanel dan TIDAK punya akun login
-      if ((u.role === 'anggota_osim' || u.role === 'pengurus_osim') && isAnggotaSekbid(u as any)) {
-        return false;
-      }
 
       // Role Pill Filter
       if (rolePillFilter !== 'all') {
@@ -1727,9 +1721,10 @@ Alamat Sistem : ${window.location.origin}
       ).length,
       bph_osim: allUsers.filter(u => getUserHierarchyClassification(u).rank === 6).length,
       sekbid_osim: allUsers.filter(u => getUserHierarchyClassification(u).rank === 7).length,
-      pengurus_osim: allUsers.filter(u => (u.role === 'anggota_osim' || u.role === 'pengurus_osim') && !isAnggotaSekbid(u as any)).length,
+      pengurus_osim: allUsers.filter(u => u.role === 'anggota_osim' || u.role === 'pengurus_osim').length,
       wali_kelas: allUsers.filter(u => u.role === 'wali_kelas' || (u.role as string) === 'homeroom_teacher').length,
       guru: allUsers.filter(u => u.role === 'guru' || (u.role as string) === 'teacher' || (u.role as string) === 'guru_mapel').length,
+      staf_tu: allUsers.filter(u => u.role === 'staf_tu' || (u.role as string) === 'tu').length,
       cash_manager: allUsers.filter(u => u.isCashManager).length
     };
   }, [allUsers]);
@@ -1773,20 +1768,6 @@ Alamat Sistem : ${window.location.origin}
         </div>
 
         <div className="flex flex-wrap items-center gap-2 shrink-0">
-          <button
-            onClick={handleSyncFromTeachers}
-            disabled={isSyncingAll}
-            className="px-3 py-2 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-xs font-bold text-emerald-300 flex items-center space-x-2 transition-colors disabled:opacity-50 shadow-sm"
-            title="Tarik dan sinkronkan data dewan guru/pembina (termasuk hasil import Excel) ke daftar akun cPanel"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isSyncingAll ? 'animate-spin' : ''}`} />
-            <span>Tarik Data Guru/Pembina</span>
-            {unregisteredTeachers.length > 0 && (
-              <span className="px-1.5 py-0.5 bg-amber-500 text-black text-[10px] font-bold rounded-full ml-1">
-                {unregisteredTeachers.length}
-              </span>
-            )}
-          </button>
           <button
             onClick={handleSyncAllModules}
             disabled={isSyncingAll}
@@ -1994,9 +1975,6 @@ Alamat Sistem : ${window.location.origin}
       {activeSubTab === 'users' && (
         <CPanelUserTab
           handleOpenActivateModal={handleOpenActivateModal}
-          unregisteredTeachers={unregisteredTeachers}
-          handleSyncFromTeachers={handleSyncFromTeachers}
-          isSyncingAll={isSyncingAll}
           unregisteredOsimCount={unregisteredOsimCount}
           handleSyncFromOsim={handleSyncFromOsim}
           isSyncingOsim={isSyncingOsim}
@@ -2277,8 +2255,6 @@ Alamat Sistem : ${window.location.origin}
           initialSection={activeSubTab === 'fase8' ? 'fase8' : activeSubTab === 'fase7' ? 'fase7' : activeSubTab === 'tahap5' ? 'tahap5' : 'all'}
           teachers={teachers}
           allUsers={allUsers}
-          unregisteredTeachers={unregisteredTeachers}
-          handleSyncFromTeachers={handleSyncFromTeachers}
           isSyncingAll={isSyncingAll}
           showToast={showToast}
           isClearingData={isClearingData}
@@ -2886,7 +2862,7 @@ Alamat Sistem : ${window.location.origin}
           {/* QUICK ROLE PRESETS (PILLS) */}
           <div className="space-y-1.5">
             <label className="block text-zinc-300 font-bold">Pilih Hak Akses / Peran Akun *</label>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
               <button
                 type="button"
                 onClick={() => handleApplyRolePreset('guru_bk')}
@@ -2898,6 +2874,19 @@ Alamat Sistem : ${window.location.origin}
               >
                 <span className="font-bold text-xs text-purple-300">Guru BK</span>
                 <span className="text-[10px] text-zinc-400 mt-0.5">Bimbingan & Konseling</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleApplyRolePreset('staf_tu')}
+                className={`p-2 rounded-lg border text-left transition flex flex-col justify-between ${
+                  formData.role === 'staf_tu'
+                    ? 'bg-teal-950/40 border-teal-500 text-white ring-1 ring-teal-500'
+                    : 'bg-[#18181c] hover:bg-[#202026] border-[#292930] text-zinc-300'
+                }`}
+              >
+                <span className="font-bold text-xs text-teal-300">Staf TU</span>
+                <span className="text-[10px] text-zinc-400 mt-0.5">Administrasi & Surat</span>
               </button>
 
               <button
@@ -3245,6 +3234,7 @@ Alamat Sistem : ${window.location.origin}
                 <option value="wali_kelas">Wali Kelas</option>
                 <option value="guru">Guru Mata Pelajaran</option>
                 <option value="guru_bk">Guru BK</option>
+                <option value="staf_tu">Staf Tata Usaha</option>
                 <option value="pembina_osim">Pembina OSIM</option>
                 <option value="pengurus_osim">Pengurus OSIM</option>
                 <option value="pembina_ekskul">Pembina Ekstrakurikuler</option>

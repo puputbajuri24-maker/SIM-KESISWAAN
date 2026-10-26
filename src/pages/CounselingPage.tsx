@@ -91,7 +91,9 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
     updateCareerGuidance,
     deleteCareerGuidance,
     activeAcademicYear,
-    activeSemester
+    activeSemester,
+    letters = [],
+    addSchoolLetter
   } = useSchool();
 
   const [activeTab, setActiveTab] = useState<ActiveBkTab>('counseling');
@@ -586,6 +588,41 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
     }
   };
 
+  const handleSendParentCallToTU = async (p: ParentCallLetter) => {
+    const existing = letters.find(l => l.studentId === p.studentId && l.category === 'panggilan_ortu' && l.date === p.callDate);
+    if (existing) {
+      toast.info(`Surat panggilan ortu untuk ${p.studentName} sudah terdaftar di Tata Usaha (${existing.letterNumber || 'Menunggu Verifikasi TU'}).`);
+      return;
+    }
+
+    try {
+      await addSchoolLetter({
+        letterNumber: '',
+        letterType: 'surat_keluar',
+        category: 'panggilan_ortu',
+        classificationCode: 'KS.01.2',
+        title: `Surat Panggilan Orang Tua/Wali - ${p.studentName} (${p.spType || 'SP 1'})`,
+        subject: `Panggilan Orang Tua / Wali Siswa (${p.spType || 'SP 1'})`,
+        sender: 'Guru Bimbingan Konseling (BK)',
+        recipient: `Bpk/Ibu Orang Tua/Wali dari ${p.studentName}`,
+        date: p.callDate || new Date().toISOString().split('T')[0],
+        description: `Panggilan orang tua/wali siswa a.n. ${p.studentName} (${p.studentClass}) sehubungan dengan ${p.reason || 'pembinaan kedisiplinan dan evaluasi belajar'}.`,
+        contentBody: p.reason || p.studentViolationSummary || '',
+        status: 'draf_menunggu_nomor',
+        studentId: p.studentId,
+        studentID: p.studentId,
+        studentName: p.studentName,
+        studentClass: p.studentClass,
+        studentNis: p.studentNis,
+        academicYear: activeAcademicYear || '2026/2027',
+        createdBy: currentUser?.displayName || 'Guru BK'
+      });
+      toast.success(`Surat panggilan ortu "${p.studentName}" berhasil dikirim ke Antrean Nomor Surat TU!`);
+    } catch (err: any) {
+      toast.error('Gagal mengirim ke TU: ' + (err?.message || 'Terjadi kesalahan sistem'));
+    }
+  };
+
   // ==========================================
   // CAREER GUIDANCE HANDLERS
   // ==========================================
@@ -949,8 +986,11 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
         const stageTier = OFFICIAL_DISCIPLINE_TIERS.find(t => t.tier === stage);
         return (
           <div className="space-y-1">
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <span className="font-mono text-xs font-bold text-blue-400">{p.letterNumber}</span>
+              <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30" title="Klasifikasi Persuratan Kemenag: KS.01.2 (Panggilan Orang Tua / BK)">
+                KS.01.2
+              </span>
             </div>
             <div className="flex items-center gap-1.5 flex-wrap">
               {stage === 1 && (
@@ -1049,6 +1089,14 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
           >
             <Printer className="w-3 h-3" />
             <span>CETAK_SURAT</span>
+          </button>
+          <button
+            onClick={() => handleSendParentCallToTU(p)}
+            className="px-2 py-1 rounded bg-teal-600/20 border border-teal-500/30 text-teal-300 hover:bg-teal-600/30 text-[10px] font-mono flex items-center gap-1"
+            title="Teruskan ke Antrean Nomor Surat TU untuk Penomoran Resmi Kemenag"
+          >
+            <Send className="w-3 h-3 text-teal-400" />
+            <span>KIRIM_KE_TU</span>
           </button>
           <button
             onClick={() => setPrintParentCallLetter(p)}

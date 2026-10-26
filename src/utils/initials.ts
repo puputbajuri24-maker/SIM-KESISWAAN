@@ -137,6 +137,16 @@ export function getInitialsColorTheme(role?: string | null): {
     };
   }
 
+  if (normalized.includes('tu') || normalized.includes('tata usaha')) {
+    return {
+      bgGradient: 'from-teal-600 via-emerald-600 to-cyan-800',
+      badgeBg: 'bg-teal-500/10 text-teal-400 border-teal-500/30',
+      textColor: 'text-teal-300',
+      borderColor: 'border-teal-500/40',
+      label: 'Staf Tata Usaha (TU)'
+    };
+  }
+
   return {
     bgGradient: 'from-blue-600 via-indigo-600 to-slate-800',
     badgeBg: 'bg-blue-500/10 text-blue-400 border-blue-500/30',

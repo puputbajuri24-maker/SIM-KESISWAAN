@@ -50,6 +50,9 @@ export type Permission =
   // Dispensasi & Izin Santri/Siswa
   | 'dispensations.view'
   | 'dispensations.manage'
+  // Administrasi Persuratan & Tata Usaha (TU)
+  | 'letters.view'
+  | 'letters.manage'
   // Laporan Terpadu
   | 'reports.view'
   | 'reports.create'
@@ -67,7 +70,8 @@ export const CANONICAL_ROLES: CanonicalUserRole[] = [
   'anggota_osim',
   'siswa',
   'wali_kelas',
-  'guru'
+  'guru',
+  'staf_tu'
 ];
 
 export const OSIM_POSITIONS: OsimPosition[] = [
@@ -114,6 +118,9 @@ export function normalizeUserRole(role: UserRole | string | undefined | null): C
   }
   if (r === 'guru' || r === 'teacher' || r === 'guru_mapel') {
     return 'guru';
+  }
+  if (r === 'staf_tu' || r === 'tu' || r === 'staf_tata_usaha' || r === 'tata_usaha') {
+    return 'staf_tu';
   }
 
   // Deny-by-default for any unrecognized role string
@@ -318,6 +325,7 @@ export function hasPermission(
       case 'counseling.manage':
       case 'dispensations.view':
       case 'dispensations.manage':
+      case 'letters.view':
       case 'reports.view':
       case 'reports.create':
         return true;
@@ -456,7 +464,42 @@ export function hasPermission(
     }
   }
 
+  // 10. Staf TU (Tata Usaha - Administrasi Persuratan & Dispensasi Satu Pintu)
+  if (role === 'staf_tu') {
+    switch (permission) {
+      case 'dashboard.view':
+      case 'students.view':
+      case 'letters.view':
+      case 'letters.manage':
+      case 'dispensations.view':
+      case 'dispensations.manage':
+      case 'reports.view':
+        return true;
+      default:
+        return false;
+    }
+  }
+
   return false;
+}
+
+/**
+ * Capability Helper: Can the user manage school correspondence (TU)?
+ * Akses penuh penomoran resmi dan pengelolaan surat masuk/keluar:
+ * 1. Super Admin
+ * 2. Waka Kesiswaan
+ * 3. Staf TU
+ */
+export function canManageLetters(user: UserProfile | null | undefined): boolean {
+  if (!user) return false;
+  const role = normalizeUserRole(user.role);
+  if (!role) return false;
+
+  return (
+    role === 'super_admin' ||
+    role === 'waka_kesiswaan' ||
+    role === 'staf_tu'
+  );
 }
 
 /**

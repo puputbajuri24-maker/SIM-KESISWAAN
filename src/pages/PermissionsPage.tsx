@@ -43,7 +43,9 @@ export const PermissionsPage: React.FC = () => {
     updatePermission,
     deletePermission,
     schoolInfo,
-    activeAcademicYear
+    activeAcademicYear,
+    letters = [],
+    addSchoolLetter
   } = useSchool();
 
   const [selectedClass, setSelectedClass] = useState<string>('all');
@@ -202,6 +204,42 @@ export const PermissionsPage: React.FC = () => {
     });
   };
 
+  const handleSendToTU = async (p: StudentPermission, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const existing = letters.find(l => l.studentId === p.studentId && l.category === 'dispensasi' && l.date === p.startDate);
+    if (existing) {
+      toast.info(`Surat dispensasi untuk ${p.studentName} sudah terdaftar di Tata Usaha (${existing.letterNumber || 'Menunggu Nomor TU'}).`);
+      return;
+    }
+
+    try {
+      await addSchoolLetter({
+        letterNumber: '',
+        letterType: 'surat_keluar',
+        category: 'dispensasi',
+        classificationCode: 'PP.00.6',
+        title: `Surat Dispensasi - ${p.activityName || p.reason || 'Kegiatan Siswa'} (${p.studentName})`,
+        subject: `Dispensasi Mengikuti ${p.activityName || 'Kegiatan'}`,
+        sender: 'Waka Kesiswaan MAN 2 Seram Bagian Timur',
+        recipient: 'Bapak/Ibu Guru Pengajar / Wali Kelas',
+        date: p.startDate,
+        description: `Dispensasi siswa a.n. ${p.studentName} (${p.studentClass}) untuk mengikuti ${p.activityName || p.reason} dari tanggal ${p.startDate} s.d. ${p.endDate || p.startDate}.`,
+        contentBody: p.reason,
+        status: 'draf_menunggu_nomor',
+        studentId: p.studentId,
+        studentID: p.studentId,
+        studentName: p.studentName,
+        studentClass: p.studentClass,
+        studentNis: p.studentNis,
+        academicYear: activeAcademicYear || '2026/2027',
+        createdBy: currentUser?.displayName || 'Waka Kesiswaan'
+      });
+      toast.success(`Surat dispensasi "${p.studentName}" berhasil diteruskan ke Antrean Nomor Surat TU!`);
+    } catch (err: any) {
+      toast.error('Gagal mengirim ke TU: ' + (err?.message || 'Terjadi kesalahan'));
+    }
+  };
+
   const handleDeleteConfirm = async () => {
     if (selectedPerm) {
       try {
@@ -338,8 +376,15 @@ export const PermissionsPage: React.FC = () => {
       sortable: true,
       cell: p => (
         <div>
-          <span className="font-bold text-xs text-indigo-600 dark:text-indigo-400">{p.type}</span>
-          {p.activityName && <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium line-clamp-1">{p.activityName}</p>}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="font-bold text-xs text-indigo-600 dark:text-indigo-400">{p.type}</span>
+            {p.type.includes('Dispensasi') && (
+              <span className="px-1.5 py-0.2 rounded text-[10px] font-mono font-black bg-emerald-100 text-emerald-950 border border-emerald-300 dark:bg-emerald-950/60 dark:text-emerald-300 dark:border-emerald-700 shadow-2xs" title="Klasifikasi Persuratan Kemenag: PP.00.6 (Dispensasi)">
+                PP.00.6
+              </span>
+            )}
+          </div>
+          {p.activityName && <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium line-clamp-1 mt-0.5">{p.activityName}</p>}
         </div>
       )
     },
@@ -397,6 +442,14 @@ export const PermissionsPage: React.FC = () => {
             title="Cetak Surat Dispensasi Resmi"
           >
             <Printer className="w-4 h-4" />
+          </button>
+
+          <button
+            onClick={e => handleSendToTU(p, e)}
+            className="p-1.5 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-600 dark:bg-teal-950/60 dark:hover:bg-teal-900 dark:text-teal-400 transition-colors"
+            title="Teruskan ke Antrean Nomor Surat TU"
+          >
+            <Send className="w-4 h-4" />
           </button>
 
           <button

@@ -41,7 +41,12 @@ import {
   UserProfile,
   UserRole,
   SchoolRuleArticle,
-  SchoolHandbookMeta
+  SchoolHandbookMeta,
+  SchoolLetter,
+  LetterNumberingConfig,
+  SchoolLetterType,
+  SchoolLetterCategory,
+  SchoolLetterStatus
 } from '../types';
 import {
   INITIAL_SCHOOL_SETTING,
@@ -79,6 +84,9 @@ import {
   INITIAL_CASH_TRANSACTIONS,
   INITIAL_SCHOOL_RULES,
   INITIAL_HANDBOOK_META,
+  DEFAULT_LETTER_CONFIG,
+  INITIAL_LETTERS,
+  INITIAL_LETTER_CONFIGS,
   seedAllFirebaseData,
   clearAllFirebaseOperationalData,
   uploadAllStateToFirebase
@@ -334,6 +342,22 @@ interface SchoolContextType {
   resetSchoolRulesToDefault: () => Promise<void>;
   updateHandbookMeta: (meta: Partial<SchoolHandbookMeta>) => Promise<void>;
 
+  // Administrasi Persuratan & Tata Usaha (TU) - Satu Pintu
+  letters: SchoolLetter[];
+  letterConfigs: LetterNumberingConfig[];
+  isLettersLoading: boolean;
+  addSchoolLetter: (letterData: Omit<SchoolLetter, 'id' | 'createdAt' | 'updatedAt'>) => Promise<string>;
+  updateSchoolLetter: (id: string, updates: Partial<SchoolLetter>) => Promise<void>;
+  deleteSchoolLetter: (id: string) => Promise<void>;
+  generateNextLetterNumber: (
+    category: SchoolLetterCategory,
+    letterType: SchoolLetterType,
+    customDate?: string
+  ) => Promise<{ fullNumber: string; sequenceNumber: number; classificationCode: string }>;
+  updateLetterNumberingConfig: (config: Partial<LetterNumberingConfig>) => Promise<void>;
+  getLetterById: (id: string) => SchoolLetter | undefined;
+  assignLetterNumber: (letterId: string, officerName?: string, customClassification?: string) => Promise<string>;
+
   // Announcements & Notifications
   addAnnouncement: (data: Omit<Announcement, 'id' | 'createdAt'>) => Promise<void>;
   updateAnnouncement: (id: string, data: Partial<Announcement>) => Promise<void>;
@@ -426,7 +450,7 @@ export const sortStudentsAlphabetically = <T extends { fullName?: string; studen
 };
 
 export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { currentUser, syncUsersFromTeachers, syncUsersFromOsim, deleteUser, allUsers } = useAuth();
+  const { currentUser, syncUsersFromTeachers, syncUsersFromOsim, deleteUser, updateUser, allUsers } = useAuth();
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [isRealTimeConnected, setIsRealTimeConnected] = useState<boolean>(true);
   const [cloudStatus, setCloudStatus] = useState<'synced' | 'saving' | 'offline' | 'error'>('synced');
@@ -537,6 +561,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [cashTransactions, setCashTransactions] = useState<CashTransaction[]>(() => loadCachedRecordState('sim_cash_transactions', INITIAL_CASH_TRANSACTIONS));
   const [schoolRules, setSchoolRules] = useState<SchoolRuleArticle[]>(() => loadCachedRecordState('sim_school_rules', INITIAL_SCHOOL_RULES));
   const [handbookMeta, setHandbookMeta] = useState<SchoolHandbookMeta>(() => loadCachedRecordState('sim_handbook_meta', INITIAL_HANDBOOK_META));
+  const [letters, setLetters] = useState<SchoolLetter[]>(() => loadCachedRecordState('sim_letters', INITIAL_LETTERS));
+  const [letterConfigs, setLetterConfigs] = useState<LetterNumberingConfig[]>(() => loadCachedRecordState('sim_letter_configs', INITIAL_LETTER_CONFIGS));
+  const [isLettersLoading, setIsLettersLoading] = useState<boolean>(false);
   const [announcements, setAnnouncements] = useState<Announcement[]>(() => loadCachedRecordState('sim_announcements', INITIAL_ANNOUNCEMENTS));
   const [notifications, setNotifications] = useState<NotificationItem[]>(() => loadCachedRecordState('sim_notifications', INITIAL_NOTIFICATIONS));
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>(() => loadCachedRecordState('sim_audit_logs', INITIAL_AUDIT_LOGS));
@@ -772,17 +799,20 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             const id = docSnap.id;
             const cleanNip = cleanDigits(data.nip);
             const lowerEmail = (data.email || '').toLowerCase().trim();
+            const isProtectedTeacher = isProtectedTeacherOrStaff({ ...data, id });
             if (
-              isBlacklistedDemoName(data.fullName || (data as any).name) ||
-              isDeletedUid(id) ||
-              (cleanNip.length >= 6 && isDeletedUid(cleanNip)) ||
-              (lowerEmail && isDeletedUid(lowerEmail)) ||
-              PURGED_DEMO_EMAILS.includes(lowerEmail) ||
-              id === 'user_teacher_pitria_lawenusa' ||
-              id === 'teacher_pitria_lawenusa' ||
-              lowerEmail === 'admin@sekolah.sch.id' ||
-              lowerEmail === 'pitria.lawenusa@madrasah.sch.id' ||
-              lowerEmail === 'pitria.lawenusa@sekolah.sch.id'
+              !isProtectedTeacher && (
+                isBlacklistedDemoName(data.fullName || (data as any).name) ||
+                isDeletedUid(id) ||
+                (cleanNip.length >= 6 && isDeletedUid(cleanNip)) ||
+                (lowerEmail && isDeletedUid(lowerEmail)) ||
+                PURGED_DEMO_EMAILS.includes(lowerEmail) ||
+                id === 'user_teacher_pitria_lawenusa' ||
+                id === 'teacher_pitria_lawenusa' ||
+                lowerEmail === 'admin@sekolah.sch.id' ||
+                lowerEmail === 'pitria.lawenusa@madrasah.sch.id' ||
+                lowerEmail === 'pitria.lawenusa@sekolah.sch.id'
+              )
             ) {
               if (auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
                 deleteDoc(docSnap.ref).catch(() => {});
@@ -1243,28 +1273,12 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             rawOsimMem.push({ id, ...data });
           });
 
-          // Deduplicate and reconcile with sortedStudents to guarantee 0 stale duplicates
+          // Set OSIM members safely without destructive deletion
           const loadedOsimMem = deduplicateOsimMembersList(rawOsimMem, sortedStudents);
           setOsimMembers(loadedOsimMem);
           try {
             localStorage.setItem('sim_osim_members', JSON.stringify(loadedOsimMem));
           } catch (e) {}
-
-          // Asynchronously purge obsolete duplicate documents from Firestore if duplicates existed
-          if (rawOsimMem.length > loadedOsimMem.length && auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan'].includes(currentUser.role)) {
-            const keptIds = new Set(loadedOsimMem.map(m => m.id));
-            const obsoleteMembers = rawOsimMem.filter(m => !keptIds.has(m.id));
-            obsoleteMembers.forEach(obs => {
-              if (isProtectedTeacherOrStaff({ id: obs.id, fullName: obs.fullName } as any) || isProtectedFunctionalUid(obs.id)) {
-                return;
-              }
-              addDeletedUid(obs.id);
-              addDeletedUid(`user_${obs.id}`);
-              deleteDoc(doc(db, 'osim_members', obs.id)).catch(() => {});
-              deleteDoc(doc(db, 'users', obs.id)).catch(() => {});
-              deleteDoc(doc(db, 'users', `user_${obs.id}`)).catch(() => {});
-            });
-          }
 
           const osimProgSnap = await getDocs(collection(db, 'osim_programs'));
           if (!osimProgSnap.empty) {
@@ -1483,6 +1497,70 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               } catch (e) {}
               return listToSeed;
             });
+          }
+
+          // Letter Configs & Letters Sync (TU & Administrasi Persuratan Satu Pintu)
+          try {
+            const configSnap = await getDocs(collection(db, 'letter_configs'));
+            if (!configSnap.empty) {
+              const loadedConfigs: LetterNumberingConfig[] = [];
+              configSnap.forEach(docSnap => {
+                loadedConfigs.push({ id: docSnap.id, ...docSnap.data() } as LetterNumberingConfig);
+              });
+              setLetterConfigs(loadedConfigs);
+              try {
+                localStorage.setItem('sim_letter_configs', JSON.stringify(loadedConfigs));
+              } catch (e) {}
+            } else {
+              setLetterConfigs([DEFAULT_LETTER_CONFIG]);
+              if (auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan', 'staf_tu'].includes(currentUser.role)) {
+                setDoc(doc(db, 'letter_configs', DEFAULT_LETTER_CONFIG.id), DEFAULT_LETTER_CONFIG).catch(() => {});
+              }
+              try {
+                localStorage.setItem('sim_letter_configs', JSON.stringify([DEFAULT_LETTER_CONFIG]));
+              } catch (e) {}
+            }
+
+            const letterSnap = await getDocs(collection(db, 'letters'));
+            if (!letterSnap.empty) {
+              const loadedLetters: SchoolLetter[] = [];
+              letterSnap.forEach(docSnap => {
+                const data = docSnap.data() as SchoolLetter;
+                if (!data.isDeleted) {
+                  loadedLetters.push({ id: docSnap.id, ...data });
+                }
+              });
+              setLetters(prev => {
+                const m = new Map<string, SchoolLetter>();
+                loadedLetters.forEach(l => m.set(l.id, l));
+                prev.forEach(pl => {
+                  if (pl && pl.id && !pl.isDeleted && !m.has(pl.id)) {
+                    m.set(pl.id, pl);
+                  }
+                });
+                const merged = Array.from(m.values());
+                merged.sort((a, b) => (b.date > a.date ? 1 : b.date < a.date ? -1 : (b.createdAt > a.createdAt ? 1 : -1)));
+                try {
+                  localStorage.setItem('sim_letters', JSON.stringify(merged));
+                } catch (e) {}
+                return merged;
+              });
+            } else {
+              setLetters(prev => {
+                const listToSeed = (prev && prev.length > 0) ? prev : (INITIAL_LETTERS || []);
+                if (auth.currentUser && currentUser && ['super_admin', 'admin', 'waka_kesiswaan', 'staf_tu'].includes(currentUser.role)) {
+                  listToSeed.forEach(l => {
+                    setDoc(doc(db, 'letters', l.id), l).catch(() => {});
+                  });
+                }
+                try {
+                  localStorage.setItem('sim_letters', JSON.stringify(listToSeed));
+                } catch (e) {}
+                return listToSeed;
+              });
+            }
+          } catch (letterErr) {
+            console.warn('[SchoolContext] Note syncing letters from Firestore (using local cache):', letterErr);
           }
 
           // Audit Logs Sync from Firestore (Restricted to Waka/Admin with active auth session)
@@ -2137,8 +2215,12 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         snapshot.forEach(docSnap => {
           const data = docSnap.data() as OsimMember;
           const id = docSnap.id;
+          if (data.id === 'om1' || (data as any).isDeleted) return;
+          // Safely ensure legitimate members are not suppressed by stale tombstone blacklists
+          removeDeletedUid(id);
+          removeDeletedUid(`user_${id}`);
           const memberNis = data.studentNis || (data as any).nis;
-          if (isDeletedUid(id) || (memberNis && isDeletedUid(cleanDigits(memberNis)))) return;
+          if (memberNis) removeDeletedUid(cleanDigits(memberNis));
           raw.push({ id, ...data });
         });
         const deduplicated = deduplicateOsimMembersList(raw);
@@ -2283,6 +2365,64 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
     ensureRewardsCollection();
 
+    // Letters Real-time Listener (Administrasi Persuratan & TU Satu Pintu)
+    try {
+      const unsubLetters = onSnapshot(collection(db, 'letters'), (snapshot) => {
+        const loaded: SchoolLetter[] = [];
+        snapshot.forEach(docSnap => {
+          const data = docSnap.data() as SchoolLetter;
+          if (!data.isDeleted) {
+            loaded.push({ id: docSnap.id, ...data });
+          }
+        });
+        setLetters(prev => {
+          const m = new Map<string, SchoolLetter>();
+          loaded.forEach(l => m.set(l.id, l));
+          prev.forEach(pl => {
+            if (pl && pl.id && !pl.isDeleted && !m.has(pl.id)) {
+              m.set(pl.id, pl);
+            }
+          });
+          const merged = Array.from(m.values());
+          merged.sort((a, b) => (b.date > a.date ? 1 : b.date < a.date ? -1 : (b.createdAt > a.createdAt ? 1 : -1)));
+          try {
+            localStorage.setItem('sim_letters', JSON.stringify(merged));
+          } catch (e) {}
+          return merged;
+        });
+      }, (err) => {
+        if (isPermissionError(err)) {
+          console.warn('[Firestore] Izin baca ditolak untuk letters:', err);
+        } else {
+          handleFirestoreError(err, OperationType.GET, 'letters');
+        }
+      });
+      unsubscribers.push(unsubLetters);
+    } catch (e) {}
+
+    // Letter Configs Real-time Listener
+    try {
+      const unsubConfigs = onSnapshot(collection(db, 'letter_configs'), (snapshot) => {
+        if (!snapshot.empty) {
+          const loaded: LetterNumberingConfig[] = [];
+          snapshot.forEach(docSnap => {
+            loaded.push({ id: docSnap.id, ...docSnap.data() } as LetterNumberingConfig);
+          });
+          setLetterConfigs(loaded);
+          try {
+            localStorage.setItem('sim_letter_configs', JSON.stringify(loaded));
+          } catch (e) {}
+        }
+      }, (err) => {
+        if (isPermissionError(err)) {
+          console.warn('[Firestore] Izin baca ditolak untuk letter_configs:', err);
+        } else {
+          handleFirestoreError(err, OperationType.GET, 'letter_configs');
+        }
+      });
+      unsubscribers.push(unsubConfigs);
+    } catch (e) {}
+
     return () => {
       unsubscribers.forEach(unsub => unsub());
     };
@@ -2344,7 +2484,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         schoolRules,
         handbookMeta,
         announcements,
-        auditLogs
+        auditLogs,
+        letters,
+        letterConfigs
       });
 
       if (res.success) {
@@ -2362,9 +2504,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const verifyCloudDataIntegrity = async () => {
     try {
       const isBkOrAdminUser = currentUser && ['super_admin', 'admin', 'waka_kesiswaan', 'waka', 'guru_bk', 'bk'].includes(currentUser.role);
-      const isStaffUser = currentUser && ['super_admin', 'admin', 'waka_kesiswaan', 'waka', 'admin_kesiswaan', 'guru_bk', 'bk', 'pembina_osim', 'pembina', 'pembina_ekstrakurikuler', 'pembina_ekskul', 'coach_ekstrakurikuler', 'wali_kelas', 'homeroom_teacher', 'guru', 'teacher', 'guru_mapel'].includes(currentUser.role);
+      const isStaffUser = currentUser && ['super_admin', 'admin', 'waka_kesiswaan', 'waka', 'admin_kesiswaan', 'guru_bk', 'bk', 'pembina_osim', 'pembina', 'pembina_ekstrakurikuler', 'pembina_ekskul', 'coach_ekstrakurikuler', 'wali_kelas', 'homeroom_teacher', 'guru', 'teacher', 'guru_mapel', 'staf_tu'].includes(currentUser.role);
 
-      const [tSnap, sSnap, cSnap, eSnap, uSnap, vSnap, rSnap, csSnap, ctSnap] = await Promise.all([
+      const [tSnap, sSnap, cSnap, eSnap, uSnap, vSnap, rSnap, csSnap, ctSnap, ltrSnap] = await Promise.all([
         getDocs(collection(db, 'teachers')).catch(() => null),
         getDocs(collection(db, 'students')).catch(() => null),
         getDocs(collection(db, 'classes')).catch(() => null),
@@ -2373,7 +2515,8 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         (isStaffUser && auth.currentUser) ? getDocs(collection(db, 'violations')).catch(() => null) : Promise.resolve(null),
         getDocs(collection(db, 'rewards')).catch(() => null),
         (isBkOrAdminUser && auth.currentUser) ? getDocs(collection(db, 'counseling')).catch(() => null) : Promise.resolve(null),
-        getDocs(collection(db, 'cash_transactions')).catch(() => null)
+        getDocs(collection(db, 'cash_transactions')).catch(() => null),
+        getDocs(collection(db, 'letters')).catch(() => null)
       ]);
       return {
         teachers: { firestore: tSnap ? tSnap.size : 0, react: teachers.length },
@@ -2384,7 +2527,8 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         violations: { firestore: vSnap ? vSnap.size : 0, react: violations.length },
         rewards: { firestore: rSnap ? rSnap.size : 0, react: rewards.length },
         counseling: { firestore: csSnap ? csSnap.size : 0, react: counseling.length },
-        cash_transactions: { firestore: ctSnap ? ctSnap.size : 0, react: cashTransactions.length }
+        cash_transactions: { firestore: ctSnap ? ctSnap.size : 0, react: cashTransactions.length },
+        letters: { firestore: ltrSnap ? ltrSnap.size : 0, react: letters.length }
       };
     } catch (e) {
       return {
@@ -2421,6 +2565,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setOsimPrograms([]);
       setOsimAspirations([]);
       setOsimMeetings([]);
+      setLetters([]);
 
       const keysToClear = [
         'sim_students',
@@ -2440,7 +2585,8 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         'sim_osim_members',
         'sim_osim_programs',
         'sim_osim_aspirations',
-        'sim_osim_meetings'
+        'sim_osim_meetings',
+        'sim_letters'
       ];
       keysToClear.forEach(k => {
         try {
@@ -2487,7 +2633,9 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       osimAspirations,
       osimMeetings,
       cashAccounts,
-      cashTransactions
+      cashTransactions,
+      letters,
+      letterConfigs
     };
 
     const blob = new Blob([JSON.stringify(exportBundle, null, 2)], { type: 'application/json' });
@@ -2537,6 +2685,14 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (Array.isArray(bundle.cashTransactions)) {
         setCashTransactions(bundle.cashTransactions);
         try { localStorage.setItem('sim_cash_transactions', JSON.stringify(bundle.cashTransactions)); } catch (e) {}
+      }
+      if (Array.isArray(bundle.letters)) {
+        setLetters(bundle.letters);
+        try { localStorage.setItem('sim_letters', JSON.stringify(bundle.letters)); } catch (e) {}
+      }
+      if (Array.isArray(bundle.letterConfigs)) {
+        setLetterConfigs(bundle.letterConfigs);
+        try { localStorage.setItem('sim_letter_configs', JSON.stringify(bundle.letterConfigs)); } catch (e) {}
       }
 
       await logAction('IMPORT_FULL_DATABASE', 'Manajemen Database', 'Memulihkan database lengkap dari berkas JSON');
@@ -3750,6 +3906,28 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         console.warn('Sync updated teacher to ekskul/intra note:', e);
       }
 
+      // Explicitly update linked user in cPanel and Firestore
+      try {
+        const matchedUser = allUsers.find(u =>
+          (u.teacherId && u.teacherId === id) ||
+          isTeacherUserMatch(u, oldTeacher || updatedTeacher!) ||
+          u.uid === id ||
+          u.uid === `user_${id}`
+        );
+        if (matchedUser && updateUser) {
+          await updateUser(matchedUser.uid, {
+            displayName: updatedTeacher.fullName,
+            nip: updatedTeacher.nip || matchedUser.nip,
+            phone: updatedTeacher.phone || matchedUser.phone,
+            email: updatedTeacher.email || matchedUser.email,
+            teacherId: id,
+            updatedAt: new Date().toISOString()
+          });
+        }
+      } catch (uSyncErr) {
+        console.warn('Direct linked user update note:', uSyncErr);
+      }
+
       // Auto-sync to cPanel user account
       if (syncUsersFromTeachers) {
         try {
@@ -3764,17 +3942,17 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const deleteTeacher = async (id: string) => {
     const target = teachers.find(t => t.id === id);
 
-    // Tombstone this teacher so sync won't recreate
-    addDeletedUid(id);
-    addDeletedUid(`user_${id}`);
-    if (id.startsWith('user_')) addDeletedUid(id.replace(/^user_/, ''));
+    // Actively clear any tombstone so recreated teacher will never be blocked
+    removeDeletedUid(id);
+    removeDeletedUid(`user_${id}`);
+    if (id.startsWith('user_')) removeDeletedUid(id.replace(/^user_/, ''));
     if (target?.email) {
-      addDeletedUid(target.email.trim().toLowerCase());
+      removeDeletedUid(target.email.trim().toLowerCase());
     }
     const cleanNip = target?.nip ? cleanDigits(target.nip) : '';
     if (cleanNip && cleanNip.length >= 6) {
-      addDeletedUid(cleanNip);
-      addDeletedUid(`user_${cleanNip}`);
+      removeDeletedUid(cleanNip);
+      removeDeletedUid(`user_${cleanNip}`);
     }
 
     setTeachers(prev => {
@@ -3800,6 +3978,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // Cascade delete linked user account in cPanel
     if (target && deleteUser) {
       const matchedUser = allUsers.find(u =>
+        (u.teacherId && u.teacherId === id) ||
         isTeacherUserMatch(u, target) ||
         u.uid === id ||
         u.uid === `user_${id}` ||
@@ -3846,16 +4025,16 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     const targetNames = new Set(targetTeachers.map(t => (t.fullName || '').trim().toLowerCase()));
 
     targetTeachers.forEach(t => {
-      addDeletedUid(t.id);
-      addDeletedUid(`user_${t.id}`);
-      if (t.id.startsWith('user_')) addDeletedUid(t.id.replace(/^user_/, ''));
+      removeDeletedUid(t.id);
+      removeDeletedUid(`user_${t.id}`);
+      if (t.id.startsWith('user_')) removeDeletedUid(t.id.replace(/^user_/, ''));
       if (t.email) {
-        addDeletedUid(t.email.trim().toLowerCase());
+        removeDeletedUid(t.email.trim().toLowerCase());
       }
       const cleanNip = t.nip ? cleanDigits(t.nip) : '';
       if (cleanNip && cleanNip.length >= 6) {
-        addDeletedUid(cleanNip);
-        addDeletedUid(`user_${cleanNip}`);
+        removeDeletedUid(cleanNip);
+        removeDeletedUid(`user_${cleanNip}`);
       }
     });
 
@@ -4463,6 +4642,8 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       case 'anggota_osim':
       case 'pengurus_osim':
         return 'Pengurus OSIM';
+      case 'staf_tu':
+        return 'Staf Tata Usaha (TU)';
       default:
         return 'Guru / Pembina';
     }
@@ -4636,9 +4817,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     // 1. Sync Dewan Guru (teachers list)
     setTeachers(prev => {
       const idx = prev.findIndex(t => 
+        (user.teacherId && t.id === user.teacherId) ||
         t.id === user.uid ||
+        t.id === user.uid.replace(/^user_/, '') ||
         (t.email && user.email && t.email.toLowerCase() === user.email.toLowerCase()) ||
-        (t.nip && user.nip && t.nip.replace(/\s+/g, '') === user.nip.replace(/\s+/g, '')) ||
+        (t.nip && user.nip && cleanDigits(t.nip) === cleanDigits(user.nip)) ||
         (oldUser?.displayName && t.fullName.toLowerCase() === oldUser.displayName.toLowerCase()) ||
         t.fullName.toLowerCase() === user.displayName.toLowerCase()
       );
@@ -4651,10 +4834,15 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           nip: user.nip || updated[idx].nip || '-',
           email: user.email,
           phone: user.phone || updated[idx].phone || '-',
-          role: roleLabel,
-          assignedExtracurriculars: assignedIds,
+          // Sinkronkan peran ke Dewan Guru jika akun diubah di cPanel (misal: staf_tu, guru_bk, pembina_osim, waka)
+          role: (user.role === 'staf_tu' || (user.role as string) === 'tu' || user.role === 'guru_bk' || user.role === 'pembina_osim' || user.role === 'waka_kesiswaan')
+            ? roleLabel
+            : (updated[idx].role || roleLabel),
+          assignedExtracurriculars: assignedIds.length > 0 ? assignedIds : updated[idx].assignedExtracurriculars,
           photoUrl: user.photoURL || (user as any).photoUrl || updated[idx].photoUrl,
-          isActive: user.status !== 'Nonaktif'
+          isActive: user.status !== 'Nonaktif',
+          isCashManager: user.isCashManager !== undefined ? user.isCashManager : updated[idx].isCashManager,
+          cashManagerTitle: user.cashManagerTitle || updated[idx].cashManagerTitle
         };
         updated[idx] = updatedTeacher;
         try {
@@ -4662,10 +4850,11 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         } catch (e) {}
         return updated;
       }
-      // Modul Guru & Pembina: Jika user ber-peran pendidik/pembina dan belum ada di teachers, otomatis buatkan master data guru
+      // Modul Guru & Staf TU: Jika user ber-peran pendidik/staf/pembina dan belum ada di teachers, otomatis buatkan master data guru
       const isTeacherRole = [
         'guru', 'guru_bk', 'pembina_osim', 'coach_ekstrakurikuler',
-        'pembina_ekskul', 'pembina', 'pembina_ekstrakurikuler', 'wali_kelas', 'homeroom_teacher', 'guru_mapel'
+        'pembina_ekskul', 'pembina', 'pembina_ekstrakurikuler', 'wali_kelas', 'homeroom_teacher', 'guru_mapel',
+        'staf_tu', 'tu', 'staf_tata_usaha', 'tata_usaha', 'waka_kesiswaan'
       ].includes(user.role);
 
       if (isTeacherRole) {
@@ -6231,6 +6420,7 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       osimMembers: osimMembers.length,
       osimPrograms: osimPrograms.length,
       announcements: announcements.length,
+      letters: letters.length,
       users: allUsers.length
     };
 
@@ -6252,6 +6442,8 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         osimMembers,
         osimPrograms,
         announcements,
+        letters,
+        letterConfigs,
         schedules,
         attendance,
         activities,
@@ -6355,6 +6547,8 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (d.attendance) setAttendance(d.attendance);
       if (d.activities) setActivities(d.activities);
       if (d.announcements) setAnnouncements(d.announcements);
+      if (d.letters) setLetters(d.letters);
+      if (d.letterConfigs) setLetterConfigs(d.letterConfigs);
 
       // Save to localStorage
       if (d.students) localStorage.setItem('sim_students', JSON.stringify(d.students));
@@ -6369,9 +6563,21 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       if (d.osimMembers) localStorage.setItem('sim_osim_members', JSON.stringify(d.osimMembers));
       if (d.osimPrograms) localStorage.setItem('sim_osim_programs', JSON.stringify(d.osimPrograms));
       if (d.announcements) localStorage.setItem('sim_announcements', JSON.stringify(d.announcements));
+      if (d.letters) localStorage.setItem('sim_letters', JSON.stringify(d.letters));
+      if (d.letterConfigs) localStorage.setItem('sim_letter_configs', JSON.stringify(d.letterConfigs));
 
       // Push restored extracurriculars, members, announcements & user accounts to Firestore to guarantee persistence
       if (auth.currentUser) {
+        if (Array.isArray(d.letters)) {
+          d.letters.forEach((l: any) => {
+            if (l && l.id) setDoc(doc(db, 'letters', l.id), l).catch(() => {});
+          });
+        }
+        if (Array.isArray(d.letterConfigs)) {
+          d.letterConfigs.forEach((lc: any) => {
+            if (lc && lc.id) setDoc(doc(db, 'letter_configs', lc.id), lc).catch(() => {});
+          });
+        }
         if (Array.isArray(d.extracurriculars)) {
           d.extracurriculars.forEach((e: any) => {
             if (e && e.id) setDoc(doc(db, 'extracurriculars', e.id), e).catch(() => {});
@@ -7361,18 +7567,10 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       localStorage.setItem('sim_osim_members', JSON.stringify(deduplicated));
     } catch (e) {}
 
-    // Synchronize to Firestore
+    // Synchronize to Firestore (hanya memperbarui biodata, tidak menghapus dokumen anggota)
     try {
       const updatePromises = deduplicated.map(m => setDoc(doc(db, 'osim_members', m.id), m, { merge: true }));
-      const deletePromises = removedMembers.map(m => {
-        addDeletedUid(m.id);
-        addDeletedUid(`user_${m.id}`);
-        if (m.loginUsername && !/^\d{4,}$/.test(m.loginUsername)) {
-          addDeletedUid(m.loginUsername);
-        }
-        return deleteDoc(doc(db, 'osim_members', m.id));
-      });
-      await Promise.allSettled([...updatePromises, ...deletePromises]);
+      await Promise.allSettled(updatePromises);
     } catch (e) {
       console.warn('Reconcile OSIM Firestore sync note:', e);
     }
@@ -8061,6 +8259,292 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     logAction('UPDATE_HANDBOOK_META', 'Buku Tata Tertib', `Memperbarui SK & Ambang Poin Tata Tertib (${updated.decreeNumber})`);
   };
 
+  // =========================================================================
+  // ADMINISTRASI PERSURATAN & TATA USAHA (TU) - SATU PINTU & PENOMORAN OTOMATIS
+  // =========================================================================
+  const LETTER_CLASSIFICATION_MAP: Record<SchoolLetterCategory, string> = {
+    dispensasi: 'PP.00.6',       // Dispensasi Siswa & Kegiatan Lomba
+    keterangan_aktif: 'PP.01.1', // Surat Keterangan Aktif Belajar Siswa
+    panggilan_ortu: 'KS.01.2',   // Panggilan Orang Tua / Wali (BK)
+    surat_tugas: 'KP.01.2',      // Surat Tugas / Mandat
+    undangan: 'HM.01',           // Undangan Hubungan Masyarakat
+    mutasi: 'PP.05',             // Surat Mutasi / Pindah
+    rekomendasi: 'PP.00',        // Rekomendasi
+    lainnya: 'PP.00'             // Umum / Lain-lain
+  };
+
+  const ROMAN_MONTHS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI', 'XII'];
+
+  const generateNextLetterNumber = async (
+    category: SchoolLetterCategory,
+    letterType: SchoolLetterType,
+    customDate?: string
+  ): Promise<{ fullNumber: string; sequenceNumber: number; classificationCode: string }> => {
+    const targetDate = customDate ? new Date(customDate) : new Date();
+    const currentYear = isNaN(targetDate.getFullYear()) ? new Date().getFullYear() : targetDate.getFullYear();
+    const currentMonth = isNaN(targetDate.getMonth()) ? new Date().getMonth() + 1 : targetDate.getMonth() + 1;
+    const romanMonth = ROMAN_MONTHS[currentMonth - 1] || 'X';
+    const monthPad = String(currentMonth).padStart(2, '0');
+
+    const activeConfig = letterConfigs.find(c => c.id === 'default_config') || letterConfigs[0] || DEFAULT_LETTER_CONFIG;
+
+    let nextCounter = (activeConfig.lastCounter || 100) + 1;
+
+    // Reset period evaluation
+    if (activeConfig.counterResetPeriod === 'tahunan') {
+      if (activeConfig.lastResetYear && activeConfig.lastResetYear < currentYear) {
+        nextCounter = 1;
+      }
+    } else if (activeConfig.counterResetPeriod === 'bulanan') {
+      if (
+        (activeConfig.lastResetYear && activeConfig.lastResetYear < currentYear) ||
+        (activeConfig.lastResetMonth && activeConfig.lastResetMonth < currentMonth)
+      ) {
+        nextCounter = 1;
+      }
+    }
+
+    // Safety check against existing registered outgoing letters of the same year
+    const existingYearSeqNumbers = letters
+      .filter(l => l.letterType === 'surat_keluar' && l.date && l.date.startsWith(String(currentYear)))
+      .map(l => {
+        const match = l.letterNumber ? l.letterNumber.match(/^[A-Za-z]*-?(\d+)/) : null;
+        return match ? parseInt(match[1], 10) : 0;
+      })
+      .filter(n => !isNaN(n) && n > 0);
+
+    if (existingYearSeqNumbers.length > 0) {
+      const maxExisting = Math.max(...existingYearSeqNumbers);
+      if (maxExisting >= nextCounter) {
+        nextCounter = maxExisting + 1;
+      }
+    }
+
+    const classification = LETTER_CLASSIFICATION_MAP[category] || activeConfig.classificationCode || 'PP.00.6';
+    const prefix = activeConfig.prefix || 'B';
+    const schoolCode = activeConfig.schoolCode || 'Ma.26.06';
+
+    const fullNumber = (activeConfig.formatPattern || '{PREFIX}-{NO}/{KODE_SEKOLAH}/{KLASIFIKASI}/{BULAN}/{TAHUN}')
+      .replace('{PREFIX}', prefix)
+      .replace('{NO}', String(nextCounter))
+      .replace('{KODE_SEKOLAH}', schoolCode)
+      .replace('{KLASIFIKASI}', classification)
+      .replace('{BULAN_ROMAWI}', romanMonth)
+      .replace('{BULAN}', monthPad)
+      .replace('{TAHUN}', String(currentYear));
+
+    const updatedConfig: LetterNumberingConfig = {
+      ...activeConfig,
+      lastCounter: nextCounter,
+      lastResetYear: currentYear,
+      lastResetMonth: currentMonth,
+      updatedAt: new Date().toISOString(),
+      updatedBy: currentUser?.displayName || 'Staf Tata Usaha'
+    };
+
+    setLetterConfigs(prev => {
+      const exists = prev.some(c => c.id === updatedConfig.id);
+      const next = exists ? prev.map(c => c.id === updatedConfig.id ? updatedConfig : c) : [updatedConfig, ...prev];
+      try {
+        localStorage.setItem('sim_letter_configs', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+
+    try {
+      if (auth.currentUser) {
+        setDoc(doc(db, 'letter_configs', updatedConfig.id), updatedConfig, { merge: true }).catch(() => {});
+      }
+    } catch (e) {}
+
+    return {
+      fullNumber,
+      sequenceNumber: nextCounter,
+      classificationCode: classification
+    };
+  };
+
+  const addSchoolLetter = async (letterData: Omit<SchoolLetter, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> => {
+    setIsLettersLoading(true);
+    try {
+      const letterId = `letter_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      let finalNumber = letterData.letterNumber?.trim() || '';
+      let finalNumberedAt = letterData.numberedAt;
+      let finalClassification = letterData.classificationCode || LETTER_CLASSIFICATION_MAP[letterData.category] || 'PP.00.6';
+      let finalOfficerId = letterData.tuOfficerId;
+      let finalOfficerName = letterData.tuOfficerName;
+
+      // Otomatis terbitkan nomor jika berstatus 'terbit_bernomor' dan nomor belum terisi
+      if (letterData.letterType === 'surat_keluar' && letterData.status === 'terbit_bernomor' && !finalNumber) {
+        const generated = await generateNextLetterNumber(letterData.category, letterData.letterType, letterData.date);
+        finalNumber = generated.fullNumber;
+        finalClassification = generated.classificationCode;
+        finalNumberedAt = new Date().toISOString();
+        finalOfficerId = currentUser?.uid || 'user_staf_tu';
+        finalOfficerName = currentUser?.displayName || 'Staf Tata Usaha';
+      }
+
+      const newLetter: SchoolLetter = {
+        id: letterId,
+        ...letterData,
+        letterNumber: finalNumber,
+        classificationCode: finalClassification,
+        numberedAt: finalNumberedAt,
+        tuOfficerId: finalOfficerId,
+        tuOfficerName: finalOfficerName,
+        academicYear: letterData.academicYear || activeAcademicYear || '2026/2027',
+        isDeleted: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      setLetters(prev => {
+        const next = [newLetter, ...prev];
+        try {
+          localStorage.setItem('sim_letters', JSON.stringify(next));
+        } catch (e) {}
+        return next;
+      });
+
+      try {
+        if (auth.currentUser) {
+          await setDoc(doc(db, 'letters', newLetter.id), newLetter);
+        }
+      } catch (err) {
+        console.warn('[SchoolContext] Surat disimpan secara lokal, sync cloud tertunda:', err);
+      }
+
+      logAction(
+        'ADD_LETTER',
+        'Persuratan & TU',
+        `Mencatat surat: "${newLetter.title}" (${newLetter.letterType === 'surat_keluar' ? 'Surat Keluar' : 'Surat Masuk'}${newLetter.letterNumber ? ' - ' + newLetter.letterNumber : ' [Draf]'})`
+      );
+
+      return newLetter.id;
+    } finally {
+      setIsLettersLoading(false);
+    }
+  };
+
+  const updateSchoolLetter = async (id: string, updates: Partial<SchoolLetter>): Promise<void> => {
+    const updatedData = {
+      ...updates,
+      updatedAt: new Date().toISOString()
+    };
+
+    setLetters(prev => {
+      const next = prev.map(l => l.id === id ? { ...l, ...updatedData } : l);
+      try {
+        localStorage.setItem('sim_letters', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+
+    try {
+      if (auth.currentUser) {
+        await updateDoc(doc(db, 'letters', id), updatedData);
+      }
+    } catch (err) {
+      try {
+        const full = letters.find(l => l.id === id);
+        if (full) {
+          await setDoc(doc(db, 'letters', id), { ...full, ...updatedData }, { merge: true });
+        }
+      } catch (e) {
+        console.warn('[SchoolContext] Gagal update surat ke Firestore:', e);
+      }
+    }
+
+    logAction('UPDATE_LETTER', 'Persuratan & TU', `Memperbarui surat: ${updates.title || id}`);
+  };
+
+  const deleteSchoolLetter = async (id: string): Promise<void> => {
+    const target = letters.find(l => l.id === id);
+    setLetters(prev => {
+      const next = prev.filter(l => l.id !== id);
+      try {
+        localStorage.setItem('sim_letters', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+
+    try {
+      if (auth.currentUser) {
+        await deleteDoc(doc(db, 'letters', id));
+      }
+    } catch (err) {
+      console.warn('[SchoolContext] Gagal menghapus surat dari Firestore:', err);
+    }
+
+    logAction('DELETE_LETTER', 'Persuratan & TU', `Menghapus surat: "${target?.title || id}" (${target?.letterNumber || 'Draf'})`);
+  };
+
+  const assignLetterNumber = async (letterId: string, officerName?: string, customClassification?: string): Promise<string> => {
+    const target = letters.find(l => l.id === letterId);
+    if (!target) {
+      throw new Error(`Surat dengan ID ${letterId} tidak ditemukan.`);
+    }
+
+    const generated = await generateNextLetterNumber(
+      target.category,
+      target.letterType,
+      target.date
+    );
+
+    const fullNumber = generated.fullNumber;
+    const finalClassification = customClassification || generated.classificationCode;
+    const nowIso = new Date().toISOString();
+    const finalOfficerId = currentUser?.uid || 'user_staf_tu';
+    const finalOfficerName = officerName || currentUser?.displayName || 'Staf Tata Usaha';
+
+    await updateSchoolLetter(letterId, {
+      letterNumber: fullNumber,
+      classificationCode: finalClassification,
+      status: 'terbit_bernomor',
+      tuOfficerId: finalOfficerId,
+      tuOfficerName: finalOfficerName,
+      numberedAt: nowIso
+    });
+
+    logAction('ASSIGN_LETTER_NUMBER', 'Persuratan & TU', `Menerbitkan nomor surat resmi TU: ${fullNumber} untuk perihal: "${target.title}"`);
+    return fullNumber;
+  };
+
+  const updateLetterNumberingConfig = async (configData: Partial<LetterNumberingConfig>): Promise<void> => {
+    const targetId = configData.id || 'default_config';
+    const updated: LetterNumberingConfig = {
+      ...DEFAULT_LETTER_CONFIG,
+      ...(letterConfigs.find(c => c.id === targetId) || {}),
+      ...configData,
+      id: targetId,
+      updatedAt: new Date().toISOString(),
+      updatedBy: currentUser?.displayName || 'Staf TU'
+    };
+
+    setLetterConfigs(prev => {
+      const exists = prev.some(c => c.id === targetId);
+      const next = exists ? prev.map(c => c.id === targetId ? updated : c) : [updated, ...prev];
+      try {
+        localStorage.setItem('sim_letter_configs', JSON.stringify(next));
+      } catch (e) {}
+      return next;
+    });
+
+    try {
+      if (auth.currentUser) {
+        await setDoc(doc(db, 'letter_configs', targetId), updated, { merge: true });
+      }
+    } catch (e) {
+      console.warn('[SchoolContext] Gagal menyimpan konfigurasi penomoran surat:', e);
+    }
+
+    logAction('UPDATE_LETTER_CONFIG', 'Persuratan & TU', `Memperbarui konfigurasi nomor surat: pola ${updated.formatPattern}, counter terakhir ${updated.lastCounter}`);
+  };
+
+  const getLetterById = (id: string): SchoolLetter | undefined => {
+    return letters.find(l => l.id === id);
+  };
+
   return (
     <SchoolContext.Provider
       value={{
@@ -8118,6 +8602,16 @@ export const SchoolProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         deleteSchoolRule,
         resetSchoolRulesToDefault,
         updateHandbookMeta,
+        letters,
+        letterConfigs,
+        isLettersLoading,
+        addSchoolLetter,
+        updateSchoolLetter,
+        deleteSchoolLetter,
+        generateNextLetterNumber,
+        updateLetterNumberingConfig,
+        getLetterById,
+        assignLetterNumber,
         addStudent,
         updateStudent,
         deleteStudent,

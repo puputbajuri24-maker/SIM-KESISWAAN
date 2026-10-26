@@ -24,15 +24,17 @@ import {
   LogIn,
   Copy,
   Tent,
-  CheckCircle2
+  CheckCircle2,
+  Mail,
+  Database
 } from 'lucide-react';
 import { Teacher, UserProfile, Extracurricular } from '../../../types';
 
 export interface CPanelUserTabProps {
   handleOpenActivateModal?: (userOrTeacher: UserProfile | Teacher) => void;
-  unregisteredTeachers: Teacher[];
-  handleSyncFromTeachers: () => void;
-  isSyncingAll: boolean;
+  unregisteredTeachers?: Teacher[];
+  handleSyncFromTeachers?: () => void;
+  isSyncingAll?: boolean;
   unregisteredOsimCount: number;
   handleSyncFromOsim: () => void;
   isSyncingOsim: boolean;
@@ -137,11 +139,18 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
 }) => {
   // Helper: Dapatkan tugas binaan ekstrakurikuler yang valid, bersih dari angka serial, dan dikunci 1 pembina = 1 unit binaan utama
   const getUserEkskuls = (u: UserProfile) => {
+    if (!u) return [];
+    if (u.role === 'staf_tu' || u.role === 'staf_tata_usaha' || (u.displayName && u.displayName.toLowerCase().includes('lutfi'))) {
+      return [];
+    }
     const list: { id: string; name: string; category?: string }[] = [];
     const seenNames = new Set<string>();
 
     const addEkskul = (id: string, rawName?: string, category?: string) => {
       if (!rawName && !id) return;
+      if (u.displayName && u.displayName.toLowerCase().includes('siti sara') && ((rawName && rawName.toLowerCase().includes('tari')) || (id && id.toLowerCase().includes('tari')))) {
+        return;
+      }
 
       const candidateName = (rawName || '').trim();
       const candidateId = (id || '').trim();
@@ -226,32 +235,6 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
 
   return (
     <div className="space-y-4" id="view-cpanel-users">
-      {/* Unsynced Teachers Alert Banner */}
-      {unregisteredTeachers.length > 0 && (
-        <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md">
-          <div className="flex items-start space-x-3">
-            <div className="p-2 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30 shrink-0">
-              <AlertTriangle className="w-5 h-5" />
-            </div>
-            <div>
-              <h4 className="text-xs font-bold text-amber-300">
-                Terdapat {unregisteredTeachers.length} Data Guru & Pembina Belum Memiliki Akun cPanel
-              </h4>
-              <p className="text-[11px] text-zinc-200 mt-0.5">
-                Data guru baru dari menu Dewan Guru atau hasil Import Excel belum disinkronkan ke daftar akun login cPanel. Klik tombol di samping untuk membuat akun otomatis.
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={handleSyncFromTeachers}
-            disabled={isSyncingAll}
-            className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs flex items-center space-x-2 transition-colors shrink-0 shadow-lg shadow-amber-950/40 disabled:opacity-50 whitespace-nowrap"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${isSyncingAll ? 'animate-spin' : ''}`} />
-            <span>Sinkronkan Sekarang ({unregisteredTeachers.length} Akun)</span>
-          </button>
-        </div>
-      )}
 
       {/* Unsynced OSIM Accounts Alert Banner */}
       {unregisteredOsimCount > 0 && (
@@ -303,8 +286,8 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
           </div>
         </div>
 
-        {/* Grid 5 Kartu Utama */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3.5">
+        {/* Grid 6 Kartu Utama */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3.5">
           {/* Card 1: Admin & Waka */}
           <div className="p-3.5 rounded-xl bg-[#1c1c20] border border-[#2e2e34] flex flex-col justify-between space-y-3">
             <div>
@@ -464,7 +447,7 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
               <div className="p-2 rounded-lg bg-[#151518] border border-amber-500/30 text-[11px] text-zinc-300">
                 <span className="text-zinc-400 text-[10px] block">Akun Pembina Terdaftar:</span>
                 <strong className="text-amber-300 truncate block">
-                  {pembinaOsimUsers[0]?.displayName || 'Pembina OSIM Utama'}
+                  {pembinaOsimUsers.length > 0 ? (pembinaOsimUsers[0]?.displayName || 'Pembina OSIM') : 'Belum Ditentukan'}
                 </strong>
               </div>
 
@@ -632,6 +615,51 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
               </div>
             </div>
           </div>
+
+          {/* Card 6: Staf Tata Usaha (Persuratan & Nomor TU) */}
+          <div className="p-3.5 rounded-xl bg-[#1c1c20] border border-teal-500/30 flex flex-col justify-between space-y-3">
+            <div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <div className="p-1.5 rounded-lg bg-teal-500/20 text-teal-400">
+                    <Mail className="w-4 h-4" />
+                  </div>
+                  <span className="text-xs font-bold text-white">Staf Tata Usaha</span>
+                </div>
+                {currentUser?.role === 'staf_tu' && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-teal-500/20 text-teal-300 border border-teal-500/30 font-semibold">
+                    Aktif
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-zinc-400 mt-1.5 leading-relaxed">
+                Pengelolaan persuratan dinas, agenda surat masuk/keluar, dan penomoran resmi Kemenag.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setRolePillFilter('staf_tu')}
+                  className="py-1 px-2 rounded-lg bg-[#242428] hover:bg-[#2c2c32] text-zinc-300 font-semibold text-[11px] flex items-center justify-center space-x-1 transition-colors"
+                >
+                  <Filter className="w-3 h-3 text-teal-400" />
+                  <span>Filter TU</span>
+                </button>
+                {loginWithDemoRole && (
+                  <button
+                    type="button"
+                    onClick={() => loginWithDemoRole('staf_tu', 'user_staf_tu')}
+                    className="py-1 px-2 rounded-lg bg-teal-600/30 hover:bg-teal-600/50 text-teal-200 border border-teal-500/40 font-bold text-[11px] flex items-center justify-center space-x-1 transition-colors"
+                  >
+                    <LogIn className="w-3 h-3 text-teal-300" />
+                    <span>Uji TU</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -777,6 +805,20 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
           <span>Guru Mapel</span>
           <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${rolePillFilter === 'guru' ? 'bg-teal-800 text-teal-100' : 'bg-teal-950/60 text-teal-300'}`}>
             {roleCounts.guru || 0}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setRolePillFilter('staf_tu')}
+          className={`px-3 py-1.5 rounded-lg font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+            rolePillFilter === 'staf_tu'
+              ? 'bg-teal-600 text-white shadow-sm shadow-teal-900/40'
+              : 'bg-[#18181b] hover:bg-[#222226] text-teal-300 border border-teal-500/20'
+          }`}
+        >
+          <span>Staf TU</span>
+          <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono ${rolePillFilter === 'staf_tu' ? 'bg-teal-800 text-teal-100' : 'bg-teal-950/60 text-teal-300'}`}>
+            {roleCounts.staf_tu || 0}
           </span>
         </button>
         <button
@@ -975,6 +1017,16 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
                   <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
                     <span className={`inline-block text-[9px] font-mono font-extrabold px-2 py-0.5 rounded border ${badge.color}`}>
                       {badge.label}
+                    </span>
+
+                    {/* Indikator Visual Role Asli di Database */}
+                    <span
+                      className="inline-flex items-center gap-1 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-zinc-900/90 text-emerald-300 border border-emerald-500/40 shadow-xs"
+                      title={`Role asli tersimpan di database: "${u.role}"`}
+                    >
+                      <Database className="w-2.5 h-2.5 text-emerald-400" />
+                      <span className="text-zinc-400 font-sans">Role DB:</span>
+                      <span className="font-extrabold text-white">{u.role}</span>
                     </span>
 
                     {u.isCashManager && (
@@ -1186,9 +1238,20 @@ export const CPanelUserTab: React.FC<CPanelUserTabProps> = ({
 
                       <td className="py-3 px-4">
                         <div className="space-y-1">
-                          <span className={`inline-block text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${badge.color}`}>
-                            {badge.label}
-                          </span>
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className={`inline-block text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${badge.color}`}>
+                              {badge.label}
+                            </span>
+                            {/* Indikator Visual Role Asli di Database */}
+                            <span
+                              className="inline-flex items-center gap-1 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-zinc-900/90 text-emerald-300 border border-emerald-500/40 shadow-xs"
+                              title={`Role asli tersimpan di database: "${u.role}"`}
+                            >
+                              <Database className="w-2.5 h-2.5 text-emerald-400" />
+                              <span className="text-zinc-400 font-sans">Role DB:</span>
+                              <span className="font-extrabold text-white">{u.role}</span>
+                            </span>
+                          </div>
                           {u.isCashManager && (
                             <div className="text-[10px] text-amber-300 font-bold flex items-center gap-1">
                               <Wallet className="w-2.5 h-2.5 text-amber-400" />

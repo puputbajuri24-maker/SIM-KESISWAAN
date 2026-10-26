@@ -20,7 +20,8 @@ import {
   Sparkles,
   BookOpenCheck,
   ArrowUpRight,
-  Wallet
+  Wallet,
+  Clock
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSchool } from '../contexts/SchoolContext';
@@ -47,7 +48,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
     isOsimBendahara,
     isWaliKelas,
     isGuruMapel,
-    isTeacher
+    isTeacher,
+    isStaffTU,
+    canManageLetters
   } = useAuth();
   const {
     classes = [],
@@ -69,6 +72,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
     parentCallLetters,
     careerGuidances,
     permissions,
+    letters = [],
+    letterConfigs = [],
     activeAcademicYear,
     activeSemester,
     seedFirebaseDatabase,
@@ -97,6 +102,24 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
   const safeParentCallLetters = parentCallLetters || [];
   const safeCareerGuidances = careerGuidances || [];
   const safePermissions = permissions || [];
+  const safeLetters = letters || [];
+
+  // Letters and TU Correspondence Counters
+  const pendingLetters = useMemo(() => {
+    return safeLetters.filter(l => l && (!l.letterNumber || l.status === 'draf_menunggu_nomor'));
+  }, [safeLetters]);
+
+  const outgoingLetters = useMemo(() => {
+    return safeLetters.filter(l => l && l.letterType === 'surat_keluar' && l.status !== 'draf_menunggu_nomor');
+  }, [safeLetters]);
+
+  const incomingLetters = useMemo(() => {
+    return safeLetters.filter(l => l && l.letterType === 'surat_masuk');
+  }, [safeLetters]);
+
+  const studentLetters = useMemo(() => {
+    return safeLetters.filter(l => l && (l.category === 'dispensasi' || l.category === 'keterangan_aktif' || l.category === 'surat_tugas' || l.category === 'panggilan_ortu'));
+  }, [safeLetters]);
 
   // Statistics calculation for School-wide
   const totalStudents = useMemo(() => {
@@ -1407,9 +1430,232 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
   }
 
   // ==========================================
+  // VIEW 3.8: STAF TATA USAHA (PERSURATAN & ADMINISTRASI RESMI)
+  // ==========================================
+  if (isStaffTU) {
+    return (
+      <div className="space-y-4 font-sans text-xs select-none">
+        {/* Active Official Announcements Banner */}
+        <AnnouncementDashboardWidget onNavigate={onNavigate} />
+
+        {/* 1. Header Banner Command Center Tata Usaha */}
+        <div className="p-4 sm:p-5 bg-white dark:bg-gradient-to-r dark:from-[#08181e] dark:via-[#0c2229] dark:to-[#08181e] border border-teal-200 dark:border-teal-500/30 rounded-2xl shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center space-x-3.5">
+            <div className="w-11 h-11 bg-teal-50 dark:bg-teal-500/10 border border-teal-300 dark:border-teal-500/40 rounded-xl flex items-center justify-center text-teal-700 dark:text-teal-400 font-bold text-base shrink-0 shadow-inner">
+              <Mail className="w-5 h-5 text-teal-600 dark:text-teal-400" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="text-[11px] font-bold text-teal-700 dark:text-teal-400 uppercase tracking-wider bg-teal-50 dark:bg-teal-500/10 px-2 py-0.5 rounded border border-teal-200 dark:border-teal-500/20 font-mono">
+                  PORTAL TATA USAHA • PERSURATAN RESMI
+                </span>
+                <span className="bg-emerald-50 dark:bg-emerald-500/10 text-emerald-800 dark:text-emerald-400 text-[10px] font-semibold px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-500/20">
+                  {activeAcademicYear} ({activeSemester})
+                </span>
+              </div>
+              <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white mt-1">
+                {currentUser?.displayName || 'Staf Tata Usaha'} — Administrasi Persuratan Madrasah
+              </h2>
+              <p className="text-slate-600 dark:text-zinc-400 text-xs mt-0.5 max-w-2xl font-medium">
+                Pengelolaan buku agenda surat keluar, surat masuk, registrasi nomor surat dinas Kementerian Agama, dan penerbitan blangko surat kesiswaan.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => onNavigate('letters')}
+              className="px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs flex items-center space-x-1.5 transition-all shadow-md shadow-teal-600/20 hover:scale-[1.02]"
+            >
+              <Plus className="w-4 h-4" />
+              <span>+ CATAT SURAT BARU</span>
+            </button>
+            <button
+              onClick={() => onNavigate('letters')}
+              className="px-3.5 py-2 rounded-xl bg-teal-50 dark:bg-[#132228] border border-teal-300 dark:border-teal-500/40 hover:border-teal-500 text-teal-800 dark:text-teal-200 font-bold text-xs flex items-center space-x-1.5 transition-colors shadow-2xs"
+            >
+              <Clock className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+              <span>ANTREAN TU ({pendingLetters.length})</span>
+            </button>
+            <button
+              onClick={() => onNavigate('students')}
+              className="px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-[#132228] border border-slate-300 dark:border-slate-700 hover:border-teal-500/40 text-slate-800 dark:text-slate-300 font-bold text-xs flex items-center space-x-1.5 transition-colors shadow-2xs"
+            >
+              <Users className="w-4 h-4 text-slate-600 dark:text-slate-400" />
+              <span>DATA SISWA ({totalStudents})</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 2. Key Metrics Grid for Tata Usaha */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+          <StatCard
+            id="kpi-tu-total-surat"
+            title="TOTAL SURAT DINAS"
+            value={safeLetters.length}
+            icon={Mail}
+            subtitle={`${outgoingLetters.length} Keluar • ${incomingLetters.length} Masuk`}
+            colorTheme="indigo"
+            onClick={() => onNavigate('letters')}
+          />
+          <StatCard
+            id="kpi-tu-antrean-nomor"
+            title="ANTREAN NOMOR TU"
+            value={pendingLetters.length}
+            icon={Clock}
+            subtitle={pendingLetters.length > 0 ? 'Menunggu Penomoran Resmi' : 'Semua Surat Bernomor'}
+            colorTheme={pendingLetters.length > 0 ? "rose" : "emerald"}
+            onClick={() => onNavigate('letters')}
+          />
+          <StatCard
+            id="kpi-tu-surat-siswa"
+            title="DISPENSASI & IZIN"
+            value={studentLetters.length}
+            icon={FileText}
+            subtitle="Surat Kesiswaan & Mandat"
+            colorTheme="sky"
+            onClick={() => onNavigate('letters')}
+          />
+          <StatCard
+            id="kpi-tu-format-baku"
+            title="FORMAT KEMENAG"
+            value="B-{No}/Ma.26.06"
+            icon={CheckCircle2}
+            subtitle="Kode Induk MAN 2 SBT"
+            colorTheme="emerald"
+            onClick={() => onNavigate('letters')}
+          />
+        </div>
+
+        {/* 3. Main Content: Antrean Penomoran & Rekap Klasifikasi */}
+        <div className="grid grid-cols-12 gap-3">
+          {/* Left Column (8 cols): Antrean Surat Menunggu Nomor TU */}
+          <div className="col-span-12 lg:col-span-8 p-4 bg-white dark:bg-[#0c131a] border border-slate-200 dark:border-[#1a2836] rounded-2xl flex flex-col shadow-xs space-y-3">
+            <div className="flex items-center justify-between pb-2.5 border-b border-slate-200 dark:border-[#1a2836]">
+              <div className="flex items-center space-x-2">
+                <Clock className="w-4 h-4 text-amber-500" />
+                <h3 className="text-xs font-extrabold text-slate-900 dark:text-zinc-100 uppercase tracking-wide">
+                  Antrean Penomoran Resmi TU ({pendingLetters.length})
+                </h3>
+              </div>
+              <button
+                onClick={() => onNavigate('letters')}
+                className="text-xs font-bold text-teal-600 dark:text-teal-400 hover:underline flex items-center gap-1"
+              >
+                <span>Buka Modul Persuratan</span>
+                <ArrowUpRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="space-y-2 flex-1 overflow-y-auto max-h-[380px]">
+              {pendingLetters.map(letter => (
+                <div
+                  key={letter.id}
+                  className="p-3 bg-slate-50 dark:bg-[#101a24] border border-amber-400/40 dark:border-amber-500/30 rounded-xl hover:border-amber-500 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-black px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-500/10 text-amber-950 dark:text-amber-400 border border-amber-300 dark:border-amber-500/30">
+                        MENUNGGU NOMOR TU
+                      </span>
+                      <span className="text-[11px] text-slate-700 dark:text-zinc-300 font-mono font-bold">
+                        {letter.date}
+                      </span>
+                      <span className="text-[11px] font-mono font-black px-1.5 py-0.2 rounded bg-slate-200 dark:bg-zinc-800 text-slate-900 dark:text-zinc-100">
+                        {letter.classificationCode || 'PP.00.6'}
+                      </span>
+                    </div>
+                    <h4 className="font-extrabold text-slate-900 dark:text-white text-xs mt-1 truncate">
+                      {letter.title}
+                    </h4>
+                    <p className="text-xs text-slate-700 dark:text-zinc-300 font-medium truncate mt-0.5">
+                      {letter.recipient ? `Tujuan: ${letter.recipient}` : `Pengirim: ${letter.sender}`}
+                      {letter.studentName && ` • Siswa: ${letter.studentName} (${letter.studentClass})`}
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => onNavigate('letters')}
+                    className="px-3 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs flex items-center justify-center space-x-1.5 shrink-0 shadow-xs"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Terbitkan Nomor</span>
+                  </button>
+                </div>
+              ))}
+
+              {pendingLetters.length === 0 && (
+                <div className="py-12 text-center text-slate-600 dark:text-zinc-400 font-mono bg-slate-50 dark:bg-[#101a24]/50 rounded-xl border border-dashed border-slate-300 dark:border-[#1a2836]">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto mb-2 opacity-90" />
+                  <p className="text-slate-800 dark:text-zinc-200 font-bold text-xs">Semua Surat Telah Diterbitkan & Diberi Nomor Resmi</p>
+                  <p className="text-xs text-slate-600 dark:text-zinc-400 mt-1 font-sans font-medium">
+                    Tidak ada draf surat dari Guru BK, Waka, atau Pembina yang menunggu nomor TU saat ini.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right Column (4 cols): Rekap Klasifikasi Kemenag & Akses Cepat */}
+          <div className="col-span-12 lg:col-span-4 space-y-3">
+            <div className="p-4 bg-white dark:bg-[#0c131a] border border-slate-200 dark:border-[#1a2836] rounded-2xl shadow-xs space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-200 dark:border-[#1a2836]">
+                <div className="flex items-center space-x-2">
+                  <FileText className="w-4 h-4 text-teal-600 dark:text-teal-500" />
+                  <h3 className="text-xs font-extrabold text-slate-900 dark:text-zinc-100 uppercase tracking-wide">
+                    Klasifikasi Kemenag
+                  </h3>
+                </div>
+                <span className="text-xs text-teal-800 dark:text-teal-300 font-mono font-black">MAN 2 SBT</span>
+              </div>
+
+              <div className="space-y-2 text-xs">
+                <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 dark:bg-[#101a24] border border-slate-200 dark:border-[#1a2836]">
+                  <span className="font-bold text-slate-800 dark:text-zinc-200">PP.00.6 (Dispensasi / Lomba)</span>
+                  <span className="font-mono font-black text-teal-800 dark:text-teal-400">
+                    {safeLetters.filter(l => l.category === 'dispensasi').length} Surat
+                  </span>
+                </div>
+                <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 dark:bg-[#101a24] border border-slate-200 dark:border-[#1a2836]">
+                  <span className="font-bold text-slate-800 dark:text-zinc-200">PP.01.1 (Keterangan Aktif)</span>
+                  <span className="font-mono font-black text-teal-800 dark:text-teal-400">
+                    {safeLetters.filter(l => l.category === 'keterangan_aktif').length} Surat
+                  </span>
+                </div>
+                <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 dark:bg-[#101a24] border border-slate-200 dark:border-[#1a2836]">
+                  <span className="font-bold text-slate-800 dark:text-zinc-200">KS.01.2 (Panggilan Ortu / BK)</span>
+                  <span className="font-mono font-black text-teal-800 dark:text-teal-400">
+                    {safeLetters.filter(l => l.category === 'panggilan_ortu').length} Surat
+                  </span>
+                </div>
+                <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 dark:bg-[#101a24] border border-slate-200 dark:border-[#1a2836]">
+                  <span className="font-bold text-slate-800 dark:text-zinc-200">KP.01.2 (Surat Tugas / Mandat)</span>
+                  <span className="font-mono font-black text-teal-800 dark:text-teal-400">
+                    {safeLetters.filter(l => l.category === 'surat_tugas').length} Surat
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-3.5 bg-teal-50/50 dark:bg-[#0c1a1f] border border-teal-200 dark:border-teal-500/30 rounded-2xl shadow-xs space-y-1.5">
+              <div className="flex items-center gap-2 text-teal-800 dark:text-teal-300 font-bold text-xs">
+                <Sparkles className="w-4 h-4 text-teal-600 dark:text-teal-400" />
+                <span>Ketentuan Standar Nomor Surat:</span>
+              </div>
+              <p className="text-[11px] text-teal-900 dark:text-teal-200/90 leading-relaxed font-mono">
+                Formula Baku: <span className="font-bold">B-[No]/Ma.26.06/[Kode]/[Bulan]/[Tahun]</span>. Penomoran diatur dan dikendalikan terpusat oleh Staf Tata Usaha Madrasah.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ==========================================
   // VIEW 3.5: WALI KELAS & GURU MATA PELAJARAN DASHBOARD
   // ==========================================
-  if (isWaliKelas || isGuruMapel || (!isSuperAdmin && !isWaka && !isGuruBK && !isPembinaOsim && !isPembinaEkskul && !isPembina && !isPengurusOsim)) {
+  if (isWaliKelas || isGuruMapel || (!isSuperAdmin && !isWaka && !isGuruBK && !isPembinaOsim && !isPembinaEkskul && !isPembina && !isPengurusOsim && !isStaffTU)) {
     // Resolve Teacher's homeroom class or matching profile
     const teacherProfile = safeTeachers.find(
       t =>
@@ -1692,6 +1938,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
           >
             <ShieldAlert className="w-4 h-4" />
             <span>+ PELANGGARAN</span>
+          </button>
+          <button
+            onClick={() => onNavigate('letters')}
+            className="px-3.5 py-2 rounded-xl bg-[#131b2e] border border-[#1e293b] hover:border-teal-500/40 text-teal-300 font-semibold text-xs flex items-center space-x-1.5 transition-colors"
+          >
+            <Mail className="w-4 h-4 text-teal-400" />
+            <span>PERSURATAN TU {pendingLetters.length > 0 ? `(${pendingLetters.length})` : ''}</span>
           </button>
           {isSuperAdmin && (
             <button
