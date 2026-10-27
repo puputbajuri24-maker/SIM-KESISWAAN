@@ -668,7 +668,7 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
         return (
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-bold text-xs flex items-center justify-center shrink-0">
-              {m.studentName.charAt(0)}
+              {(m.studentName || 'S').charAt(0).toUpperCase()}
             </div>
             <div>
               <div className="flex items-center gap-1.5 flex-wrap">
@@ -1197,7 +1197,7 @@ export const ExtracurricularMembersPage: React.FC<MembersPageProps> = ({ initial
             {/* Header info */}
             <div className="flex items-center gap-4 p-4 rounded-xl bg-slate-50 dark:bg-zinc-900/90 border border-slate-200 dark:border-zinc-800">
               <div className="w-14 h-14 rounded-2xl bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 font-extrabold text-xl flex items-center justify-center shrink-0">
-                {selectedMember.studentName.charAt(0)}
+                {(selectedMember.studentName || 'S').charAt(0).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">

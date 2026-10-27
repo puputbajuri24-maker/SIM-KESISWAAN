@@ -2445,7 +2445,7 @@ export const CentralizedCrudManager: React.FC<CentralizedCrudManagerProps> = ({
               {editingOsimMember ? (
                 <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-center gap-3">
                   <div className="w-10 h-10 rounded-full bg-amber-500/20 text-amber-400 font-bold flex items-center justify-center text-sm border border-amber-500/30 shrink-0">
-                    {editingOsimMember.fullName.charAt(0)}
+                    {(editingOsimMember.fullName || 'O').charAt(0).toUpperCase()}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="font-bold text-white text-sm truncate">{editingOsimMember.fullName}</div>

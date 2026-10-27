@@ -292,7 +292,7 @@ export const OsimAkunPengurusTab: React.FC<OsimAkunPengurusTabProps> = ({
                               ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
                               : 'bg-zinc-800 text-zinc-300 border border-zinc-700'
                           }`}>
-                            {u.displayName.charAt(0)}
+                            {(u.displayName || 'U').charAt(0).toUpperCase()}
                           </div>
                           <div className="min-w-0">
                             <div className="font-semibold text-zinc-100 truncate">{u.displayName}</div>

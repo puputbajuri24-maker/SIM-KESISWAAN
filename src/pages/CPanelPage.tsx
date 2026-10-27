@@ -2824,7 +2824,7 @@ Alamat Sistem : ${window.location.origin}
                 <div className="bg-cyan-950/30 border border-cyan-500/50 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-cyan-600 to-blue-800 text-white font-black text-sm font-mono flex items-center justify-center shrink-0 border border-cyan-400/40 shadow-xs">
-                      {selectedOsimMemberForAccount.fullName.charAt(0)}
+                      {(selectedOsimMemberForAccount.fullName || 'O').charAt(0).toUpperCase()}
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
@@ -2909,7 +2909,7 @@ Alamat Sistem : ${window.location.origin}
                             }`}
                           >
                             <div className="w-8 h-8 rounded-lg bg-zinc-800 border border-zinc-700 text-cyan-300 font-bold font-mono text-xs flex items-center justify-center shrink-0">
-                              {m.fullName.charAt(0)}
+                              {(m.fullName || 'O').charAt(0).toUpperCase()}
                             </div>
                             <div className="min-w-0 flex-1">
                               <h5 className="font-bold text-xs truncate text-white">{m.fullName}</h5>
@@ -2955,7 +2955,7 @@ Alamat Sistem : ${window.location.origin}
                 <div className="bg-cyan-950/30 border border-cyan-500/50 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
                     <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-cyan-600 to-blue-800 text-white font-black text-sm font-mono flex items-center justify-center shrink-0 border border-cyan-400/40 shadow-xs">
-                      {selectedStudentForAccount.fullName.charAt(0)}
+                      {(selectedStudentForAccount.fullName || 'S').charAt(0).toUpperCase()}
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
@@ -3067,7 +3067,7 @@ Alamat Sistem : ${window.location.origin}
                           }`}
                         >
                           <div className="w-8 h-8 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-200 font-bold font-mono text-xs flex items-center justify-center shrink-0">
-                            {s.fullName.charAt(0)}
+                            {(s.fullName || 'S').charAt(0).toUpperCase()}
                           </div>
                           <div className="min-w-0 flex-1">
                             <h5 className="font-bold text-xs truncate text-white">{s.fullName}</h5>

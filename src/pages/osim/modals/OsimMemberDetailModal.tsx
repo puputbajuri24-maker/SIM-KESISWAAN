@@ -46,7 +46,7 @@ export const OsimMemberDetailModal: React.FC<OsimMemberDetailModalProps> = ({
             />
           ) : (
             <div className="w-16 h-16 rounded-full bg-amber-500/20 text-amber-400 font-bold flex items-center justify-center border border-amber-500/30 shrink-0 text-xl">
-              {selectedMember.fullName.charAt(0)}
+              {(selectedMember.fullName || 'S').charAt(0).toUpperCase()}
             </div>
           )}
           <div className="min-w-0 flex-1">

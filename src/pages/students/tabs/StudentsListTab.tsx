@@ -358,7 +358,7 @@ export const StudentsListTab: React.FC<StudentsListTabProps> = ({
                               <td className="px-4 py-2.5">
                                 <div className="flex items-center gap-2.5">
                                   <div className="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-bold text-xs flex items-center justify-center shrink-0">
-                                    {st.fullName.charAt(0)}
+                                    {(st.fullName || 'S').charAt(0).toUpperCase()}
                                   </div>
                                   <span className="font-bold text-slate-900 dark:text-slate-100">
                                     {st.fullName}

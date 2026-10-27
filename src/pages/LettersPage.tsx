@@ -222,13 +222,14 @@ export const LettersPage: React.FC = () => {
 
   // Filtered students for Responsive Grid Selector
   const availableStudentsForGrid = useMemo(() => {
-    return students.filter(s => {
+    return (students || []).filter(s => {
+      if (!s) return false;
       if (studentClassFilter !== 'all' && s.className !== studentClassFilter && s.classId !== studentClassFilter) {
         return false;
       }
       if (studentSearch.trim()) {
         const q = studentSearch.toLowerCase().trim();
-        const name = (s.fullName || '').toLowerCase();
+        const name = (s.fullName || (s as any).name || '').toLowerCase();
         const nis = (s.nis || '').toLowerCase();
         const cls = (s.className || '').toLowerCase();
         return name.includes(q) || nis.includes(q) || cls.includes(q);
@@ -722,11 +723,11 @@ export const LettersPage: React.FC = () => {
                   {letter.studentName && (
                     <div className="mb-3 p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800/60 flex items-center gap-2">
                       <div className="w-7 h-7 rounded-lg bg-emerald-700 text-white font-extrabold text-xs flex items-center justify-center shrink-0">
-                        {letter.studentName.charAt(0)}
+                        {((letter.studentName as any)?.fullName || letter.studentName || 'S').toString().trim().charAt(0).toUpperCase()}
                       </div>
                       <div className="min-w-0 text-left">
                         <div className="text-xs font-extrabold text-emerald-950 dark:text-emerald-200 truncate">
-                          {letter.studentName}
+                          {typeof letter.studentName === 'string' ? letter.studentName : ((letter.studentName as any)?.fullName || 'Siswa')}
                         </div>
                         <div className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300">
                           {letter.studentClass || 'Siswa'} {letter.studentNis ? `• NIS: ${letter.studentNis}` : ''}
@@ -962,11 +963,11 @@ export const LettersPage: React.FC = () => {
                   <div className="bg-emerald-50 dark:bg-emerald-950/70 border-2 border-emerald-600 rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-sm">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-xl bg-emerald-700 text-white font-black text-sm flex items-center justify-center shadow-xs">
-                        {formData.selectedStudent.fullName.charAt(0)}
+                        {(formData.selectedStudent.fullName || (formData.selectedStudent as any).name || 'S').toString().trim().charAt(0).toUpperCase()}
                       </div>
                       <div>
                         <div className="text-sm font-black text-emerald-950 dark:text-emerald-100 tracking-tight">
-                          {formData.selectedStudent.fullName}
+                          {formData.selectedStudent.fullName || (formData.selectedStudent as any).name || 'Siswa'}
                         </div>
                         <div className="text-xs text-emerald-900 dark:text-emerald-300 font-bold">
                           Kelas {formData.selectedStudent.className || '-'} • NIS: {formData.selectedStudent.nis || '-'}
@@ -1059,11 +1060,11 @@ export const LettersPage: React.FC = () => {
                                 ? 'bg-emerald-700 text-white ring-2 ring-emerald-500/40'
                                 : 'bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-slate-100 border border-slate-300 dark:border-slate-600'
                             }`}>
-                              {st.fullName.charAt(0)}
+                              {(st.fullName || (st as any).name || 'S').toString().trim().charAt(0).toUpperCase()}
                             </div>
                             <div className="min-w-0">
                               <div className="text-xs font-black text-slate-950 dark:text-white truncate tracking-tight">
-                                {st.fullName}
+                                {st.fullName || (st as any).name || 'Tanpa Nama'}
                               </div>
                               <div className="text-[11px] font-bold text-slate-700 dark:text-slate-300 truncate mt-0.5">
                                 <span className="text-emerald-800 dark:text-emerald-400 font-extrabold">{st.className || 'Kelas -'}</span> • NIS: {st.nis || '-'}

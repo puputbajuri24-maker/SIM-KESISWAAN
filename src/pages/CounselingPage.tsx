@@ -53,8 +53,10 @@ import { ClassGridFilter } from '../components/common/ClassGridFilter';
 import { StudentGridPicker } from '../components/common/StudentGridPicker';
 import { SchoolLetterhead } from '../components/common/SchoolLetterhead';
 import { calculateRecordCountsByClass, isStudentInClass } from '../utils/classResolver';
+import { BkAttendanceMonitoringTab } from '../components/counseling/BkAttendanceMonitoringTab';
+import { StudentAttendanceStats } from '../utils/attendanceMonitoring';
 
-type ActiveBkTab = 'counseling' | 'home_visit' | 'parent_call' | 'career' | 'analytics';
+type ActiveBkTab = 'counseling' | 'home_visit' | 'parent_call' | 'career' | 'attendance_monitoring' | 'analytics';
 
 interface CounselingPageProps {
   initialReferral?: Violation | null;
@@ -76,6 +78,8 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
     students,
     classes,
     violations,
+    attendance = [],
+    permissions = [],
     schoolSetting,
     handbookMeta,
     addCounseling,
@@ -700,6 +704,63 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
     } finally {
       setIsSavingCareer(false);
     }
+  };
+
+  // ==========================================
+  // ATTENDANCE MONITORING INTERVENTION HANDLERS
+  // ==========================================
+  const handleInitiateCounselingFromAttendance = (student: StudentAttendanceStats) => {
+    setEditingCounseling(null);
+    setCounselingForm({
+      studentId: student.studentId,
+      studentName: student.studentName,
+      studentClass: student.studentClass,
+      studentNis: student.studentNis,
+      date: new Date().toISOString().split('T')[0],
+      counselorName: currentUser?.displayName || 'Guru BK',
+      serviceField: 'Belajar',
+      counselingType: 'Individu',
+      urgencyLevel: student.riskLevel === 'critical' ? 'Tinggi' : 'Sedang',
+      topic: `Tindak Lanjut Ketidakhadiran: Terdata ${student.alpa}x Alpa (${student.rate}% Kehadiran)`,
+      notes: `Klarifikasi penyebab sering tidak hadir atau alpa. Riwayat absensi: ${student.recentAbsences.map(a => `${a.date}: ${a.status} (${a.notes || '-'})`).slice(0, 3).join(', ') || 'Terdata ketidakhadiran berulang'}.`,
+      solution: 'Pemberian bimbingan motivasi belajar, penegasan tata tertib kehadiran, dan komitmen siswa memperbaiki absensi.',
+      parentInvolved: student.alpa >= 2,
+      followUpPlan: 'Pemantauan absensi harian bersama Wali Kelas dan Guru Piket selama 2 pekan ke depan.',
+      isConfidential: false,
+      confidentialNotes: '',
+      status: 'Perlu Tindak Lanjut'
+    });
+    setIsCounselingModalOpen(true);
+  };
+
+  const handleInitiateHomeVisitFromAttendance = (student: StudentAttendanceStats) => {
+    setEditingHomeVisit(null);
+    const matchedStudent = students.find(s => s.id === student.studentId);
+    setHomeVisitForm({
+      studentId: student.studentId,
+      studentName: student.studentName,
+      studentClass: student.studentClass,
+      studentNis: student.studentNis,
+      date: new Date().toISOString().split('T')[0],
+      address: student.address || matchedStudent?.address || 'Alamat Siswa',
+      counselorName: currentUser?.displayName || 'Guru BK',
+      companionName: 'Wali Kelas',
+      visitedPerson: student.parentName || matchedStudent?.parentName || 'Orang Tua / Wali Siswa',
+      relationship: 'Ayah',
+      phone: student.parentPhone || student.phone || matchedStudent?.parentPhone || '',
+      purpose: `Klarifikasi dan konfirmasi ketidakhadiran siswa di madrasah (${student.alpa} kali Alpa / tanpa keterangan).`,
+      familyConditions: 'Perlu konfirmasi tatap muka langsung dengan orang tua/wali siswa.',
+      studentStudyEnvironment: 'Pemantauan lingkungan tempat tinggal dan dukungan belajar dari orang tua.',
+      findings: `Siswa terdata tidak hadir sebanyak ${student.alpa} kali tanpa keterangan (Alpa) dan ${student.izin + student.sakit} kali izin/sakit dengan persentase kehadiran ${student.rate}%.`,
+      agreements: 'Orang tua berkomitmen memantau keberangkatan dan kepulangan siswa setiap hari sekolah.',
+      followUpPlan: 'Evaluasi buku presensi bersama Wali Kelas selama 2 pekan ke depan.',
+      status: 'Terlaksana'
+    });
+    setIsHomeVisitModalOpen(true);
+  };
+
+  const handleInitiateParentCallFromAttendance = (student: StudentAttendanceStats) => {
+    handleOpenAddParentCall(student.studentId, student.alpa >= 3 ? 2 : 1);
   };
 
   // ==========================================
@@ -1341,6 +1402,27 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
         </button>
 
         <button
+          onClick={() => setActiveTab('attendance_monitoring')}
+          className={`relative px-3 py-1.5 rounded flex items-center space-x-2 transition-all ${
+            activeTab === 'attendance_monitoring'
+              ? 'text-pink-400 font-bold'
+              : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-zinc-200 hover:bg-slate-100 dark:hover:bg-[#161618]'
+          }`}
+        >
+          {activeTab === 'attendance_monitoring' && (
+            <motion.div
+              layoutId="activeCounselingTabIndicator"
+              className="absolute inset-0 bg-pink-600/20 border border-pink-500/40 rounded z-0"
+              transition={{ type: 'spring', stiffness: 450, damping: 35 }}
+            />
+          )}
+          <span className="relative z-10 flex items-center space-x-2">
+            <Calendar className="w-3.5 h-3.5" />
+            <span>PRESENSI_KELAS_BINAAN ({students.length})</span>
+          </span>
+        </button>
+
+        <button
           onClick={() => setActiveTab('analytics')}
           className={`relative px-3 py-1.5 rounded flex items-center space-x-2 transition-all ${
             activeTab === 'analytics'
@@ -1363,7 +1445,7 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
       </div>
 
       {/* Class Grid Filter */}
-      {activeTab !== 'analytics' && (
+      {activeTab !== 'analytics' && activeTab !== 'attendance_monitoring' && (
         <ClassGridFilter
           classes={classes}
           selectedClassId={selectedClass}
@@ -1787,6 +1869,33 @@ export const CounselingPage: React.FC<CounselingPageProps> = ({ initialReferral,
               </div>
             </div>
           </div>
+        </motion.div>
+      )}
+
+      {/* ========================================================= */}
+      {/* TAB 5: MONITORING PRESENSI KELAS BINAAN BK */}
+      {/* ========================================================= */}
+      {activeTab === 'attendance_monitoring' && (
+        <motion.div
+          key="attendance_monitoring"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.18, ease: 'easeOut' }}
+        >
+          <BkAttendanceMonitoringTab
+            students={students}
+            classes={classes}
+            attendance={attendance}
+            permissions={permissions}
+            counseling={counseling}
+            homeVisits={homeVisits}
+            parentCallLetters={parentCallLetters}
+            activeAcademicYear={activeAcademicYear}
+            onInitiateCounseling={handleInitiateCounselingFromAttendance}
+            onInitiateHomeVisit={handleInitiateHomeVisitFromAttendance}
+            onInitiateParentCall={handleInitiateParentCallFromAttendance}
+          />
         </motion.div>
       )}
       </AnimatePresence>

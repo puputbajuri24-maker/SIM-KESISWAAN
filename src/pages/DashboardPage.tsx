@@ -21,12 +21,15 @@ import {
   BookOpenCheck,
   ArrowUpRight,
   Wallet,
-  Clock
+  Clock,
+  AlertTriangle
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSchool } from '../contexts/SchoolContext';
 import { StatCard } from '../components/common/StatCard';
 import { AnnouncementDashboardWidget } from '../components/announcements/AnnouncementDashboardWidget';
+import { calculateStudentAttendanceStats, getGuruBkAssignedClasses } from '../utils/attendanceMonitoring';
+import { isStudentInClass } from '../utils/classResolver';
 
 interface DashboardPageProps {
   onNavigate: (tabId: string) => void;
@@ -999,7 +1002,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
                 <div key={m.id} className="p-2 bg-[#161618] border border-[#27272a] rounded-lg flex items-center justify-between">
                   <div className="flex items-center gap-2.5">
                     <div className="w-6 h-6 rounded-full bg-emerald-500/15 text-emerald-400 font-bold text-[10px] flex items-center justify-center shrink-0 border border-emerald-500/30">
-                      {m.studentName.charAt(0)}
+                      {(m.studentName || 'S').charAt(0).toUpperCase()}
                     </div>
                     <div>
                       <div className="font-bold text-zinc-200 truncate max-w-[130px] sm:max-w-[180px]">{m.studentName}</div>
@@ -1150,6 +1153,40 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
     const pendingHomeVisits = safeHomeVisits.filter(h => h && h.status !== 'Terlaksana').length;
     const activeParentCalls = safeParentCallLetters.filter(p => p && p.status === 'Diterbitkan').length;
 
+    // Attendance stats calculation for Guru BK's assigned classes
+    const assignedClassIds = getGuruBkAssignedClasses(currentUser?.uid);
+    const bkStudentStats = calculateStudentAttendanceStats(
+      safeStudents,
+      safeAttendance,
+      safePermissions,
+      safeCounseling,
+      safeHomeVisits,
+      safeParentCallLetters
+    );
+
+    // Filter to students in Guru BK's assigned classes (or all if none specifically assigned yet)
+    const bkRelevantStudents = bkStudentStats.filter(st => {
+      if (assignedClassIds.length === 0) return true;
+      return assignedClassIds.some(cId => {
+        const cls = safeClasses.find(c => c.id === cId || c.name === cId);
+        return cls && (isStudentInClass({ studentClass: st.studentClass }, cls.name, safeClasses) || st.classId === cls.id);
+      });
+    });
+
+    // Students with low attendance or unexcused absences (critical or alpa >= 1 or rate < 85%)
+    const lowAttendanceStudents = bkRelevantStudents
+      .filter(s => s.riskLevel === 'critical' || s.alpa >= 1 || s.rate < 85)
+      .sort((a, b) => {
+        if (b.alpa !== a.alpa) return b.alpa - a.alpa;
+        return a.rate - b.rate;
+      });
+
+    const criticalAttendanceCount = bkRelevantStudents.filter(s => s.riskLevel === 'critical').length;
+    const totalBinaanAlpa = bkRelevantStudents.reduce((sum, s) => sum + s.alpa, 0);
+    const avgBinaanRate = bkRelevantStudents.length > 0
+      ? Math.round(bkRelevantStudents.reduce((sum, s) => sum + s.rate, 0) / bkRelevantStudents.length)
+      : 100;
+
     return (
       <div className="space-y-3 font-sans text-xs select-none">
         {/* Active Official Announcements Banner */}
@@ -1169,6 +1206,11 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
                 <span className="bg-pink-500/10 text-pink-700 dark:text-pink-400 text-[9px] px-1.5 py-0.2 rounded border border-pink-500/20 font-mono font-bold">
                   {activeAcademicYear} ({activeSemester})
                 </span>
+                {assignedClassIds.length > 0 && (
+                  <span className="bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-[9px] px-1.5 py-0.2 rounded border border-emerald-200 dark:border-emerald-500/20 font-bold">
+                    {assignedClassIds.length} KELAS BINAAN
+                  </span>
+                )}
               </div>
               <h2 className="text-sm sm:text-base font-bold text-slate-900 dark:text-zinc-100 mt-0.5">
                 {currentUser?.displayName} — Pusat Bimbingan, Konseling & Advokasi Siswa
@@ -1246,6 +1288,140 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
             colorTheme="emerald"
             onClick={() => onNavigate('counseling')}
           />
+        </div>
+
+        {/* 2.5. MONITORING KEHADIRAN SISWA BINAAN BK (RINGKASAN DETEKSI DINI) */}
+        <div className="p-3.5 bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] rounded-2xl shadow-xs space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center space-x-2.5">
+              <div className="w-8 h-8 rounded-lg bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-600 dark:text-rose-400 shrink-0">
+                <AlertTriangle className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
+                    STATUS KEHADIRAN SISWA BINAAN BK (EARLY WARNING SYSTEM)
+                  </h3>
+                  {criticalAttendanceCount > 0 && (
+                    <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-rose-600 text-white animate-pulse">
+                      {criticalAttendanceCount} Kritis
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5">
+                  Deteksi cepat siswa dengan tingkat kehadiran rendah dan sering absen untuk intervensi BK
+                  {assignedClassIds.length > 0 && ` • ${assignedClassIds.length} Kelas Binaan Terpilih`}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => onNavigate('counseling')}
+                className="px-3 py-1.5 rounded-xl bg-pink-50 hover:bg-pink-100 dark:bg-pink-950/60 dark:hover:bg-pink-900/80 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800 text-[11px] font-bold flex items-center gap-1 transition-colors"
+              >
+                <span>Buka Rekap Kelas Binaan Lengkap →</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Metrics Bar */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+            <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-[#161618] border border-slate-200 dark:border-[#27272a]">
+              <div className="text-[10px] text-slate-500 dark:text-zinc-400 font-mono">TOTAL SISWA BINAAN</div>
+              <div className="text-base font-black text-slate-900 dark:text-white mt-0.5">{bkRelevantStudents.length} Siswa</div>
+            </div>
+            <div className="p-2.5 rounded-xl bg-rose-50/60 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900/40">
+              <div className="text-[10px] text-rose-700 dark:text-rose-400 font-mono font-bold">BUTUH INTERVENSI</div>
+              <div className="text-base font-black text-rose-700 dark:text-rose-400 mt-0.5">{lowAttendanceStudents.length} Siswa</div>
+            </div>
+            <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-[#161618] border border-slate-200 dark:border-[#27272a]">
+              <div className="text-[10px] text-red-600 dark:text-red-400 font-mono font-bold">TOTAL ALPA (A)</div>
+              <div className="text-base font-black text-red-600 dark:text-red-400 mt-0.5">{totalBinaanAlpa} Kali</div>
+            </div>
+            <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-[#161618] border border-slate-200 dark:border-[#27272a]">
+              <div className="text-[10px] text-slate-500 dark:text-zinc-400 font-mono">RATA-RATA KEHADIRAN</div>
+              <div className={`text-base font-black mt-0.5 ${
+                avgBinaanRate >= 90 ? 'text-emerald-600 dark:text-emerald-400' :
+                avgBinaanRate >= 80 ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'
+              }`}>{avgBinaanRate}%</div>
+            </div>
+          </div>
+
+          {/* Low Attendance Student Cards or Positive State */}
+          {lowAttendanceStudents.length === 0 ? (
+            <div className="p-3.5 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/40 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2.5 text-emerald-800 dark:text-emerald-300">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                <span>Semua siswa pada kelas binaan Anda memiliki catatan kehadiran prima tanpa ada indikasi alpa berulang.</span>
+              </div>
+              <button
+                onClick={() => onNavigate('counseling')}
+                className="text-[11px] font-bold text-emerald-700 dark:text-emerald-400 hover:underline shrink-0"
+              >
+                Lihat Rekap Presensi →
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <div className="text-[10px] font-mono text-slate-500 dark:text-zinc-400 uppercase font-bold">
+                  SISWA DENGAN TINGKAT KEHADIRAN RENDAH (PRIORITAS BK)
+                </div>
+                <button
+                  onClick={() => onNavigate('counseling')}
+                  className="text-[10px] font-mono text-pink-600 dark:text-pink-400 font-bold hover:underline"
+                >
+                  Lihat Semua ({lowAttendanceStudents.length}) →
+                </button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+                {lowAttendanceStudents.slice(0, 6).map(st => (
+                  <div
+                    key={st.studentId}
+                    onClick={() => onNavigate('counseling')}
+                    className="p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 dark:bg-[#161618] dark:hover:bg-[#1a1a1e] border border-slate-200 dark:border-[#27272a] hover:border-pink-500/40 cursor-pointer transition-all flex items-center justify-between gap-2"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs shrink-0 ${
+                        st.riskLevel === 'critical'
+                          ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/60 dark:text-rose-300'
+                          : 'bg-amber-100 text-amber-700 dark:bg-amber-900/60 dark:text-amber-300'
+                      }`}>
+                        {(st.studentName || 'S').toString().trim().charAt(0).toUpperCase()}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-bold text-slate-900 dark:text-white truncate text-xs">
+                          {st.studentName}
+                        </div>
+                        <div className="text-[10px] text-slate-500 dark:text-zinc-400 truncate">
+                          {st.studentClass} • NIS: {st.studentNis}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-right shrink-0">
+                      <div className="flex items-center gap-1 justify-end">
+                        {st.alpa > 0 && (
+                          <span className="px-1.5 py-0.2 rounded bg-rose-600 text-white font-mono font-bold text-[10px]">
+                            {st.alpa} Alpa
+                          </span>
+                        )}
+                        <span className={`font-mono font-bold text-[11px] ${
+                          st.rate >= 80 ? 'text-amber-600 dark:text-amber-400' : 'text-rose-600 dark:text-rose-400'
+                        }`}>
+                          {st.rate}%
+                        </span>
+                      </div>
+                      <span className="text-[9px] text-pink-600 dark:text-pink-400 font-bold block mt-0.5">
+                        Intervensi BK →
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 3. Operational Grid */}

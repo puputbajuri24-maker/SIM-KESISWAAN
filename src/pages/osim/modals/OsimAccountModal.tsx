@@ -105,7 +105,7 @@ export const OsimAccountModal: React.FC<OsimAccountModalProps> = ({
                     />
                   ) : (
                     <div className="w-12 h-12 rounded-full bg-amber-500/20 text-amber-300 font-bold flex items-center justify-center border border-amber-500/40 shrink-0 text-base">
-                      {selectedStudentForAccount.fullName.charAt(0)}
+                      {(selectedStudentForAccount.fullName || 'S').charAt(0).toUpperCase()}
                     </div>
                   )}
                   <div className="min-w-0">
@@ -245,7 +245,7 @@ export const OsimAccountModal: React.FC<OsimAccountModalProps> = ({
                                     ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
                                     : 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
                                 }`}>
-                                  {student.fullName.charAt(0)}
+                                  {(student.fullName || 'S').charAt(0).toUpperCase()}
                                 </div>
                               )}
                               <div className="min-w-0">

@@ -324,7 +324,7 @@ export const OsimStrukturTab: React.FC<OsimStrukturTabProps> = ({
                         />
                       ) : (
                         <div className="w-12 h-12 rounded-full bg-amber-500/20 text-amber-400 font-bold flex items-center justify-center border border-amber-500/30 shrink-0 text-sm">
-                          {bph.fullName.charAt(0)}
+                          {(bph.fullName || 'O').charAt(0).toUpperCase()}
                         </div>
                       )}
                       <div className="min-w-0">
@@ -466,7 +466,7 @@ export const OsimStrukturTab: React.FC<OsimStrukturTabProps> = ({
                       />
                     ) : (
                       <div className="w-12 h-12 rounded-full bg-amber-500/20 text-amber-400 font-bold flex items-center justify-center border border-amber-500/30 shrink-0 text-sm">
-                        {bph.fullName.charAt(0)}
+                        {(bph.fullName || 'O').charAt(0).toUpperCase()}
                       </div>
                     )}
                     <div className="min-w-0">

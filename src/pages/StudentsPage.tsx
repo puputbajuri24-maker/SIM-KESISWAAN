@@ -771,7 +771,7 @@ export const StudentsPage: React.FC = () => {
       cell: s => (
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-bold text-xs flex items-center justify-center shrink-0">
-            {s.fullName.charAt(0)}
+            {(s.fullName || 'S').charAt(0).toUpperCase()}
           </div>
           <div>
             <p className="font-semibold text-slate-900 dark:text-slate-100">{s.fullName}</p>

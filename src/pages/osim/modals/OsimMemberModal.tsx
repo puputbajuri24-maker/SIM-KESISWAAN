@@ -273,7 +273,7 @@ export const OsimMemberModal: React.FC<OsimMemberModalProps> = ({
                                   ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
                                   : 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
                               }`}>
-                                {student.fullName.charAt(0)}
+                                {(student.fullName || 'S').charAt(0).toUpperCase()}
                               </div>
                             )}
                             <div className="min-w-0">
