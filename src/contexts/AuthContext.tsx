@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { UserProfile, UserRole, CanonicalUserRole, OsimPosition, Teacher, Extracurricular, AuditLogItem, OsimDepartment, OsimMember, OsimRoleType, AuthBootstrapState } from '../types';
 import { DEMO_USERS, DEFAULT_SUPER_ADMIN, PURGED_DEMO_UIDS, PURGED_DEMO_EMAILS, isBlacklistedDemoName, getDefaultOsimPassword } from '../services/seedData';
 import { auth, db, getSecondaryAuth } from '../services/firebase';
+import { SessionTimeoutModal } from '../components/common/SessionTimeoutModal';
 import { handleFirestoreError, OperationType, isPermissionError } from '../services/firestoreErrors';
 import { doc, getDoc, getDocs, collection, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import {
@@ -215,6 +216,10 @@ interface AuthContextType {
     isCashManager?: boolean;
     cashManagerTitle?: string;
   }) => Promise<{ success: boolean; user?: UserProfile; error?: string }>;
+  // Idle Session Management
+  extendSession: () => void;
+  isIdleWarningOpen: boolean;
+  idleCountdownSeconds: number;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -222,6 +227,10 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const LOCAL_STORAGE_USER_KEY = 'sim_kesiswaan_active_user';
 const SESSION_STORAGE_USER_KEY = 'sim_kesiswaan_session_user';
 const LOCAL_STORAGE_ALL_USERS_KEY = 'sim_kesiswaan_all_users_registry';
+
+// Konfigurasi Idle Timeout (30 menit inaktif, modal muncul 1 menit sebelum sesi berakhir)
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 Menit (1.800.000 ms)
+const IDLE_WARNING_MS = 1 * 60 * 1000;  // 1 Menit (60.000 ms)
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Initialize all users with persistent custom users or deduplicated storage
@@ -1196,11 +1205,114 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       sessionStorage.removeItem(SESSION_STORAGE_USER_KEY);
       localStorage.removeItem(LOCAL_STORAGE_USER_KEY);
       localStorage.removeItem('simkesiswaan_active_tab');
+      localStorage.removeItem('sim_last_activity');
     } catch {}
+    setIsIdleWarningOpen(false);
     setCurrentUser(null);
     setBootstrapState('READY');
     setBootstrapError(null);
   };
+
+  // =========================================================================
+  // FITUR IDLE TIMEOUT & MODAL PERINGATAN (30 MENIT & 1 MENIT PERINGATAN)
+  // =========================================================================
+  const [isIdleWarningOpen, setIsIdleWarningOpen] = useState(false);
+  const [idleCountdownSeconds, setIdleCountdownSeconds] = useState(60);
+  const lastActivityRef = useRef<number>(Date.now());
+  const lastThrottleRef = useRef<number>(0);
+  const isIdleWarningOpenRef = useRef<boolean>(false);
+  isIdleWarningOpenRef.current = isIdleWarningOpen;
+
+  const extendSession = useCallback(() => {
+    lastActivityRef.current = Date.now();
+    setIsIdleWarningOpen(false);
+    setIdleCountdownSeconds(60);
+    try {
+      localStorage.setItem('sim_last_activity', String(Date.now()));
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (!currentUser) {
+      setIsIdleWarningOpen(false);
+      return;
+    }
+
+    // Inisialisasi awal waktu aktivitas saat login / mount
+    const initialTime = Date.now();
+    lastActivityRef.current = initialTime;
+    try {
+      localStorage.setItem('sim_last_activity', String(initialTime));
+    } catch {}
+
+    const handleUserActivity = () => {
+      const now = Date.now();
+      // Throttle minimal 1 detik untuk efisiensi performa browser
+      if (now - lastThrottleRef.current > 1000) {
+        lastThrottleRef.current = now;
+        // Hanya reset otomatis jika modal peringatan belum muncul
+        // Jika modal peringatan sudah muncul, pengguna harus klik tombol 'Perpanjang Sesi'
+        if (!isIdleWarningOpenRef.current) {
+          lastActivityRef.current = now;
+          try {
+            localStorage.setItem('sim_last_activity', String(now));
+          } catch {}
+        }
+      }
+    };
+
+    // Events untuk mendeteksi interaksi pengguna: mousedown, keydown, touchstart, dan scroll
+    const activityEvents = ['mousedown', 'keydown', 'touchstart', 'scroll'];
+    activityEvents.forEach(evt => {
+      window.addEventListener(evt, handleUserActivity, { passive: true });
+    });
+
+    // Timer interval checker setiap 1 detik
+    const timerInterval = setInterval(() => {
+      // Sinkronisasi lintas tab browser via localStorage
+      try {
+        const stored = localStorage.getItem('sim_last_activity');
+        if (stored) {
+          const parsed = parseInt(stored, 10);
+          if (!isNaN(parsed) && parsed > lastActivityRef.current) {
+            lastActivityRef.current = parsed;
+          }
+        }
+      } catch {}
+
+      const now = Date.now();
+      const elapsed = now - lastActivityRef.current;
+
+      if (elapsed >= IDLE_TIMEOUT_MS) {
+        // Durasi 30 menit penuh telah habis: lakukan auto logout
+        setIsIdleWarningOpen(false);
+        recordSystemAuditLog(
+          'AUTO_LOGOUT_IDLE',
+          'Keamanan & Sesi',
+          `Sesi login ${currentUser.displayName} (${currentUser.role.toUpperCase()}) telah berakhir otomatis karena tidak aktif selama 30 menit (Idle Timeout)`,
+          currentUser
+        ).catch(() => {});
+        logout();
+      } else if (elapsed >= IDLE_TIMEOUT_MS - IDLE_WARNING_MS) {
+        // Berada di rentang 1 menit terakhir (fase peringatan 60 detik)
+        const remainingMs = IDLE_TIMEOUT_MS - elapsed;
+        const remainingSec = Math.max(1, Math.ceil(remainingMs / 1000));
+        setIdleCountdownSeconds(remainingSec);
+        setIsIdleWarningOpen(true);
+      } else {
+        if (isIdleWarningOpenRef.current) {
+          setIsIdleWarningOpen(false);
+        }
+      }
+    }, 1000);
+
+    return () => {
+      activityEvents.forEach(evt => {
+        window.removeEventListener(evt, handleUserActivity);
+      });
+      clearInterval(timerInterval);
+    };
+  }, [currentUser]);
 
   const updateProfileState = (updated: Partial<UserProfile>) => {
     if (!currentUser) return;
@@ -3082,10 +3194,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         syncUsersFromOsim,
         migrateAllUsersToTidyUids,
         activateTeacherAccount,
-        activateOsimAccount
+        activateOsimAccount,
+        extendSession,
+        isIdleWarningOpen,
+        idleCountdownSeconds
       }}
     >
       {children}
+      <SessionTimeoutModal
+        isOpen={isIdleWarningOpen}
+        remainingSeconds={idleCountdownSeconds}
+        onExtend={extendSession}
+        onLogout={logout}
+      />
     </AuthContext.Provider>
   );
 };
