@@ -22,7 +22,9 @@ import {
   ArrowUpRight,
   Wallet,
   Clock,
-  AlertTriangle
+  AlertTriangle,
+  Lock,
+  Settings
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useSchool } from '../contexts/SchoolContext';
@@ -1164,9 +1166,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
       safeParentCallLetters
     );
 
-    // Filter to students in Guru BK's assigned classes (or all if none specifically assigned yet)
+    // Filter strictly to students in Guru BK's assigned classes (strict confidentiality enforcement)
     const bkRelevantStudents = bkStudentStats.filter(st => {
-      if (assignedClassIds.length === 0) return true;
+      if (assignedClassIds.length === 0) return false;
       return assignedClassIds.some(cId => {
         const cls = safeClasses.find(c => c.id === cId || c.name === cId);
         return cls && (isStudentInClass({ studentClass: st.studentClass }, cls.name, safeClasses) || st.classId === cls.id);
@@ -1349,7 +1351,24 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate, onOpen
           </div>
 
           {/* Low Attendance Student Cards or Positive State */}
-          {lowAttendanceStudents.length === 0 ? (
+          {assignedClassIds.length === 0 ? (
+            <div className="p-4 rounded-xl bg-pink-50/60 dark:bg-pink-950/20 border border-pink-200 dark:border-pink-900/40 text-center space-y-2">
+              <Lock className="w-5 h-5 text-pink-600 dark:text-pink-400 mx-auto" />
+              <div className="font-bold text-xs text-slate-900 dark:text-white">
+                Kerahasiaan Data: Belum Ada Kelas Binaan Ditentukan
+              </div>
+              <p className="text-[11px] text-slate-600 dark:text-zinc-400 max-w-md mx-auto">
+                Sesuai prinsip kerahasiaan bimbingan konseling dan etika profesi antar Guru BK, data presensi siswa hanya ditampilkan setelah Anda memilih rombel binaan resmi Anda.
+              </p>
+              <button
+                onClick={() => onNavigate('counseling')}
+                className="mt-1 px-3 py-1.5 rounded-lg bg-pink-600 hover:bg-pink-700 text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-xs transition-all cursor-pointer"
+              >
+                <Settings className="w-3.5 h-3.5" />
+                <span>Atur Kelas Binaan Saya</span>
+              </button>
+            </div>
+          ) : lowAttendanceStudents.length === 0 ? (
             <div className="p-3.5 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/40 flex items-center justify-between text-xs">
               <div className="flex items-center gap-2.5 text-emerald-800 dark:text-emerald-300">
                 <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />

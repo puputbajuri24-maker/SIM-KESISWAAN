@@ -29,8 +29,11 @@ import {
   Lock,
   ArrowRight,
   Save,
-  CheckCheck
+  CheckCheck,
+  Shield
 } from 'lucide-react';
+import { db, auth } from '../../services/firebase';
+import { doc, updateDoc, setDoc } from 'firebase/firestore';
 import {
   SchoolClass,
   Student,
@@ -100,21 +103,41 @@ export const BkAttendanceMonitoringTab: React.FC<BkAttendanceMonitoringTabProps>
   onInitiateParentCall
 }) => {
   const counseling = propCounseling || propCounselings || [];
-  const { currentUser } = useAuth();
+  const { currentUser, isGuruBK, isWakaOrAdmin } = useAuth();
   const { toast } = useToast();
   const { addAttendanceRecord, schoolSetting, activeSemester } = useSchool();
+
+  // Supervisor role check: Admin / Waka / Kepala Madrasah have full oversight, whereas Guru BK is strictly scoped
+  const isSupervisor = Boolean(isWakaOrAdmin || currentUser?.role === 'super_admin' || currentUser?.role === 'waka_kesiswaan');
 
   // Mode View: Rekap & EWS vs Input Presensi Harian
   const [viewMode, setViewMode] = useState<ViewMode>('rekap');
 
   // Assigned BK Classes (saved per Guru BK user)
   const [assignedClassIds, setAssignedClassIds] = useState<string[]>(() => {
+    const userObj = currentUser as (any) | null;
+    if (userObj?.assignedClasses && Array.isArray(userObj.assignedClasses) && userObj.assignedClasses.length > 0) {
+      return userObj.assignedClasses;
+    }
     return getGuruBkAssignedClasses(currentUser?.uid);
   });
 
+  // Guru BK's own assigned classes (strictly isolated per BK counselor)
+  const myAssignedClasses = useMemo(() => {
+    return classes.filter(
+      c => assignedClassIds.includes(c.id) || assignedClassIds.includes(c.name)
+    );
+  }, [classes, assignedClassIds]);
+
+  // Accessible classes: Supervisors see all school classes; Guru BK sees ONLY their assigned classes
+  const accessibleClasses = useMemo(() => {
+    if (isSupervisor) return classes;
+    return myAssignedClasses;
+  }, [isSupervisor, classes, myAssignedClasses]);
+
   // Selected class in Grid: 'all' | classId
   const [selectedClassId, setSelectedClassId] = useState<string>('all');
-  const [onlyMyClasses, setOnlyMyClasses] = useState<boolean>(false);
+  const [onlyMyClasses, setOnlyMyClasses] = useState<boolean>(!isSupervisor);
   const [gradeFilter, setGradeFilter] = useState<'all' | 'X' | 'XI' | 'XII'>('all');
   const [searchStudent, setSearchStudent] = useState<string>('');
   const [riskFilter, setRiskFilter] = useState<'all' | 'critical' | 'warning' | 'safe' | 'alpa'>('all');
@@ -140,18 +163,21 @@ export const BkAttendanceMonitoringTab: React.FC<BkAttendanceMonitoringTabProps>
   const [isSavingDaily, setIsSavingDaily] = useState<boolean>(false);
   const [isDirtyDaily, setIsDirtyDaily] = useState<boolean>(false);
 
-  // Auto initialize dailyTargetClassId if not set
+  // Auto initialize dailyTargetClassId if not set or invalid for current counselor
   useEffect(() => {
-    if (!dailyTargetClassId && classes.length > 0) {
-      if (selectedClassId !== 'all') {
+    if (accessibleClasses.length === 0) {
+      setDailyTargetClassId('');
+      return;
+    }
+    const isCurrentValid = accessibleClasses.some(c => c.id === dailyTargetClassId || c.name === dailyTargetClassId);
+    if (!dailyTargetClassId || !isCurrentValid) {
+      if (selectedClassId !== 'all' && accessibleClasses.some(c => c.id === selectedClassId || c.name === selectedClassId)) {
         setDailyTargetClassId(selectedClassId);
-      } else if (assignedClassIds.length > 0) {
-        setDailyTargetClassId(assignedClassIds[0]);
       } else {
-        setDailyTargetClassId(classes[0].id);
+        setDailyTargetClassId(accessibleClasses[0].id);
       }
     }
-  }, [dailyTargetClassId, selectedClassId, assignedClassIds, classes]);
+  }, [dailyTargetClassId, selectedClassId, accessibleClasses]);
 
   // Compute effective date range for recap filter
   const effectiveDateRange = useMemo(() => {
@@ -191,33 +217,46 @@ export const BkAttendanceMonitoringTab: React.FC<BkAttendanceMonitoringTabProps>
     );
   }, [students, attendance, permissions, counseling, homeVisits, parentCallLetters, effectiveDateRange]);
 
-  // Compute class summaries for Grid
+  // Compute class summaries for Grid (strictly bounded by accessibleClasses)
   const classSummaries = useMemo(() => {
-    return calculateClassAttendanceSummaries(classes, students, allStudentStats, assignedClassIds);
-  }, [classes, students, allStudentStats, assignedClassIds]);
+    return calculateClassAttendanceSummaries(accessibleClasses, students, allStudentStats, assignedClassIds);
+  }, [accessibleClasses, students, allStudentStats, assignedClassIds]);
 
   // Filtered classes for Grid display
   const displayedClasses = useMemo(() => {
     return classSummaries.filter(cls => {
       if (gradeFilter !== 'all' && cls.grade !== gradeFilter) return false;
-      if (onlyMyClasses && assignedClassIds.length > 0) {
+      if (isSupervisor && onlyMyClasses && assignedClassIds.length > 0) {
         return assignedClassIds.includes(cls.classId) || assignedClassIds.includes(cls.className);
       }
       return true;
     });
-  }, [classSummaries, gradeFilter, onlyMyClasses, assignedClassIds]);
+  }, [classSummaries, gradeFilter, isSupervisor, onlyMyClasses, assignedClassIds]);
 
-  // Filtered Students for the Table
+  // Filtered Students for the Table & Reports (Strict BK Data Isolation)
   const filteredStudents = useMemo(() => {
+    // If not supervisor and Guru BK has not assigned classes yet, return [] to safeguard confidentiality
+    if (!isSupervisor && assignedClassIds.length === 0) {
+      return [];
+    }
+
     return allStudentStats.filter(st => {
-      // 1. Class filter from selection
+      // 1. Strict Boundary: Guru BK can ONLY see students in their accessible classes
+      if (!isSupervisor) {
+        const inAccessibleClass = accessibleClasses.some(
+          c => isStudentInClass({ studentClass: st.studentClass }, c.name, classes) || st.classId === c.id
+        );
+        if (!inAccessibleClass) return false;
+      }
+
+      // 2. Class filter from selection
       if (selectedClassId !== 'all') {
-        const targetClass = classes.find(c => c.id === selectedClassId || c.name === selectedClassId);
+        const targetClass = accessibleClasses.find(c => c.id === selectedClassId || c.name === selectedClassId);
         if (targetClass) {
           const inClass = isStudentInClass({ studentClass: st.studentClass }, targetClass.name, classes) || st.classId === targetClass.id;
           if (!inClass) return false;
         }
-      } else if (onlyMyClasses && assignedClassIds.length > 0) {
+      } else if (isSupervisor && onlyMyClasses && assignedClassIds.length > 0) {
         const inAnyAssigned = assignedClassIds.some(cId => {
           const target = classes.find(c => c.id === cId || c.name === cId);
           return target && (isStudentInClass({ studentClass: st.studentClass }, target.name, classes) || st.classId === target.id);
@@ -225,13 +264,13 @@ export const BkAttendanceMonitoringTab: React.FC<BkAttendanceMonitoringTabProps>
         if (!inAnyAssigned) return false;
       }
 
-      // 2. Risk filter
+      // 3. Risk filter
       if (riskFilter === 'critical' && st.riskLevel !== 'critical') return false;
       if (riskFilter === 'warning' && st.riskLevel !== 'warning') return false;
       if (riskFilter === 'safe' && st.riskLevel !== 'safe') return false;
       if (riskFilter === 'alpa' && st.alpa === 0) return false;
 
-      // 3. Search query
+      // 4. Search query
       if (searchStudent.trim()) {
         const q = searchStudent.toLowerCase().trim();
         const matchName = st.studentName.toLowerCase().includes(q);
@@ -247,19 +286,19 @@ export const BkAttendanceMonitoringTab: React.FC<BkAttendanceMonitoringTabProps>
       if (a.rate !== b.rate) return a.rate - b.rate;
       return a.studentName.localeCompare(b.studentName);
     });
-  }, [allStudentStats, selectedClassId, onlyMyClasses, assignedClassIds, riskFilter, searchStudent, classes]);
+  }, [allStudentStats, isSupervisor, assignedClassIds, accessibleClasses, selectedClassId, onlyMyClasses, riskFilter, searchStudent, classes]);
 
   // Active selected class object (if single class selected)
   const activeClassObj = useMemo(() => {
     if (selectedClassId === 'all') return null;
-    return classes.find(c => c.id === selectedClassId || c.name === selectedClassId) || null;
-  }, [selectedClassId, classes]);
+    return accessibleClasses.find(c => c.id === selectedClassId || c.name === selectedClassId) || null;
+  }, [selectedClassId, accessibleClasses]);
 
   // Active target class object for Daily Input
   const dailyClassObj = useMemo(() => {
-    if (!dailyTargetClassId) return classes[0] || null;
-    return classes.find(c => c.id === dailyTargetClassId || c.name === dailyTargetClassId) || null;
-  }, [dailyTargetClassId, classes]);
+    if (!dailyTargetClassId) return accessibleClasses[0] || null;
+    return accessibleClasses.find(c => c.id === dailyTargetClassId || c.name === dailyTargetClassId) || accessibleClasses[0] || null;
+  }, [dailyTargetClassId, accessibleClasses]);
 
   // Active class summary
   const activeClassSummary = useMemo(() => {
@@ -506,12 +545,30 @@ export const BkAttendanceMonitoringTab: React.FC<BkAttendanceMonitoringTabProps>
     toast.success('Rekap kehadiran berhasil diekspor ke Excel (CSV)!');
   };
 
-  // Save assigned classes configuration
+  // Save assigned classes configuration with Firestore cloud synchronization
   const handleSaveAssignedClasses = () => {
     setAssignedClassIds(tempAssignedIds);
     saveGuruBkAssignedClasses(currentUser?.uid, tempAssignedIds);
+
+    // Sync to user profile in Firestore
+    if (currentUser?.uid && auth.currentUser) {
+      try {
+        updateDoc(doc(db, 'users', currentUser.uid), {
+          assignedClasses: tempAssignedIds,
+          updatedAt: new Date().toISOString()
+        }).catch(() => {
+          setDoc(doc(db, 'users', currentUser.uid), {
+            assignedClasses: tempAssignedIds,
+            updatedAt: new Date().toISOString()
+          }, { merge: true }).catch(() => {});
+        });
+      } catch (e) {
+        console.warn('Sync assigned classes to Firestore error:', e);
+      }
+    }
+
     setIsConfigModalOpen(false);
-    toast.success('Daftar kelas binaan Anda berhasil disimpan!');
+    toast.success('Daftar kelas binaan Anda berhasil disimpan dan diamankan!');
   };
 
   // Toggle class selection in configuration modal
@@ -723,23 +780,41 @@ export const BkAttendanceMonitoringTab: React.FC<BkAttendanceMonitoringTabProps>
                 </p>
               </div>
 
-              {/* Class Selector Dropdown / Pills */}
+              {/* Class Selector Dropdown / Pills with Confidentiality Enforcement */}
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[11px] font-bold text-slate-600 dark:text-zinc-400">Pilih Kelas:</span>
-                <select
-                  value={dailyTargetClassId}
-                  onChange={e => setDailyTargetClassId(e.target.value)}
-                  className="px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-[#161618] border border-slate-300 dark:border-[#27272a] text-slate-900 dark:text-white text-xs font-bold focus:outline-hidden focus:ring-2 focus:ring-pink-500"
-                >
-                  {classes.map(c => {
-                    const isAssigned = assignedClassIds.includes(c.id) || assignedClassIds.includes(c.name);
-                    return (
-                      <option key={c.id} value={c.id}>
-                        {c.name} {isAssigned ? '★ (Binaan Saya)' : ''}
-                      </option>
-                    );
-                  })}
-                </select>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-bold text-slate-600 dark:text-zinc-400">Pilih Kelas:</span>
+                  <select
+                    value={dailyTargetClassId}
+                    onChange={e => setDailyTargetClassId(e.target.value)}
+                    disabled={accessibleClasses.length === 0}
+                    className="px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-[#161618] border border-slate-300 dark:border-[#27272a] text-slate-900 dark:text-white text-xs font-bold focus:outline-hidden focus:ring-2 focus:ring-pink-500"
+                  >
+                    {accessibleClasses.length === 0 ? (
+                      <option value="">Belum Ada Kelas Binaan Terpilih</option>
+                    ) : (
+                      accessibleClasses.map(c => {
+                        return (
+                          <option key={c.id} value={c.id}>
+                            {c.name} {!isSupervisor ? '★ (Binaan Saya)' : ''}
+                          </option>
+                        );
+                      })
+                    )}
+                  </select>
+                </div>
+
+                {!isSupervisor ? (
+                  <span className="text-[10px] font-bold px-2 py-1 rounded-xl bg-pink-50 dark:bg-pink-950/40 text-pink-700 dark:text-pink-300 border border-pink-200 dark:border-pink-800/60 flex items-center gap-1">
+                    <Lock className="w-3 h-3 text-pink-600 dark:text-pink-400" />
+                    <span>Kerahasiaan Aktif: Hanya Kelas Binaan Anda ({accessibleClasses.length} Rombel)</span>
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold px-2 py-1 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60 flex items-center gap-1">
+                    <Shield className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+                    <span>Mode Supervisi Manajerial ({classes.length} Rombel)</span>
+                  </span>
+                )}
               </div>
             </div>
 
@@ -1068,6 +1143,42 @@ export const BkAttendanceMonitoringTab: React.FC<BkAttendanceMonitoringTabProps>
       {/* ========================================================================= */}
       {viewMode === 'rekap' && (
         <div className="space-y-4">
+          {/* Privacy & Confidentiality Notice for Guru BK */}
+          {!isSupervisor && (
+            <div className="p-3 bg-pink-50/80 dark:bg-pink-950/30 border border-pink-200 dark:border-pink-900/50 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs shadow-xs">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-pink-500/10 border border-pink-500/30 flex items-center justify-center text-pink-600 dark:text-pink-400 shrink-0">
+                  <Lock className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="font-bold text-slate-900 dark:text-zinc-100 flex items-center gap-1.5">
+                    <span>Kerahasiaan Data BK Terisolasi</span>
+                    <span className="text-[10px] font-mono text-pink-600 dark:text-pink-400 font-bold bg-pink-100 dark:bg-pink-900/40 px-1.5 py-0.2 rounded">
+                      {accessibleClasses.length} KELAS BINAAN AKTIF
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-600 dark:text-zinc-400 mt-0.5">
+                    {assignedClassIds.length > 0
+                      ? `Menampilkan khusus rombel binaan Anda. Riwayat presensi kelas madrasah lainnya dilindungi dan dikelola oleh Guru BK bersangkutan.`
+                      : `Anda belum menentukan kelas binaan. Silakan tentukan kelas binaan agar data kehadiran siswa ampu Anda dapat ditampilkan.`}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setTempAssignedIds(assignedClassIds);
+                  setIsConfigModalOpen(true);
+                }}
+                className="px-3 py-1.5 rounded-xl bg-pink-600 hover:bg-pink-700 text-white font-bold text-[11px] flex items-center gap-1.5 shadow-xs transition-all whitespace-nowrap self-end sm:self-auto cursor-pointer"
+              >
+                <Settings className="w-3.5 h-3.5" />
+                <span>{assignedClassIds.length > 0 ? 'Kelola Kelas Binaan' : 'Tentukan Kelas Binaan'}</span>
+              </button>
+            </div>
+          )}
+
           {/* 2. Kelas Binaan Selector Grid (Grid Pemilihan Kelas) */}
           <div className="bg-white dark:bg-[#0d0d0f] border border-slate-200 dark:border-[#27272a] rounded-2xl p-3.5 space-y-3 shadow-xs">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2 border-b border-slate-200 dark:border-[#27272a]">
@@ -1098,8 +1209,8 @@ export const BkAttendanceMonitoringTab: React.FC<BkAttendanceMonitoringTabProps>
                   ))}
                 </div>
 
-                {/* Toggle Only My Classes */}
-                {assignedClassIds.length > 0 && (
+                {/* Toggle Only My Classes (Supervisor mode) */}
+                {isSupervisor && assignedClassIds.length > 0 && (
                   <button
                     onClick={() => setOnlyMyClasses(!onlyMyClasses)}
                     className={`px-2.5 py-1 rounded-xl text-[10px] font-bold border flex items-center gap-1 transition-all ${
@@ -1129,22 +1240,22 @@ export const BkAttendanceMonitoringTab: React.FC<BkAttendanceMonitoringTabProps>
                 <div>
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] font-mono font-bold text-slate-500 dark:text-zinc-400 uppercase">
-                      SEMUA KELAS
+                      {isSupervisor ? 'SEMUA KELAS' : 'SEMUA BINAAN'}
                     </span>
                     {selectedClassId === 'all' && (
                       <CheckCircle2 className="w-4 h-4 text-pink-500 shrink-0" />
                     )}
                   </div>
                   <div className="text-sm font-black text-slate-900 dark:text-white mt-1">
-                    Semua Siswa {onlyMyClasses ? 'Binaan' : 'Madrasah'}
+                    {isSupervisor ? (onlyMyClasses ? 'Semua Siswa Binaan' : 'Semua Siswa Madrasah') : 'Semua Siswa Binaan Saya'}
                   </div>
                   <div className="text-[11px] text-slate-500 dark:text-zinc-400 mt-0.5">
-                    {classSummaries.length} Rombongan Belajar
+                    {accessibleClasses.length} Rombongan Belajar {isSupervisor ? '' : 'Binaan'}
                   </div>
                 </div>
 
                 <div className="mt-3 pt-2 border-t border-slate-200/60 dark:border-[#27272a] flex items-center justify-between text-[10px] font-mono">
-                  <span className="text-slate-600 dark:text-zinc-400">Total: {students.length} Siswa</span>
+                  <span className="text-slate-600 dark:text-zinc-400">Total: {overviewMetrics.total} Siswa</span>
                   <span className="font-bold text-pink-600 dark:text-pink-400">Tampilkan Semua →</span>
                 </div>
               </div>
@@ -1712,14 +1823,37 @@ export const BkAttendanceMonitoringTab: React.FC<BkAttendanceMonitoringTabProps>
         size="lg"
       >
         <div className="space-y-4">
-          <div className="p-3 bg-pink-50 dark:bg-pink-950/40 border border-pink-200 dark:border-pink-900/40 rounded-xl text-pink-900 dark:text-pink-200 text-xs">
+          <div className="p-3 bg-pink-50 dark:bg-pink-950/40 border border-pink-200 dark:border-pink-900/40 rounded-xl text-pink-900 dark:text-pink-200 text-xs space-y-1.5">
             <p className="font-bold flex items-center gap-1.5">
-              <Star className="w-4 h-4 fill-pink-500 text-pink-500" />
-              <span>Tentukan Rombel / Kelas Binaan Anda</span>
+              <Lock className="w-4 h-4 text-pink-600 dark:text-pink-400" />
+              <span>Kode Etik & Asas Kerahasiaan Kelas Binaan Guru BK</span>
             </p>
-            <p className="mt-1 text-[11px] opacity-90 leading-relaxed">
-              Pilih kelas-kelas yang menjadi tanggung jawab binaan Anda. Sistem akan menyimpan preferensi ini sehingga Anda dapat memantau kehadiran siswa binaan Anda secara cepat dan fokus.
+            <p className="text-[11px] opacity-90 leading-relaxed">
+              Sesuai kode etik konselor (ABKIN) dan prinsip perlindungan privasi data peserta didik, setiap Guru BK hanya berhak mengakses dan menginput presensi pada kelas binaan ampuannya masing-masing. Riwayat kelas lain dilindungi dan menjadi tanggung jawab Guru BK lainnya.
             </p>
+            <div className="flex items-center gap-1.5 flex-wrap pt-1 font-mono text-[10px]">
+              <span className="font-bold text-pink-950 dark:text-pink-200">Pilih Cepat:</span>
+              {(['X', 'XI', 'XII'] as const).map(gr => (
+                <button
+                  key={gr}
+                  type="button"
+                  onClick={() => {
+                    const gradeClassIds = classes.filter(c => c.grade === gr).map(c => c.id);
+                    setTempAssignedIds(prev => Array.from(new Set([...prev, ...gradeClassIds])));
+                  }}
+                  className="px-2 py-0.5 rounded bg-white dark:bg-zinc-800 border border-pink-300 dark:border-pink-700 hover:bg-pink-100 dark:hover:bg-zinc-700 text-pink-800 dark:text-pink-300 font-bold"
+                >
+                  + Semua Kelas {gr}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => setTempAssignedIds([])}
+                className="px-2 py-0.5 rounded bg-rose-50 dark:bg-rose-950/50 border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 font-bold hover:bg-rose-100 dark:hover:bg-zinc-700"
+              >
+                Kosongkan Pilihan
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 max-h-[350px] overflow-y-auto p-1">
