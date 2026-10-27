@@ -243,11 +243,19 @@ export const OsimMemberModal: React.FC<OsimMemberModalProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-1">
                   {filteredStudentsForOsim.length > 0 ? (
                     filteredStudentsForOsim.map(student => {
-                      const isSelected = memberForm.studentNis === student.nis && memberForm.fullName === student.fullName;
-                      const existingOsim = osimMembers.find(
-                        m => (m.studentNis && m.studentNis === student.nis) ||
-                             m.fullName.toLowerCase() === student.fullName.toLowerCase()
-                      );
+                      if (!student) return null;
+                      const isSelected =
+                        (student.nis && memberForm.studentNis === student.nis) ||
+                        Boolean(memberForm.fullName && student.fullName && memberForm.fullName.trim().toLowerCase() === student.fullName.trim().toLowerCase());
+                      const existingOsim = (osimMembers || []).find(m => {
+                        if (!m) return false;
+                        if (m.studentNis && student.nis && m.studentNis.trim() === student.nis.trim()) {
+                          return true;
+                        }
+                        const mName = (m.fullName || '').trim().toLowerCase();
+                        const sName = (student.fullName || '').trim().toLowerCase();
+                        return Boolean(mName && sName && mName === sName);
+                      });
 
                       return (
                         <div
